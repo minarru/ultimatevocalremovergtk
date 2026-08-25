@@ -819,14 +819,13 @@ def _confidence_targets(policy: Any) -> list[Any]:
     coordinator = CatalogueCoordinator()
     try:
         source = coordinator.source(SourceId.MVSEPLESS)
-        mode = (
-            RefreshMode.OFFLINE
-            if not policy.allow_network
-            else RefreshMode.FORCE
-            if policy.refresh
-            else RefreshMode.STALE_WHILE_REVALIDATE
-        )
-        source.load(mode=mode, policy=_confidence_access_policy(policy))
+        access = _confidence_access_policy(policy)
+        # Audits need a complete target list now, unlike the UI's
+        # stale-while-revalidate path. Read disk cache first; only a cold
+        # online miss blocks for a fetch. Explicit --refresh remains FORCE.
+        source.load(mode=RefreshMode.OFFLINE, policy=access)
+        if policy.allow_network and (policy.refresh or source.state.content is None):
+            source.load(mode=RefreshMode.FORCE, policy=access)
         content = source.state.content
         payload = dict(content.payload) if content is not None else {}
         return list(iter_catalogue_targets(payload, unsupported_only=False))

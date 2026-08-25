@@ -48,3 +48,60 @@ PYTHONPATH=.:scripts .../python scripts/generate_models_catalogue.py \
   caches are already warm; a cold cache intentionally yields no remote work.
 - Historical review/plan artifacts still mention the removed script as past
   evidence. All live source, test, and documentation references were updated.
+
+## Fix round 1/5 — offline refresh precedence and cold-cache audit loading
+
+### Root cause
+
+- `FetchPolicy.refresh` retained `--refresh` under `--offline`, so the remote
+  audit deliberately bypassed warm legacy config and checkpoint-hash caches
+  before refusing network access.
+- `STALE_WHILE_REVALIDATE` is correct for the UI, but a cold source cache only
+  schedules its fetch and immediately returns no content. An audit must have
+  its target list before it can report findings.
+
+### TDD evidence
+
+RED:
+
+```text
+$ PYTHONPATH=.:scripts /home/rudam/ultimatevocalremovergui/.venv/bin/python -m unittest -v \
+  tests.test_stem_confidence_audit.ConfidenceAuditSelectionAndPolicyTests \
+  tests.test_generate_models_catalogue.StemConfidenceAuditModeTests
+FAIL: test_cold_online_catalogue_load_blocks_until_one_target_is_available
+AssertionError: [] != ['fetched']
+FAIL: test_offline_refresh_reuses_warm_source_config_and_hash_caches
+AssertionError: Expected 'load_mdx_c_config' to have been called once. Called 0 times.
+Ran 13 tests — FAILED (failures=2)
+```
+
+GREEN:
+
+```text
+$ PYTHONPATH=.:scripts /home/rudam/ultimatevocalremovergui/.venv/bin/python -m unittest -q \
+  tests.test_generate_models_catalogue tests.test_catalogue_stem_audit \
+  tests.test_stem_confidence_audit tests.test_catalogue_coordinator \
+  tests.test_catalogue_characterization tests.test_catalog_sources
+Ran 227 tests in 0.651s
+OK
+
+$ PYTHONPATH=.:scripts /home/rudam/ultimatevocalremovergui/.venv/bin/python -m basedpyright \
+  scripts/generate_models_catalogue.py scripts/catalogue/stem_audit.py \
+  tests/test_generate_models_catalogue.py tests/test_stem_confidence_audit.py
+0 errors, 0 warnings, 0 notes
+
+$ ruff check ... && ruff format --check ... && git diff --check
+All checks passed; all files formatted; no whitespace errors
+```
+
+### Fix
+
+- The generator now normalizes effective refresh to `args.refresh and not
+  args.offline`, so every downstream audit boundary reuses warm caches when
+  offline.
+- The audit now loads mvsepless disk cache with `OFFLINE` first, uses any
+  available cache immediately, then performs one blocking `FORCE` fetch only
+  for a cold online cache or explicit refresh.
+- Regression coverage proves `--offline --refresh` reaches warm source,
+  config, and hash caches without invoking network boundaries, and that a
+  cold online cache audits the fetched target instead of reporting zero rows.

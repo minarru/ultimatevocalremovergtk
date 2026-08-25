@@ -3453,6 +3453,73 @@ class StemConfidenceAuditModeTests(unittest.TestCase):
 
         self.assertTrue(audit.called)
 
+    def test_offline_refresh_reuses_warm_source_config_and_hash_caches(self) -> None:
+        import contextlib
+        import io
+        import tempfile
+        from types import SimpleNamespace
+        from unittest import mock
+
+        target = SimpleNamespace(
+            entry_id="warm",
+            label="Warm model",
+            config_url="https://example.test/warm.yaml",
+            checkpoint_url="https://example.test/warm.ckpt",
+            is_bv_model=False,
+        )
+        source = SimpleNamespace(
+            state=SimpleNamespace(content=SimpleNamespace(payload={"warm": {}}))
+        )
+        source_calls: list[Any] = []
+        source.load = lambda **kwargs: source_calls.append(kwargs["mode"])
+        coordinator = SimpleNamespace(source=lambda _source_id: source, close=lambda: None)
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_path = os.path.join(tmp, "hashes.json")
+            cache = cli.stem_audit.HashCache(cache_path)
+            cache.put(
+                target.checkpoint_url,
+                cli.stem_audit.HashLookup(digest="known", status="ok"),
+            )
+            cache.save()
+            with (
+                mock.patch(
+                    "core.catalogue_coordinator.CatalogueCoordinator",
+                    return_value=coordinator,
+                ),
+                mock.patch(
+                    "scripts.model_tool_support.iter_catalogue_targets",
+                    return_value=iter([target]),
+                ),
+                mock.patch.object(
+                    cli.stem_audit, "default_hash_cache_path", return_value=cache_path
+                ),
+                mock.patch.object(
+                    cli.stem_audit, "_curated_hash_table", return_value={"known": {}}
+                ),
+                mock.patch("catalogue.stem_audit.os.path.isfile", return_value=True),
+                mock.patch(
+                    "core.model_data.load_mdx_c_config",
+                    return_value={"training": {"instruments": ["vocals", "other"]}},
+                ) as config_load,
+                mock.patch(
+                    "catalogue.collect._fetch_yaml_bytes",
+                    side_effect=AssertionError("offline config fetch"),
+                ),
+                mock.patch(
+                    "scripts.model_tool_support.checkpoint_tail_hash",
+                    side_effect=AssertionError("offline checkpoint fetch"),
+                ),
+                contextlib.redirect_stdout(io.StringIO()),
+                contextlib.redirect_stderr(io.StringIO()),
+            ):
+                self.assertEqual(
+                    cli.main(["--audit-stem-confidence", "--offline", "--refresh", "--quiet"]),
+                    0,
+                )
+
+        config_load.assert_called_once()
+        self.assertEqual([mode.value for mode in source_calls], ["offline"])
+
 
 if __name__ == "__main__":
     unittest.main()

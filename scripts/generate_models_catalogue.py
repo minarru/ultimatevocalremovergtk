@@ -328,7 +328,9 @@ def _policy_for(args: argparse.Namespace) -> FetchPolicy:
     """Fetch policy implied by the CLI flags."""
     return FetchPolicy(
         allow_network=not args.offline,
-        refresh=args.refresh,
+        # Offline is cache-only at every boundary, including the confidence
+        # audit's legacy config and checkpoint-hash caches.
+        refresh=args.refresh and not args.offline,
         # --check and --summary must leave the tree exactly as they found it.
         allow_metadata_writes=not (args.check or args.summary),
         allow_cache_writes=not (args.check or args.summary),

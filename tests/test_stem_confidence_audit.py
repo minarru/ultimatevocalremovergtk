@@ -208,7 +208,39 @@ class ConfidenceAuditSelectionAndPolicyTests(unittest.TestCase):
             patch("scripts.model_tool_support.iter_catalogue_targets", return_value=iter(())),
         ):
             self.assertEqual(stem_audit._confidence_targets(collect.FetchPolicy(refresh=True)), [])
-        self.assertEqual(calls[0]["mode"].value, "force")
+        self.assertEqual([call["mode"].value for call in calls], ["offline", "force"])
+
+    def test_cold_online_catalogue_load_blocks_until_one_target_is_available(self) -> None:
+        target = self._target("fetched", "Fetched model")
+        source = SimpleNamespace(state=SimpleNamespace(content=None))
+        calls: list[dict[str, Any]] = []
+
+        def load(**kwargs: Any) -> None:
+            calls.append(kwargs)
+            if kwargs["mode"].value == "force":
+                source.state.content = SimpleNamespace(payload={"fetched": {}})
+
+        source.load = load
+        coordinator = SimpleNamespace(source=lambda _source_id: source, close=lambda: None)
+        with (
+            patch("core.catalogue_coordinator.CatalogueCoordinator", return_value=coordinator),
+            patch(
+                "scripts.model_tool_support.iter_catalogue_targets",
+                side_effect=lambda payload, **_kwargs: iter([target] if payload else []),
+            ),
+            patch.object(stem_audit, "_curated_hash_table", return_value={}),
+            patch.object(
+                stem_audit, "_confidence_entry_for_target", return_value=_entry("fetched")
+            ),
+        ):
+            entries = list(
+                stem_audit.iter_stem_confidence_entries(
+                    policy=collect.FetchPolicy(), show_progress=False
+                )
+            )
+
+        self.assertEqual([entry.entry_id for entry in entries], ["fetched"])
+        self.assertEqual([call["mode"].value for call in calls], ["offline", "force"])
 
     def test_progress_and_guessed_only_apply_to_the_real_entry_iterator(self) -> None:
         targets = [self._target("one", "One"), self._target("two", "Two")]
