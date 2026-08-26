@@ -15,9 +15,20 @@ from bundled.constants import (
 from core.settings import Settings
 from core.settings.coerce import coerce_field
 from core.stem_pairs import ensemble_pair_choices, stem_pair_display, stem_pair_halves
-from core.stem_roles import StemId as RoleStemId
-from core.stem_roles import StemLiteral as RoleStemLiteral
-from core.stem_roles import StemRoleId
+from core.stem_roles import (
+    ModelStemSemantics,
+    SemanticStemOutput,
+    StemProcessingContext,
+    StemProduction,
+    StemReviewStatus,
+    StemRoleId,
+)
+from core.stem_roles import (
+    StemId as RoleStemId,
+)
+from core.stem_roles import (
+    StemLiteral as RoleStemLiteral,
+)
 from core.stems import (
     StemBucket,
     StemId,
@@ -25,6 +36,7 @@ from core.stems import (
     StemRoute,
     StemRouteKind,
     StemSelectionStatus,
+    _semantic_routes,
     bucket_for_model_stem,
     export_stem_label,
     exports_named_stem,
@@ -79,6 +91,41 @@ class StemRouteTests(unittest.TestCase):
         self.assertEqual(instrumental.concept, "mix.instrumental")
         self.assertTrue(instrumental.logical_primary)
         self.assertFalse(by_role[StemRoleId("vocal.vocals")].logical_primary)
+
+    def test_reviewed_false_default_survives_route_selection(self) -> None:
+        semantics = ModelStemSemantics(
+            model_id="mdx:fixture",
+            context=StemProcessingContext.FULL_MIX,
+            intent="dual_voc_inst",
+            outputs=(
+                SemanticStemOutput(
+                    native=StemId("Vocals"),
+                    role=StemRoleId("vocal.vocals"),
+                    production=StemProduction.NATIVE,
+                    backend_primary=True,
+                    logical_primary=True,
+                ),
+                SemanticStemOutput(
+                    native=StemId("Instrumental"),
+                    role=StemRoleId("mix.instrumental"),
+                    production=StemProduction.NATIVE,
+                    backend_primary=False,
+                    logical_primary=False,
+                    selected_by_default=False,
+                ),
+            ),
+            status=StemReviewStatus.REVIEWED,
+            evidence="fixture",
+        )
+
+        routes = _semantic_routes(semantics)
+        by_role = {route.role: route for route in routes}
+
+        self.assertFalse(by_role[StemRoleId("mix.instrumental")].selected_by_default)
+        self.assertEqual(
+            [route.role for route in select_stem_routes(routes, "").routes],
+            [StemRoleId("vocal.vocals")],
+        )
 
     def test_target_instrument_route_keeps_explicit_derived_dependency(self) -> None:
         class Model:

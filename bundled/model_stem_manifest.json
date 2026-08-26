@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "roles": {
     "cinematic.ambience": {
       "display": "Ambience",
@@ -413,7 +413,8 @@
     "mix.music.removed": {
       "display": "Music Removed",
       "filename_tag": "Music_Removed",
-      "family": "mix"
+      "family": "mix",
+      "removed_of": "mix.music"
     },
     "residual.back": {
       "display": "Back",

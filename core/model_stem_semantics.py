@@ -141,14 +141,17 @@ def stem_semantics_projection(
             filename_tag = display
         routes.append(
             StemSemanticRoute(
-                native,
-                role,
-                display,
-                filename_tag,
-                output.production.value,
-                output.logical_primary,
-                tuple(item.value for item in output.derived_from),
-                output.complement_of.value if output.complement_of is not None else None,
+                native=native,
+                role=role,
+                display=display,
+                filename_tag=filename_tag,
+                production=output.production.value,
+                logical_primary=output.logical_primary,
+                derived_from=tuple(item.value for item in output.derived_from),
+                complement_of=(
+                    output.complement_of.value if output.complement_of is not None else None
+                ),
+                selected_by_default=output.selected_by_default,
             )
         )
     return StemSemanticProjection(

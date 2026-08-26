@@ -992,7 +992,7 @@ def _semantic_routes(semantics: ModelStemSemantics) -> tuple[StemRoute, ...]:
                     if output.production is StemProduction.DERIVED
                     else StemRouteKind.NATIVE
                 ),
-                selected_by_default=True,
+                selected_by_default=output.selected_by_default,
                 logical_primary=output.logical_primary,
                 selection_scope=(
                     raw_scope

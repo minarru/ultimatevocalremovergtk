@@ -225,6 +225,7 @@ class SemanticProjectionTests(unittest.TestCase):
                 "production": "derived",
                 "logical_primary": False,
                 "complement_of": "mix.instrumental",
+                "selected_by_default": True,
             },
         )
         self.assertEqual(
@@ -236,8 +237,43 @@ class SemanticProjectionTests(unittest.TestCase):
                 "filename_tag": "Instrumental",
                 "production": "native",
                 "logical_primary": True,
+                "selected_by_default": True,
             },
         )
+
+    def test_projection_preserves_an_explicit_false_output_default(self) -> None:
+        from core.model_stem_semantics import stem_semantics_projection
+        from core.stem_roles import (
+            ModelStemSemantics,
+            SemanticStemOutput,
+            StemId,
+            StemProcessingContext,
+            StemProduction,
+            StemReviewStatus,
+            StemRoleId,
+        )
+
+        semantics = ModelStemSemantics(
+            model_id="mdx:fixture",
+            context=StemProcessingContext.FULL_MIX,
+            intent="instrumental",
+            outputs=(
+                SemanticStemOutput(
+                    native=StemId("Other"),
+                    role=StemRoleId("mix.instrumental"),
+                    production=StemProduction.NATIVE,
+                    backend_primary=False,
+                    logical_primary=False,
+                    selected_by_default=False,
+                ),
+            ),
+            status=StemReviewStatus.REVIEWED,
+            evidence="fixture",
+        )
+
+        route = stem_semantics_projection(semantics).as_dict()["stem_routes"][0]
+
+        self.assertIs(route["selected_by_default"], False)
 
     def test_projection_covers_reviewed_waived_and_raw_statuses(self) -> None:
         from core.model_stem_semantics import (

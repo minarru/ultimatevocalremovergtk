@@ -400,9 +400,21 @@ class DiscoveryTests(unittest.TestCase):
             "reviewed",
             "full_mix",
             (
-                StemSemanticRoute("vocals", "vocal.vocals", "Vocals", "Vocals", "native", False),
                 StemSemanticRoute(
-                    "other", "mix.instrumental", "Instrumental", "Instrumental", "native", True
+                    native="vocals",
+                    role="vocal.vocals",
+                    display="Vocals",
+                    filename_tag="Vocals",
+                    production="native",
+                    logical_primary=False,
+                ),
+                StemSemanticRoute(
+                    native="other",
+                    role="mix.instrumental",
+                    display="Instrumental",
+                    filename_tag="Instrumental",
+                    production="native",
+                    logical_primary=True,
                 ),
             ),
             ("vocal.vocals", "mix.instrumental"),

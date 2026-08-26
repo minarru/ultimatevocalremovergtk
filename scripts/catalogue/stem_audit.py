@@ -56,6 +56,9 @@ STEM_SEMANTICS_REFERENCE_HEADERS = (
     "intent_source",
     "review_status",
     "evidence_or_waiver",
+    "complement_of",
+    "derived_from",
+    "selected_by_default",
 )
 
 _COMPLEMENT_ONLY_NAMES = frozenset({"drum-bass", "no bass", "no drums", "no other"})

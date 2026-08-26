@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 import unittest
 from pathlib import Path
@@ -31,7 +32,7 @@ from core.stem_roles import (
 def _manifest() -> dict[str, Any]:
     """A complete reviewed declaration with a contextual and derived route."""
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "roles": {
             "vocal.vocals": {
                 "display": "Vocals",
@@ -130,6 +131,288 @@ class StemRoleValueTests(unittest.TestCase):
 
 
 class ManifestValidationTests(unittest.TestCase):
+    def test_schema_version_is_exact_integer_two(self) -> None:
+        for value in (True, False, 2.0, "2", 1, 3):
+            document = _manifest()
+            document["schema_version"] = value
+            with self.subTest(value=value), self.assertRaises(StemManifestError) as raised:
+                load_stem_manifest_document(document)
+            self.assertEqual(raised.exception.path, ("schema_version",))
+
+    def test_duplicate_json_keys_are_typed_errors_at_root_and_nested_levels(self) -> None:
+        documents = (
+            (
+                "schema_version",
+                '{"schema_version":2,"schema_version":2,"roles":{},"pairs":{},'
+                '"models":{},"waivers":{}}',
+            ),
+            (
+                "display",
+                '{"schema_version":2,"roles":{"vocal.vocals":{'
+                '"display":"Vocals","display":"Again","filename_tag":"Vocals",'
+                '"family":"vocal"}},"pairs":{},"models":{},"waivers":{}}',
+            ),
+        )
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "manifest.json"
+            for duplicate, text in documents:
+                with self.subTest(duplicate=duplicate):
+                    path.write_text(text, encoding="utf-8")
+                    with self.assertRaisesRegex(
+                        StemManifestError, rf"duplicate key.*{re.escape(duplicate)}"
+                    ):
+                        load_stem_manifest(path)
+
+    def test_unknown_fields_are_rejected_at_every_closed_object_level(self) -> None:
+        cases = ("root", "role", "pair", "model", "context", "output")
+        for level in cases:
+            document = _manifest()
+            if level == "root":
+                target = document
+                expected_path = ("unknown",)
+            elif level == "role":
+                target = document["roles"]["vocal.vocals"]
+                expected_path = ("roles", "vocal.vocals", "unknown")
+            elif level == "pair":
+                target = document["pairs"]["pair.vocals_instrumental"]
+                expected_path = ("pairs", "pair.vocals_instrumental", "unknown")
+            elif level == "model":
+                target = document["models"]["mdx:fixture"]
+                expected_path = ("models", "mdx:fixture", "unknown")
+            elif level == "context":
+                target = document["models"]["mdx:fixture"]["contexts"]["full_mix"]
+                expected_path = (
+                    "models",
+                    "mdx:fixture",
+                    "contexts",
+                    "full_mix",
+                    "unknown",
+                )
+            else:
+                target = document["models"]["mdx:fixture"]["contexts"]["full_mix"]["outputs"][0]
+                expected_path = (
+                    "models",
+                    "mdx:fixture",
+                    "contexts",
+                    "full_mix",
+                    "outputs",
+                    0,
+                    "unknown",
+                )
+            target["unknown"] = "not allowed"
+            with self.subTest(level=level), self.assertRaises(StemManifestError) as raised:
+                load_stem_manifest_document(document)
+            self.assertEqual(raised.exception.path, expected_path)
+
+    def test_selected_by_default_defaults_true_and_explicit_false_round_trips(self) -> None:
+        document = _manifest()
+        outputs = document["models"]["mdx:fixture"]["contexts"]["full_mix"]["outputs"]
+        outputs[1]["selected_by_default"] = False
+
+        registry = load_stem_manifest_document(document)
+        parsed = registry.models["mdx:fixture"].contexts[StemProcessingContext.FULL_MIX].outputs
+
+        self.assertIs(parsed[0].selected_by_default, True)
+        self.assertIs(parsed[1].selected_by_default, False)
+
+    def test_selected_by_default_rejects_every_non_boolean(self) -> None:
+        for value in (0, 1, 0.0, 1.0, "false", None, []):
+            document = _manifest()
+            document["models"]["mdx:fixture"]["contexts"]["full_mix"]["outputs"][1][
+                "selected_by_default"
+            ] = value
+            with self.subTest(value=value), self.assertRaises(StemManifestError) as raised:
+                load_stem_manifest_document(document)
+            self.assertEqual(raised.exception.path[-1], "selected_by_default")
+
+    def test_native_outputs_reject_both_dependency_forms(self) -> None:
+        for field, value in (
+            ("complement_of", "mix.instrumental"),
+            ("derived_from", ["vocal.vocals", "mix.instrumental"]),
+        ):
+            document = _manifest()
+            document["models"]["mdx:fixture"]["contexts"]["full_mix"]["outputs"][0][field] = value
+            with self.subTest(field=field), self.assertRaises(StemManifestError) as raised:
+                load_stem_manifest_document(document)
+            self.assertEqual(raised.exception.path[-1], field)
+
+    def test_derived_outputs_require_exactly_one_recipe_form(self) -> None:
+        for recipe_count in (0, 2):
+            document = _manifest()
+            output = document["models"]["mdx:fixture"]["contexts"]["full_mix"]["outputs"][2]
+            del output["complement_of"]
+            if recipe_count == 2:
+                output["complement_of"] = "vocal.vocals"
+                output["derived_from"] = ["vocal.vocals", "mix.instrumental"]
+            with (
+                self.subTest(recipe_count=recipe_count),
+                self.assertRaisesRegex(StemManifestError, "exactly one dependency form"),
+            ):
+                load_stem_manifest_document(document)
+
+    def test_complement_dependency_must_be_one_other_native_output(self) -> None:
+        cases = (
+            ("missing", "vocal.backing", "not an output"),
+            ("self", "residual.other", "self-dependency"),
+        )
+        for label, dependency, message in cases:
+            document = _manifest()
+            document["models"]["mdx:fixture"]["contexts"]["full_mix"]["outputs"][2][
+                "complement_of"
+            ] = dependency
+            with self.subTest(label=label), self.assertRaisesRegex(StemManifestError, message):
+                load_stem_manifest_document(document)
+
+        document = _manifest()
+        outputs = document["models"]["mdx:fixture"]["contexts"]["full_mix"]["outputs"]
+        outputs.append(
+            {
+                "native": None,
+                "role": "vocal.backing",
+                "production": "derived",
+                "complement_of": "residual.other",
+            }
+        )
+        outputs[2]["complement_of"] = "vocal.backing"
+        with self.assertRaisesRegex(StemManifestError, "native output"):
+            load_stem_manifest_document(document)
+
+    def test_sum_dependencies_require_two_distinct_other_native_outputs(self) -> None:
+        cases = (
+            ("one", ["vocal.vocals"], "at least two"),
+            ("duplicate", ["vocal.vocals", "vocal.vocals"], "duplicate dependency"),
+            ("self", ["residual.other", "mix.instrumental"], "self-dependency"),
+            ("missing", ["vocal.vocals", "vocal.backing"], "not an output"),
+        )
+        for label, dependencies, message in cases:
+            document = _manifest()
+            output = document["models"]["mdx:fixture"]["contexts"]["full_mix"]["outputs"][2]
+            del output["complement_of"]
+            output["derived_from"] = dependencies
+            with self.subTest(label=label), self.assertRaisesRegex(StemManifestError, message):
+                load_stem_manifest_document(document)
+
+        document = _manifest()
+        outputs = document["models"]["mdx:fixture"]["contexts"]["full_mix"]["outputs"]
+        outputs.append(
+            {
+                "native": None,
+                "role": "vocal.backing",
+                "production": "derived",
+                "complement_of": "vocal.vocals",
+            }
+        )
+        del outputs[2]["complement_of"]
+        outputs[2]["derived_from"] = ["vocal.vocals", "vocal.backing"]
+        with self.assertRaisesRegex(StemManifestError, "native output"):
+            load_stem_manifest_document(document)
+
+    def test_context_rejects_duplicate_native_keys_and_role_ids(self) -> None:
+        document = _manifest()
+        outputs = document["models"]["mdx:fixture"]["contexts"]["full_mix"]["outputs"]
+        outputs[1]["native"] = "vocals"
+        with self.assertRaisesRegex(StemManifestError, "duplicate case-folded native key"):
+            load_stem_manifest_document(document)
+
+        document = _manifest()
+        document["models"]["mdx:fixture"]["contexts"]["full_mix"]["outputs"][2]["role"] = (
+            "mix.instrumental"
+        )
+        with self.assertRaisesRegex(StemManifestError, "duplicate role"):
+            load_stem_manifest_document(document)
+
+    def test_native_signature_must_not_be_empty(self) -> None:
+        document = _manifest()
+        document["models"]["mdx:fixture"]["native_signature"] = []
+        with self.assertRaisesRegex(StemManifestError, "at least one native key") as raised:
+            load_stem_manifest_document(document)
+        self.assertEqual(
+            raised.exception.path,
+            ("models", "mdx:fixture", "native_signature"),
+        )
+
+    def test_logical_primary_is_exactly_one_selected_output(self) -> None:
+        document = _manifest()
+        document["models"]["mdx:fixture"]["contexts"]["full_mix"]["outputs"][0][
+            "selected_by_default"
+        ] = False
+        with self.assertRaisesRegex(StemManifestError, "selected by default"):
+            load_stem_manifest_document(document)
+
+        document = _manifest()
+        document["models"]["mdx:fixture"]["contexts"]["full_mix"]["logical_primary"] = "vocal.lead"
+        with self.assertRaisesRegex(StemManifestError, "missing logical primary output"):
+            load_stem_manifest_document(document)
+
+        document = _manifest()
+        document["models"]["mdx:fixture"]["contexts"]["full_mix"]["outputs"][1]["role"] = (
+            "vocal.vocals"
+        )
+        with self.assertRaisesRegex(StemManifestError, "multiple logical primaries"):
+            load_stem_manifest_document(document)
+
+    def test_role_id_namespace_must_match_declared_family(self) -> None:
+        document = _manifest()
+        document["roles"]["vocal.vocals"]["family"] = "mix"
+        with self.assertRaisesRegex(StemManifestError, "namespace.*family") as raised:
+            load_stem_manifest_document(document)
+        self.assertEqual(raised.exception.path, ("roles", "vocal.vocals", "family"))
+
+    def test_removed_role_graph_rejects_missing_self_cycle_cross_family_and_bad_name(self) -> None:
+        cases = ("missing", "self", "cycle", "cross-family", "bad-name")
+        for case in cases:
+            document = _manifest()
+            if case == "missing":
+                document["roles"]["vocal.vocals.removed"] = {
+                    "display": "Vocals Removed",
+                    "filename_tag": "Vocals_Removed",
+                    "family": "vocal",
+                    "removed_of": "vocal.missing",
+                }
+                expected = "missing role reference"
+            elif case == "self":
+                document["roles"]["vocal.vocals.removed"] = {
+                    "display": "Vocals Removed",
+                    "filename_tag": "Vocals_Removed",
+                    "family": "vocal",
+                    "removed_of": "vocal.vocals.removed",
+                }
+                expected = "cannot reference itself"
+            elif case == "cycle":
+                document["roles"]["vocal.vocals"]["removed_of"] = "vocal.vocals.removed"
+                document["roles"]["vocal.vocals.removed"] = {
+                    "display": "Vocals Removed",
+                    "filename_tag": "Vocals_Removed",
+                    "family": "vocal",
+                    "removed_of": "vocal.vocals",
+                }
+                expected = "cycle"
+            elif case == "cross-family":
+                document["roles"]["mix.instrumental.removed"] = {
+                    "display": "Instrumental Removed",
+                    "filename_tag": "Instrumental_Removed",
+                    "family": "mix",
+                    "removed_of": "vocal.vocals",
+                }
+                expected = "same family"
+            else:
+                document["roles"]["vocal.vocals_removed"] = {
+                    "display": "Vocals Removed",
+                    "filename_tag": "Vocals_Removed",
+                    "family": "vocal",
+                    "removed_of": "vocal.vocals",
+                }
+                expected = r"\.removed"
+            with self.subTest(case=case), self.assertRaisesRegex(StemManifestError, expected):
+                load_stem_manifest_document(document)
+
+    def test_model_and_waiver_ids_must_not_overlap(self) -> None:
+        document = _manifest()
+        document["waivers"]["mdx:fixture"] = "duplicate disposition"
+        with self.assertRaisesRegex(StemManifestError, "both models and waivers") as raised:
+            load_stem_manifest_document(document)
+        self.assertEqual(raised.exception.path, ("waivers", "mdx:fixture"))
+
     def test_p5_retains_both_exact_becruily_artifacts(self) -> None:
         registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)
 
@@ -746,6 +1029,35 @@ class ExactResolutionTests(unittest.TestCase):
 
 
 class BundledFallbackTests(unittest.TestCase):
+    def test_schema_invalid_bundled_manifest_falls_back_to_raw_semantics(self) -> None:
+        self.addCleanup(load_bundled_stem_semantics.cache_clear)
+        document = _manifest()
+        document["unknown"] = "closed-world violation"
+        with TemporaryDirectory() as directory:
+            broken = Path(directory) / "model_stem_manifest.json"
+            broken.write_text(json.dumps(document), encoding="utf-8")
+
+            with self.assertRaises(StemManifestError):
+                load_stem_manifest(broken)
+
+            with (
+                patch("core.model_stem_manifest.BUNDLED_MANIFEST_PATH", broken),
+                patch("core.model_stem_manifest.log_event") as log_event,
+            ):
+                load_bundled_stem_semantics.cache_clear()
+                registry = load_bundled_stem_semantics()
+                semantics = resolve_model_stem_semantics(
+                    "mdx:fixture", native_stems=("Vocals", "Other")
+                )
+
+            self.assertEqual(registry.models, {})
+            self.assertEqual(semantics.status, StemReviewStatus.RAW)
+            self.assertEqual(
+                [output.role for output in semantics.outputs],
+                [StemLiteral("Vocals"), StemLiteral("Other")],
+            )
+            log_event.assert_called_once()
+
     def test_invalid_utf8_is_a_typed_direct_error_and_a_single_raw_bundled_fallback(
         self,
     ) -> None:

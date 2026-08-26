@@ -107,15 +107,20 @@ class StemSubtitleDebounceTests(unittest.TestCase):
                 "full_mix",
                 (
                     StemSemanticRoute(
-                        "vocals", "vocal.lead", "Lead Vocals", "Lead Vocals", "native", True
+                        native="vocals",
+                        role="vocal.lead",
+                        display="Lead Vocals",
+                        filename_tag="Lead Vocals",
+                        production="native",
+                        logical_primary=True,
                     ),
                     StemSemanticRoute(
-                        "other",
-                        "mix.instrumental_with_backing_vocals",
-                        "Instrumental with Backing Vocals",
-                        "Instrumental with Backing Vocals",
-                        "native",
-                        False,
+                        native="other",
+                        role="mix.instrumental_with_backing_vocals",
+                        display="Instrumental with Backing Vocals",
+                        filename_tag="Instrumental with Backing Vocals",
+                        production="native",
+                        logical_primary=False,
                     ),
                 ),
             ),

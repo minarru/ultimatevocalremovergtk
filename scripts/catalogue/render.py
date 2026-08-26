@@ -288,7 +288,7 @@ def stem_semantics_reference_tsv(
         + "\tmodel_id\tmodel_display\tnative_signature\tprocessing_context\tnative_stem\t"
         "production\tbackend_primary\tbackend_target\tlogical_primary\trole_id\t"
         "canonical_name\tfilename_tag\tpair_id\tintent\tintent_source\treview_status\t"
-        "evidence_or_waiver"
+        "evidence_or_waiver\tcomplement_of\tderived_from\tselected_by_default"
     ]
     for entry in sorted(entries, key=_canonical_model_id):
         model_id = _canonical_model_id(entry)
@@ -355,6 +355,9 @@ def stem_semantics_reference_tsv(
                             "reviewed_manifest",
                             semantics.status.value,
                             semantics.evidence or semantics.warning,
+                            output.complement_of.value if output.complement_of else "",
+                            "|".join(role.value for role in output.derived_from),
+                            str(output.selected_by_default).lower(),
                         )
                     )
                 )
@@ -384,6 +387,9 @@ def stem_semantics_reference_tsv(
                         "reviewed_waiver",
                         "waived",
                         reason,
+                        "",
+                        "",
+                        "",
                     )
                 )
             )

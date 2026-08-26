@@ -23,6 +23,7 @@ from catalogue.stem_audit import (  # noqa: E402
 )
 
 from core.catalogue_types import SourceId  # noqa: E402
+from core.model_stem_manifest import load_stem_manifest_document  # noqa: E402
 from core.stem_roles import StemProcessingContext  # noqa: E402
 
 
@@ -2982,7 +2983,117 @@ class StemSemanticsReferenceRenderTests(unittest.TestCase):
         )
         self.assertEqual(columns[5], "apollo:restoration")
         self.assertNotEqual(columns[6], "")
-        self.assertEqual(columns[-3:], ["reviewed_waiver", "waived", "no stem inventory"])
+        self.assertEqual(columns[-6:-3], ["reviewed_waiver", "waived", "no stem inventory"])
+        self.assertEqual(columns[-3:], ["", "", ""])
+
+    def test_native_complement_ordered_sum_and_false_default_render_exact_cells(self) -> None:
+        registry = load_stem_manifest_document(
+            {
+                "schema_version": 2,
+                "roles": {
+                    "vocal.lead": {
+                        "display": "Lead Vocals",
+                        "filename_tag": "Lead_Vocals",
+                        "family": "vocal",
+                    },
+                    "vocal.lead.removed": {
+                        "display": "Lead Vocals Removed",
+                        "filename_tag": "Lead_Vocals_Removed",
+                        "family": "vocal",
+                        "removed_of": "vocal.lead",
+                    },
+                    "vocal.backing": {
+                        "display": "Backing Vocals",
+                        "filename_tag": "Backing_Vocals",
+                        "family": "vocal",
+                    },
+                    "mix.instrumental": {
+                        "display": "Instrumental",
+                        "filename_tag": "Instrumental",
+                        "family": "mix",
+                    },
+                    "mix.instrumental_with_backing_vocals": {
+                        "display": "Instrumental with Backing Vocals",
+                        "filename_tag": "Instrumental_with_Backing_Vocals",
+                        "family": "mix",
+                    },
+                },
+                "pairs": {},
+                "models": {
+                    "mdx:fixture": {
+                        "native_signature": ["Lead", "Backing", "Instrumental"],
+                        "intent": "karaoke",
+                        "contexts": {
+                            "full_mix": {
+                                "logical_primary": "vocal.lead",
+                                "outputs": [
+                                    {"native": "Lead", "role": "vocal.lead"},
+                                    {"native": "Backing", "role": "vocal.backing"},
+                                    {
+                                        "native": "Instrumental",
+                                        "role": "mix.instrumental",
+                                    },
+                                    {
+                                        "native": None,
+                                        "role": "vocal.lead.removed",
+                                        "production": "derived",
+                                        "complement_of": "vocal.lead",
+                                    },
+                                    {
+                                        "native": None,
+                                        "role": "mix.instrumental_with_backing_vocals",
+                                        "production": "derived",
+                                        "derived_from": [
+                                            "vocal.backing",
+                                            "mix.instrumental",
+                                        ],
+                                        "selected_by_default": False,
+                                    },
+                                ],
+                            }
+                        },
+                        "evidence": "fixture",
+                    }
+                },
+                "waivers": {"apollo:restoration": "no stem inventory"},
+            }
+        )
+        entries = [
+            catalogue.ModelEntry(
+                source="fixture-source",
+                family="Roformer",
+                catalogue_label="Fixture",
+                weight_file="fixture.ckpt",
+                primary_stem="Lead",
+                instruments=["Lead", "Backing", "Instrumental"],
+            ),
+            catalogue.ModelEntry(
+                source="fixture-source",
+                family="Apollo",
+                catalogue_label="Restoration fixture",
+                weight_file="restoration.onnx",
+                arch="Apollo execution",
+            ),
+        ]
+
+        lines = render.stem_semantics_reference_tsv(entries, registry=registry).splitlines()
+        headers = lines[0].split("\t")
+        by_role = {
+            columns[headers.index("role_id")]: columns
+            for columns in (line.split("\t") for line in lines[1:])
+            if columns[headers.index("role_id")]
+        }
+        waiver = next(
+            line.split("\t") for line in lines[1:] if line.startswith("apollo\trestoration\t")
+        )
+
+        self.assertEqual(by_role["vocal.lead"][-3:], ["", "", "true"])
+        self.assertEqual(by_role["vocal.lead.removed"][-3:], ["vocal.lead", "", "true"])
+        self.assertEqual(
+            by_role["mix.instrumental_with_backing_vocals"][-3:],
+            ["", "vocal.backing|mix.instrumental", "false"],
+        )
+        self.assertEqual(waiver[-3:], ["", "", ""])
 
 
 class SummaryModeTests(unittest.TestCase):

@@ -112,6 +112,7 @@ class SemanticStemOutput:
     logical_primary: bool
     derived_from: tuple[StemRoleId, ...] = ()
     complement_of: StemRoleId | None = None
+    selected_by_default: bool = True
 
 
 @dataclass(frozen=True, slots=True)

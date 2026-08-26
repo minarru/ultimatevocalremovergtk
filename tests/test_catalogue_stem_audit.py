@@ -48,21 +48,21 @@ def _role(
 
 def _native(name: str, role: StemRoleId) -> SemanticStemOutput:
     return SemanticStemOutput(
-        StemId(name),
-        role,
-        StemProduction.NATIVE,
-        False,
-        False,
+        native=StemId(name),
+        role=role,
+        production=StemProduction.NATIVE,
+        backend_primary=False,
+        logical_primary=False,
     )
 
 
 def _derived(role: StemRoleId, source_role: StemRoleId) -> SemanticStemOutput:
     return SemanticStemOutput(
-        None,
-        role,
-        StemProduction.DERIVED,
-        False,
-        False,
+        native=None,
+        role=role,
+        production=StemProduction.DERIVED,
+        backend_primary=False,
+        logical_primary=False,
         complement_of=source_role,
     )
 
@@ -473,7 +473,7 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
         self.assertTrue(result.structurally_valid is False)
         self.assertNotIn("expected\trow", drift.message)
 
-    def test_reference_header_contract_remains_the_existing_seventeen_columns(self) -> None:
+    def test_reference_header_contract_appends_dependency_and_default_columns(self) -> None:
         self.assertEqual(
             STEM_SEMANTICS_REFERENCE_HEADERS,
             (
@@ -494,6 +494,9 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
                 "intent_source",
                 "review_status",
                 "evidence_or_waiver",
+                "complement_of",
+                "derived_from",
+                "selected_by_default",
             ),
         )
 

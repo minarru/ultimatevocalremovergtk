@@ -98,6 +98,42 @@ def _mapping(value: object, path: tuple[str | int, ...]) -> Mapping[str, object]
     return value
 
 
+def _closed_mapping(
+    value: object,
+    path: tuple[str | int, ...],
+    *,
+    required: frozenset[str],
+    optional: frozenset[str],
+) -> Mapping[str, object]:
+    """Return one schema object after enforcing required and allowed fields."""
+    document = _mapping(value, path)
+    missing = sorted(required.difference(document))
+    if missing:
+        raise _error(path + (missing[0],), "missing required field")
+    unknown = sorted(set(document).difference(required | optional))
+    if unknown:
+        raise _error(path + (unknown[0],), "unknown field")
+    return document
+
+
+def _strict_bool(value: object, path: tuple[str | int, ...]) -> bool:
+    if type(value) is not bool:
+        raise _error(path, "must be a boolean")
+    return value
+
+
+def _duplicate_aware_mapping(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    """Build one JSON object while rejecting keys the decoder would overwrite."""
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            # ``object_pairs_hook`` visits nested objects before their parents,
+            # so the complete path is unavailable. Preserve the exact key.
+            raise _error(("manifest",), f"duplicate key {key!r}")
+        result[key] = value
+    return result
+
+
 def _string(value: object, path: tuple[str | int, ...]) -> str:
     if not isinstance(value, str) or not value.strip():
         raise _error(path, "must be a non-empty string")
@@ -135,13 +171,20 @@ def _parse_roles(value: object) -> Mapping[StemRoleId, StemRoleDefinition]:
     for raw_id, raw_definition in document.items():
         path = ("roles", raw_id)
         role_id = _role_id(raw_id, path)
-        definition = _mapping(raw_definition, path)
-        display = _string(definition.get("display"), path + ("display",))
-        filename_tag = _string(definition.get("filename_tag"), path + ("filename_tag",))
+        definition = _closed_mapping(
+            raw_definition,
+            path,
+            required=frozenset({"display", "filename_tag", "family"}),
+            optional=frozenset({"removed_of"}),
+        )
+        display = _string(definition["display"], path + ("display",))
+        filename_tag = _string(definition["filename_tag"], path + ("filename_tag",))
         try:
-            family = StemRoleFamily(_string(definition.get("family"), path + ("family",)))
+            family = StemRoleFamily(_string(definition["family"], path + ("family",)))
         except ValueError as error:
             raise _error(path + ("family",), "invalid stem role family") from error
+        if role_id.value.partition(".")[0] != family.value:
+            raise _error(path + ("family",), "role namespace must match declared family")
         normalized_display = _normalized(display)
         if normalized_display in displays:
             raise _error(path + ("display",), "duplicate role display")
@@ -163,7 +206,50 @@ def _parse_roles(value: object) -> Mapping[StemRoleId, StemRoleDefinition]:
         if removed_of not in result:
             raise _error(path, "missing role reference")
         result[role_id] = replace(definition, removed_of=removed_of)
+    _validate_removed_graph(result)
     return MappingProxyType(result)
+
+
+def _validate_removed_graph(roles: Mapping[StemRoleId, StemRoleDefinition]) -> None:
+    """Validate exact, same-family, acyclic ``removed_of`` relationships."""
+    for role_id, definition in roles.items():
+        removed_of = definition.removed_of
+        if removed_of is None:
+            continue
+        path = ("roles", role_id.value, "removed_of")
+        if removed_of == role_id:
+            raise _error(path, "removed_of cannot reference itself")
+        target = roles.get(removed_of)
+        if target is None:
+            raise _error(path, "missing role reference")
+        if target.family is not definition.family:
+            raise _error(path, "removed_of roles must belong to the same family")
+
+    visiting: set[StemRoleId] = set()
+    visited: set[StemRoleId] = set()
+
+    def visit(role_id: StemRoleId) -> None:
+        if role_id in visited:
+            return
+        if role_id in visiting:
+            raise _error(("roles", role_id.value, "removed_of"), "removed_of cycle")
+        visiting.add(role_id)
+        removed_of = roles[role_id].removed_of
+        if removed_of is not None:
+            visit(removed_of)
+        visiting.remove(role_id)
+        visited.add(role_id)
+
+    for role_id in roles:
+        visit(role_id)
+
+    for role_id, definition in roles.items():
+        removed_of = definition.removed_of
+        if removed_of is not None and role_id.value != f"{removed_of.value}.removed":
+            raise _error(
+                ("roles", role_id.value, "removed_of"),
+                "removed role id must use reciprocal .removed naming",
+            )
 
 
 def _parse_pairs(
@@ -175,9 +261,14 @@ def _parse_pairs(
         path = ("pairs", pair_id)
         if not pair_id.startswith("pair."):
             raise _error(path, "pair id must be namespaced with pair.")
-        pair = _mapping(raw_pair, path)
-        display = _string(pair.get("display"), path + ("display",))
-        raw_roles = pair.get("roles")
+        pair = _closed_mapping(
+            raw_pair,
+            path,
+            required=frozenset({"display", "roles"}),
+            optional=frozenset(),
+        )
+        display = _string(pair["display"], path + ("display",))
+        raw_roles = pair["roles"]
         if not isinstance(raw_roles, list) or len(raw_roles) != 2:
             raise _error(path + ("roles",), "must contain exactly two roles")
         parsed_roles = tuple(
@@ -197,14 +288,22 @@ def _parse_output(
     path: tuple[str | int, ...],
     roles: Mapping[StemRoleId, StemRoleDefinition],
 ) -> SemanticStemOutput:
-    output = _mapping(value, path)
-    role = _role_id(output.get("role"), path + ("role",))
+    raw_output = _mapping(value, path)
+    if "native" not in raw_output:
+        raise _error(path + ("native",), "missing native key")
+    output = _closed_mapping(
+        raw_output,
+        path,
+        required=frozenset({"native", "role"}),
+        optional=frozenset({"production", "selected_by_default", "derived_from", "complement_of"}),
+    )
+    role = _role_id(output["role"], path + ("role",))
     if role not in roles:
         raise _error(path + ("role",), "missing role reference")
-    if "native" not in output:
-        raise _error(path + ("native",), "missing native key")
-    native_value = output.get("native")
+    native_value = output["native"]
     native = StemId(_string(native_value, path + ("native",))) if native_value is not None else None
+    if native is None and "production" not in output:
+        raise _error(path + ("production",), "missing required field")
     default_production = (
         StemProduction.NATIVE.value if native is not None else StemProduction.DERIVED.value
     )
@@ -212,6 +311,11 @@ def _parse_output(
         production = StemProduction(output.get("production", default_production))
     except ValueError as error:
         raise _error(path + ("production",), "invalid production") from error
+    selected_by_default = (
+        _strict_bool(output["selected_by_default"], path + ("selected_by_default",))
+        if "selected_by_default" in output
+        else True
+    )
     has_derived_from = "derived_from" in output
     has_complement_of = "complement_of" in output
     if native is not None:
@@ -221,26 +325,85 @@ def _parse_output(
             raise _error(path + ("derived_from",), "native output has dependency")
         if has_complement_of:
             raise _error(path + ("complement_of",), "native output has dependency")
-        return SemanticStemOutput(native, role, production, False, False)
+        return SemanticStemOutput(
+            native=native,
+            role=role,
+            production=production,
+            backend_primary=False,
+            logical_primary=False,
+            selected_by_default=selected_by_default,
+        )
     if production is not StemProduction.DERIVED:
         raise _error(path + ("production",), "derived output must use derived production")
     if has_derived_from == has_complement_of:
         raise _error(path, "derived output requires exactly one dependency form")
     if has_derived_from:
         raw_dependencies = output["derived_from"]
-        if not isinstance(raw_dependencies, list) or not raw_dependencies:
-            raise _error(path + ("derived_from",), "must be a non-empty role list")
+        if not isinstance(raw_dependencies, list):
+            raise _error(path + ("derived_from",), "must be a role list")
         dependencies = tuple(
             _role_id(dependency, path + ("derived_from", index))
             for index, dependency in enumerate(raw_dependencies)
         )
         if any(dependency not in roles for dependency in dependencies):
             raise _error(path + ("derived_from",), "missing role reference")
-        return SemanticStemOutput(None, role, production, False, False, dependencies)
+        return SemanticStemOutput(
+            native=None,
+            role=role,
+            production=production,
+            backend_primary=False,
+            logical_primary=False,
+            derived_from=dependencies,
+            selected_by_default=selected_by_default,
+        )
     complement = _role_id(output["complement_of"], path + ("complement_of",))
     if complement not in roles:
         raise _error(path + ("complement_of",), "missing role reference")
-    return SemanticStemOutput(None, role, production, False, False, (), complement)
+    return SemanticStemOutput(
+        native=None,
+        role=role,
+        production=production,
+        backend_primary=False,
+        logical_primary=False,
+        complement_of=complement,
+        selected_by_default=selected_by_default,
+    )
+
+
+def _validate_context_dependencies(
+    outputs: tuple[SemanticStemOutput, ...],
+    path: tuple[str | int, ...],
+) -> None:
+    """Validate derived recipes against exact native roles in one context."""
+    roles = {output.role for output in outputs}
+    native_roles = {output.role for output in outputs if output.native is not None}
+    for index, output in enumerate(outputs):
+        if output.native is not None:
+            continue
+        if output.complement_of is not None:
+            dependency = output.complement_of
+            dependency_path = path + ("outputs", index, "complement_of")
+            if dependency == output.role:
+                raise _error(dependency_path, "self-dependency is forbidden")
+            if dependency not in roles:
+                raise _error(dependency_path, "dependency role is not an output in this context")
+            if dependency not in native_roles:
+                raise _error(dependency_path, "dependency must identify exactly one native output")
+            continue
+
+        dependency_path = path + ("outputs", index, "derived_from")
+        if len(output.derived_from) < 2:
+            raise _error(dependency_path, "must contain at least two distinct native roles")
+        if len(set(output.derived_from)) != len(output.derived_from):
+            raise _error(dependency_path, "duplicate dependency")
+        for dependency_index, dependency in enumerate(output.derived_from):
+            item_path = dependency_path + (dependency_index,)
+            if dependency == output.role:
+                raise _error(item_path, "self-dependency is forbidden")
+            if dependency not in roles:
+                raise _error(item_path, "dependency role is not an output in this context")
+            if dependency not in native_roles:
+                raise _error(item_path, "dependency must identify a native output")
 
 
 def _parse_models(
@@ -251,8 +414,13 @@ def _parse_models(
     for model_id, raw_model in document.items():
         path = ("models", model_id)
         canonical_model_id = _canonical_model_id(model_id, path)
-        model = _mapping(raw_model, path)
-        raw_signature = model.get("native_signature")
+        model = _closed_mapping(
+            raw_model,
+            path,
+            required=frozenset({"native_signature", "intent", "contexts", "evidence"}),
+            optional=frozenset(),
+        )
+        raw_signature = model["native_signature"]
         if not isinstance(raw_signature, list):
             raise _error(path + ("native_signature",), "must be a list")
         signature = tuple(
@@ -260,11 +428,13 @@ def _parse_models(
             for index, native in enumerate(raw_signature)
         )
         normalized_signature = tuple(_native_key(native) for native in signature)
+        if not signature:
+            raise _error(path + ("native_signature",), "must contain at least one native key")
         if len(set(normalized_signature)) != len(normalized_signature):
             raise _error(path + ("native_signature",), "duplicate native key")
-        intent = _string(model.get("intent"), path + ("intent",))
-        evidence = _string(model.get("evidence"), path + ("evidence",))
-        raw_contexts = _mapping(model.get("contexts"), path + ("contexts",))
+        intent = _string(model["intent"], path + ("intent",))
+        evidence = _string(model["evidence"], path + ("evidence",))
+        raw_contexts = _mapping(model["contexts"], path + ("contexts",))
         if not raw_contexts:
             raise _error(path + ("contexts",), "must contain at least one context")
         contexts: dict[StemProcessingContext, _ModelStemContext] = {}
@@ -274,13 +444,18 @@ def _parse_models(
                 context = StemProcessingContext(raw_context)
             except ValueError as error:
                 raise _error(context_path, "invalid processing context") from error
-            context_value = _mapping(raw_context_value, context_path)
+            context_value = _closed_mapping(
+                raw_context_value,
+                context_path,
+                required=frozenset({"logical_primary", "outputs"}),
+                optional=frozenset(),
+            )
             logical_primary = _role_id(
-                context_value.get("logical_primary"), context_path + ("logical_primary",)
+                context_value["logical_primary"], context_path + ("logical_primary",)
             )
             if logical_primary not in roles:
                 raise _error(context_path + ("logical_primary",), "missing logical primary role")
-            raw_outputs = context_value.get("outputs")
+            raw_outputs = context_value["outputs"]
             if not isinstance(raw_outputs, list) or not raw_outputs:
                 raise _error(context_path + ("outputs",), "must be a non-empty list")
             outputs = tuple(
@@ -299,24 +474,9 @@ def _parse_models(
                 raise _error(
                     context_path + ("outputs",), "native outputs must match native signature"
                 )
-            context_roles = {output.role for output in outputs}
-            for index, output in enumerate(outputs):
-                if output.native is not None:
-                    continue
-                if output.complement_of is not None and output.complement_of not in context_roles:
-                    raise _error(
-                        context_path + ("outputs", index, "complement_of"),
-                        "dependency role is not an output in this context",
-                    )
-                for dependency_index, dependency in enumerate(output.derived_from):
-                    if dependency not in context_roles:
-                        raise _error(
-                            context_path + ("outputs", index, "derived_from", dependency_index),
-                            "dependency role is not an output in this context",
-                        )
-            primary_indexes = tuple(
+            primary_indexes = [
                 index for index, output in enumerate(outputs) if output.role == logical_primary
-            )
+            ]
             if not primary_indexes:
                 raise _error(context_path + ("logical_primary",), "missing logical primary output")
             if len(primary_indexes) > 1:
@@ -324,6 +484,21 @@ def _parse_models(
                     context_path + ("outputs", primary_indexes[1], "role"),
                     "multiple logical primaries",
                 )
+            if not outputs[primary_indexes[0]].selected_by_default:
+                raise _error(
+                    context_path + ("outputs", primary_indexes[0], "selected_by_default"),
+                    "logical primary must remain selected by default",
+                )
+            seen_roles: dict[StemRoleId | StemLiteral, int] = {}
+            for index, output in enumerate(outputs):
+                previous = seen_roles.get(output.role)
+                if previous is not None:
+                    raise _error(
+                        context_path + ("outputs", index, "role"),
+                        f"duplicate role id; first declared at outputs[{previous}]",
+                    )
+                seen_roles[output.role] = index
+            _validate_context_dependencies(outputs, context_path)
             contexts[context] = _ModelStemContext(logical_primary, outputs)
         result[canonical_model_id] = _ModelStemDeclaration(
             signature, intent, MappingProxyType(contexts), evidence
@@ -343,20 +518,35 @@ def _parse_waivers(value: object) -> Mapping[str, str]:
 
 def load_stem_manifest_document(document: object) -> StemSemanticsRegistry:
     """Validate one complete manifest document without any application fallback."""
-    root = _mapping(document, ())
-    if root.get("schema_version") != 1:
-        raise _error(("schema_version",), "must equal 1")
-    roles = _parse_roles(root.get("roles"))
-    pairs = _parse_pairs(root.get("pairs"), roles)
-    models = _parse_models(root.get("models"), roles)
-    waivers = _parse_waivers(root.get("waivers"))
+    root = _closed_mapping(
+        document,
+        (),
+        required=frozenset({"schema_version", "roles", "pairs", "models", "waivers"}),
+        optional=frozenset(),
+    )
+    schema_version = root["schema_version"]
+    if type(schema_version) is not int or schema_version != 2:
+        raise _error(("schema_version",), "must be the exact integer 2")
+    roles = _parse_roles(root["roles"])
+    pairs = _parse_pairs(root["pairs"], roles)
+    models = _parse_models(root["models"], roles)
+    waivers = _parse_waivers(root["waivers"])
+    overlap = sorted(set(models).intersection(waivers))
+    if overlap:
+        raise _error(
+            ("waivers", overlap[0]),
+            "canonical model ID cannot appear in both models and waivers",
+        )
     return StemSemanticsRegistry(roles, pairs, models, waivers)
 
 
 def load_stem_manifest(path: Path) -> StemSemanticsRegistry:
     """Read and strictly validate a JSON manifest from ``path``."""
     try:
-        document = json.loads(path.read_text(encoding="utf-8"))
+        document = json.loads(
+            path.read_text(encoding="utf-8"),
+            object_pairs_hook=_duplicate_aware_mapping,
+        )
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
         raise _error(("manifest",), f"could not read manifest: {error}") from error
     return load_stem_manifest_document(document)
@@ -390,11 +580,11 @@ def _raw_semantics(
     primary = _native_key(backend_primary)
     outputs = tuple(
         SemanticStemOutput(
-            StemId(native),
-            StemLiteral(native),
-            StemProduction.NATIVE,
-            bool(primary) and _native_key(native) == primary,
-            False,
+            native=StemId(native),
+            role=StemLiteral(native),
+            production=StemProduction.NATIVE,
+            backend_primary=bool(primary) and _native_key(native) == primary,
+            logical_primary=False,
         )
         for native in native_stems
     )

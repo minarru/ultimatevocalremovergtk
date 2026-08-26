@@ -131,6 +131,7 @@ class StemSemanticRoute:
     logical_primary: bool
     derived_from: tuple[str, ...] = ()
     complement_of: str | None = None
+    selected_by_default: bool = True
 
     def as_dict(self) -> dict[str, Any]:
         result = {
@@ -145,6 +146,7 @@ class StemSemanticRoute:
             result["derived_from"] = list(self.derived_from)
         if self.complement_of is not None:
             result["complement_of"] = self.complement_of
+        result["selected_by_default"] = self.selected_by_default
         return result
 
 
