@@ -231,13 +231,13 @@ class ReviewedVocalSplitContextTests(unittest.TestCase):
             ],
         )
 
+        from core.model_config.config import ModelConfig
         from core.settings import Settings
 
         model.is_ensemble_mode = True
-        model.available_stem_routes = routes
-        model.selected_stem_routes = routes_for_ensemble_pair(routes, karaoke)
         model.settings = Settings.defaults()
         model.settings.ensemble.main_stem = "mode.multi_stem"
+        ModelConfig._apply_stem_focus(model)  # type: ignore[arg-type]
         self.assertEqual(
             tuple(run_export_routes(model)),
             tuple(route for route in routes if route.native is not None),

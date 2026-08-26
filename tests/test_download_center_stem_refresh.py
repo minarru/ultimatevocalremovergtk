@@ -10,8 +10,9 @@ from unittest import mock
 from bundled.constants import MDX_ARCH_TYPE
 from core.catalog_sources import EntryMeta
 from core.catalogue_stem_cache import StemCacheHit
-from core.catalogue_types import StemSemanticProjection, StemSemanticRoute
 from core.downloads import DownloadManager
+from core.model_stem_manifest import resolve_model_stem_semantics
+from core.model_stem_semantics import stem_semantics_projection
 from tests.private_gtk import require_private_gtk
 
 _YAML_URL = "https://example.test/model.yaml"
@@ -127,44 +128,55 @@ class StemSubtitleDebounceTests(unittest.TestCase):
     def test_reviewed_subtitle_uses_exact_route_labels_and_reviewed_purpose(self) -> None:
         from ui.download_center import catalogue_semantics_subtitle
 
+        semantics = resolve_model_stem_semantics(
+            "mdx:UVR_MDXNET_KARA_2",
+            native_stems=("Instrumental", "Vocals"),
+            backend_primary="Instrumental",
+        )
+        projection = stem_semantics_projection(
+            semantics,
+            backend_primary="Instrumental",
+            backend_target="other",
+        )
         meta = EntryMeta(
             label="K",
             display="K",
             arch=MDX_ARCH_TYPE,
             files={},
-            stems=["vocals", "other"],
-            intent="karaoke",
-            stem_semantics=StemSemanticProjection(
-                backend_primary_stem="vocals",
-                backend_target_stem="",
-                logical_primary_role="vocal.lead",
-                logical_secondary_role=None,
-                status="reviewed",
-                context="full_mix",
-                routes=(
-                    StemSemanticRoute(
-                        native="vocals",
-                        role="vocal.lead",
-                        display="Lead Vocals",
-                        filename_tag="Lead Vocals",
-                        production="native",
-                        logical_primary=True,
-                    ),
-                    StemSemanticRoute(
-                        native="other",
-                        role="mix.instrumental_with_backing_vocals",
-                        display="Instrumental with Backing Vocals",
-                        filename_tag="Instrumental with Backing Vocals",
-                        production="native",
-                        logical_primary=False,
-                    ),
-                ),
-            ),
+            stems=["Instrumental", "Vocals"],
+            intent=semantics.intent,
+            stem_semantics=projection,
         )
 
         self.assertEqual(
+            (projection.logical_primary_role, projection.logical_secondary_role),
+            ("mix.instrumental_with_backing_vocals", "vocal.lead"),
+        )
+        self.assertEqual(
+            tuple(
+                (
+                    route.native,
+                    route.role,
+                    route.logical_primary,
+                    route.logical_secondary,
+                    route.selected_by_default,
+                )
+                for route in projection.routes
+            ),
+            (
+                (
+                    "Instrumental",
+                    "mix.instrumental_with_backing_vocals",
+                    True,
+                    False,
+                    True,
+                ),
+                ("Vocals", "vocal.lead", False, True, True),
+            ),
+        )
+        self.assertEqual(
             catalogue_semantics_subtitle(meta),
-            "Karaoke · Lead Vocals, Instrumental with Backing Vocals",
+            "Karaoke · Instrumental with Backing Vocals, Lead Vocals",
         )
 
     def test_raw_subtitle_is_explicit_and_preserves_native_names(self) -> None:
