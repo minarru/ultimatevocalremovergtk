@@ -197,10 +197,10 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
         result = self._audit([entry], registry)
 
         self.assertTrue(hasattr(result, "reference_rows"))
-        rows = getattr(result, "reference_rows", ())
+        rows = result.reference_rows
         self.assertEqual(len(rows), 2)
         with self.assertRaises((AttributeError, TypeError)):
-            rows[0].intent = "changed"
+            rows[0].__setattr__("intent", "changed")
         rendered = render.stem_semantics_reference_tsv(rows)
         self.assertEqual(rendered, stem_audit_module.reference_rows_tsv(rows))
         self.assertEqual({row.model_id for row in rows}, {"mdx:fixture"})

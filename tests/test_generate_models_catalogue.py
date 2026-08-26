@@ -3,7 +3,7 @@ import os
 import sys
 import unittest
 import urllib.error
-from typing import Any, Mapping, Optional
+from typing import Any, Mapping, Optional, cast
 from unittest import mock
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -124,6 +124,7 @@ class RuntimeStemSignatureTests(unittest.TestCase):
         ]
         reconcile = getattr(catalogue, "reconcile_stem_semantics", None)
         self.assertIsNotNone(reconcile)
+        assert reconcile is not None
         unreviewed = catalogue.ModelEntry(
             source="fixture",
             family="VR Architecture",
@@ -139,22 +140,26 @@ class RuntimeStemSignatureTests(unittest.TestCase):
         )
 
         reconcile([*entries, unreviewed], registry=load_bundled_stem_semantics())
+        reviewed_semantics = [
+            cast(catalogue.ReconciledStemEvidence, entry.stem_semantics) for entry in entries
+        ]
+        unreviewed_semantics = cast(catalogue.ReconciledStemEvidence, unreviewed.stem_semantics)
 
         self.assertEqual([entry.flags for entry in entries], [[], [], []])
         self.assertEqual(
-            [entry.stem_semantics.model_id for entry in entries],
+            [semantics.model_id for semantics in reviewed_semantics],
             ["vr:3_HP-Vocal-UVR", "vr:4_HP-Vocal-UVR", "mdx:MDX23C_D1581"],
         )
-        self.assertTrue(all(entry.stem_semantics.reviewed for entry in entries))
-        self.assertTrue(all(entry.stem_semantics.guessed_intent == "" for entry in entries))
-        self.assertFalse(unreviewed.stem_semantics.reviewed)
+        self.assertTrue(all(semantics.reviewed for semantics in reviewed_semantics))
+        self.assertTrue(all(semantics.guessed_intent == "" for semantics in reviewed_semantics))
+        self.assertFalse(unreviewed_semantics.reviewed)
         self.assertEqual(
             unreviewed.flags,
             ["NAME says vocals but backend is not vocal-focused"],
         )
         self.assertEqual(unreviewed.best_result, "Guessed vocal result")
         self.assertEqual(unreviewed.ui_export_note, "UI: guessed vocal pair")
-        self.assertEqual(unreviewed.stem_semantics.guessed_intent, "vocals")
+        self.assertEqual(unreviewed_semantics.guessed_intent, "vocals")
 
     def test_exact_mdx_c_catalogue_evidence_requires_config_digest(self) -> None:
         digest = "451765e869b78dcb9ca9188a74da31f581b7254ff0e8b532aa76b974148de947"
@@ -424,7 +429,8 @@ class ReviewedResultProjectionTests(unittest.TestCase):
                     [entry],
                     registry=load_bundled_stem_semantics(),
                 )
-                self.assertFalse(entry.stem_semantics.reviewed)
+                semantics = cast(catalogue.ReconciledStemEvidence, entry.stem_semantics)
+                self.assertFalse(semantics.reviewed)
                 self.assertEqual(entry.best_result, best_result)
                 self.assertEqual(entry.ui_export_note, ui_export_note)
 

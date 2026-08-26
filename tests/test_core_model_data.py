@@ -84,7 +84,10 @@ class InstalledMdxRuntimeContractTests(unittest.TestCase):
                 get_model_data_from_popup=lambda: None,
             )
             self.assertEqual(
-                ModelConfig.get_model_data(exact, directory, {digest: settings}), settings
+                ModelConfig.get_model_data(
+                    typing.cast(ModelConfig, exact), directory, {digest: settings}
+                ),
+                settings,
             )
             self.assertEqual(
                 exact.mdx_hash_record_source,
@@ -101,7 +104,7 @@ class InstalledMdxRuntimeContractTests(unittest.TestCase):
             )
             self.assertEqual(
                 ModelConfig.get_model_data(
-                    substring,
+                    typing.cast(ModelConfig, substring),
                     directory,
                     {f"legacy-prefix-{digest}": settings},
                 ),
@@ -119,7 +122,7 @@ class InstalledMdxRuntimeContractTests(unittest.TestCase):
             )
             self.assertEqual(
                 ModelConfig.get_model_data(
-                    unreviewed,
+                    typing.cast(ModelConfig, unreviewed),
                     directory,
                     {"f" * 32: settings},
                 ),
