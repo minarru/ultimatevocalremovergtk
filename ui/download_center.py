@@ -930,7 +930,7 @@ class DownloadCenterWindow:
             if not url or url in seen:
                 continue
             hit = lookup_stems(url)
-            if hit is None:
+            if hit is None or (hit.ok and not hit.content_sha256):
                 seen.add(url)
                 urls.append(url)
         return urls

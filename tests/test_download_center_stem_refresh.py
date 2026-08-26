@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+import json
+import os
+import tempfile
+import time
 import typing
 import unittest
+from types import SimpleNamespace
 from typing import Any
 from unittest import mock
 
@@ -16,6 +21,26 @@ from core.model_stem_semantics import stem_semantics_projection
 from tests.private_gtk import require_private_gtk
 
 _YAML_URL = "https://example.test/model.yaml"
+
+
+def _write_legacy_success_cache(path: str, url: str) -> None:
+    """Write the pre-digest cache shape shipped by older UVR builds."""
+    fetched_at = time.time()
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump(
+            {
+                "fetched_at": fetched_at,
+                "entries": {
+                    url: {
+                        "stems": ["Vocals", "other"],
+                        "target_instrument": "Vocals",
+                        "fetched_at": fetched_at,
+                        "ok": True,
+                    }
+                },
+            },
+            handle,
+        )
 
 
 def setUpModule() -> None:
@@ -107,6 +132,39 @@ class ApplyCatalogueStemCacheTests(unittest.TestCase):
         self.assertEqual(patched.stem_semantics.status, "reviewed")
         self.assertEqual(patched.config_sha256, hit.content_sha256)
 
+    def test_legacy_success_without_digest_is_not_applied_as_exact_evidence(self) -> None:
+        import core.catalogue_stem_cache as csc
+
+        meta = EntryMeta(
+            label="Legacy",
+            display="Legacy",
+            arch=MDX_ARCH_TYPE,
+            files={"m.ckpt": "https://example.test/m.ckpt", "m.yaml": _YAML_URL},
+            stems=[],
+        )
+        self.manager.catalogue_meta = {meta.label: meta}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_path = os.path.join(tmp, "catalogue_stem_cache.json")
+            with (
+                mock.patch.object(csc, "_cache_path", return_value=cache_path),
+                mock.patch("core.model_display.clear_display_cache"),
+            ):
+                csc.clear_catalogue_stem_cache()
+                try:
+                    _write_legacy_success_cache(cache_path, _YAML_URL)
+                    hit = csc.lookup_stems(_YAML_URL)
+                    self.assertIsNotNone(hit)
+                    assert hit is not None
+                    self.assertTrue(hit.ok)
+                    self.assertEqual(hit.content_sha256, "")
+                    updated = self.manager.apply_catalogue_stem_cache()
+                finally:
+                    csc.clear_catalogue_stem_cache()
+
+        self.assertEqual(updated, set())
+        self.assertIs(self.manager.catalogue_meta[meta.label], meta)
+
     def test_skips_entry_with_already_reviewed_semantics(self) -> None:
         semantics = resolve_model_stem_semantics(
             "mdx:UVR_MDXNET_KARA_2",
@@ -151,9 +209,15 @@ class ApplyCatalogueStemCacheTests(unittest.TestCase):
             target_instrument="Bass",
         )
         self.manager.catalogue_meta = {"M": meta}
-        hit = StemCacheHit(stems=("Vocals", "other"), target_instrument="Vocals", ok=True)
+        hit = StemCacheHit(
+            stems=("Vocals", "other"),
+            target_instrument="Vocals",
+            ok=True,
+            content_sha256="b" * 64,
+        )
         with mock.patch("core.catalogue_stem_cache.lookup_stems", return_value=hit):
-            self.manager.apply_catalogue_stem_cache()
+            updated = self.manager.apply_catalogue_stem_cache()
+        self.assertEqual(updated, {"M"})
         self.assertEqual(self.manager.catalogue_meta["M"].target_instrument, "Bass")
 
 
@@ -427,6 +491,35 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
 
         self.assertEqual(sorted(win._visible_catalogue_labels()), ["MDX Model", "VR Model"])
 
+    def test_pending_urls_refetch_fresh_legacy_success_without_digest(self) -> None:
+        import core.catalogue_stem_cache as csc
+        from ui.download_center import DownloadCenterWindow
+
+        meta = EntryMeta(
+            label="Legacy",
+            display="Legacy",
+            arch=MDX_ARCH_TYPE,
+            files={"m.ckpt": "https://example.test/m.ckpt", "m.yaml": _YAML_URL},
+            stems=["Vocals", "other"],
+        )
+        win = object.__new__(DownloadCenterWindow)
+        typing.cast(Any, win).manager = SimpleNamespace(catalogue_meta={meta.label: meta})
+
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_path = os.path.join(tmp, "catalogue_stem_cache.json")
+            with (
+                mock.patch.object(csc, "_cache_path", return_value=cache_path),
+                mock.patch("core.model_display.clear_display_cache"),
+            ):
+                csc.clear_catalogue_stem_cache()
+                try:
+                    _write_legacy_success_cache(cache_path, _YAML_URL)
+                    pending = DownloadCenterWindow._pending_stem_yaml_urls(win)
+                finally:
+                    csc.clear_catalogue_stem_cache()
+
+        self.assertEqual(pending, [_YAML_URL])
+
     def test_schedule_stem_yaml_fetches_prioritizes_visible(self) -> None:
         """Drive the real URL selection, not a scripted list of return values.
 
@@ -469,6 +562,7 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
             )
 
         cached_url = "https://example.test/cached.yaml"
+        failed_url = "https://example.test/failed.yaml"
         catalogue_meta = {
             # Matches the "kim" query; needs a fetch.
             "Kim Vocal 1": meta_for("Kim Vocal 1", "https://example.test/kim.yaml", []),
@@ -483,6 +577,8 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
                 ["Instrumental", "Vocals"],
                 reviewed=True,
             ),
+            # A fresh failure retains its shorter failure TTL and is not retried yet.
+            "Kim Failed 5": meta_for("Kim Failed 5", failed_url, []),
             # Does not match the query, so it belongs in the bulk half.
             "Other Model": meta_for("Other Model", "https://example.test/other.yaml", []),
             # No YAML config at all — must never be enqueued.
@@ -512,7 +608,14 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
             with mock.patch.object(csc, "_cache_path", return_value=cache_path):
                 with mock.patch("core.model_display.clear_display_cache"):
                     csc.clear_catalogue_stem_cache()
-                    csc.remember_stems(cached_url, ["Vocals", "other"], "Vocals", ok=True)
+                    csc.remember_stems(
+                        cached_url,
+                        ["Vocals", "other"],
+                        "Vocals",
+                        content_sha256="c" * 64,
+                        ok=True,
+                    )
+                    csc.remember_stems(failed_url, [], None, ok=False)
                     with (
                         mock.patch.object(csc, "enqueue_missing") as enqueue,
                         mock.patch.object(csc, "ensure_worker_started") as ensure,

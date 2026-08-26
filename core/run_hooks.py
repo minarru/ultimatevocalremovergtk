@@ -15,6 +15,7 @@ from typing import Any, List
 from .audio_io import resolve_wav_type_set
 from .debug_log import debug_elapsed
 from .ensembler import (
+    CollectedStem,
     Ensembler,
     planned_ensemble_stems,
 )
@@ -22,6 +23,35 @@ from .model_config import ModelConfig
 from .run_estimate import combine_progress_local_step
 from .run_loop import FileState, _write_captured_stems
 from .stems import StemRoute, StemRouteKind, select_stem_routes
+
+
+def _filter_final_collected_stems(stems: list[CollectedStem], focus: str) -> list[CollectedStem]:
+    """Apply final focus without losing raw-literal collection identity."""
+    if not focus:
+        return stems
+    routes = tuple(
+        StemRoute(
+            native=None,
+            role=collected.role,
+            label=collected.filename_tag,
+            filename_tag=collected.filename_tag,
+            kind=StemRouteKind.DERIVED,
+            selected_by_default=True,
+            selection_scope=collected.raw_scope,
+        )
+        for collected in stems
+    )
+    selection = select_stem_routes(routes, focus)
+    if selection.requested.startswith("raw:") and len(selection.routes) != 1:
+        return []
+    if not selection.routes:
+        return stems
+    allowed_groups = {
+        collected.group_key
+        for collected, route in zip(stems, routes, strict=True)
+        if route in selection.routes
+    }
+    return [collected for collected in stems if collected.group_key in allowed_groups]
 
 
 def _model_output_label(model: ModelConfig) -> str:
@@ -240,46 +270,12 @@ class _EnsembleRunHooks:
                 if len(contributors.get(key, ())) >= 2
             ]
             focus = str(runner.settings.process.stem_focus or "")
-            if focus:
-                routes = tuple(
-                    StemRoute(
-                        native=None,
-                        role=collected.role,
-                        label=collected.filename_tag,
-                        filename_tag=collected.filename_tag,
-                        kind=StemRouteKind.DERIVED,
-                        selected_by_default=True,
-                    )
-                    for collected in output_stems
-                )
-                selection = select_stem_routes(routes, focus)
-                if selection.routes:
-                    allowed = {route.role for route in selection.routes}
-                    output_stems = [
-                        collected for collected in output_stems if collected.role in allowed
-                    ]
+            output_stems = _filter_final_collected_stems(output_stems, focus)
             combine_steps = [(collected, {}) for collected in output_stems]
         else:
             pair_stems = list(self.ensemble.pair_stems)
             focus = str(runner.settings.process.stem_focus or "")
-            if focus:
-                routes = tuple(
-                    StemRoute(
-                        native=None,
-                        role=collected.role,
-                        label=collected.filename_tag,
-                        filename_tag=collected.filename_tag,
-                        kind=StemRouteKind.DERIVED,
-                        selected_by_default=True,
-                    )
-                    for collected in pair_stems
-                )
-                selection = select_stem_routes(routes, focus)
-                if selection.routes:
-                    allowed = {route.role for route in selection.routes}
-                    pair_stems = [
-                        collected for collected in pair_stems if collected.role in allowed
-                    ]
+            pair_stems = _filter_final_collected_stems(pair_stems, focus)
             combine_steps = [(collected, {}) for collected in pair_stems]
 
         combine_total = max(1, len(combine_steps))

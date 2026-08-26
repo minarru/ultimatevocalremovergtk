@@ -693,7 +693,7 @@ class DownloadManager:
             if not url:
                 continue
             hit = lookup_stems(url)
-            if hit is None or not hit.ok or not hit.stems:
+            if hit is None or not hit.ok or not hit.stems or not hit.content_sha256:
                 continue
             self.catalogue_meta[label] = with_catalogue_config_evidence(
                 meta,
