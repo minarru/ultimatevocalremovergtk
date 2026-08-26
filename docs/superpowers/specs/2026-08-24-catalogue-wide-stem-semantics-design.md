@@ -317,6 +317,21 @@ schema and is not a runtime declaration):
       "display": "Lead Vocals",
       "filename_tag": "Lead_Vocals",
       "family": "vocal"
+    },
+    "vocal.backing": {
+      "display": "Backing Vocals",
+      "filename_tag": "Backing_Vocals",
+      "family": "vocal"
+    },
+    "mix.instrumental": {
+      "display": "Instrumental",
+      "filename_tag": "Instrumental",
+      "family": "mix"
+    },
+    "mix.instrumental_with_backing_vocals": {
+      "display": "Instrumental with Backing Vocals",
+      "filename_tag": "Instrumental_with_Backing_Vocals",
+      "family": "mix"
     }
   },
   "pairs": {
@@ -389,7 +404,10 @@ Rules:
    `derived_from` means the ordered sum of two or more exact native roles.
    Dependencies are role IDs in the same model/context; display text and
    native-name lookup, derived-to-derived chaining, self-dependency, and mixed
-   recipe forms are forbidden. Native outputs have neither dependency form.
+   recipe forms are forbidden. A selected, scheduled, or pair-required derived
+   route must be materialized or the job/selection must fail with an actionable
+   diagnostic; it must never be silently omitted. Native outputs have neither
+   dependency form.
 8. A logical-primary output remains selected by default.
 9. Every logical-primary role must exist exactly once in that context's output
    list.
@@ -600,7 +618,9 @@ reconciled through the
 There are three distinct inventories:
 
 - classic ONNX has two addressable export keys: its primary and the computed
-  inverse, even though the engine computes the latter as `mix - primary`;
+  inverse, even though the engine computes the latter as `mix - primary`. A
+  reviewed classic declaration must contain both exact engine output keys and
+  must not be represented as a one-output MDX-C target declaration;
 - MDX-C multi has every configured instrument as an addressable native output;
   and
 - MDX-C target has one configured native target plus reviewed derived routes.
