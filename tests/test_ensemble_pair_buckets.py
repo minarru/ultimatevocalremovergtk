@@ -49,6 +49,36 @@ class MainStemChoiceTests(unittest.TestCase):
         ids = [stored for stored, _label in ensemble_pair_choices()]
         self.assertIn("pair.karaoke", ids)
 
+    def test_pair_registry_has_only_reviewed_pairs_and_karaoke_is_accompaniment_first(
+        self,
+    ) -> None:
+        expected_ids = (
+            "pair.vocals_instrumental",
+            "pair.karaoke",
+            "pair.backing_vocals",
+            "pair.center_side",
+        )
+        definitions = [stem_pair_definition(pair_id) for pair_id in expected_ids]
+        self.assertTrue(all(definition is not None for definition in definitions))
+        self.assertEqual(
+            [definition.id for definition in definitions if definition is not None],
+            list(expected_ids),
+        )
+        karaoke = stem_pair_definition("pair.karaoke")
+        assert karaoke is not None
+        self.assertEqual(karaoke.display, "Instrumental with Backing Vocals/Lead Vocals")
+        self.assertEqual(
+            tuple(role.value for role in karaoke.roles),
+            ("mix.instrumental_with_backing_vocals", "vocal.lead"),
+        )
+        for unapproved in (
+            "pair.reverb_echo",
+            "pair.drum_bass",
+            "pair.guitar",
+            "pair.orchestra",
+        ):
+            self.assertIsNone(stem_pair_definition(unapproved))
+
     def test_stem_halves_are_slash_free_labels(self) -> None:
         primary, secondary = stem_pair_halves("pair.karaoke")
         self.assertTrue(primary)

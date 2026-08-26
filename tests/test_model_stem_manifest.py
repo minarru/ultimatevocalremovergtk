@@ -10,6 +10,7 @@ from tempfile import TemporaryDirectory
 from typing import Any
 from unittest.mock import patch
 
+import core.model_stem_semantics as model_stem_semantics
 from core.model_stem_manifest import (
     BUNDLED_MANIFEST_PATH,
     StemManifestError,
@@ -215,6 +216,21 @@ class ManifestValidationTests(unittest.TestCase):
         self.assertIs(parsed[0].selected_by_default, True)
         self.assertIs(parsed[1].selected_by_default, False)
 
+    def test_logical_primary_and_default_selection_are_independent(self) -> None:
+        document = _manifest()
+        document["models"]["mdx:fixture"]["contexts"]["full_mix"]["outputs"][0][
+            "selected_by_default"
+        ] = False
+
+        try:
+            registry = load_stem_manifest_document(document)
+        except StemManifestError as error:
+            self.fail(f"default-false logical primary must remain valid: {error}")
+
+        context = registry.models["mdx:fixture"].contexts[StemProcessingContext.FULL_MIX]
+        self.assertEqual(context.logical_primary, StemRoleId("vocal.vocals"))
+        self.assertIs(context.outputs[0].selected_by_default, False)
+
     def test_selected_by_default_rejects_every_non_boolean(self) -> None:
         for value in (0, 1, 0.0, 1.0, "false", None, []):
             document = _manifest()
@@ -331,14 +347,7 @@ class ManifestValidationTests(unittest.TestCase):
             ("models", "mdx:fixture", "native_signature"),
         )
 
-    def test_logical_primary_is_exactly_one_selected_output(self) -> None:
-        document = _manifest()
-        document["models"]["mdx:fixture"]["contexts"]["full_mix"]["outputs"][0][
-            "selected_by_default"
-        ] = False
-        with self.assertRaisesRegex(StemManifestError, "selected by default"):
-            load_stem_manifest_document(document)
-
+    def test_logical_primary_is_exactly_one_output(self) -> None:
         document = _manifest()
         document["models"]["mdx:fixture"]["contexts"]["full_mix"]["logical_primary"] = "vocal.lead"
         with self.assertRaisesRegex(StemManifestError, "missing logical primary output"):
@@ -349,6 +358,30 @@ class ManifestValidationTests(unittest.TestCase):
             "vocal.vocals"
         )
         with self.assertRaisesRegex(StemManifestError, "multiple logical primaries"):
+            load_stem_manifest_document(document)
+
+    def test_model_intent_uses_the_one_closed_vocabulary(self) -> None:
+        expected = frozenset(
+            {
+                "karaoke",
+                "drum_bass_sep",
+                "dual_voc_inst",
+                "multi_stem",
+                "special_fx",
+                "specialty_stem",
+                "instrumental",
+                "vocals",
+                "unknown",
+            }
+        )
+        self.assertEqual(
+            getattr(model_stem_semantics, "MODEL_STEM_INTENTS", None),
+            expected,
+        )
+
+        document = _manifest()
+        document["models"]["mdx:fixture"]["intent"] = "vocal_pair"
+        with self.assertRaisesRegex(StemManifestError, "invalid model stem intent"):
             load_stem_manifest_document(document)
 
     def test_logical_secondary_is_optional_and_marks_one_distinct_output(self) -> None:
@@ -554,7 +587,13 @@ class ManifestValidationTests(unittest.TestCase):
             declaration = registry.models[model_id]
             full = declaration.contexts[StemProcessingContext.FULL_MIX]
             split = declaration.contexts[StemProcessingContext.VOCAL_SPLIT]
-            self.assertEqual(full.logical_primary, StemRoleId("vocal.lead"))
+            self.assertEqual(
+                full.logical_primary,
+                StemRoleId("mix.instrumental_with_backing_vocals"),
+            )
+            self.assertEqual(full.logical_secondary, StemRoleId("vocal.lead"))
+            self.assertEqual(split.logical_primary, StemRoleId("vocal.backing"))
+            self.assertEqual(split.logical_secondary, StemRoleId("vocal.lead"))
             self.assertEqual(
                 [output.role for output in full.outputs],
                 [StemRoleId("vocal.lead"), StemRoleId("mix.instrumental_with_backing_vocals")],

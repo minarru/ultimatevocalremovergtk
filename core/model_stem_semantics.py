@@ -38,6 +38,19 @@ INTENT_SPECIALTY_STEM = "specialty_stem"
 INTENT_INSTRUMENTAL = "instrumental"
 INTENT_VOCALS = "vocals"
 INTENT_UNKNOWN = "unknown"
+MODEL_STEM_INTENTS = frozenset(
+    {
+        INTENT_KARAOKE,
+        INTENT_DRUM_BASS_SEP,
+        INTENT_DUAL_VOC_INST,
+        INTENT_MULTI_STEM,
+        INTENT_SPECIAL_FX,
+        INTENT_SPECIALTY_STEM,
+        INTENT_INSTRUMENTAL,
+        INTENT_VOCALS,
+        INTENT_UNKNOWN,
+    }
+)
 
 # Community catalogue metadata describes this classic ONNX model with the
 # semantic pair ``other|vocals``. The classic MDX engine does not address

@@ -6,10 +6,22 @@
       "filename_tag": "Ambience",
       "family": "cinematic"
     },
+    "cinematic.ambience.removed": {
+      "display": "Ambience Removed",
+      "filename_tag": "Ambience_Removed",
+      "family": "cinematic",
+      "removed_of": "cinematic.ambience"
+    },
     "cinematic.anime": {
       "display": "Anime",
       "filename_tag": "Anime",
       "family": "cinematic"
+    },
+    "cinematic.anime.removed": {
+      "display": "Anime Removed",
+      "filename_tag": "Anime_Removed",
+      "family": "cinematic",
+      "removed_of": "cinematic.anime"
     },
     "cinematic.background_sfx": {
       "display": "Background SFX",
@@ -21,25 +33,55 @@
       "filename_tag": "Crowd",
       "family": "cinematic"
     },
+    "cinematic.crowd.removed": {
+      "display": "Crowd Removed",
+      "filename_tag": "Crowd_Removed",
+      "family": "cinematic",
+      "removed_of": "cinematic.crowd"
+    },
     "cinematic.explosions": {
       "display": "Explosions",
       "filename_tag": "Explosions",
       "family": "cinematic"
+    },
+    "cinematic.explosions.removed": {
+      "display": "Explosions Removed",
+      "filename_tag": "Explosions_Removed",
+      "family": "cinematic",
+      "removed_of": "cinematic.explosions"
     },
     "cinematic.fighting": {
       "display": "Fighting",
       "filename_tag": "Fighting",
       "family": "cinematic"
     },
+    "cinematic.fighting.removed": {
+      "display": "Fighting Removed",
+      "filename_tag": "Fighting_Removed",
+      "family": "cinematic",
+      "removed_of": "cinematic.fighting"
+    },
     "cinematic.foley": {
       "display": "Foley",
       "filename_tag": "Foley",
       "family": "cinematic"
     },
+    "cinematic.foley.removed": {
+      "display": "Foley Removed",
+      "filename_tag": "Foley_Removed",
+      "family": "cinematic",
+      "removed_of": "cinematic.foley"
+    },
     "cinematic.footsteps": {
       "display": "Footsteps",
       "filename_tag": "Footsteps",
       "family": "cinematic"
+    },
+    "cinematic.footsteps.removed": {
+      "display": "Footsteps Removed",
+      "filename_tag": "Footsteps_Removed",
+      "family": "cinematic",
+      "removed_of": "cinematic.footsteps"
     },
     "cinematic.foreground_sfx": {
       "display": "Foreground SFX",
@@ -104,60 +146,137 @@
       "family": "effect",
       "removed_of": "effect.reverb"
     },
+    "effect.reverb_echo": {
+      "display": "Reverb/Echo",
+      "filename_tag": "Reverb_Echo",
+      "family": "effect"
+    },
+    "effect.reverb_echo.removed": {
+      "display": "Reverb/Echo Removed",
+      "filename_tag": "Reverb_Echo_Removed",
+      "family": "effect",
+      "removed_of": "effect.reverb_echo"
+    },
     "instrument.accordion": {
       "display": "Accordion",
       "filename_tag": "Accordion",
       "family": "instrument"
+    },
+    "instrument.accordion.removed": {
+      "display": "Accordion Removed",
+      "filename_tag": "Accordion_Removed",
+      "family": "instrument",
+      "removed_of": "instrument.accordion"
     },
     "instrument.acoustic_guitar": {
       "display": "Acoustic Guitar",
       "filename_tag": "Acoustic_Guitar",
       "family": "instrument"
     },
+    "instrument.acoustic_guitar.removed": {
+      "display": "Acoustic Guitar Removed",
+      "filename_tag": "Acoustic_Guitar_Removed",
+      "family": "instrument",
+      "removed_of": "instrument.acoustic_guitar"
+    },
     "instrument.banjo": {
       "display": "Banjo",
       "filename_tag": "Banjo",
       "family": "instrument"
+    },
+    "instrument.banjo.removed": {
+      "display": "Banjo Removed",
+      "filename_tag": "Banjo_Removed",
+      "family": "instrument",
+      "removed_of": "instrument.banjo"
     },
     "instrument.bass": {
       "display": "Bass",
       "filename_tag": "Bass",
       "family": "instrument"
     },
+    "instrument.bass.removed": {
+      "display": "Bass Removed",
+      "filename_tag": "Bass_Removed",
+      "family": "instrument",
+      "removed_of": "instrument.bass"
+    },
     "instrument.bassoon": {
       "display": "Bassoon",
       "filename_tag": "Bassoon",
       "family": "instrument"
+    },
+    "instrument.bassoon.removed": {
+      "display": "Bassoon Removed",
+      "filename_tag": "Bassoon_Removed",
+      "family": "instrument",
+      "removed_of": "instrument.bassoon"
     },
     "instrument.bells": {
       "display": "Bells",
       "filename_tag": "Bells",
       "family": "instrument"
     },
+    "instrument.bells.removed": {
+      "display": "Bells Removed",
+      "filename_tag": "Bells_Removed",
+      "family": "instrument",
+      "removed_of": "instrument.bells"
+    },
     "instrument.bowed_strings": {
       "display": "Bowed Strings",
       "filename_tag": "Bowed_Strings",
       "family": "instrument"
+    },
+    "instrument.bowed_strings.removed": {
+      "display": "Bowed Strings Removed",
+      "filename_tag": "Bowed_Strings_Removed",
+      "family": "instrument",
+      "removed_of": "instrument.bowed_strings"
     },
     "instrument.brass": {
       "display": "Brass",
       "filename_tag": "Brass",
       "family": "instrument"
     },
+    "instrument.brass.removed": {
+      "display": "Brass Removed",
+      "filename_tag": "Brass_Removed",
+      "family": "instrument",
+      "removed_of": "instrument.brass"
+    },
     "instrument.cello": {
       "display": "Cello",
       "filename_tag": "Cello",
       "family": "instrument"
+    },
+    "instrument.cello.removed": {
+      "display": "Cello Removed",
+      "filename_tag": "Cello_Removed",
+      "family": "instrument",
+      "removed_of": "instrument.cello"
     },
     "instrument.clarinet": {
       "display": "Clarinet",
       "filename_tag": "Clarinet",
       "family": "instrument"
     },
+    "instrument.clarinet.removed": {
+      "display": "Clarinet Removed",
+      "filename_tag": "Clarinet_Removed",
+      "family": "instrument",
+      "removed_of": "instrument.clarinet"
+    },
     "instrument.congas": {
       "display": "Congas",
       "filename_tag": "Congas",
       "family": "instrument"
+    },
+    "instrument.congas.removed": {
+      "display": "Congas Removed",
+      "filename_tag": "Congas_Removed",
+      "family": "instrument",
+      "removed_of": "instrument.congas"
     },
     "instrument.crash": {
       "display": "Crash",
@@ -174,44 +293,119 @@
       "filename_tag": "Digital_Piano",
       "family": "instrument"
     },
+    "instrument.digital_piano.removed": {
+      "display": "Digital Piano Removed",
+      "filename_tag": "Digital_Piano_Removed",
+      "family": "instrument",
+      "removed_of": "instrument.digital_piano"
+    },
     "instrument.dobro": {
       "display": "Dobro",
       "filename_tag": "Dobro",
       "family": "instrument"
+    },
+    "instrument.dobro.removed": {
+      "display": "Dobro Removed",
+      "filename_tag": "Dobro_Removed",
+      "family": "instrument",
+      "removed_of": "instrument.dobro"
     },
     "instrument.double_bass": {
       "display": "Double Bass",
       "filename_tag": "Double_Bass",
       "family": "instrument"
     },
+    "instrument.double_bass.removed": {
+      "display": "Double Bass Removed",
+      "filename_tag": "Double_Bass_Removed",
+      "family": "instrument",
+      "removed_of": "instrument.double_bass"
+    },
+    "instrument.drum_bass": {
+      "display": "Drum/Bass",
+      "filename_tag": "Drum_Bass",
+      "family": "instrument"
+    },
+    "instrument.drum_bass.removed": {
+      "display": "Drum/Bass Removed",
+      "filename_tag": "Drum_Bass_Removed",
+      "family": "instrument",
+      "removed_of": "instrument.drum_bass"
+    },
     "instrument.drums": {
       "display": "Drums",
       "filename_tag": "Drums",
       "family": "instrument"
+    },
+    "instrument.drums.removed": {
+      "display": "Drums Removed",
+      "filename_tag": "Drums_Removed",
+      "family": "instrument",
+      "removed_of": "instrument.drums"
     },
     "instrument.electric_guitar": {
       "display": "Electric Guitar",
       "filename_tag": "Electric_Guitar",
       "family": "instrument"
     },
+    "instrument.electric_guitar.removed": {
+      "display": "Electric Guitar Removed",
+      "filename_tag": "Electric_Guitar_Removed",
+      "family": "instrument",
+      "removed_of": "instrument.electric_guitar"
+    },
     "instrument.flute": {
       "display": "Flute",
       "filename_tag": "Flute",
       "family": "instrument"
+    },
+    "instrument.flute.removed": {
+      "display": "Flute Removed",
+      "filename_tag": "Flute_Removed",
+      "family": "instrument",
+      "removed_of": "instrument.flute"
     },
     "instrument.french_horn": {
       "display": "French Horn",
       "filename_tag": "French_Horn",
       "family": "instrument"
     },
+    "instrument.french_horn.removed": {
+      "display": "French Horn Removed",
+      "filename_tag": "French_Horn_Removed",
+      "family": "instrument",
+      "removed_of": "instrument.french_horn"
+    },
     "instrument.glockenspiel": {
       "display": "Glockenspiel",
       "filename_tag": "Glockenspiel",
       "family": "instrument"
     },
+    "instrument.glockenspiel.removed": {
+      "display": "Glockenspiel Removed",
+      "filename_tag": "Glockenspiel_Removed",
+      "family": "instrument",
+      "removed_of": "instrument.glockenspiel"
+    },
     "instrument.guitar": {
       "display": "Guitar",
       "filename_tag": "Guitar",
+      "family": "instrument"
+    },
+    "instrument.guitar.lead": {
+      "display": "Lead Guitar",
+      "filename_tag": "Lead_Guitar",
+      "family": "instrument"
+    },
+    "instrument.guitar.removed": {
+      "display": "Guitar Removed",
+      "filename_tag": "Guitar_Removed",
+      "family": "instrument",
+      "removed_of": "instrument.guitar"
+    },
+    "instrument.guitar.rhythm": {
+      "display": "Rhythm Guitar",
+      "filename_tag": "Rhythm_Guitar",
       "family": "instrument"
     },
     "instrument.harmonica": {
@@ -219,70 +413,143 @@
       "filename_tag": "Harmonica",
       "family": "instrument"
     },
+    "instrument.harmonica.removed": {
+      "display": "Harmonica Removed",
+      "filename_tag": "Harmonica_Removed",
+      "family": "instrument",
+      "removed_of": "instrument.harmonica"
+    },
     "instrument.harp": {
       "display": "Harp",
       "filename_tag": "Harp",
       "family": "instrument"
+    },
+    "instrument.harp.removed": {
+      "display": "Harp Removed",
+      "filename_tag": "Harp_Removed",
+      "family": "instrument",
+      "removed_of": "instrument.harp"
     },
     "instrument.harpsichord": {
       "display": "Harpsichord",
       "filename_tag": "Harpsichord",
       "family": "instrument"
     },
-    "instrument.hh": {
+    "instrument.harpsichord.removed": {
+      "display": "Harpsichord Removed",
+      "filename_tag": "Harpsichord_Removed",
+      "family": "instrument",
+      "removed_of": "instrument.harpsichord"
+    },
+    "instrument.hi_hat": {
       "display": "Hi-Hat",
       "filename_tag": "Hi_Hat",
       "family": "instrument"
+    },
+    "instrument.hi_hat.removed": {
+      "display": "Hi-Hat Removed",
+      "filename_tag": "Hi_Hat_Removed",
+      "family": "instrument",
+      "removed_of": "instrument.hi_hat"
     },
     "instrument.keys": {
       "display": "Keys",
       "filename_tag": "Keys",
       "family": "instrument"
     },
+    "instrument.keys.removed": {
+      "display": "Keys Removed",
+      "filename_tag": "Keys_Removed",
+      "family": "instrument",
+      "removed_of": "instrument.keys"
+    },
     "instrument.kick": {
       "display": "Kick",
       "filename_tag": "Kick",
       "family": "instrument"
+    },
+    "instrument.kick.removed": {
+      "display": "Kick Removed",
+      "filename_tag": "Kick_Removed",
+      "family": "instrument",
+      "removed_of": "instrument.kick"
     },
     "instrument.mandolin": {
       "display": "Mandolin",
       "filename_tag": "Mandolin",
       "family": "instrument"
     },
+    "instrument.mandolin.removed": {
+      "display": "Mandolin Removed",
+      "filename_tag": "Mandolin_Removed",
+      "family": "instrument",
+      "removed_of": "instrument.mandolin"
+    },
     "instrument.marimba": {
       "display": "Marimba",
       "filename_tag": "Marimba",
       "family": "instrument"
+    },
+    "instrument.marimba.removed": {
+      "display": "Marimba Removed",
+      "filename_tag": "Marimba_Removed",
+      "family": "instrument",
+      "removed_of": "instrument.marimba"
     },
     "instrument.oboe": {
       "display": "Oboe",
       "filename_tag": "Oboe",
       "family": "instrument"
     },
-    "instrument.orch": {
+    "instrument.oboe.removed": {
+      "display": "Oboe Removed",
+      "filename_tag": "Oboe_Removed",
+      "family": "instrument",
+      "removed_of": "instrument.oboe"
+    },
+    "instrument.orchestra": {
       "display": "Orchestra",
       "filename_tag": "Orchestra",
       "family": "instrument"
+    },
+    "instrument.orchestra.removed": {
+      "display": "Orchestra Removed",
+      "filename_tag": "Orchestra_Removed",
+      "family": "instrument",
+      "removed_of": "instrument.orchestra"
     },
     "instrument.organ": {
       "display": "Organ",
       "filename_tag": "Organ",
       "family": "instrument"
     },
+    "instrument.organ.removed": {
+      "display": "Organ Removed",
+      "filename_tag": "Organ_Removed",
+      "family": "instrument",
+      "removed_of": "instrument.organ"
+    },
     "instrument.percussion": {
       "display": "Percussion",
       "filename_tag": "Percussion",
       "family": "instrument"
+    },
+    "instrument.percussion.removed": {
+      "display": "Percussion Removed",
+      "filename_tag": "Percussion_Removed",
+      "family": "instrument",
+      "removed_of": "instrument.percussion"
     },
     "instrument.piano": {
       "display": "Piano",
       "filename_tag": "Piano",
       "family": "instrument"
     },
-    "instrument.rhythm": {
-      "display": "Rhythm Guitar",
-      "filename_tag": "Rhythm_Guitar",
-      "family": "instrument"
+    "instrument.piano.removed": {
+      "display": "Piano Removed",
+      "filename_tag": "Piano_Removed",
+      "family": "instrument",
+      "removed_of": "instrument.piano"
     },
     "instrument.ride": {
       "display": "Ride",
@@ -294,96 +561,198 @@
       "filename_tag": "Saxophone",
       "family": "instrument"
     },
+    "instrument.saxophone.removed": {
+      "display": "Saxophone Removed",
+      "filename_tag": "Saxophone_Removed",
+      "family": "instrument",
+      "removed_of": "instrument.saxophone"
+    },
     "instrument.sitar": {
       "display": "Sitar",
       "filename_tag": "Sitar",
       "family": "instrument"
+    },
+    "instrument.sitar.removed": {
+      "display": "Sitar Removed",
+      "filename_tag": "Sitar_Removed",
+      "family": "instrument",
+      "removed_of": "instrument.sitar"
     },
     "instrument.snare": {
       "display": "Snare",
       "filename_tag": "Snare",
       "family": "instrument"
     },
+    "instrument.snare.removed": {
+      "display": "Snare Removed",
+      "filename_tag": "Snare_Removed",
+      "family": "instrument",
+      "removed_of": "instrument.snare"
+    },
     "instrument.strings": {
       "display": "Strings",
       "filename_tag": "Strings",
       "family": "instrument"
+    },
+    "instrument.strings.removed": {
+      "display": "Strings Removed",
+      "filename_tag": "Strings_Removed",
+      "family": "instrument",
+      "removed_of": "instrument.strings"
     },
     "instrument.synth": {
       "display": "Synth",
       "filename_tag": "Synth",
       "family": "instrument"
     },
+    "instrument.synth.removed": {
+      "display": "Synth Removed",
+      "filename_tag": "Synth_Removed",
+      "family": "instrument",
+      "removed_of": "instrument.synth"
+    },
     "instrument.tambourine": {
       "display": "Tambourine",
       "filename_tag": "Tambourine",
       "family": "instrument"
+    },
+    "instrument.tambourine.removed": {
+      "display": "Tambourine Removed",
+      "filename_tag": "Tambourine_Removed",
+      "family": "instrument",
+      "removed_of": "instrument.tambourine"
     },
     "instrument.timpani": {
       "display": "Timpani",
       "filename_tag": "Timpani",
       "family": "instrument"
     },
+    "instrument.timpani.removed": {
+      "display": "Timpani Removed",
+      "filename_tag": "Timpani_Removed",
+      "family": "instrument",
+      "removed_of": "instrument.timpani"
+    },
     "instrument.toms": {
       "display": "Toms",
       "filename_tag": "Toms",
       "family": "instrument"
+    },
+    "instrument.toms.removed": {
+      "display": "Toms Removed",
+      "filename_tag": "Toms_Removed",
+      "family": "instrument",
+      "removed_of": "instrument.toms"
     },
     "instrument.triangle": {
       "display": "Triangle",
       "filename_tag": "Triangle",
       "family": "instrument"
     },
+    "instrument.triangle.removed": {
+      "display": "Triangle Removed",
+      "filename_tag": "Triangle_Removed",
+      "family": "instrument",
+      "removed_of": "instrument.triangle"
+    },
     "instrument.trombone": {
       "display": "Trombone",
       "filename_tag": "Trombone",
       "family": "instrument"
+    },
+    "instrument.trombone.removed": {
+      "display": "Trombone Removed",
+      "filename_tag": "Trombone_Removed",
+      "family": "instrument",
+      "removed_of": "instrument.trombone"
     },
     "instrument.trumpet": {
       "display": "Trumpet",
       "filename_tag": "Trumpet",
       "family": "instrument"
     },
+    "instrument.trumpet.removed": {
+      "display": "Trumpet Removed",
+      "filename_tag": "Trumpet_Removed",
+      "family": "instrument",
+      "removed_of": "instrument.trumpet"
+    },
     "instrument.tuba": {
       "display": "Tuba",
       "filename_tag": "Tuba",
       "family": "instrument"
+    },
+    "instrument.tuba.removed": {
+      "display": "Tuba Removed",
+      "filename_tag": "Tuba_Removed",
+      "family": "instrument",
+      "removed_of": "instrument.tuba"
     },
     "instrument.ukulele": {
       "display": "Ukulele",
       "filename_tag": "Ukulele",
       "family": "instrument"
     },
+    "instrument.ukulele.removed": {
+      "display": "Ukulele Removed",
+      "filename_tag": "Ukulele_Removed",
+      "family": "instrument",
+      "removed_of": "instrument.ukulele"
+    },
     "instrument.viola": {
       "display": "Viola",
       "filename_tag": "Viola",
       "family": "instrument"
+    },
+    "instrument.viola.removed": {
+      "display": "Viola Removed",
+      "filename_tag": "Viola_Removed",
+      "family": "instrument",
+      "removed_of": "instrument.viola"
     },
     "instrument.violin": {
       "display": "Violin",
       "filename_tag": "Violin",
       "family": "instrument"
     },
+    "instrument.violin.removed": {
+      "display": "Violin Removed",
+      "filename_tag": "Violin_Removed",
+      "family": "instrument",
+      "removed_of": "instrument.violin"
+    },
     "instrument.wind": {
       "display": "Wind",
       "filename_tag": "Wind",
       "family": "instrument"
+    },
+    "instrument.wind.removed": {
+      "display": "Wind Removed",
+      "filename_tag": "Wind_Removed",
+      "family": "instrument",
+      "removed_of": "instrument.wind"
     },
     "instrument.wind_chimes": {
       "display": "Wind Chimes",
       "filename_tag": "Wind_Chimes",
       "family": "instrument"
     },
-    "instrument.woodwind": {
+    "instrument.wind_chimes.removed": {
+      "display": "Wind Chimes Removed",
+      "filename_tag": "Wind_Chimes_Removed",
+      "family": "instrument",
+      "removed_of": "instrument.wind_chimes"
+    },
+    "instrument.woodwinds": {
       "display": "Woodwinds",
       "filename_tag": "Woodwinds",
       "family": "instrument"
     },
-    "instrument.woodwind.removed": {
+    "instrument.woodwinds.removed": {
       "display": "Woodwinds Removed",
       "filename_tag": "Woodwinds_Removed",
       "family": "instrument",
-      "removed_of": "instrument.woodwind"
+      "removed_of": "instrument.woodwinds"
     },
     "mix.bleed": {
       "display": "Bleed",
@@ -416,30 +785,16 @@
       "family": "mix",
       "removed_of": "mix.music"
     },
-    "residual.back": {
-      "display": "Back",
-      "filename_tag": "Back",
-      "family": "residual"
-    },
-    "residual.backing_vocal": {
-      "display": "Backing Vocal",
-      "filename_tag": "Backing_Vocal",
-      "family": "residual"
-    },
-    "residual.lead": {
-      "display": "Lead",
-      "filename_tag": "Lead",
-      "family": "residual"
-    },
     "residual.other": {
       "display": "Residual",
       "filename_tag": "Residual",
       "family": "residual"
     },
-    "residual.others": {
-      "display": "Others",
-      "filename_tag": "Others",
-      "family": "residual"
+    "residual.other.removed": {
+      "display": "Residual Removed",
+      "filename_tag": "Residual_Removed",
+      "family": "residual",
+      "removed_of": "residual.other"
     },
     "spatial.center": {
       "display": "Center",
@@ -461,9 +816,26 @@
       "filename_tag": "Vocal_Aspiration",
       "family": "vocal"
     },
+    "vocal.aspiration.removed": {
+      "display": "Vocal Aspiration Removed",
+      "filename_tag": "Vocal_Aspiration_Removed",
+      "family": "vocal",
+      "removed_of": "vocal.aspiration"
+    },
     "vocal.backing": {
       "display": "Backing Vocals",
       "filename_tag": "Backing_Vocals",
+      "family": "vocal"
+    },
+    "vocal.backing.removed": {
+      "display": "Backing Vocals Removed",
+      "filename_tag": "Backing_Vocals_Removed",
+      "family": "vocal",
+      "removed_of": "vocal.backing"
+    },
+    "vocal.bass": {
+      "display": "Bass Vocals",
+      "filename_tag": "Bass_Vocals",
       "family": "vocal"
     },
     "vocal.female": {
@@ -475,6 +847,12 @@
       "display": "Lead Vocals",
       "filename_tag": "Lead_Vocals",
       "family": "vocal"
+    },
+    "vocal.lead.removed": {
+      "display": "Lead Vocals Removed",
+      "filename_tag": "Lead_Vocals_Removed",
+      "family": "vocal",
+      "removed_of": "vocal.lead"
     },
     "vocal.male": {
       "display": "Male Vocals",
@@ -505,366 +883,6 @@
       "display": "Vocals",
       "filename_tag": "Vocals",
       "family": "vocal"
-    },
-    "vocal.aspiration.removed": {
-      "display": "Vocal Aspiration Removed",
-      "filename_tag": "Vocal_Aspiration_Removed",
-      "family": "vocal",
-      "removed_of": "vocal.aspiration"
-    },
-    "instrument.bass.removed": {
-      "display": "Bass Removed",
-      "filename_tag": "Bass_Removed",
-      "family": "instrument",
-      "removed_of": "instrument.bass"
-    },
-    "instrument.strings.removed": {
-      "display": "Strings Removed",
-      "filename_tag": "Strings_Removed",
-      "family": "instrument",
-      "removed_of": "instrument.strings"
-    },
-    "instrument.drums.removed": {
-      "display": "Drums Removed",
-      "filename_tag": "Drums_Removed",
-      "family": "instrument",
-      "removed_of": "instrument.drums"
-    },
-    "instrument.guitar.removed": {
-      "display": "Guitar Removed",
-      "filename_tag": "Guitar_Removed",
-      "family": "instrument",
-      "removed_of": "instrument.guitar"
-    },
-    "instrument.keys.removed": {
-      "display": "Keys Removed",
-      "filename_tag": "Keys_Removed",
-      "family": "instrument",
-      "removed_of": "instrument.keys"
-    },
-    "instrument.accordion.removed": {
-      "display": "Accordion Removed",
-      "filename_tag": "Accordion_Removed",
-      "family": "instrument",
-      "removed_of": "instrument.accordion"
-    },
-    "instrument.acoustic_guitar.removed": {
-      "display": "Acoustic Guitar Removed",
-      "filename_tag": "Acoustic_Guitar_Removed",
-      "family": "instrument",
-      "removed_of": "instrument.acoustic_guitar"
-    },
-    "vocal.backing.removed": {
-      "display": "Backing Vocals Removed",
-      "filename_tag": "Backing_Vocals_Removed",
-      "family": "vocal",
-      "removed_of": "vocal.backing"
-    },
-    "instrument.banjo.removed": {
-      "display": "Banjo Removed",
-      "filename_tag": "Banjo_Removed",
-      "family": "instrument",
-      "removed_of": "instrument.banjo"
-    },
-    "instrument.bassoon.removed": {
-      "display": "Bassoon Removed",
-      "filename_tag": "Bassoon_Removed",
-      "family": "instrument",
-      "removed_of": "instrument.bassoon"
-    },
-    "instrument.bells.removed": {
-      "display": "Bells Removed",
-      "filename_tag": "Bells_Removed",
-      "family": "instrument",
-      "removed_of": "instrument.bells"
-    },
-    "instrument.bowed_strings.removed": {
-      "display": "Bowed Strings Removed",
-      "filename_tag": "Bowed_Strings_Removed",
-      "family": "instrument",
-      "removed_of": "instrument.bowed_strings"
-    },
-    "instrument.brass.removed": {
-      "display": "Brass Removed",
-      "filename_tag": "Brass_Removed",
-      "family": "instrument",
-      "removed_of": "instrument.brass"
-    },
-    "instrument.cello.removed": {
-      "display": "Cello Removed",
-      "filename_tag": "Cello_Removed",
-      "family": "instrument",
-      "removed_of": "instrument.cello"
-    },
-    "instrument.clarinet.removed": {
-      "display": "Clarinet Removed",
-      "filename_tag": "Clarinet_Removed",
-      "family": "instrument",
-      "removed_of": "instrument.clarinet"
-    },
-    "instrument.congas.removed": {
-      "display": "Congas Removed",
-      "filename_tag": "Congas_Removed",
-      "family": "instrument",
-      "removed_of": "instrument.congas"
-    },
-    "instrument.digital_piano.removed": {
-      "display": "Digital Piano Removed",
-      "filename_tag": "Digital_Piano_Removed",
-      "family": "instrument",
-      "removed_of": "instrument.digital_piano"
-    },
-    "instrument.dobro.removed": {
-      "display": "Dobro Removed",
-      "filename_tag": "Dobro_Removed",
-      "family": "instrument",
-      "removed_of": "instrument.dobro"
-    },
-    "instrument.double_bass.removed": {
-      "display": "Double Bass Removed",
-      "filename_tag": "Double_Bass_Removed",
-      "family": "instrument",
-      "removed_of": "instrument.double_bass"
-    },
-    "instrument.electric_guitar.removed": {
-      "display": "Electric Guitar Removed",
-      "filename_tag": "Electric_Guitar_Removed",
-      "family": "instrument",
-      "removed_of": "instrument.electric_guitar"
-    },
-    "instrument.flute.removed": {
-      "display": "Flute Removed",
-      "filename_tag": "Flute_Removed",
-      "family": "instrument",
-      "removed_of": "instrument.flute"
-    },
-    "instrument.french_horn.removed": {
-      "display": "French Horn Removed",
-      "filename_tag": "French_Horn_Removed",
-      "family": "instrument",
-      "removed_of": "instrument.french_horn"
-    },
-    "instrument.glockenspiel.removed": {
-      "display": "Glockenspiel Removed",
-      "filename_tag": "Glockenspiel_Removed",
-      "family": "instrument",
-      "removed_of": "instrument.glockenspiel"
-    },
-    "instrument.harmonica.removed": {
-      "display": "Harmonica Removed",
-      "filename_tag": "Harmonica_Removed",
-      "family": "instrument",
-      "removed_of": "instrument.harmonica"
-    },
-    "instrument.harp.removed": {
-      "display": "Harp Removed",
-      "filename_tag": "Harp_Removed",
-      "family": "instrument",
-      "removed_of": "instrument.harp"
-    },
-    "instrument.harpsichord.removed": {
-      "display": "Harpsichord Removed",
-      "filename_tag": "Harpsichord_Removed",
-      "family": "instrument",
-      "removed_of": "instrument.harpsichord"
-    },
-    "instrument.hh.removed": {
-      "display": "Hi-Hat Removed",
-      "filename_tag": "Hi_Hat_Removed",
-      "family": "instrument",
-      "removed_of": "instrument.hh"
-    },
-    "instrument.kick.removed": {
-      "display": "Kick Removed",
-      "filename_tag": "Kick_Removed",
-      "family": "instrument",
-      "removed_of": "instrument.kick"
-    },
-    "vocal.lead.removed": {
-      "display": "Lead Vocals Removed",
-      "filename_tag": "Lead_Vocals_Removed",
-      "family": "vocal",
-      "removed_of": "vocal.lead"
-    },
-    "instrument.mandolin.removed": {
-      "display": "Mandolin Removed",
-      "filename_tag": "Mandolin_Removed",
-      "family": "instrument",
-      "removed_of": "instrument.mandolin"
-    },
-    "instrument.marimba.removed": {
-      "display": "Marimba Removed",
-      "filename_tag": "Marimba_Removed",
-      "family": "instrument",
-      "removed_of": "instrument.marimba"
-    },
-    "instrument.oboe.removed": {
-      "display": "Oboe Removed",
-      "filename_tag": "Oboe_Removed",
-      "family": "instrument",
-      "removed_of": "instrument.oboe"
-    },
-    "instrument.organ.removed": {
-      "display": "Organ Removed",
-      "filename_tag": "Organ_Removed",
-      "family": "instrument",
-      "removed_of": "instrument.organ"
-    },
-    "instrument.percussion.removed": {
-      "display": "Percussion Removed",
-      "filename_tag": "Percussion_Removed",
-      "family": "instrument",
-      "removed_of": "instrument.percussion"
-    },
-    "instrument.piano.removed": {
-      "display": "Piano Removed",
-      "filename_tag": "Piano_Removed",
-      "family": "instrument",
-      "removed_of": "instrument.piano"
-    },
-    "instrument.saxophone.removed": {
-      "display": "Saxophone Removed",
-      "filename_tag": "Saxophone_Removed",
-      "family": "instrument",
-      "removed_of": "instrument.saxophone"
-    },
-    "instrument.sitar.removed": {
-      "display": "Sitar Removed",
-      "filename_tag": "Sitar_Removed",
-      "family": "instrument",
-      "removed_of": "instrument.sitar"
-    },
-    "instrument.snare.removed": {
-      "display": "Snare Removed",
-      "filename_tag": "Snare_Removed",
-      "family": "instrument",
-      "removed_of": "instrument.snare"
-    },
-    "instrument.synth.removed": {
-      "display": "Synth Removed",
-      "filename_tag": "Synth_Removed",
-      "family": "instrument",
-      "removed_of": "instrument.synth"
-    },
-    "instrument.tambourine.removed": {
-      "display": "Tambourine Removed",
-      "filename_tag": "Tambourine_Removed",
-      "family": "instrument",
-      "removed_of": "instrument.tambourine"
-    },
-    "instrument.timpani.removed": {
-      "display": "Timpani Removed",
-      "filename_tag": "Timpani_Removed",
-      "family": "instrument",
-      "removed_of": "instrument.timpani"
-    },
-    "instrument.toms.removed": {
-      "display": "Toms Removed",
-      "filename_tag": "Toms_Removed",
-      "family": "instrument",
-      "removed_of": "instrument.toms"
-    },
-    "instrument.triangle.removed": {
-      "display": "Triangle Removed",
-      "filename_tag": "Triangle_Removed",
-      "family": "instrument",
-      "removed_of": "instrument.triangle"
-    },
-    "instrument.trombone.removed": {
-      "display": "Trombone Removed",
-      "filename_tag": "Trombone_Removed",
-      "family": "instrument",
-      "removed_of": "instrument.trombone"
-    },
-    "instrument.trumpet.removed": {
-      "display": "Trumpet Removed",
-      "filename_tag": "Trumpet_Removed",
-      "family": "instrument",
-      "removed_of": "instrument.trumpet"
-    },
-    "instrument.tuba.removed": {
-      "display": "Tuba Removed",
-      "filename_tag": "Tuba_Removed",
-      "family": "instrument",
-      "removed_of": "instrument.tuba"
-    },
-    "instrument.ukulele.removed": {
-      "display": "Ukulele Removed",
-      "filename_tag": "Ukulele_Removed",
-      "family": "instrument",
-      "removed_of": "instrument.ukulele"
-    },
-    "instrument.viola.removed": {
-      "display": "Viola Removed",
-      "filename_tag": "Viola_Removed",
-      "family": "instrument",
-      "removed_of": "instrument.viola"
-    },
-    "instrument.violin.removed": {
-      "display": "Violin Removed",
-      "filename_tag": "Violin_Removed",
-      "family": "instrument",
-      "removed_of": "instrument.violin"
-    },
-    "instrument.wind_chimes.removed": {
-      "display": "Wind Chimes Removed",
-      "filename_tag": "Wind_Chimes_Removed",
-      "family": "instrument",
-      "removed_of": "instrument.wind_chimes"
-    },
-    "instrument.wind.removed": {
-      "display": "Wind Removed",
-      "filename_tag": "Wind_Removed",
-      "family": "instrument",
-      "removed_of": "instrument.wind"
-    },
-    "instrument.orch.removed": {
-      "display": "Orchestra Removed",
-      "filename_tag": "Orchestra_Removed",
-      "family": "instrument",
-      "removed_of": "instrument.orch"
-    },
-    "cinematic.ambience.removed": {
-      "display": "Ambience Removed",
-      "filename_tag": "Ambience_Removed",
-      "family": "cinematic",
-      "removed_of": "cinematic.ambience"
-    },
-    "cinematic.explosions.removed": {
-      "display": "Explosions Removed",
-      "filename_tag": "Explosions_Removed",
-      "family": "cinematic",
-      "removed_of": "cinematic.explosions"
-    },
-    "cinematic.fighting.removed": {
-      "display": "Fighting Removed",
-      "filename_tag": "Fighting_Removed",
-      "family": "cinematic",
-      "removed_of": "cinematic.fighting"
-    },
-    "cinematic.footsteps.removed": {
-      "display": "Footsteps Removed",
-      "filename_tag": "Footsteps_Removed",
-      "family": "cinematic",
-      "removed_of": "cinematic.footsteps"
-    },
-    "cinematic.foley.removed": {
-      "display": "Foley Removed",
-      "filename_tag": "Foley_Removed",
-      "family": "cinematic",
-      "removed_of": "cinematic.foley"
-    },
-    "cinematic.anime.removed": {
-      "display": "Anime Removed",
-      "filename_tag": "Anime_Removed",
-      "family": "cinematic",
-      "removed_of": "cinematic.anime"
-    },
-    "cinematic.crowd.removed": {
-      "display": "Crowd Removed",
-      "filename_tag": "Crowd_Removed",
-      "family": "cinematic",
-      "removed_of": "cinematic.crowd"
     }
   },
   "pairs": {
@@ -876,10 +894,10 @@
       ]
     },
     "pair.karaoke": {
-      "display": "Lead Vocals/Instrumental with Backing Vocals",
+      "display": "Instrumental with Backing Vocals/Lead Vocals",
       "roles": [
-        "vocal.lead",
-        "mix.instrumental_with_backing_vocals"
+        "mix.instrumental_with_backing_vocals",
+        "vocal.lead"
       ]
     },
     "pair.backing_vocals": {
@@ -903,7 +921,7 @@
         "instrumental",
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "dual_voc_inst",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -931,7 +949,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.drums",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "drums",
@@ -964,7 +982,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.drums",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "drums",
@@ -997,7 +1015,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.drums",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "drums",
@@ -1030,7 +1048,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.drums",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "drums",
@@ -1063,7 +1081,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.drums",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "drums",
@@ -1096,7 +1114,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.drums",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "drums",
@@ -1129,7 +1147,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.drums",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "drums",
@@ -1162,7 +1180,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.drums",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "drums",
@@ -1197,7 +1215,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.drums",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "drums",
@@ -1238,7 +1256,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.drums",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "drums",
@@ -1271,7 +1289,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.drums",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "drums",
@@ -1304,7 +1322,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.drums",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "drums",
@@ -1337,7 +1355,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.drums",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "drums",
@@ -1370,7 +1388,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.drums",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "drums",
@@ -1403,7 +1421,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.drums",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "drums",
@@ -1436,7 +1454,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.drums",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "drums",
@@ -1469,7 +1487,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.drums",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "drums",
@@ -1502,7 +1520,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.drums",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "drums",
@@ -1535,7 +1553,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.drums",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "drums",
@@ -1568,7 +1586,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.drums",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "drums",
@@ -1601,7 +1619,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.drums",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "drums",
@@ -1634,7 +1652,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.drums",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "drums",
@@ -1667,7 +1685,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.drums",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "drums",
@@ -1694,7 +1712,7 @@
       "native_signature": [
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -1724,7 +1742,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.drums",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "drums",
@@ -1751,20 +1769,20 @@
       "native_signature": [
         "dry"
       ],
-      "intent": "removal:reverb",
+      "intent": "special_fx",
       "contexts": {
         "full_mix": {
-          "logical_primary": "effect.reverb",
+          "logical_primary": "effect.reverb.removed",
           "outputs": [
             {
               "native": "dry",
-              "role": "effect.reverb"
+              "role": "effect.reverb.removed"
             },
             {
               "native": null,
-              "role": "effect.reverb.removed",
+              "role": "effect.reverb",
               "production": "derived",
-              "complement_of": "effect.reverb"
+              "complement_of": "effect.reverb.removed"
             }
           ]
         }
@@ -1799,7 +1817,7 @@
             },
             {
               "native": "hh",
-              "role": "instrument.hh"
+              "role": "instrument.hi_hat"
             },
             {
               "native": "ride",
@@ -1819,7 +1837,7 @@
         "Instrumental",
         "Vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -1841,7 +1859,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -1865,7 +1883,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -1889,7 +1907,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -1913,7 +1931,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -1937,7 +1955,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -1967,7 +1985,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.drums",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "drums",
@@ -2000,7 +2018,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.drums",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "drums",
@@ -2033,7 +2051,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.drums",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "drums",
@@ -2066,7 +2084,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.drums",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "drums",
@@ -2099,7 +2117,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.drums",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "Drums",
@@ -2127,7 +2145,7 @@
         "instrumental",
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -2150,7 +2168,7 @@
         "instrumental",
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -2173,7 +2191,7 @@
         "instrumental",
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -2196,7 +2214,7 @@
         "instrumental",
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -2219,7 +2237,7 @@
         "instrumental",
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -2242,7 +2260,7 @@
         "instrumental",
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -2265,7 +2283,7 @@
         "instrumental",
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -2288,7 +2306,7 @@
         "instrumental",
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -2311,7 +2329,7 @@
         "instrumental",
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -2334,7 +2352,7 @@
         "instrumental",
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -2357,7 +2375,7 @@
         "instrumental",
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -2380,7 +2398,7 @@
         "instrumental",
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -2403,7 +2421,7 @@
         "instrumental",
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -2426,7 +2444,7 @@
         "instrumental",
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -2449,7 +2467,7 @@
         "instrumental",
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -2472,7 +2490,7 @@
         "instrumental",
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -2495,7 +2513,7 @@
         "instrumental",
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -2518,7 +2536,7 @@
         "instrumental",
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -2541,7 +2559,7 @@
         "instrumental",
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -2567,7 +2585,8 @@
       "intent": "karaoke",
       "contexts": {
         "full_mix": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "mix.instrumental_with_backing_vocals",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "Instrumental",
@@ -2580,7 +2599,8 @@
           ]
         },
         "vocal_split": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "vocal.backing",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "Instrumental",
@@ -2600,7 +2620,7 @@
         "instrumental",
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "dual_voc_inst",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -2623,7 +2643,7 @@
         "aspiration",
         "other"
       ],
-      "intent": "vocal_pair",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.aspiration",
@@ -2646,7 +2666,7 @@
         "aspiration",
         "other"
       ],
-      "intent": "vocal_pair",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.aspiration",
@@ -2685,7 +2705,7 @@
             },
             {
               "native": "effects",
-              "role": "effect.reverb"
+              "role": "cinematic.sfx"
             }
           ]
         }
@@ -2713,7 +2733,7 @@
             },
             {
               "native": "effects",
-              "role": "effect.reverb"
+              "role": "cinematic.sfx"
             }
           ]
         }
@@ -2741,7 +2761,7 @@
             },
             {
               "native": "effects",
-              "role": "effect.reverb"
+              "role": "cinematic.sfx"
             }
           ]
         }
@@ -2769,7 +2789,7 @@
             },
             {
               "native": "effects",
-              "role": "effect.reverb"
+              "role": "cinematic.sfx"
             }
           ]
         }
@@ -2786,7 +2806,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.drums",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "drums",
@@ -2819,7 +2839,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.drums",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "drums",
@@ -2854,7 +2874,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.bass",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "bass",
@@ -2897,7 +2917,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.bass",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "bass",
@@ -2932,7 +2952,7 @@
       "native_signature": [
         "bass"
       ],
-      "intent": "instrument_target:bass",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.bass",
@@ -2956,7 +2976,7 @@
       "native_signature": [
         "bass"
       ],
-      "intent": "instrument_target:bass",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.bass",
@@ -2981,7 +3001,7 @@
         "strings",
         "other"
       ],
-      "intent": "instrument_target:bowed_strings",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.bowed_strings",
@@ -3003,20 +3023,20 @@
       "native_signature": [
         "noreverb"
       ],
-      "intent": "removal:reverb",
+      "intent": "special_fx",
       "contexts": {
         "full_mix": {
-          "logical_primary": "effect.reverb",
+          "logical_primary": "effect.reverb.removed",
           "outputs": [
             {
               "native": "noreverb",
-              "role": "effect.reverb"
+              "role": "effect.reverb.removed"
             },
             {
               "native": null,
-              "role": "effect.reverb.removed",
+              "role": "effect.reverb",
               "production": "derived",
-              "complement_of": "effect.reverb"
+              "complement_of": "effect.reverb.removed"
             }
           ]
         }
@@ -3027,20 +3047,20 @@
       "native_signature": [
         "noreverb"
       ],
-      "intent": "removal:reverb",
+      "intent": "special_fx",
       "contexts": {
         "full_mix": {
-          "logical_primary": "effect.reverb",
+          "logical_primary": "effect.reverb.removed",
           "outputs": [
             {
               "native": "noreverb",
-              "role": "effect.reverb"
+              "role": "effect.reverb.removed"
             },
             {
               "native": null,
-              "role": "effect.reverb.removed",
+              "role": "effect.reverb",
               "production": "derived",
-              "complement_of": "effect.reverb"
+              "complement_of": "effect.reverb.removed"
             }
           ]
         }
@@ -3051,20 +3071,20 @@
       "native_signature": [
         "noreverb"
       ],
-      "intent": "removal:reverb",
+      "intent": "special_fx",
       "contexts": {
         "full_mix": {
-          "logical_primary": "effect.reverb",
+          "logical_primary": "effect.reverb.removed",
           "outputs": [
             {
               "native": "noreverb",
-              "role": "effect.reverb"
+              "role": "effect.reverb.removed"
             },
             {
               "native": null,
-              "role": "effect.reverb.removed",
+              "role": "effect.reverb",
               "production": "derived",
-              "complement_of": "effect.reverb"
+              "complement_of": "effect.reverb.removed"
             }
           ]
         }
@@ -3075,20 +3095,20 @@
       "native_signature": [
         "noreverb"
       ],
-      "intent": "removal:reverb",
+      "intent": "special_fx",
       "contexts": {
         "full_mix": {
-          "logical_primary": "effect.reverb",
+          "logical_primary": "effect.reverb.removed",
           "outputs": [
             {
               "native": "noreverb",
-              "role": "effect.reverb"
+              "role": "effect.reverb.removed"
             },
             {
               "native": null,
-              "role": "effect.reverb.removed",
+              "role": "effect.reverb",
               "production": "derived",
-              "complement_of": "effect.reverb"
+              "complement_of": "effect.reverb.removed"
             }
           ]
         }
@@ -3099,7 +3119,7 @@
       "native_signature": [
         "drums"
       ],
-      "intent": "instrument_target:drums",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.drums",
@@ -3123,7 +3143,7 @@
       "native_signature": [
         "drums"
       ],
-      "intent": "instrument_target:drums",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.drums",
@@ -3148,7 +3168,7 @@
         "drums",
         "other"
       ],
-      "intent": "instrument_target:drums",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.drums",
@@ -3170,7 +3190,7 @@
       "native_signature": [
         "drums"
       ],
-      "intent": "instrument_target:drums",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.drums",
@@ -3194,7 +3214,7 @@
       "native_signature": [
         "Voices"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -3218,7 +3238,7 @@
       "native_signature": [
         "Voices"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -3242,7 +3262,7 @@
       "native_signature": [
         "guitar"
       ],
-      "intent": "instrument_target:guitar",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.guitar",
@@ -3266,7 +3286,7 @@
       "native_signature": [
         "instrument"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -3290,7 +3310,7 @@
       "native_signature": [
         "other"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -3314,7 +3334,7 @@
       "native_signature": [
         "other"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -3338,7 +3358,7 @@
       "native_signature": [
         "instrument"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -3362,7 +3382,7 @@
       "native_signature": [
         "instrument"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -3386,7 +3406,7 @@
       "native_signature": [
         "instrument"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -3412,10 +3432,11 @@
         "backing_vocal",
         "instrumental"
       ],
-      "intent": "multi_stem",
+      "intent": "karaoke",
       "contexts": {
         "full_mix": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "mix.instrumental_with_backing_vocals",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "vocals",
@@ -3423,16 +3444,27 @@
             },
             {
               "native": "backing_vocal",
-              "role": "residual.backing_vocal"
+              "role": "vocal.backing"
             },
             {
               "native": "instrumental",
-              "role": "mix.instrumental_with_backing_vocals"
+              "role": "mix.instrumental"
+            },
+            {
+              "native": null,
+              "role": "mix.instrumental_with_backing_vocals",
+              "production": "derived",
+              "derived_from": [
+                "vocal.backing",
+                "mix.instrumental"
+              ],
+              "selected_by_default": false
             }
           ]
         },
         "vocal_split": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "vocal.backing",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "vocals",
@@ -3440,11 +3472,11 @@
             },
             {
               "native": "backing_vocal",
-              "role": "residual.backing_vocal"
+              "role": "vocal.backing"
             },
             {
               "native": "instrumental",
-              "role": "vocal.backing"
+              "role": "mix.instrumental"
             }
           ]
         }
@@ -3458,7 +3490,8 @@
       "intent": "karaoke",
       "contexts": {
         "full_mix": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "mix.instrumental_with_backing_vocals",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "Vocals",
@@ -3473,7 +3506,8 @@
           ]
         },
         "vocal_split": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "vocal.backing",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "Vocals",
@@ -3497,7 +3531,8 @@
       "intent": "karaoke",
       "contexts": {
         "full_mix": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "mix.instrumental_with_backing_vocals",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "Vocals",
@@ -3512,7 +3547,8 @@
           ]
         },
         "vocal_split": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "vocal.backing",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "Vocals",
@@ -3536,7 +3572,8 @@
       "intent": "karaoke",
       "contexts": {
         "full_mix": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "mix.instrumental_with_backing_vocals",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "vocals",
@@ -3551,7 +3588,8 @@
           ]
         },
         "vocal_split": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "vocal.backing",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "vocals",
@@ -3575,7 +3613,8 @@
       "intent": "karaoke",
       "contexts": {
         "full_mix": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "mix.instrumental_with_backing_vocals",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": null,
@@ -3590,7 +3629,8 @@
           ]
         },
         "vocal_split": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "vocal.backing",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": null,
@@ -3611,7 +3651,7 @@
       "native_signature": [
         "keys"
       ],
-      "intent": "instrument_target:keys",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.keys",
@@ -3635,7 +3675,7 @@
       "native_signature": [
         "other"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -3659,7 +3699,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -3683,7 +3723,7 @@
       "native_signature": [
         "other"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -3707,7 +3747,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -3739,7 +3779,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.bass",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "bass",
@@ -3774,7 +3814,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -3798,7 +3838,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -3823,7 +3863,7 @@
         "male",
         "female"
       ],
-      "intent": "vocal_pair",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.male",
@@ -3846,7 +3886,7 @@
         "male",
         "female"
       ],
-      "intent": "vocal_pair",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.male",
@@ -3868,7 +3908,7 @@
       "native_signature": [
         "accordion"
       ],
-      "intent": "instrument_target:accordion",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.accordion",
@@ -3892,7 +3932,7 @@
       "native_signature": [
         "acoustic-guitar"
       ],
-      "intent": "instrument_target:acoustic_guitar",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.acoustic_guitar",
@@ -3916,7 +3956,7 @@
       "native_signature": [
         "back-vocal"
       ],
-      "intent": "vocal_pair",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.backing",
@@ -3940,7 +3980,7 @@
       "native_signature": [
         "banjo"
       ],
-      "intent": "instrument_target:banjo",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.banjo",
@@ -3964,7 +4004,7 @@
       "native_signature": [
         "bass"
       ],
-      "intent": "instrument_target:bass",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.bass",
@@ -3988,7 +4028,7 @@
       "native_signature": [
         "bassoon"
       ],
-      "intent": "instrument_target:bassoon",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.bassoon",
@@ -4012,7 +4052,7 @@
       "native_signature": [
         "bells"
       ],
-      "intent": "instrument_target:bells",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.bells",
@@ -4036,7 +4076,7 @@
       "native_signature": [
         "bowed_strings"
       ],
-      "intent": "instrument_target:bowed_strings",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.bowed_strings",
@@ -4060,7 +4100,7 @@
       "native_signature": [
         "brass"
       ],
-      "intent": "instrument_target:brass",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.brass",
@@ -4084,7 +4124,7 @@
       "native_signature": [
         "cello"
       ],
-      "intent": "instrument_target:cello",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.cello",
@@ -4108,7 +4148,7 @@
       "native_signature": [
         "clarinet"
       ],
-      "intent": "instrument_target:clarinet",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.clarinet",
@@ -4132,7 +4172,7 @@
       "native_signature": [
         "congas"
       ],
-      "intent": "instrument_target:congas",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.congas",
@@ -4156,7 +4196,7 @@
       "native_signature": [
         "digital-piano"
       ],
-      "intent": "instrument_target:digital_piano",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.digital_piano",
@@ -4180,7 +4220,7 @@
       "native_signature": [
         "dobro"
       ],
-      "intent": "instrument_target:dobro",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.dobro",
@@ -4204,7 +4244,7 @@
       "native_signature": [
         "double-bass"
       ],
-      "intent": "instrument_target:double_bass",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.double_bass",
@@ -4228,7 +4268,7 @@
       "native_signature": [
         "drums"
       ],
-      "intent": "instrument_target:drums",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.drums",
@@ -4252,7 +4292,7 @@
       "native_signature": [
         "electric-guitar"
       ],
-      "intent": "instrument_target:electric_guitar",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.electric_guitar",
@@ -4276,7 +4316,7 @@
       "native_signature": [
         "flute"
       ],
-      "intent": "instrument_target:flute",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.flute",
@@ -4300,7 +4340,7 @@
       "native_signature": [
         "french-horn"
       ],
-      "intent": "instrument_target:french_horn",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.french_horn",
@@ -4379,7 +4419,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.accordion",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "accordion",
@@ -4479,7 +4519,7 @@
             },
             {
               "native": "hh",
-              "role": "instrument.hh"
+              "role": "instrument.hi_hat"
             },
             {
               "native": "keys",
@@ -4591,7 +4631,7 @@
             },
             {
               "native": "woodwind",
-              "role": "instrument.woodwind"
+              "role": "instrument.woodwinds"
             }
           ]
         }
@@ -4602,7 +4642,7 @@
       "native_signature": [
         "glockenspiel"
       ],
-      "intent": "instrument_target:glockenspiel",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.glockenspiel",
@@ -4626,7 +4666,7 @@
       "native_signature": [
         "guitar"
       ],
-      "intent": "instrument_target:guitar",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.guitar",
@@ -4650,7 +4690,7 @@
       "native_signature": [
         "harmonica"
       ],
-      "intent": "instrument_target:harmonica",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.harmonica",
@@ -4674,7 +4714,7 @@
       "native_signature": [
         "harp"
       ],
-      "intent": "instrument_target:harp",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.harp",
@@ -4698,7 +4738,7 @@
       "native_signature": [
         "harpsichord"
       ],
-      "intent": "instrument_target:harpsichord",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.harpsichord",
@@ -4722,20 +4762,20 @@
       "native_signature": [
         "hh"
       ],
-      "intent": "instrument_target:hh",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.hh",
+          "logical_primary": "instrument.hi_hat",
           "outputs": [
             {
               "native": "hh",
-              "role": "instrument.hh"
+              "role": "instrument.hi_hat"
             },
             {
               "native": null,
-              "role": "instrument.hh.removed",
+              "role": "instrument.hi_hat.removed",
               "production": "derived",
-              "complement_of": "instrument.hh"
+              "complement_of": "instrument.hi_hat"
             }
           ]
         }
@@ -4746,7 +4786,7 @@
       "native_signature": [
         "keys"
       ],
-      "intent": "instrument_target:keys",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.keys",
@@ -4770,7 +4810,7 @@
       "native_signature": [
         "kick"
       ],
-      "intent": "instrument_target:kick",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.kick",
@@ -4794,7 +4834,7 @@
       "native_signature": [
         "lead-vocal"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.lead",
@@ -4818,7 +4858,7 @@
       "native_signature": [
         "mandolin"
       ],
-      "intent": "instrument_target:mandolin",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.mandolin",
@@ -4842,7 +4882,7 @@
       "native_signature": [
         "marimba"
       ],
-      "intent": "instrument_target:marimba",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.marimba",
@@ -4866,7 +4906,7 @@
       "native_signature": [
         "oboe"
       ],
-      "intent": "instrument_target:oboe",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.oboe",
@@ -4890,7 +4930,7 @@
       "native_signature": [
         "organ"
       ],
-      "intent": "instrument_target:organ",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.organ",
@@ -4914,7 +4954,7 @@
       "native_signature": [
         "percussion"
       ],
-      "intent": "instrument_target:percussion",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.percussion",
@@ -4938,7 +4978,7 @@
       "native_signature": [
         "piano"
       ],
-      "intent": "instrument_target:piano",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.piano",
@@ -4962,7 +5002,7 @@
       "native_signature": [
         "saxophone"
       ],
-      "intent": "instrument_target:saxophone",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.saxophone",
@@ -4986,7 +5026,7 @@
       "native_signature": [
         "sitar"
       ],
-      "intent": "instrument_target:sitar",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.sitar",
@@ -5010,7 +5050,7 @@
       "native_signature": [
         "snare"
       ],
-      "intent": "instrument_target:snare",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.snare",
@@ -5034,7 +5074,7 @@
       "native_signature": [
         "strings"
       ],
-      "intent": "instrument_target:strings",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.strings",
@@ -5058,7 +5098,7 @@
       "native_signature": [
         "synth"
       ],
-      "intent": "instrument_target:synth",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.synth",
@@ -5082,7 +5122,7 @@
       "native_signature": [
         "tambourine"
       ],
-      "intent": "instrument_target:tambourine",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.tambourine",
@@ -5106,7 +5146,7 @@
       "native_signature": [
         "timpani"
       ],
-      "intent": "instrument_target:timpani",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.timpani",
@@ -5130,7 +5170,7 @@
       "native_signature": [
         "toms"
       ],
-      "intent": "instrument_target:toms",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.toms",
@@ -5154,7 +5194,7 @@
       "native_signature": [
         "triangle"
       ],
-      "intent": "instrument_target:triangle",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.triangle",
@@ -5178,7 +5218,7 @@
       "native_signature": [
         "trombone"
       ],
-      "intent": "instrument_target:trombone",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.trombone",
@@ -5202,7 +5242,7 @@
       "native_signature": [
         "trumpet"
       ],
-      "intent": "instrument_target:trumpet",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.trumpet",
@@ -5226,7 +5266,7 @@
       "native_signature": [
         "tuba"
       ],
-      "intent": "instrument_target:tuba",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.tuba",
@@ -5250,7 +5290,7 @@
       "native_signature": [
         "ukulele"
       ],
-      "intent": "instrument_target:ukulele",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.ukulele",
@@ -5274,7 +5314,7 @@
       "native_signature": [
         "viola"
       ],
-      "intent": "instrument_target:viola",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.viola",
@@ -5298,7 +5338,7 @@
       "native_signature": [
         "violin"
       ],
-      "intent": "instrument_target:violin",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.violin",
@@ -5322,7 +5362,7 @@
       "native_signature": [
         "vocal"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -5346,7 +5386,7 @@
       "native_signature": [
         "wind-chimes"
       ],
-      "intent": "instrument_target:wind_chimes",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.wind_chimes",
@@ -5370,7 +5410,7 @@
       "native_signature": [
         "wind"
       ],
-      "intent": "instrument_target:wind",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.wind",
@@ -5394,20 +5434,20 @@
       "native_signature": [
         "woodwind"
       ],
-      "intent": "instrument_target:woodwind",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.woodwind",
+          "logical_primary": "instrument.woodwinds",
           "outputs": [
             {
               "native": "woodwind",
-              "role": "instrument.woodwind"
+              "role": "instrument.woodwinds"
             },
             {
               "native": null,
-              "role": "instrument.woodwind.removed",
+              "role": "instrument.woodwinds.removed",
               "production": "derived",
-              "complement_of": "instrument.woodwind"
+              "complement_of": "instrument.woodwinds"
             }
           ]
         }
@@ -5418,7 +5458,7 @@
       "native_signature": [
         "center"
       ],
-      "intent": "spatial",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "spatial.center",
@@ -5442,7 +5482,7 @@
       "native_signature": [
         "center"
       ],
-      "intent": "spatial",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "spatial.center",
@@ -5466,7 +5506,7 @@
       "native_signature": [
         "other"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -5490,20 +5530,20 @@
       "native_signature": [
         "orch"
       ],
-      "intent": "instrument_target:orch",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.orch",
+          "logical_primary": "instrument.orchestra",
           "outputs": [
             {
               "native": "orch",
-              "role": "instrument.orch"
+              "role": "instrument.orchestra"
             },
             {
               "native": null,
-              "role": "instrument.orch.removed",
+              "role": "instrument.orchestra.removed",
               "production": "derived",
-              "complement_of": "instrument.orch"
+              "complement_of": "instrument.orchestra"
             }
           ]
         }
@@ -5514,20 +5554,20 @@
       "native_signature": [
         "orch"
       ],
-      "intent": "instrument_target:orch",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.orch",
+          "logical_primary": "instrument.orchestra",
           "outputs": [
             {
               "native": "orch",
-              "role": "instrument.orch"
+              "role": "instrument.orchestra"
             },
             {
               "native": null,
-              "role": "instrument.orch.removed",
+              "role": "instrument.orchestra.removed",
               "production": "derived",
-              "complement_of": "instrument.orch"
+              "complement_of": "instrument.orchestra"
             }
           ]
         }
@@ -5538,7 +5578,7 @@
       "native_signature": [
         "other"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -5562,7 +5602,7 @@
       "native_signature": [
         "percussion"
       ],
-      "intent": "instrument_target:percussion",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.percussion",
@@ -5586,7 +5626,7 @@
       "native_signature": [
         "percussion"
       ],
-      "intent": "instrument_target:percussion",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.percussion",
@@ -5677,7 +5717,7 @@
         "vocals",
         "other"
       ],
-      "intent": "vocal_pair",
+      "intent": "dual_voc_inst",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -5702,7 +5742,8 @@
       "intent": "karaoke",
       "contexts": {
         "full_mix": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "mix.instrumental_with_backing_vocals",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "lead",
@@ -5717,7 +5758,8 @@
           ]
         },
         "vocal_split": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "vocal.backing",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "lead",
@@ -5738,7 +5780,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -5762,7 +5804,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -5786,7 +5828,7 @@
       "native_signature": [
         "other"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -5810,7 +5852,7 @@
       "native_signature": [
         "other"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -5834,7 +5876,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -5858,7 +5900,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -5882,7 +5924,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -5906,7 +5948,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -5930,7 +5972,7 @@
       "native_signature": [
         "instrument"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -5955,7 +5997,7 @@
         "male",
         "female"
       ],
-      "intent": "vocal_pair",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.male",
@@ -5977,7 +6019,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -6001,7 +6043,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -6025,7 +6067,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -6049,7 +6091,7 @@
       "native_signature": [
         "Vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -6073,7 +6115,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -6097,7 +6139,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -6121,20 +6163,20 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "vocal.vocals",
+          "logical_primary": "cinematic.speech",
           "outputs": [
             {
               "native": "vocals",
-              "role": "vocal.vocals"
+              "role": "cinematic.speech"
             },
             {
               "native": null,
-              "role": "mix.instrumental",
+              "role": "mix.music",
               "production": "derived",
-              "complement_of": "vocal.vocals"
+              "complement_of": "cinematic.speech"
             }
           ]
         }
@@ -6145,7 +6187,7 @@
       "native_signature": [
         "synth"
       ],
-      "intent": "instrument_target:synth",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.synth",
@@ -6169,7 +6211,7 @@
       "native_signature": [
         "synth"
       ],
-      "intent": "instrument_target:synth",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.synth",
@@ -6193,7 +6235,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -6217,7 +6259,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -6241,7 +6283,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -6265,7 +6307,7 @@
       "native_signature": [
         "Vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -6289,7 +6331,7 @@
       "native_signature": [
         "Vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -6313,7 +6355,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -6337,7 +6379,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -6361,7 +6403,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -6385,7 +6427,7 @@
       "native_signature": [
         "Vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -6409,7 +6451,7 @@
       "native_signature": [
         "vox"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -6461,7 +6503,7 @@
       "native_signature": [
         "dry"
       ],
-      "intent": "removal:noise",
+      "intent": "special_fx",
       "contexts": {
         "full_mix": {
           "logical_primary": "effect.noise.removed",
@@ -6485,7 +6527,7 @@
       "native_signature": [
         "dry"
       ],
-      "intent": "removal:noise",
+      "intent": "special_fx",
       "contexts": {
         "full_mix": {
           "logical_primary": "effect.noise.removed",
@@ -6510,18 +6552,18 @@
         "dry",
         "No dry"
       ],
-      "intent": "removal:reverb",
+      "intent": "special_fx",
       "contexts": {
         "full_mix": {
-          "logical_primary": "effect.reverb",
+          "logical_primary": "effect.reverb_echo.removed",
           "outputs": [
             {
               "native": "dry",
-              "role": "effect.reverb"
+              "role": "effect.reverb_echo.removed"
             },
             {
               "native": "No dry",
-              "role": "effect.reverb.removed"
+              "role": "effect.reverb_echo"
             }
           ]
         }
@@ -6532,20 +6574,20 @@
       "native_signature": [
         "dry"
       ],
-      "intent": "removal:reverb",
+      "intent": "special_fx",
       "contexts": {
         "full_mix": {
-          "logical_primary": "effect.reverb",
+          "logical_primary": "effect.reverb_echo.removed",
           "outputs": [
             {
               "native": "dry",
-              "role": "effect.reverb"
+              "role": "effect.reverb_echo.removed"
             },
             {
               "native": null,
-              "role": "effect.reverb.removed",
+              "role": "effect.reverb_echo",
               "production": "derived",
-              "complement_of": "effect.reverb"
+              "complement_of": "effect.reverb_echo.removed"
             }
           ]
         }
@@ -6556,7 +6598,7 @@
       "native_signature": [
         "dry"
       ],
-      "intent": "removal:reverb",
+      "intent": "special_fx",
       "contexts": {
         "full_mix": {
           "logical_primary": "effect.reverb.removed",
@@ -6580,13 +6622,37 @@
       "native_signature": [
         "dry"
       ],
-      "intent": "removal:reverb",
+      "intent": "special_fx",
+      "contexts": {
+        "full_mix": {
+          "logical_primary": "effect.reverb_echo.removed",
+          "outputs": [
+            {
+              "native": "dry",
+              "role": "effect.reverb_echo.removed"
+            },
+            {
+              "native": null,
+              "role": "effect.reverb_echo",
+              "production": "derived",
+              "complement_of": "effect.reverb_echo.removed"
+            }
+          ]
+        }
+      },
+      "evidence": "catalogue_id=mdx:dereverb_echo_mbr_fused; source=Politrees; metadata_source=bundled_yaml:config_melband_roformer_dereverb_echo_v2.yaml; native_signature=dry; backend_primary=dry; backend_target=dry; reviewed_contexts=full_mix"
+    },
+    "mdx:dereverb_mel_band_roformer_anvuew_sdr_19.1729": {
+      "native_signature": [
+        "noreverb"
+      ],
+      "intent": "special_fx",
       "contexts": {
         "full_mix": {
           "logical_primary": "effect.reverb.removed",
           "outputs": [
             {
-              "native": "dry",
+              "native": "noreverb",
               "role": "effect.reverb.removed"
             },
             {
@@ -6598,50 +6664,26 @@
           ]
         }
       },
-      "evidence": "catalogue_id=mdx:dereverb_echo_mbr_fused; source=Politrees; metadata_source=bundled_yaml:config_melband_roformer_dereverb_echo_v2.yaml; native_signature=dry; backend_primary=dry; backend_target=dry; reviewed_contexts=full_mix"
-    },
-    "mdx:dereverb_mel_band_roformer_anvuew_sdr_19.1729": {
-      "native_signature": [
-        "noreverb"
-      ],
-      "intent": "removal:reverb",
-      "contexts": {
-        "full_mix": {
-          "logical_primary": "effect.reverb",
-          "outputs": [
-            {
-              "native": "noreverb",
-              "role": "effect.reverb"
-            },
-            {
-              "native": null,
-              "role": "effect.reverb.removed",
-              "production": "derived",
-              "complement_of": "effect.reverb"
-            }
-          ]
-        }
-      },
       "evidence": "catalogue_id=mdx:dereverb_mel_band_roformer_anvuew_sdr_19.1729; source=Politrees; metadata_source=bundled_yaml:config_melband_roformer_dereverb_anvuew.yaml; native_signature=noreverb; backend_primary=noreverb; backend_target=noreverb; reviewed_contexts=full_mix"
     },
     "mdx:dereverb_mel_band_roformer_less_aggressive_anvuew_sdr_18.8050": {
       "native_signature": [
         "noreverb"
       ],
-      "intent": "removal:reverb",
+      "intent": "special_fx",
       "contexts": {
         "full_mix": {
-          "logical_primary": "effect.reverb",
+          "logical_primary": "effect.reverb.removed",
           "outputs": [
             {
               "native": "noreverb",
-              "role": "effect.reverb"
+              "role": "effect.reverb.removed"
             },
             {
               "native": null,
-              "role": "effect.reverb.removed",
+              "role": "effect.reverb",
               "production": "derived",
-              "complement_of": "effect.reverb"
+              "complement_of": "effect.reverb.removed"
             }
           ]
         }
@@ -6652,20 +6694,20 @@
       "native_signature": [
         "noreverb"
       ],
-      "intent": "removal:reverb",
+      "intent": "special_fx",
       "contexts": {
         "full_mix": {
-          "logical_primary": "effect.reverb",
+          "logical_primary": "effect.reverb.removed",
           "outputs": [
             {
               "native": "noreverb",
-              "role": "effect.reverb"
+              "role": "effect.reverb.removed"
             },
             {
               "native": null,
-              "role": "effect.reverb.removed",
+              "role": "effect.reverb",
               "production": "derived",
-              "complement_of": "effect.reverb"
+              "complement_of": "effect.reverb.removed"
             }
           ]
         }
@@ -6676,7 +6718,7 @@
       "native_signature": [
         "dry"
       ],
-      "intent": "removal:reverb",
+      "intent": "special_fx",
       "contexts": {
         "full_mix": {
           "logical_primary": "effect.reverb.removed",
@@ -6700,20 +6742,20 @@
       "native_signature": [
         "noreverb"
       ],
-      "intent": "removal:reverb",
+      "intent": "special_fx",
       "contexts": {
         "full_mix": {
-          "logical_primary": "effect.reverb",
+          "logical_primary": "effect.reverb.removed",
           "outputs": [
             {
               "native": "noreverb",
-              "role": "effect.reverb"
+              "role": "effect.reverb.removed"
             },
             {
               "native": null,
-              "role": "effect.reverb.removed",
+              "role": "effect.reverb",
               "production": "derived",
-              "complement_of": "effect.reverb"
+              "complement_of": "effect.reverb.removed"
             }
           ]
         }
@@ -6730,7 +6772,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.drums",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "drums",
@@ -6763,7 +6805,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.drums",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "drums",
@@ -6796,7 +6838,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.drums",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "drums",
@@ -6829,7 +6871,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.drums",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "drums",
@@ -6862,7 +6904,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.drums",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "drums",
@@ -6895,7 +6937,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.drums",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "drums",
@@ -6928,7 +6970,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.drums",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "drums",
@@ -6955,7 +6997,7 @@
       "native_signature": [
         "ambience"
       ],
-      "intent": "vocal_pair",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "cinematic.ambience",
@@ -6979,7 +7021,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -7003,7 +7045,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -7027,7 +7069,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -7051,7 +7093,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -7075,7 +7117,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -7099,7 +7141,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -7123,7 +7165,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -7147,7 +7189,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -7171,7 +7213,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -7195,7 +7237,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -7222,7 +7264,8 @@
       "intent": "karaoke",
       "contexts": {
         "full_mix": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "mix.instrumental_with_backing_vocals",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "Lead",
@@ -7237,7 +7280,8 @@
           ]
         },
         "vocal_split": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "vocal.backing",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "Lead",
@@ -7258,7 +7302,7 @@
       "native_signature": [
         "dry"
       ],
-      "intent": "removal:reverb",
+      "intent": "special_fx",
       "contexts": {
         "full_mix": {
           "logical_primary": "effect.reverb.removed",
@@ -7282,7 +7326,7 @@
       "native_signature": [
         "dry"
       ],
-      "intent": "removal:noise",
+      "intent": "special_fx",
       "contexts": {
         "full_mix": {
           "logical_primary": "effect.noise.removed",
@@ -7306,7 +7350,7 @@
       "native_signature": [
         "speech"
       ],
-      "intent": "removal:noise",
+      "intent": "special_fx",
       "contexts": {
         "full_mix": {
           "logical_primary": "cinematic.speech",
@@ -7330,7 +7374,7 @@
       "native_signature": [
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -7354,7 +7398,7 @@
       "native_signature": [
         "other"
       ],
-      "intent": "removal:noise",
+      "intent": "special_fx",
       "contexts": {
         "full_mix": {
           "logical_primary": "effect.noise.removed",
@@ -7378,7 +7422,7 @@
       "native_signature": [
         "dry"
       ],
-      "intent": "removal:reverb",
+      "intent": "special_fx",
       "contexts": {
         "full_mix": {
           "logical_primary": "effect.reverb.removed",
@@ -7403,7 +7447,7 @@
         "Vocals",
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "dual_voc_inst",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -7426,7 +7470,7 @@
         "singer_1",
         "singer_2"
       ],
-      "intent": "vocal_pair",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.singer_1",
@@ -7448,7 +7492,7 @@
       "native_signature": [
         "explosions"
       ],
-      "intent": "vocal_pair",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "cinematic.explosions",
@@ -7472,7 +7516,7 @@
       "native_signature": [
         "fighting"
       ],
-      "intent": "vocal_pair",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "cinematic.fighting",
@@ -7496,7 +7540,7 @@
       "native_signature": [
         "footsteps"
       ],
-      "intent": "vocal_pair",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "cinematic.footsteps",
@@ -7520,7 +7564,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -7544,7 +7588,7 @@
       "native_signature": [
         "guitar"
       ],
-      "intent": "instrument_target:guitar",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.guitar",
@@ -7555,7 +7599,7 @@
             },
             {
               "native": null,
-              "role": "residual.others",
+              "role": "instrument.guitar.removed",
               "production": "derived",
               "complement_of": "instrument.guitar"
             }
@@ -7569,7 +7613,7 @@
         "vocals",
         "other"
       ],
-      "intent": "vocal_pair",
+      "intent": "dual_voc_inst",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -7591,7 +7635,7 @@
       "native_signature": [
         "other"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -7615,7 +7659,7 @@
       "native_signature": [
         "other"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -7639,7 +7683,7 @@
       "native_signature": [
         "other"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -7663,7 +7707,7 @@
       "native_signature": [
         "other"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -7687,7 +7731,7 @@
       "native_signature": [
         "other"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -7711,7 +7755,7 @@
       "native_signature": [
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -7735,7 +7779,7 @@
       "native_signature": [
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -7759,7 +7803,7 @@
       "native_signature": [
         "Guitar"
       ],
-      "intent": "instrument_target:guitar",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.guitar",
@@ -7783,7 +7827,7 @@
       "native_signature": [
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -7807,7 +7851,7 @@
       "native_signature": [
         "other"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -7831,7 +7875,7 @@
       "native_signature": [
         "other"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -7855,7 +7899,7 @@
       "native_signature": [
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -7879,7 +7923,7 @@
       "native_signature": [
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -7903,7 +7947,7 @@
       "native_signature": [
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -7927,7 +7971,7 @@
       "native_signature": [
         "other"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -7951,7 +7995,7 @@
       "native_signature": [
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -7975,7 +8019,7 @@
       "native_signature": [
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -7999,7 +8043,7 @@
       "native_signature": [
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -8023,7 +8067,7 @@
       "native_signature": [
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -8047,7 +8091,7 @@
       "native_signature": [
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -8071,7 +8115,7 @@
       "native_signature": [
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -8095,7 +8139,7 @@
       "native_signature": [
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -8119,7 +8163,7 @@
       "native_signature": [
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -8143,7 +8187,7 @@
       "native_signature": [
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -8167,7 +8211,7 @@
       "native_signature": [
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -8191,7 +8235,7 @@
       "native_signature": [
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -8215,7 +8259,7 @@
       "native_signature": [
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -8239,7 +8283,7 @@
       "native_signature": [
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -8263,7 +8307,7 @@
       "native_signature": [
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -8287,7 +8331,7 @@
       "native_signature": [
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -8311,7 +8355,7 @@
       "native_signature": [
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -8335,7 +8379,7 @@
       "native_signature": [
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -8359,7 +8403,7 @@
       "native_signature": [
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -8383,7 +8427,7 @@
       "native_signature": [
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -8408,7 +8452,7 @@
         "Vocals",
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "dual_voc_inst",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -8431,7 +8475,7 @@
         "Vocals",
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "dual_voc_inst",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -8456,7 +8500,8 @@
       "intent": "karaoke",
       "contexts": {
         "full_mix": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "mix.instrumental_with_backing_vocals",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "Vocals",
@@ -8471,7 +8516,8 @@
           ]
         },
         "vocal_split": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "vocal.backing",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "Vocals",
@@ -8495,7 +8541,8 @@
       "intent": "karaoke",
       "contexts": {
         "full_mix": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "mix.instrumental_with_backing_vocals",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "karaoke",
@@ -8510,7 +8557,8 @@
           ]
         },
         "vocal_split": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "vocal.backing",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "karaoke",
@@ -8534,7 +8582,8 @@
       "intent": "karaoke",
       "contexts": {
         "full_mix": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "mix.instrumental_with_backing_vocals",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "karaoke",
@@ -8549,7 +8598,8 @@
           ]
         },
         "vocal_split": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "vocal.backing",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "karaoke",
@@ -8573,7 +8623,8 @@
       "intent": "karaoke",
       "contexts": {
         "full_mix": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "mix.instrumental_with_backing_vocals",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "Vocals",
@@ -8588,7 +8639,8 @@
           ]
         },
         "vocal_split": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "vocal.backing",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "Vocals",
@@ -8612,7 +8664,8 @@
       "intent": "karaoke",
       "contexts": {
         "full_mix": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "mix.instrumental_with_backing_vocals",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "Vocals",
@@ -8627,7 +8680,8 @@
           ]
         },
         "vocal_split": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "vocal.backing",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "Vocals",
@@ -8651,7 +8705,8 @@
       "intent": "karaoke",
       "contexts": {
         "full_mix": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "mix.instrumental_with_backing_vocals",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "Vocals",
@@ -8666,7 +8721,8 @@
           ]
         },
         "vocal_split": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "vocal.backing",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "Vocals",
@@ -8690,7 +8746,8 @@
       "intent": "karaoke",
       "contexts": {
         "full_mix": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "mix.instrumental_with_backing_vocals",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "Vocals",
@@ -8705,7 +8762,8 @@
           ]
         },
         "vocal_split": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "vocal.backing",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "Vocals",
@@ -8729,7 +8787,8 @@
       "intent": "karaoke",
       "contexts": {
         "full_mix": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "mix.instrumental_with_backing_vocals",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "Vocals",
@@ -8744,7 +8803,8 @@
           ]
         },
         "vocal_split": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "vocal.backing",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "Vocals",
@@ -8768,7 +8828,8 @@
       "intent": "karaoke",
       "contexts": {
         "full_mix": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "mix.instrumental_with_backing_vocals",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": null,
@@ -8783,7 +8844,8 @@
           ]
         },
         "vocal_split": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "vocal.backing",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": null,
@@ -8804,7 +8866,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -8828,7 +8890,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -8852,7 +8914,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -8876,7 +8938,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -8900,7 +8962,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -8924,7 +8986,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -8948,20 +9010,20 @@
       "native_signature": [
         "Lead"
       ],
-      "intent": "instrument_target:rhythm",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "residual.lead",
+          "logical_primary": "instrument.guitar.lead",
           "outputs": [
             {
               "native": "Lead",
-              "role": "residual.lead"
+              "role": "instrument.guitar.lead"
             },
             {
               "native": null,
-              "role": "instrument.rhythm",
+              "role": "instrument.guitar.rhythm",
               "production": "derived",
-              "complement_of": "residual.lead"
+              "complement_of": "instrument.guitar.lead"
             }
           ]
         }
@@ -8972,7 +9034,7 @@
       "native_signature": [
         "Vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -8997,7 +9059,7 @@
         "mid",
         "side"
       ],
-      "intent": "spatial",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "spatial.center",
@@ -9019,7 +9081,7 @@
       "native_signature": [
         "foley"
       ],
-      "intent": "vocal_pair",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "cinematic.foley",
@@ -9043,7 +9105,7 @@
       "native_signature": [
         "nomusic"
       ],
-      "intent": "vocal_pair",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.music.removed",
@@ -9067,7 +9129,7 @@
       "native_signature": [
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -9091,7 +9153,7 @@
       "native_signature": [
         "percussions"
       ],
-      "intent": "instrument_target:percussion",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.percussion",
@@ -9115,7 +9177,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -9139,7 +9201,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -9164,18 +9226,18 @@
         "vocals",
         "other"
       ],
-      "intent": "vocal_pair",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "vocal.vocals",
+          "logical_primary": "cinematic.speech",
           "outputs": [
             {
               "native": "vocals",
-              "role": "vocal.vocals"
+              "role": "cinematic.speech"
             },
             {
               "native": "other",
-              "role": "mix.instrumental"
+              "role": "mix.music"
             }
           ]
         }
@@ -9186,7 +9248,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -9210,7 +9272,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -9234,7 +9296,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -9258,7 +9320,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -9282,7 +9344,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -9306,7 +9368,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -9330,7 +9392,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -9354,7 +9416,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -9378,7 +9440,7 @@
       "native_signature": [
         "anime"
       ],
-      "intent": "vocal_pair",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "cinematic.anime",
@@ -9402,7 +9464,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -9426,7 +9488,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -9450,7 +9512,7 @@
       "native_signature": [
         "Vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -9474,7 +9536,7 @@
       "native_signature": [
         "Vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -9498,7 +9560,7 @@
       "native_signature": [
         "Vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -9522,7 +9584,7 @@
       "native_signature": [
         "Vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -9546,7 +9608,7 @@
       "native_signature": [
         "Vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -9570,7 +9632,7 @@
       "native_signature": [
         "Vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -9594,7 +9656,7 @@
       "native_signature": [
         "Vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -9618,7 +9680,7 @@
       "native_signature": [
         "Vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -9642,7 +9704,7 @@
       "native_signature": [
         "Vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -9666,7 +9728,7 @@
       "native_signature": [
         "Vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -9690,7 +9752,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -9836,7 +9898,7 @@
             },
             {
               "native": "hh",
-              "role": "instrument.hh"
+              "role": "instrument.hi_hat"
             },
             {
               "native": "cymbals",
@@ -9875,7 +9937,7 @@
             },
             {
               "native": "hh",
-              "role": "instrument.hh"
+              "role": "instrument.hi_hat"
             },
             {
               "native": "ride",
@@ -9895,7 +9957,7 @@
         "Vocals",
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "dual_voc_inst",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -9918,7 +9980,7 @@
         "Vocals",
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "dual_voc_inst",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -9941,7 +10003,7 @@
         "vocals",
         "other"
       ],
-      "intent": "vocal_pair",
+      "intent": "dual_voc_inst",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -9964,7 +10026,7 @@
         "center",
         "wide"
       ],
-      "intent": "spatial",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "spatial.center",
@@ -9986,7 +10048,7 @@
       "native_signature": [
         "wide"
       ],
-      "intent": "spatial",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "spatial.side",
@@ -10010,7 +10072,7 @@
       "native_signature": [
         "similarity"
       ],
-      "intent": "spatial",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "spatial.center",
@@ -10034,20 +10096,20 @@
       "native_signature": [
         "orch"
       ],
-      "intent": "instrument_target:orch",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.orch",
+          "logical_primary": "instrument.orchestra",
           "outputs": [
             {
               "native": null,
-              "role": "mix.instrumental",
+              "role": "instrument.orchestra.removed",
               "production": "derived",
-              "complement_of": "instrument.orch"
+              "complement_of": "instrument.orchestra"
             },
             {
               "native": "orch",
-              "role": "instrument.orch"
+              "role": "instrument.orchestra"
             }
           ]
         }
@@ -10059,7 +10121,7 @@
         "foreground",
         "background"
       ],
-      "intent": "vocal_pair",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "cinematic.foreground_sfx",
@@ -10082,7 +10144,7 @@
         "foreground",
         "background"
       ],
-      "intent": "vocal_pair",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "cinematic.foreground_sfx",
@@ -10104,7 +10166,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -10128,7 +10190,7 @@
       "native_signature": [
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "special_fx",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -10152,7 +10214,7 @@
       "native_signature": [
         "crowd"
       ],
-      "intent": "vocal_pair",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "cinematic.crowd",
@@ -10176,7 +10238,7 @@
       "native_signature": [
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -10200,7 +10262,7 @@
       "native_signature": [
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -10224,7 +10286,7 @@
       "native_signature": [
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -10248,7 +10310,7 @@
       "native_signature": [
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -10272,7 +10334,7 @@
       "native_signature": [
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -10296,7 +10358,7 @@
       "native_signature": [
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -10320,7 +10382,7 @@
       "native_signature": [
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -10344,7 +10406,7 @@
       "native_signature": [
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -10368,7 +10430,7 @@
       "native_signature": [
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -10392,7 +10454,7 @@
       "native_signature": [
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -10416,7 +10478,7 @@
       "native_signature": [
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -10440,7 +10502,7 @@
       "native_signature": [
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -10464,7 +10526,7 @@
       "native_signature": [
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -10488,7 +10550,7 @@
       "native_signature": [
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -10512,7 +10574,7 @@
       "native_signature": [
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -10536,7 +10598,7 @@
       "native_signature": [
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -10560,7 +10622,7 @@
       "native_signature": [
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -10584,7 +10646,7 @@
       "native_signature": [
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -10608,7 +10670,7 @@
       "native_signature": [
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -10632,7 +10694,7 @@
       "native_signature": [
         "Instrumental"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -10659,7 +10721,8 @@
       "intent": "karaoke",
       "contexts": {
         "full_mix": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "mix.instrumental_with_backing_vocals",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "Vocals",
@@ -10674,7 +10737,8 @@
           ]
         },
         "vocal_split": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "vocal.backing",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "Vocals",
@@ -10698,7 +10762,8 @@
       "intent": "karaoke",
       "contexts": {
         "full_mix": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "mix.instrumental_with_backing_vocals",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "Vocals",
@@ -10713,7 +10778,8 @@
           ]
         },
         "vocal_split": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "vocal.backing",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "Vocals",
@@ -10734,7 +10800,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -10758,7 +10824,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -10782,7 +10848,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -10806,7 +10872,7 @@
       "native_signature": [
         "Vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -10830,7 +10896,7 @@
       "native_signature": [
         "Vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -10854,7 +10920,7 @@
       "native_signature": [
         "Vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -10878,7 +10944,7 @@
       "native_signature": [
         "Vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -10902,7 +10968,7 @@
       "native_signature": [
         "Vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -10926,7 +10992,7 @@
       "native_signature": [
         "Vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -10950,7 +11016,7 @@
       "native_signature": [
         "Vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -10974,7 +11040,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -10998,7 +11064,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -11022,7 +11088,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -11046,7 +11112,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -11070,7 +11136,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -11094,7 +11160,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -11118,7 +11184,7 @@
       "native_signature": [
         "Guitar"
       ],
-      "intent": "instrument_target:guitar",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "instrument.guitar",
@@ -11142,7 +11208,7 @@
       "native_signature": [
         "other"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -11166,7 +11232,7 @@
       "native_signature": [
         "other"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -11190,7 +11256,7 @@
       "native_signature": [
         "other"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -11218,7 +11284,8 @@
       "intent": "karaoke",
       "contexts": {
         "full_mix": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "mix.instrumental_with_backing_vocals",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "Vocals",
@@ -11231,7 +11298,8 @@
           ]
         },
         "vocal_split": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "vocal.backing",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "Vocals",
@@ -11250,7 +11318,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -11274,7 +11342,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -11298,7 +11366,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -11322,7 +11390,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -11346,7 +11414,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -11371,7 +11439,7 @@
         "Instrumental",
         "Vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "dual_voc_inst",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -11393,7 +11461,7 @@
       "native_signature": [
         "other"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -11420,7 +11488,8 @@
       "intent": "karaoke",
       "contexts": {
         "full_mix": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "mix.instrumental_with_backing_vocals",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "Vocals",
@@ -11435,7 +11504,8 @@
           ]
         },
         "vocal_split": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "vocal.backing",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "Vocals",
@@ -11456,7 +11526,7 @@
       "native_signature": [
         "other"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -11480,7 +11550,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -11512,7 +11582,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.bass",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "bass",
@@ -11550,7 +11620,8 @@
       "intent": "karaoke",
       "contexts": {
         "full_mix": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "mix.instrumental_with_backing_vocals",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "Lead",
@@ -11565,7 +11636,8 @@
           ]
         },
         "vocal_split": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "vocal.backing",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "Lead",
@@ -11586,7 +11658,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "dual_voc_inst",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -11613,7 +11685,8 @@
       "intent": "karaoke",
       "contexts": {
         "full_mix": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "mix.instrumental_with_backing_vocals",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "Vocals",
@@ -11628,7 +11701,8 @@
           ]
         },
         "vocal_split": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "vocal.backing",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "Vocals",
@@ -11652,7 +11726,8 @@
       "intent": "karaoke",
       "contexts": {
         "full_mix": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "mix.instrumental_with_backing_vocals",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "Vocals",
@@ -11667,7 +11742,8 @@
           ]
         },
         "vocal_split": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "vocal.backing",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "Vocals",
@@ -11691,7 +11767,8 @@
       "intent": "karaoke",
       "contexts": {
         "full_mix": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "mix.instrumental_with_backing_vocals",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "Vocals",
@@ -11706,7 +11783,8 @@
           ]
         },
         "vocal_split": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "vocal.backing",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "Vocals",
@@ -11730,7 +11808,8 @@
       "intent": "karaoke",
       "contexts": {
         "full_mix": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "mix.instrumental_with_backing_vocals",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "Vocals",
@@ -11745,7 +11824,8 @@
           ]
         },
         "vocal_split": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "vocal.backing",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "Vocals",
@@ -11769,7 +11849,8 @@
       "intent": "karaoke",
       "contexts": {
         "full_mix": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "mix.instrumental_with_backing_vocals",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "Vocals",
@@ -11784,7 +11865,8 @@
           ]
         },
         "vocal_split": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "vocal.backing",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "Vocals",
@@ -11822,7 +11904,7 @@
             },
             {
               "native": "Effects",
-              "role": "effect.reverb"
+              "role": "cinematic.sfx"
             }
           ]
         }
@@ -11834,7 +11916,7 @@
         "male",
         "female"
       ],
-      "intent": "vocal_pair",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.male",
@@ -11856,7 +11938,7 @@
       "native_signature": [
         "Similarity"
       ],
-      "intent": "spatial",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "spatial.center",
@@ -11886,7 +11968,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.drums",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "Drums",
@@ -11919,7 +12001,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.drums",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "Drums",
@@ -11952,7 +12034,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.drums",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "drums",
@@ -11985,7 +12067,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.drums",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "Drums",
@@ -12018,7 +12100,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "vocal.alto",
+          "logical_primary": "vocal.soprano",
           "outputs": [
             {
               "native": "alto",
@@ -12026,7 +12108,7 @@
             },
             {
               "native": "bass",
-              "role": "instrument.bass"
+              "role": "vocal.bass"
             },
             {
               "native": "soprano",
@@ -12051,7 +12133,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.drums",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "drums",
@@ -12084,7 +12166,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.drums",
+          "logical_primary": "instrument.piano",
           "outputs": [
             {
               "native": "drums",
@@ -12133,7 +12215,7 @@
             },
             {
               "native": "bass",
-              "role": "instrument.bass"
+              "role": "vocal.bass"
             }
           ]
         }
@@ -12150,7 +12232,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.drums",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "drums",
@@ -12183,7 +12265,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.drums",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "drums",
@@ -12211,7 +12293,7 @@
         "center",
         "wide"
       ],
-      "intent": "spatial",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "spatial.center",
@@ -12236,7 +12318,7 @@
         "LRS",
         "CEN"
       ],
-      "intent": "spatial",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
           "logical_primary": "cinematic.front_lr",
@@ -12272,7 +12354,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.drums",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "drums",
@@ -12305,7 +12387,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.drums",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "drums",
@@ -12338,7 +12420,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.drums",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "drums",
@@ -12371,7 +12453,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.drums",
+          "logical_primary": "vocal.vocals",
           "outputs": [
             {
               "native": "drums",
@@ -12404,7 +12486,7 @@
       "intent": "multi_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.drums",
+          "logical_primary": "instrument.piano",
           "outputs": [
             {
               "native": "drums",
@@ -12431,7 +12513,7 @@
       "native_signature": [
         "vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -12456,7 +12538,7 @@
         "Instrumental",
         "Vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -12479,7 +12561,7 @@
         "Instrumental",
         "Vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -12502,7 +12584,7 @@
         "Instrumental",
         "Vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -12525,7 +12607,7 @@
         "Instrumental",
         "Vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -12548,7 +12630,7 @@
         "Instrumental",
         "Vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -12571,7 +12653,7 @@
         "Instrumental",
         "Vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -12594,7 +12676,7 @@
         "Instrumental",
         "Vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -12617,18 +12699,18 @@
         "No Woodwinds",
         "Woodwinds"
       ],
-      "intent": "instrument_target:woodwind",
+      "intent": "specialty_stem",
       "contexts": {
         "full_mix": {
-          "logical_primary": "instrument.woodwind.removed",
+          "logical_primary": "instrument.woodwinds.removed",
           "outputs": [
             {
               "native": "No Woodwinds",
-              "role": "instrument.woodwind.removed"
+              "role": "instrument.woodwinds.removed"
             },
             {
               "native": "Woodwinds",
-              "role": "instrument.woodwind"
+              "role": "instrument.woodwinds"
             }
           ]
         }
@@ -12640,7 +12722,7 @@
         "Instrumental",
         "Vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -12663,7 +12745,7 @@
         "Instrumental",
         "Vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -12686,7 +12768,7 @@
         "Instrumental",
         "Vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -12709,7 +12791,7 @@
         "Instrumental",
         "Vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.vocals",
@@ -12735,7 +12817,8 @@
       "intent": "karaoke",
       "contexts": {
         "full_mix": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "mix.instrumental_with_backing_vocals",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "Instrumental",
@@ -12748,7 +12831,8 @@
           ]
         },
         "vocal_split": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "vocal.backing",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "Instrumental",
@@ -12771,7 +12855,8 @@
       "intent": "karaoke",
       "contexts": {
         "full_mix": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "mix.instrumental_with_backing_vocals",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "Instrumental",
@@ -12784,7 +12869,8 @@
           ]
         },
         "vocal_split": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "vocal.backing",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "Instrumental",
@@ -12804,7 +12890,7 @@
         "Instrumental",
         "Vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -12827,7 +12913,7 @@
         "Instrumental",
         "Vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -12850,7 +12936,7 @@
         "Instrumental",
         "Vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -12873,7 +12959,7 @@
         "Instrumental",
         "Vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -12896,7 +12982,7 @@
         "Instrumental",
         "Vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -12919,7 +13005,7 @@
         "Instrumental",
         "Vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -12942,7 +13028,7 @@
         "Instrumental",
         "Vocals"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrumental",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -12965,7 +13051,7 @@
         "Vocals",
         "Instrumental"
       ],
-      "intent": "backing_vocal_separation",
+      "intent": "vocals",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.backing",
@@ -13001,7 +13087,7 @@
         "Echo",
         "No Echo"
       ],
-      "intent": "vocal_pair",
+      "intent": "special_fx",
       "contexts": {
         "full_mix": {
           "logical_primary": "effect.echo.removed",
@@ -13024,7 +13110,7 @@
         "Echo",
         "No Echo"
       ],
-      "intent": "vocal_pair",
+      "intent": "special_fx",
       "contexts": {
         "full_mix": {
           "logical_primary": "effect.echo.removed",
@@ -13047,18 +13133,18 @@
         "Dry",
         "No Dry"
       ],
-      "intent": "removal:reverb",
+      "intent": "special_fx",
       "contexts": {
         "full_mix": {
-          "logical_primary": "effect.reverb",
+          "logical_primary": "effect.reverb.removed",
           "outputs": [
             {
               "native": "Dry",
-              "role": "effect.reverb"
+              "role": "effect.reverb.removed"
             },
             {
               "native": "No Dry",
-              "role": "effect.reverb.removed"
+              "role": "effect.reverb"
             }
           ]
         }
@@ -13070,18 +13156,18 @@
         "No Reverb",
         "Reverb"
       ],
-      "intent": "removal:reverb",
+      "intent": "special_fx",
       "contexts": {
         "full_mix": {
-          "logical_primary": "effect.reverb.removed",
+          "logical_primary": "effect.reverb_echo.removed",
           "outputs": [
             {
               "native": "No Reverb",
-              "role": "effect.reverb.removed"
+              "role": "effect.reverb_echo.removed"
             },
             {
               "native": "Reverb",
-              "role": "effect.reverb"
+              "role": "effect.reverb_echo"
             }
           ]
         }
@@ -13093,10 +13179,10 @@
         "No Noise",
         "Noise"
       ],
-      "intent": "removal:noise",
+      "intent": "special_fx",
       "contexts": {
         "full_mix": {
-          "logical_primary": "effect.noise",
+          "logical_primary": "effect.noise.removed",
           "outputs": [
             {
               "native": "No Noise",
@@ -13116,10 +13202,10 @@
         "No Noise",
         "Noise"
       ],
-      "intent": "removal:noise",
+      "intent": "special_fx",
       "contexts": {
         "full_mix": {
-          "logical_primary": "effect.noise",
+          "logical_primary": "effect.noise.removed",
           "outputs": [
             {
               "native": "No Noise",

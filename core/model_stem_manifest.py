@@ -18,6 +18,7 @@ from typing import Mapping, Sequence
 
 from .debug_log import log_event
 from .model_identity import parse_stored_model_id
+from .model_stem_semantics import MODEL_STEM_INTENTS
 from .paths import BUNDLED_DATA_DIR
 from .stem_roles import (
     ModelStemSemantics,
@@ -434,6 +435,8 @@ def _parse_models(
         if len(set(normalized_signature)) != len(normalized_signature):
             raise _error(path + ("native_signature",), "duplicate native key")
         intent = _string(model["intent"], path + ("intent",))
+        if intent not in MODEL_STEM_INTENTS:
+            raise _error(path + ("intent",), "invalid model stem intent")
         evidence = _string(model["evidence"], path + ("evidence",))
         raw_contexts = _mapping(model["contexts"], path + ("contexts",))
         if not raw_contexts:
@@ -511,11 +514,6 @@ def _parse_models(
                         context_path + ("logical_secondary",),
                         "logical secondary role must occur exactly once in outputs",
                     )
-            if not outputs[primary_indexes[0]].selected_by_default:
-                raise _error(
-                    context_path + ("outputs", primary_indexes[0], "selected_by_default"),
-                    "logical primary must remain selected by default",
-                )
             seen_roles: dict[StemRoleId | StemLiteral, int] = {}
             for index, output in enumerate(outputs):
                 previous = seen_roles.get(output.role)
