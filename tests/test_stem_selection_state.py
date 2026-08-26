@@ -50,7 +50,7 @@ class StemSelectionModuleBoundaryTests(unittest.TestCase):
         from ui.option_summaries import secondary_stem_pair_label
 
         self.assertEqual(secondary_stem_pair_label("voc_inst"), "Vocals/Instrumental")
-        self.assertEqual(secondary_stem_pair_label("other"), "Residual/Mix minus Residual")
+        self.assertEqual(secondary_stem_pair_label("other"), "Residual/Residual Removed")
         self.assertEqual(secondary_stem_pair_label("bass"), "Bass/Bass Removed")
         self.assertEqual(secondary_stem_pair_label("drums"), "Drums/Drums Removed")
 
@@ -271,6 +271,7 @@ class StemSelectionStateRoundTripTests(unittest.TestCase):
         )
 
     def test_explicit_pair_secondary_is_resolved_by_role_identity(self) -> None:
+        from core.stem_roles import StemRoleId
         from core.stem_selection import StemSelectionState
 
         state = StemSelectionState()
@@ -281,6 +282,14 @@ class StemSelectionStateRoundTripTests(unittest.TestCase):
             secondary_key="is_secondary_stem_only",
             stem_pair_id="pair.karaoke",
         )
+        self.assertEqual(
+            tuple(route.role for route in state.routes),
+            (
+                StemRoleId("mix.instrumental_with_backing_vocals"),
+                StemRoleId("vocal.lead"),
+            ),
+        )
+        secondary = state.routes[1]
 
         self.assertEqual(
             self._read_secondary(
@@ -288,7 +297,7 @@ class StemSelectionStateRoundTripTests(unittest.TestCase):
                 backend_secondary=None,
                 stem_pair_id="pair.karaoke",
             ),
-            "mix.instrumental_with_backing_vocals",
+            secondary.concept,
         )
 
     def test_positional_sentinel_maps_to_primary_route_concept(self) -> None:
@@ -428,6 +437,7 @@ class LegacyStateSemanticPersistenceTests(unittest.TestCase):
     """Identity-less Save Stems state keeps reviewed choices until Task 8."""
 
     def test_karaoke_bucket_choices_persist_their_distinct_role_ids(self) -> None:
+        from core.stem_roles import StemRoleId
         from core.stem_selection import ExclusiveView, StemSelectionState
 
         settings = Settings.defaults()
@@ -439,13 +449,16 @@ class LegacyStateSemanticPersistenceTests(unittest.TestCase):
             secondary_key="is_secondary_stem_only",
             stem_pair_id="pair.karaoke",
         )
-        for route, expected_role in zip(
-            state.routes,
-            ("vocal.lead", "mix.instrumental_with_backing_vocals"),
-            strict=True,
-        ):
+        self.assertEqual(
+            tuple(route.role for route in state.routes),
+            (
+                StemRoleId("mix.instrumental_with_backing_vocals"),
+                StemRoleId("vocal.lead"),
+            ),
+        )
+        for route in state.routes:
             state.write(settings, ExclusiveView(choice=route.concept))
-            self.assertEqual(settings.process.stem_focus, expected_role)
+            self.assertEqual(settings.process.stem_focus, route.concept)
 
     def test_explicit_bv_pair_persists_reviewed_pair_roles(self) -> None:
         from core.stem_selection import ExclusiveView, StemSelectionState
@@ -526,7 +539,9 @@ class LegacyStateSemanticPersistenceTests(unittest.TestCase):
         self.assertEqual(settings.process.stem_focus, "instrument.bass.removed")
 
     def test_reviewed_role_reselects_its_identityless_route(self) -> None:
+        from core.stem_roles import StemRoleId
         from core.stem_selection import ExclusiveView, StemSelectionState
+        from core.stems import StemRouteKind
 
         settings = Settings.defaults()
         state = StemSelectionState()
@@ -537,13 +552,34 @@ class LegacyStateSemanticPersistenceTests(unittest.TestCase):
             secondary_key="is_secondary_stem_only",
         )
         state.routes = _reviewed_target_routes("mdx:bs_dereverb_2250_anvuew", "noreverb")
-        state.write(settings, ExclusiveView(choice=state.routes[1].concept))
-        self.assertEqual(settings.process.stem_focus, "effect.reverb.removed")
+        self.assertEqual(
+            tuple(
+                (
+                    route.native.raw if route.native is not None else None,
+                    route.role,
+                    route.kind,
+                    route.logical_primary,
+                )
+                for route in state.routes
+            ),
+            (
+                (
+                    "noreverb",
+                    StemRoleId("effect.reverb.removed"),
+                    StemRouteKind.NATIVE,
+                    True,
+                ),
+                (None, StemRoleId("effect.reverb"), StemRouteKind.DERIVED, False),
+            ),
+        )
+        selected = state.routes[1]
+        state.write(settings, ExclusiveView(choice=selected.concept))
+        self.assertEqual(settings.process.stem_focus, selected.concept)
 
         restored = state.read(settings)
         self.assertIsInstance(restored, ExclusiveView)
         assert isinstance(restored, ExclusiveView)
-        self.assertEqual(restored.choice, state.routes[1].concept)
+        self.assertEqual(restored.choice, selected.concept)
 
     def test_manifest_signature_direction_controls_removal_compatibility(self) -> None:
         from core.model_stem_manifest import resolve_model_stem_semantics
@@ -689,6 +725,7 @@ class LegacyStateSemanticPersistenceTests(unittest.TestCase):
                 )
 
     def test_restore_accepts_only_namespaced_role_or_position(self) -> None:
+        from core.stem_roles import StemRoleId
         from core.stem_selection import _TOGGLE_ALL, ExclusiveView, StemSelectionState
 
         state = StemSelectionState()
@@ -711,7 +748,10 @@ class LegacyStateSemanticPersistenceTests(unittest.TestCase):
         restored = state.read(settings)
         self.assertIsInstance(restored, ExclusiveView)
         assert isinstance(restored, ExclusiveView)
-        self.assertEqual(restored.choice, state.routes[0].concept)
+        reverb_route = next(
+            route for route in state.routes if route.role == StemRoleId("effect.reverb")
+        )
+        self.assertEqual(restored.choice, reverb_route.concept)
 
     def test_legacy_bucket_focus_does_not_activate_subset_or_demucs_quick_state(self) -> None:
         from bundled.constants import ALL_STEMS, BASS_STEM, VOCAL_STEM

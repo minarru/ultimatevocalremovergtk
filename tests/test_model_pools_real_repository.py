@@ -376,7 +376,7 @@ class RealModelPoolTests(unittest.TestCase):
     def test_karaoke_model_list_is_populated(self) -> None:
         self.assertEqual(self.repo.karaoke_model_list(self.settings), [f"vr:{_VR_KARAOKE}"])
 
-    def test_karaoke_pool_fails_closed_without_exact_reviewed_split_context(self) -> None:
+    def test_karaoke_pool_rejects_only_models_without_exact_reviewed_split_context(self) -> None:
         rejected_vr = (
             "Metadata-Only-Karaoke",
             "4_HP-Vocal-UVR",
@@ -396,13 +396,13 @@ class RealModelPoolTests(unittest.TestCase):
                 },
             )
 
-        waived = "UVR_MDXNET_KARA"
-        waived_hash = _write_checkpoint(
-            os.path.join(paths.MDX_MODELS_DIR, f"{waived}.onnx"),
-            b"waived-karaoke-weights",
+        reviewed = "UVR_MDXNET_KARA"
+        reviewed_hash = _write_checkpoint(
+            os.path.join(paths.MDX_MODELS_DIR, f"{reviewed}.onnx"),
+            b"reviewed-karaoke-weights",
         )
         _write_json(
-            os.path.join(paths.MDX_HASH_DIR, f"{waived_hash}.json"),
+            os.path.join(paths.MDX_HASH_DIR, f"{reviewed_hash}.json"),
             {
                 "compensate": 1.035,
                 "mdx_dim_f_set": 2048,
@@ -416,7 +416,7 @@ class RealModelPoolTests(unittest.TestCase):
 
         self.assertEqual(
             self.repo.karaoke_model_list(self.settings),
-            [f"vr:{_VR_KARAOKE}"],
+            [f"vr:{_VR_KARAOKE}", f"mdx:{reviewed}"],
         )
 
     def test_real_planner_accepts_only_exact_karaoke_splitter_ids(self) -> None:
