@@ -4,6 +4,7 @@ import sys
 import unittest
 import urllib.error
 from typing import Any, Mapping, Optional
+from unittest import mock
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -20,6 +21,7 @@ from catalogue.stem_audit import (  # noqa: E402
     StemAuditDiagnostic,
     StemAuditResult,
     StemRelationshipEvidence,
+    audit_catalogue_stems,
 )
 
 from core.catalogue_types import SourceId  # noqa: E402
@@ -723,6 +725,349 @@ class CollectEntriesTests(unittest.TestCase):
         self.assertEqual(karaoke.source, "mvsepless")
 
 
+class CompactTrvlvrEvidenceTests(unittest.TestCase):
+    _ROWS = (
+        (
+            "mdx:MDX23C-8KFFT-InstVoc_HQ",
+            "mdx23c_download_list",
+            "MDX23C Model: MDX23C-InstVoc HQ",
+            "MDX23C-8KFFT-InstVoc_HQ.ckpt",
+            "model_2_stem_full_band_8k.yaml",
+            "",
+            ("Vocals", "Instrumental"),
+            "",
+            "Vocals",
+            ("Vocals", "Instrumental"),
+            "451765e869b78dcb9ca9188a74da31f581b7254ff0e8b532aa76b974148de947",
+        ),
+        (
+            "mdx:MDX23C-8KFFT-InstVoc_HQ_2",
+            "mdx23c_download_vip_list",
+            "MDX23C Model VIP: MDX23C-InstVoc HQ 2",
+            "MDX23C-8KFFT-InstVoc_HQ_2.ckpt",
+            "model_2_stem_full_band_8k.yaml",
+            "",
+            ("Vocals", "Instrumental"),
+            "",
+            "Vocals",
+            ("Vocals", "Instrumental"),
+            "451765e869b78dcb9ca9188a74da31f581b7254ff0e8b532aa76b974148de947",
+        ),
+        (
+            "mdx:melband_roformer_inst_v1",
+            "roformer_download_list",
+            "Roformer Model: MelBand Roformer Kim | Inst V1 by Unwa",
+            "melband_roformer_inst_v1.ckpt",
+            "config_melbandroformer_inst.yaml",
+            "https://raw.githubusercontent.com/TRvlvr/application_data/main/mdx_model_data/mdx_c_configs/config_melbandroformer_inst.yaml",
+            ("Instrumental", "Vocals"),
+            "Instrumental",
+            "Instrumental",
+            ("Instrumental",),
+            "723af6755b5624be0a58351a13c930c472b51ef677cf2c7943394fefed7c3d4d",
+        ),
+        (
+            "mdx:melband_roformer_inst_v2",
+            "roformer_download_list",
+            "Roformer Model: MelBand Roformer Kim | Inst V2 by Unwa",
+            "melband_roformer_inst_v2.ckpt",
+            "config_melbandroformer_inst_v2.yaml",
+            "https://raw.githubusercontent.com/TRvlvr/application_data/main/mdx_model_data/mdx_c_configs/config_melbandroformer_inst_v2.yaml",
+            ("Instrumental", "Vocals"),
+            "Instrumental",
+            "Instrumental",
+            ("Instrumental",),
+            "4b902a7360a930c178edb4846b30e4e326aa1219d1b2daf660d46a311e0cd50b",
+        ),
+        (
+            "mdx:melband_roformer_instvoc_duality_v1",
+            "roformer_download_list",
+            "Roformer Model: MelBand Roformer Kim | InstVoc Duality V1 by Unwa",
+            "melband_roformer_instvoc_duality_v1.ckpt",
+            "config_melbandroformer_instvoc_duality.yaml",
+            "https://raw.githubusercontent.com/TRvlvr/application_data/main/mdx_model_data/mdx_c_configs/config_melbandroformer_instvoc_duality.yaml",
+            ("Vocals", "Instrumental"),
+            "",
+            "Vocals",
+            ("Vocals", "Instrumental"),
+            "62dbc3ecf29c7ac99df35003f8cb72da3348d646cb5e6d50e07323551c3d968f",
+        ),
+        (
+            "mdx:melband_roformer_instvox_duality_v2",
+            "roformer_download_list",
+            "Roformer Model: MelBand Roformer Kim | InstVoc Duality V2 by Unwa",
+            "melband_roformer_instvox_duality_v2.ckpt",
+            "config_melbandroformer_instvoc_duality.yaml",
+            "https://raw.githubusercontent.com/TRvlvr/application_data/main/mdx_model_data/mdx_c_configs/config_melbandroformer_instvoc_duality.yaml",
+            ("Vocals", "Instrumental"),
+            "",
+            "Vocals",
+            ("Vocals", "Instrumental"),
+            "62dbc3ecf29c7ac99df35003f8cb72da3348d646cb5e6d50e07323551c3d968f",
+        ),
+        (
+            "mdx:model_bs_roformer_ep_317_sdr_12.9755",
+            "roformer_download_list",
+            "Roformer Model: BS-Roformer-Viperx-1297",
+            "model_bs_roformer_ep_317_sdr_12.9755.ckpt",
+            "model_bs_roformer_ep_317_sdr_12.9755.yaml",
+            "https://raw.githubusercontent.com/TRvlvr/application_data/main/mdx_model_data/mdx_c_configs/model_bs_roformer_ep_317_sdr_12.9755.yaml",
+            ("Vocals", "Instrumental"),
+            "Vocals",
+            "Vocals",
+            ("Vocals",),
+            "2bfdd16c656bd9519aba757cc4f8834b7ede675eb1e00ec4772d74ae1c41af7f",
+        ),
+        (
+            "mdx:model_bs_roformer_ep_368_sdr_12.9628",
+            "roformer_download_list",
+            "Roformer Model: BS-Roformer-Viperx-1296",
+            "model_bs_roformer_ep_368_sdr_12.9628.ckpt",
+            "model_bs_roformer_ep_368_sdr_12.9628.yaml",
+            "https://raw.githubusercontent.com/TRvlvr/application_data/main/mdx_model_data/mdx_c_configs/model_bs_roformer_ep_368_sdr_12.9628.yaml",
+            ("Vocals", "Instrumental"),
+            "Vocals",
+            "Vocals",
+            ("Vocals",),
+            "aea599b3f9bd4892a9c6bf5ac7c44787d3c99f717903d16054702665d477c86b",
+        ),
+        (
+            "mdx:model_bs_roformer_ep_937_sdr_10.5309",
+            "roformer_download_list",
+            "Roformer Model: BS-Roformer-Viperx-1053",
+            "model_bs_roformer_ep_937_sdr_10.5309.ckpt",
+            "model_bs_roformer_ep_937_sdr_10.5309.yaml",
+            "https://raw.githubusercontent.com/TRvlvr/application_data/main/mdx_model_data/mdx_c_configs/model_bs_roformer_ep_937_sdr_10.5309.yaml",
+            ("No Drum-Bass", "Drum-Bass"),
+            "No Drum-Bass",
+            "No Drum-Bass",
+            ("No Drum-Bass",),
+            "302b6cee54adf39743b097b145ad4f64c37f3bd31b84791da32f963fb3692d04",
+        ),
+        (
+            "mdx:model_mel_band_roformer_ep_3005_sdr_11.4360",
+            "roformer_download_list",
+            "Roformer Model: Mel-Roformer-Viperx-1143",
+            "model_mel_band_roformer_ep_3005_sdr_11.4360.ckpt",
+            "model_mel_band_roformer_ep_3005_sdr_11.4360.yaml",
+            "https://raw.githubusercontent.com/TRvlvr/application_data/main/mdx_model_data/mdx_c_configs/model_mel_band_roformer_ep_3005_sdr_11.4360.yaml",
+            ("Vocals", "Instrumental"),
+            "Vocals",
+            "Vocals",
+            ("Vocals",),
+            "d9b083b48dfdd0bd10f8a29a9c18777b0419496d938827f48a1db31bf0193aa3",
+        ),
+    )
+
+    def setUp(self) -> None:
+        os.environ["UVR_DISABLE_CATALOGUE_STEMS"] = "1"
+        self.addCleanup(lambda: os.environ.pop("UVR_DISABLE_CATALOGUE_STEMS", None))
+
+    def _coordinator(self):
+        from core.catalogue_coordinator import CatalogueCoordinator
+
+        upstream: dict[str, dict[str, object]] = {
+            "vr_download_list": {},
+            "demucs_download_list": {},
+        }
+        other_network: dict[str, object] = {}
+        for (
+            _model_id,
+            list_key,
+            label,
+            checkpoint,
+            config,
+            config_url,
+            _instruments,
+            _target,
+            _primary,
+            _signature,
+            _sha256,
+        ) in self._ROWS:
+            upstream.setdefault(list_key, {})[label] = {checkpoint: config}
+            if config_url:
+                other_network[label] = {
+                    checkpoint: f"https://weights.test/{checkpoint}",
+                    config: config_url,
+                }
+        upstream["other_network_list"] = other_network
+        inst_v1 = self._ROWS[2]
+        inst_v2 = self._ROWS[3]
+        politrees = {
+            "roformer_download_list": {
+                "Later rejected Inst V1 alias": {
+                    inst_v1[3]: f"https://later.test/{inst_v1[3]}",
+                    "config_melband_roformer_inst.yaml": (
+                        "https://later.test/config_melband_roformer_inst.yaml"
+                    ),
+                },
+                inst_v2[2]: {
+                    inst_v2[3]: f"https://later.test/{inst_v2[3]}",
+                    "config_melband_roformer_inst_v2.yaml": (
+                        "https://later.test/config_melband_roformer_inst_v2.yaml"
+                    ),
+                },
+            }
+        }
+        coordinator = CatalogueCoordinator(
+            sources={
+                SourceId.UPSTREAM: _local(SourceId.UPSTREAM, upstream),
+                SourceId.POLITREES: _local(SourceId.POLITREES, politrees),
+                SourceId.EXTRAS: _disabled(SourceId.EXTRAS),
+                SourceId.MVSEPLESS: _disabled(SourceId.MVSEPLESS),
+            }
+        )
+        self.addCleanup(coordinator.close)
+        return coordinator
+
+    def test_all_ten_compact_ids_reconcile_from_exact_current_evidence(self) -> None:
+        from core.model_stem_manifest import load_bundled_stem_semantics
+
+        expected_by_config = {row[4]: row for row in self._ROWS}
+
+        def load_yaml(
+            yaml_name: str,
+            yaml_url: str = "",
+            *,
+            policy: object,
+        ) -> tuple[list[str], str, str, str, str]:
+            del policy
+            row = expected_by_config[yaml_name]
+            self.assertEqual(yaml_url, row[5])
+            metadata_source = (
+                f"remote_yaml:{yaml_name}" if yaml_url else f"bundled_yaml:{yaml_name}"
+            )
+            return list(row[6]), row[7], "Roformer", metadata_source, row[10]
+
+        ctx = catalogue.CatalogueContext()
+        registry = load_bundled_stem_semantics()
+        coordinator = self._coordinator()
+        with mock.patch.object(catalogue, "_load_yaml_meta", side_effect=load_yaml):
+            snapshot, entries = catalogue.collect_entries(
+                ctx,
+                allow_network=False,
+                coordinator=coordinator,
+                registry=registry,
+            )
+
+        expected_ids = {row[0] for row in self._ROWS}
+        by_id = {
+            model_id: entry
+            for entry in entries
+            if (model_id := catalogue.catalogue_projection(entry)[0]) in expected_ids
+        }
+        self.assertEqual(set(by_id), expected_ids)
+        for row in self._ROWS:
+            with self.subTest(model_id=row[0]):
+                entry = by_id[row[0]]
+                self.assertEqual(entry.weight_file, row[3])
+                self.assertEqual(entry.config_yaml, row[4])
+                self.assertEqual(entry.config_url, row[5])
+                self.assertEqual(tuple(entry.instruments), row[6])
+                self.assertEqual(entry.target_instrument, row[7])
+                self.assertEqual(entry.primary_stem, row[8])
+                self.assertEqual(entry.config_sha256, row[10])
+                self.assertIsNotNone(entry.stem_semantics)
+                assert entry.stem_semantics is not None
+                self.assertTrue(entry.stem_semantics.reviewed)
+                self.assertEqual(entry.stem_semantics.native_signature, row[9])
+
+        self.assertNotIn("Later rejected Inst V1 alias", snapshot.mdx)
+        self.assertEqual(snapshot.mdx[self._ROWS[3][2]], {self._ROWS[3][3]: self._ROWS[3][4]})
+        result = audit_catalogue_stems(list(by_id.values()), ctx, registry=registry)
+        compact_contract_codes = {
+            "context-unreviewed",
+            "native-signature",
+            "pair-context-incomplete",
+            "reference-route-set",
+        }
+        affected = tuple(
+            diagnostic
+            for diagnostic in result.diagnostics
+            if diagnostic.code in compact_contract_codes
+            and set(diagnostic.model_ids) & expected_ids
+        )
+        self.assertEqual(affected, ())
+
+    def test_non_basename_scalar_is_not_config_evidence(self) -> None:
+        from core.catalogue_coordinator import CatalogueCoordinator
+
+        coordinator = CatalogueCoordinator(
+            sources={
+                SourceId.UPSTREAM: _local(
+                    SourceId.UPSTREAM,
+                    {
+                        "roformer_download_list": {
+                            "Roformer Model: Nested": {"nested.ckpt": "configs/nested.yaml"}
+                        }
+                    },
+                ),
+                SourceId.POLITREES: _disabled(SourceId.POLITREES),
+                SourceId.EXTRAS: _disabled(SourceId.EXTRAS),
+                SourceId.MVSEPLESS: _disabled(SourceId.MVSEPLESS),
+            }
+        )
+        self.addCleanup(coordinator.close)
+        with mock.patch.object(catalogue, "_load_yaml_meta") as load_yaml:
+            _snapshot, entries = catalogue.collect_entries(
+                catalogue.CatalogueContext(),
+                allow_network=False,
+                coordinator=coordinator,
+            )
+
+        self.assertEqual(entries[0].config_yaml, "")
+        self.assertEqual(entries[0].config_url, "")
+        load_yaml.assert_not_called()
+
+    def test_mismatched_other_network_pair_does_not_supply_a_url(self) -> None:
+        from core.catalogue_coordinator import CatalogueCoordinator
+
+        coordinator = CatalogueCoordinator(
+            sources={
+                SourceId.UPSTREAM: _local(
+                    SourceId.UPSTREAM,
+                    {
+                        "roformer_download_list": {
+                            "Roformer Model: Mismatch": {"mismatch.ckpt": "mismatch.yaml"}
+                        },
+                        "other_network_list": {
+                            "Roformer Model: Mismatch": {
+                                "different.ckpt": "https://weights.test/different.ckpt",
+                                "mismatch.yaml": "https://configs.test/mismatch.yaml",
+                            }
+                        },
+                    },
+                ),
+                SourceId.POLITREES: _disabled(SourceId.POLITREES),
+                SourceId.EXTRAS: _disabled(SourceId.EXTRAS),
+                SourceId.MVSEPLESS: _disabled(SourceId.MVSEPLESS),
+            }
+        )
+        self.addCleanup(coordinator.close)
+
+        def load_yaml(
+            yaml_name: str,
+            yaml_url: str = "",
+            *,
+            policy: object,
+        ) -> tuple[list[str], str, str, str, str]:
+            del policy
+            self.assertEqual(yaml_name, "mismatch.yaml")
+            self.assertEqual(yaml_url, "")
+            return [], "", "", "unavailable", ""
+
+        with mock.patch.object(catalogue, "_load_yaml_meta", side_effect=load_yaml):
+            snapshot, entries = catalogue.collect_entries(
+                catalogue.CatalogueContext(),
+                allow_network=False,
+                coordinator=coordinator,
+            )
+
+        self.assertEqual(entries[0].config_yaml, "mismatch.yaml")
+        self.assertEqual(entries[0].config_url, "")
+        self.assertEqual(set(snapshot.mdx), {"Roformer Model: Mismatch"})
+
+
 class OfflinePolicyTests(unittest.TestCase):
     """--offline must be cache-only: no fetch, no writes into model config storage."""
 
@@ -1142,6 +1487,25 @@ class CacheIdentityTests(unittest.TestCase):
             self.assertEqual(handle.read(), b"first")
         with open(b, "rb") as handle:
             self.assertEqual(handle.read(), b"second")
+
+    def test_yaml_fetch_accepts_compact_yml_extension(self) -> None:
+        with mock.patch.object(
+            catalogue,
+            "_fetch_cached_bytes",
+            return_value=(b"training: {}", "/cache/config.yml"),
+        ) as fetch:
+            result = catalogue._fetch_yaml_bytes(
+                "https://example.test/config.yml",
+                "config.yml",
+            )
+
+        self.assertEqual(result, (b"training: {}", "/cache/config.yml"))
+        fetch.assert_called_once_with(
+            "https://example.test/config.yml",
+            catalogue.YAML_CACHE_DIR,
+            "config.yml",
+            policy=catalogue.DEFAULT_FETCH_POLICY,
+        )
 
     def test_a_fresh_cache_entry_is_not_refetched(self) -> None:
         url = "https://a.invalid/data.json"

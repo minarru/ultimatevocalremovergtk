@@ -142,11 +142,11 @@ class ReviewedDecisionLedgerTests(unittest.TestCase):
         fixture = self.fixture
         models = fixture["models"]
         self.assertEqual(fixture["schema_version"], 1)
-        self.assertEqual(fixture["catalogue_model_count"], 485)
-        self.assertEqual(fixture["declared_model_count"], 483)
-        self.assertEqual(fixture["declared_context_count"], 514)
-        self.assertEqual(len(models), 483)
-        self.assertEqual(sum(len(model["contexts"]) for model in models.values()), 514)
+        self.assertEqual(fixture["catalogue_model_count"], 486)
+        self.assertEqual(fixture["declared_model_count"], 484)
+        self.assertEqual(fixture["declared_context_count"], 515)
+        self.assertEqual(len(models), 484)
+        self.assertEqual(sum(len(model["contexts"]) for model in models.values()), 515)
         self.assertEqual(list(models), sorted(models))
         intent_counts: dict[str, int] = {}
         for model_id, model in models.items():
@@ -170,7 +170,7 @@ class ReviewedDecisionLedgerTests(unittest.TestCase):
                 "karaoke": 30,
                 "multi_stem": 72,
                 "special_fx": 29,
-                "specialty_stem": 110,
+                "specialty_stem": 111,
                 "vocals": 118,
             },
         )
@@ -195,14 +195,14 @@ class ReviewedDecisionLedgerTests(unittest.TestCase):
     def test_task5_manifest_matches_every_shared_ordered_decision(self) -> None:
         expected_models = self.fixture["models"]
         actual_models = self.manifest["models"]
-        self.assertEqual(len(actual_models), 483)
+        self.assertEqual(len(actual_models), 484)
         self.assertEqual(
             self.manifest["waivers"],
             {model_id: self.manifest["waivers"][model_id] for model_id in self.fixture["waivers"]},
         )
         self.assertEqual(
             sum(len(model["contexts"]) for model in actual_models.values()),
-            514,
+            515,
         )
         self.assertEqual(set(actual_models), set(expected_models))
         for model_id in sorted(actual_models):
@@ -216,6 +216,52 @@ class ReviewedDecisionLedgerTests(unittest.TestCase):
             model_id for model_id, model in actual_models.items() if model["intent"] == "karaoke"
         }
         self.assertEqual(actual_karaoke_ids, set(self.fixture["karaoke_model_ids"]))
+
+    def test_current_scnet_mid_side_decision_pins_exact_evidence(self) -> None:
+        model_id = "mdx:scnet_mid_side_gilliaaan"
+        expected_decision = {
+            "intent": "specialty_stem",
+            "contexts": {
+                "full_mix": {
+                    "logical_primary": "spatial.center",
+                    "outputs": [
+                        {
+                            "native": "center",
+                            "role": "spatial.center",
+                            "production": "native",
+                            "selected_by_default": True,
+                        },
+                        {
+                            "native": "wide",
+                            "role": "spatial.side",
+                            "production": "native",
+                            "selected_by_default": True,
+                        },
+                    ],
+                }
+            },
+        }
+        expected_evidence = (
+            "catalogue_id=mdx:scnet_mid_side_gilliaaan; source=mvsepless; "
+            "metadata_source=remote_yaml:scnet_mid_side_gilliaaan_config.yaml; "
+            "checkpoint_url=https://huggingface.co/noblebarkrr/mvsepless_resources/"
+            "resolve/main/scnet/scnet_mid_side_gilliaaan.ckpt?download=true; "
+            "config_url=https://huggingface.co/noblebarkrr/mvsepless_resources/"
+            "resolve/main/scnet/scnet_mid_side_gilliaaan_config.yaml?download=true; "
+            "config_sha256=c2b64c62b8485da36f0f2c7f3e6b43cf91f450a89536123cd7d5501be3189378; "
+            "native_signature=center|wide; backend_primary=center; backend_target=; "
+            "reviewed_contexts=full_mix"
+        )
+
+        self.assertEqual(self.fixture["models"][model_id], expected_decision)
+        declaration = self.manifest["models"][model_id]
+        self.assertEqual(declaration["native_signature"], ["center", "wide"])
+        self.assertEqual(_normalized_manifest_model(declaration), expected_decision)
+        self.assertEqual(declaration["evidence"], expected_evidence)
+        self.assertNotIn(model_id, self.manifest["waivers"])
+        from core.mdx_runtime_contract import load_bundled_mdx_runtime_contracts
+
+        self.assertNotIn(model_id, load_bundled_mdx_runtime_contracts().contracts)
 
     def test_reviewed_roles_are_exact_and_used_by_the_final_oracle(self) -> None:
         expected_roles = {

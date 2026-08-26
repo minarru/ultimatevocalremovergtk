@@ -17,7 +17,7 @@ import urllib.error
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from types import SimpleNamespace
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, ROOT)
@@ -25,7 +25,11 @@ sys.path.insert(0, ROOT)
 from bundled.constants import INST_STEM, VOCAL_STEM  # noqa: E402
 from core import paths  # noqa: E402
 from core.access_policy import AccessPolicy, access_policy  # noqa: E402
-from core.catalogue_coordinator import CatalogueCoordinator, flatten_upstream_lists  # noqa: E402
+from core.catalogue_coordinator import (  # noqa: E402
+    CatalogueCoordinator,
+    flatten_upstream_lists,
+    yaml_basename_from_ref,
+)
 from core.catalogue_types import (  # noqa: E402
     UPSTREAM_DEMUCS_KEYS,
     UPSTREAM_MDX_KEYS,
@@ -1038,7 +1042,7 @@ def _yaml_source_label(yaml_name: str, config_path: str) -> str:
 def _fetch_yaml_bytes(
     url: str, yaml_name: str, *, policy: FetchPolicy = DEFAULT_FETCH_POLICY
 ) -> Tuple[Optional[bytes], Optional[str]]:
-    if not url or not yaml_name.endswith(".yaml"):
+    if not url or not yaml_name.casefold().endswith((".yaml", ".yml")):
         return None, None
     return _fetch_cached_bytes(url, YAML_CACHE_DIR, yaml_name, policy=policy)
 
@@ -1331,28 +1335,42 @@ def _parse_catalogue_entry(
     ctx: CatalogueContext,
     entry_meta: Any = None,
     policy: FetchPolicy = DEFAULT_FETCH_POLICY,
+    config_url_index: Mapping[tuple[str, str], str] | None = None,
 ) -> List[ModelEntry]:
     yaml_name = ""
     yaml_url = ""
     weight = ""
     weight_candidates: List[str] = []
+    compact_yaml_by_checkpoint: Dict[str, str] = {}
     if isinstance(payload, str):
         weight = payload
     elif isinstance(payload, dict):
-        for key, ref in payload.items():
-            if key.endswith(".yaml"):
+        for raw_key, ref in payload.items():
+            key = str(raw_key)
+            if key.casefold().endswith((".yaml", ".yml")):
                 yaml_name = key
                 if isinstance(ref, str) and ref.startswith("http"):
                     yaml_url = ref
             elif key.endswith((".pth", ".onnx", ".ckpt", ".th")):
                 weight = key
                 weight_candidates.append(key)
+                compact_yaml = yaml_basename_from_ref(ref)
+                if compact_yaml is not None:
+                    compact_yaml_by_checkpoint[os.path.basename(key)] = compact_yaml
         if family == "Demucs" and weight_candidates:
             # Remote JSON preserves server insertion order while the atomic
             # cache sorts object keys. A bag contains every member checkpoint,
             # so choose one deterministic representative for audit/display
             # instead of letting fresh-online and warm-offline reports differ.
             weight = max(weight_candidates, key=lambda item: (item.casefold(), item))
+        compact_yaml = compact_yaml_by_checkpoint.get(os.path.basename(weight))
+        if not yaml_name and compact_yaml is not None:
+            yaml_name = compact_yaml
+            if config_url_index is not None:
+                yaml_url = config_url_index.get(
+                    (os.path.basename(weight), compact_yaml),
+                    "",
+                )
 
     meta = ModelEntry(
         source=source,
@@ -1510,6 +1528,7 @@ def _entries_from_snapshot(
 ) -> List[ModelEntry]:
     trvlvr, politrees, extras, mvsepless = payloads
     meta_index = getattr(snapshot, "meta", {}) or {}
+    config_url_index = getattr(snapshot, "checkpoint_yaml_url_index", {}) or {}
     all_entries: List[ModelEntry] = []
 
     # Both of these are constant across the run; computing them per label meant
@@ -1538,6 +1557,7 @@ def _entries_from_snapshot(
                 ctx=ctx,
                 entry_meta=meta_index.get(label),
                 policy=policy,
+                config_url_index=config_url_index,
             )
         )
 
@@ -1552,6 +1572,7 @@ def _entries_from_snapshot(
                 ctx=ctx,
                 entry_meta=meta_index.get(label),
                 policy=policy,
+                config_url_index=config_url_index,
             )
         )
 
@@ -1565,6 +1586,7 @@ def _entries_from_snapshot(
                 ctx=ctx,
                 entry_meta=meta_index.get(label),
                 policy=policy,
+                config_url_index=config_url_index,
             )
         )
 
@@ -1578,6 +1600,7 @@ def _entries_from_snapshot(
                 ctx=ctx,
                 entry_meta=meta_index.get(label),
                 policy=policy,
+                config_url_index=config_url_index,
             )
         )
 

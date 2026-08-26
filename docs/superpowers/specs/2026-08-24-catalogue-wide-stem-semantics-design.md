@@ -82,6 +82,28 @@ runtime contract. The independently authored decision fixture pins the complete
 30-ID set. Both MelBand BVE IDs are inside it; the exact VR BVE ID is outside it
 with intent `vocals`.
 
+### Amendment — 2026-08-26: Current Catalogue 486 and Compact Config Evidence
+
+A strict fresh-source publication gate admitted the repaired mvsepless identity
+`mdx:scnet_mid_side_gilliaaan`. Its exact `/scnet/` checkpoint and YAML agree
+on ordered native keys `center|wide`, null target, and primary `center`; the
+reviewed declaration maps those keys to `spatial.center` and `spatial.side`
+with `specialty_stem` intent. The obsolete cross-architecture `/mdx23c/`
+record remains quarantined. The current end state is therefore 486 catalogue
+IDs, 484 reviewed declarations, two Apollo waivers, zero raw IDs, and 515
+reviewed contexts. Exact compact config evidence also advances the current
+literal backend-spelling count to 150 while the 123 normalized names and 92
+primary names remain unchanged. The exact 30-ID karaoke set is unchanged.
+
+TRvlvr compact MDX23C/Roformer records encode exact config evidence as
+`{checkpoint.ckpt: config.yaml}`. Catalogue collection must retain the scalar
+YAML basename and may attach an evidence-only URL only after exact checkpoint
+and config-basename agreement. Evidence-only source lists never become
+selectable catalogue entries, and later aliases never override source priority
+or the exact runtime-contract allowlist. This normalization enriches source
+evidence only; it does not change canonical identity, native keys, artifacts,
+or runtime matching.
+
 ```mermaid
 flowchart LR
   native["Native StemId<br/>opaque backend key"]

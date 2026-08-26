@@ -25,9 +25,12 @@ class FingerprintCharacterizationTests(unittest.TestCase):
         from core import catalog_sources
 
         catalog_sources.invalidate_catalogue_merge()
-        with mock.patch.object(
-            catalog_sources, "_supplemental_sources", return_value=({}, {}, {}, {})
-        ), mock.patch.dict(os.environ, {"UVR_DISABLE_CATALOGUE_STEMS": "1"}):
+        with (
+            mock.patch.object(
+                catalog_sources, "_supplemental_sources", return_value=({}, {}, {}, {})
+            ),
+            mock.patch.dict(os.environ, {"UVR_DISABLE_CATALOGUE_STEMS": "1"}),
+        ):
             first = catalog_sources.merged_catalogues(
                 vr={}, mdx={"Shared": {"a.ckpt": "https://one/a.ckpt"}}, demucs={}
             )
@@ -71,11 +74,117 @@ class UpstreamScnetBanditTests(unittest.TestCase):
         }
         DownloadManager._rebuild_catalogues(manager)
         self.assertEqual(
-            manager.mdx_download_list[PRIOR_EXTRAS_SCNET_BANDIT_WINNERS[0]][
-                "upstream.ckpt"
-            ],
+            manager.mdx_download_list[PRIOR_EXTRAS_SCNET_BANDIT_WINNERS[0]]["upstream.ckpt"],
             "https://upstream/huge.ckpt",
         )
+
+
+class CompactConfigEvidenceTests(unittest.TestCase):
+    def _snapshot(self, payload: dict):
+        coordinator = CatalogueCoordinator(
+            sources={
+                SourceId.UPSTREAM: RemoteJsonSource(
+                    source_id=SourceId.UPSTREAM, local_loader=lambda: payload
+                ),
+                SourceId.POLITREES: RemoteJsonSource(
+                    source_id=SourceId.POLITREES, enabled=lambda: False
+                ),
+                SourceId.EXTRAS: RemoteJsonSource(source_id=SourceId.EXTRAS, enabled=lambda: False),
+                SourceId.MVSEPLESS: RemoteJsonSource(
+                    source_id=SourceId.MVSEPLESS, enabled=lambda: False
+                ),
+            }
+        )
+        self.addCleanup(coordinator.close)
+        return coordinator.snapshot(
+            mode=RefreshMode.OFFLINE,
+            policy=AccessPolicy(
+                allow_network=False,
+                allow_metadata_writes=False,
+            ),
+        )
+
+    def test_compact_scalar_and_exact_other_network_url_are_evidence_only(self) -> None:
+        snapshot = self._snapshot(
+            {
+                "roformer_download_list": {
+                    "Roformer Model: Compact": {"compact.ckpt": "compact_config.yml"}
+                },
+                "other_network_list": {
+                    "Roformer Model: Compact": {
+                        "compact.ckpt": "https://weights.test/compact.ckpt",
+                        "compact_config.yml": "https://configs.test/compact_config.yml",
+                    },
+                    "Evidence-only row": {
+                        "hidden.ckpt": "https://weights.test/hidden.ckpt",
+                        "hidden.yaml": "https://configs.test/hidden.yaml",
+                    },
+                },
+            }
+        )
+
+        self.assertEqual(
+            snapshot.checkpoint_yaml_index["compact.ckpt"],
+            "compact_config.yml",
+        )
+        self.assertEqual(
+            snapshot.checkpoint_yaml_url_index[("compact.ckpt", "compact_config.yml")],
+            "https://configs.test/compact_config.yml",
+        )
+        self.assertEqual(set(snapshot.mdx), {"Roformer Model: Compact"})
+        self.assertNotIn("Evidence-only row", snapshot.mdx)
+
+    def test_non_basename_scalar_and_mismatched_url_pair_do_not_join(self) -> None:
+        snapshot = self._snapshot(
+            {
+                "roformer_download_list": {
+                    "Roformer Model: Nested": {"nested.ckpt": "configs/nested.yaml"},
+                    "Roformer Model: Mismatch": {"mismatch.ckpt": "mismatch.yaml"},
+                    "Roformer Model: Non-URL evidence": {"not_url.ckpt": "not_url.yaml"},
+                },
+                "other_network_list": {
+                    "Roformer Model: Mismatch": {
+                        "different.ckpt": "https://weights.test/different.ckpt",
+                        "mismatch.yaml": "https://configs.test/mismatch.yaml",
+                    },
+                    "Roformer Model: Non-URL evidence": {
+                        "not_url.ckpt": "not-a-url",
+                        "not_url.yaml": "https://configs.test/not_url.yaml",
+                    },
+                },
+            }
+        )
+
+        self.assertNotIn("nested.ckpt", snapshot.checkpoint_yaml_index)
+        self.assertEqual(
+            snapshot.checkpoint_yaml_index["mismatch.ckpt"],
+            "mismatch.yaml",
+        )
+        self.assertNotIn(
+            ("mismatch.ckpt", "mismatch.yaml"),
+            snapshot.checkpoint_yaml_url_index,
+        )
+        self.assertNotIn(
+            ("not_url.ckpt", "not_url.yaml"),
+            snapshot.checkpoint_yaml_url_index,
+        )
+
+    def test_explicit_yaml_mapping_keeps_legacy_last_key_behavior(self) -> None:
+        snapshot = self._snapshot(
+            {
+                "mdx23c_download_list": {
+                    "Legacy multi-file row": {
+                        "first.ckpt": "https://weights.test/first.ckpt",
+                        "first.yaml": "https://configs.test/first.yaml",
+                        "last.ckpt": "https://weights.test/last.ckpt",
+                        "last.yaml": "https://configs.test/last.yaml",
+                    }
+                }
+            }
+        )
+
+        self.assertNotIn("first.ckpt", snapshot.checkpoint_yaml_index)
+        self.assertEqual(snapshot.checkpoint_yaml_index["last.ckpt"], "last.yaml")
 
 
 class PolitreesFreshnessTests(unittest.TestCase):
@@ -134,7 +243,7 @@ class UnsupportedPolicyTests(unittest.TestCase):
 
 class InventoryVsAliasTests(unittest.TestCase):
     def test_custom_file_stays_in_default_list_contract(self) -> None:
-        from core.model_identity import ModelRecord, iter_model_records
+        from core.model_identity import iter_model_records
 
         class _Repo:
             def list_vr_models(self) -> list[str]:
@@ -174,9 +283,7 @@ class CoordinatorConcurrencyTests(unittest.TestCase):
                 SourceId.POLITREES: RemoteJsonSource(
                     source_id=SourceId.POLITREES, enabled=lambda: False
                 ),
-                SourceId.EXTRAS: RemoteJsonSource(
-                    source_id=SourceId.EXTRAS, enabled=lambda: False
-                ),
+                SourceId.EXTRAS: RemoteJsonSource(source_id=SourceId.EXTRAS, enabled=lambda: False),
                 SourceId.MVSEPLESS: RemoteJsonSource(
                     source_id=SourceId.MVSEPLESS, enabled=lambda: False
                 ),
@@ -219,11 +326,13 @@ class OfflinePolicyTests(unittest.TestCase):
             opener=opener,
         )
         policy = AccessPolicy(allow_network=False, allow_metadata_writes=False)
-        with mock.patch("os.makedirs", side_effect=AssertionError("mkdir")), mock.patch(
-            "os.replace", side_effect=AssertionError("replace")
-        ), mock.patch("shutil.move", side_effect=AssertionError("move")), mock.patch(
-            "shutil.copy2", side_effect=AssertionError("copy")
-        ), mock.patch("threading.Thread.start", side_effect=AssertionError("thread")):
+        with (
+            mock.patch("os.makedirs", side_effect=AssertionError("mkdir")),
+            mock.patch("os.replace", side_effect=AssertionError("replace")),
+            mock.patch("shutil.move", side_effect=AssertionError("move")),
+            mock.patch("shutil.copy2", side_effect=AssertionError("copy")),
+            mock.patch("threading.Thread.start", side_effect=AssertionError("thread")),
+        ):
             state = source.load(mode=RefreshMode.STALE_WHILE_REVALIDATE, policy=policy)
         opener.assert_not_called()
         self.assertIsNone(state.content)
@@ -238,8 +347,9 @@ class OfflinePolicyTests(unittest.TestCase):
             cache_path="/tmp/uvr-catalogue-write-denied.json",
             opener=lambda _url: _Response({"mdx_download_list": {"A": {"a.ckpt": "u"}}}),
         )
-        with mock.patch("os.makedirs", side_effect=AssertionError("mkdir")), mock.patch(
-            "os.replace", side_effect=AssertionError("replace")
+        with (
+            mock.patch("os.makedirs", side_effect=AssertionError("mkdir")),
+            mock.patch("os.replace", side_effect=AssertionError("replace")),
         ):
             state = source.load(
                 mode=RefreshMode.FORCE,
@@ -260,9 +370,7 @@ class CoordinatorIsolationTests(unittest.TestCase):
                 SourceId.POLITREES: RemoteJsonSource(
                     source_id=SourceId.POLITREES, enabled=lambda: False
                 ),
-                SourceId.EXTRAS: RemoteJsonSource(
-                    source_id=SourceId.EXTRAS, enabled=lambda: False
-                ),
+                SourceId.EXTRAS: RemoteJsonSource(source_id=SourceId.EXTRAS, enabled=lambda: False),
                 SourceId.MVSEPLESS: RemoteJsonSource(
                     source_id=SourceId.MVSEPLESS, enabled=lambda: False
                 ),
@@ -282,9 +390,7 @@ class CoordinatorIsolationTests(unittest.TestCase):
                 SourceId.POLITREES: RemoteJsonSource(
                     source_id=SourceId.POLITREES, enabled=lambda: False
                 ),
-                SourceId.EXTRAS: RemoteJsonSource(
-                    source_id=SourceId.EXTRAS, enabled=lambda: False
-                ),
+                SourceId.EXTRAS: RemoteJsonSource(source_id=SourceId.EXTRAS, enabled=lambda: False),
                 SourceId.MVSEPLESS: RemoteJsonSource(
                     source_id=SourceId.MVSEPLESS, enabled=lambda: False
                 ),

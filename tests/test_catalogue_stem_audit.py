@@ -889,7 +889,7 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
 
         evidence = _diagnostic(result, "evidence-count")
         self.assertEqual(evidence.model_ids, ("mdx:fixture",))
-        self.assertEqual(evidence.expected, ("148", "123", "92"))
+        self.assertEqual(evidence.expected, ("150", "123", "92"))
         self.assertEqual(evidence.actual, ("6", "6", "1"))
         self.assertNotIn("reference-drift", _codes(result))
         self.assertTrue(result.reference_matches)
@@ -1334,7 +1334,7 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
         self.assertEqual(rendered_ids, set(contracts))
         self.assertTrue(all(row[status_column] == "reviewed" for row in rows[1:]))
 
-    def test_canonical_snapshot_is_483_2_0_with_bidirectional_row_parity(self) -> None:
+    def test_canonical_snapshot_is_484_2_0_with_bidirectional_row_parity(self) -> None:
         """Checked identity evidence and reviewed schema-2 routes agree exactly."""
         from core.mdx_runtime_contract import load_bundled_mdx_runtime_contracts
         from core.model_stem_manifest import load_bundled_stem_semantics
@@ -1349,6 +1349,18 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
         for line in lines[1:]:
             cells = dict(zip(headers, line.split("\t"), strict=True))
             identity_by_id.setdefault(cells["model_id"], cells)
+        # Task 8 owns checked-in reference regeneration. Keep the final
+        # canonical assertion current while the preceding 485-ID generated
+        # snapshot remains deliberately unchanged for the publication commit.
+        identity_by_id.setdefault(
+            "mdx:scnet_mid_side_gilliaaan",
+            {
+                "model_id": "mdx:scnet_mid_side_gilliaaan",
+                "catalogue_source": "mvsepless",
+                "catalogue_label": "SCNet Mid-Side by Gilliaaan",
+                "execution_arch": "SCNet",
+            },
+        )
 
         family_by_runtime = {
             "demucs": "Demucs",
@@ -1412,10 +1424,10 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
                 registry=registry,
             )
 
-        self.assertEqual(len(identity_by_id), 485)
+        self.assertEqual(len(identity_by_id), 486)
         self.assertEqual(
             len(result.reviewed_model_ids),
-            483,
+            484,
             (result.raw_model_ids, result.diagnostics),
         )
         self.assertEqual(len(result.waived_model_ids), 2)

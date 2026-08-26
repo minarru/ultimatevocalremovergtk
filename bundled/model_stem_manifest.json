@@ -12311,6 +12311,29 @@
       },
       "evidence": "catalogue_id=mdx:scnet_mid_side2_gilliaaan; source=mvsepless; metadata_source=bundled_yaml:scnet_mid_side2_gilliaaan_config.yaml; native_signature=center|wide; backend_primary=center; backend_target=; reviewed_contexts=full_mix"
     },
+    "mdx:scnet_mid_side_gilliaaan": {
+      "native_signature": [
+        "center",
+        "wide"
+      ],
+      "intent": "specialty_stem",
+      "contexts": {
+        "full_mix": {
+          "logical_primary": "spatial.center",
+          "outputs": [
+            {
+              "native": "center",
+              "role": "spatial.center"
+            },
+            {
+              "native": "wide",
+              "role": "spatial.side"
+            }
+          ]
+        }
+      },
+      "evidence": "catalogue_id=mdx:scnet_mid_side_gilliaaan; source=mvsepless; metadata_source=remote_yaml:scnet_mid_side_gilliaaan_config.yaml; checkpoint_url=https://huggingface.co/noblebarkrr/mvsepless_resources/resolve/main/scnet/scnet_mid_side_gilliaaan.ckpt?download=true; config_url=https://huggingface.co/noblebarkrr/mvsepless_resources/resolve/main/scnet/scnet_mid_side_gilliaaan_config.yaml?download=true; config_sha256=c2b64c62b8485da36f0f2c7f3e6b43cf91f450a89536123cd7d5501be3189378; native_signature=center|wide; backend_primary=center; backend_target=; reviewed_contexts=full_mix"
+    },
     "mdx:scnet_surround_jasper": {
       "native_signature": [
         "LRF",

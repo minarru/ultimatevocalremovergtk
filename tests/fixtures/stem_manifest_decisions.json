@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
-  "catalogue_model_count": 485,
-  "declared_model_count": 483,
-  "declared_context_count": 514,
+  "catalogue_model_count": 486,
+  "declared_model_count": 484,
+  "declared_context_count": 515,
   "waivers": [
     "apollo:apollo_edm_big_by_essid",
     "apollo:apollo_edm_by_essid"
@@ -11914,6 +11914,28 @@
       }
     },
     "mdx:scnet_mid_side2_gilliaaan": {
+      "intent": "specialty_stem",
+      "contexts": {
+        "full_mix": {
+          "logical_primary": "spatial.center",
+          "outputs": [
+            {
+              "native": "center",
+              "role": "spatial.center",
+              "production": "native",
+              "selected_by_default": true
+            },
+            {
+              "native": "wide",
+              "role": "spatial.side",
+              "production": "native",
+              "selected_by_default": true
+            }
+          ]
+        }
+      }
+    },
+    "mdx:scnet_mid_side_gilliaaan": {
       "intent": "specialty_stem",
       "contexts": {
         "full_mix": {

@@ -68,7 +68,7 @@ STEM_SEMANTICS_IDENTITY_HEADERS = (
 )
 
 _COMPLEMENT_ONLY_NAMES = frozenset({"drum-bass", "no bass", "no drums", "no other"})
-_PINNED_EVIDENCE_COUNTS = (148, 123, 92)
+_PINNED_EVIDENCE_COUNTS = (150, 123, 92)
 _REVIEWED_VOCAL_SPLIT_IDS = frozenset(
     {
         "mdx:mbr_bve_gonzaluigi",

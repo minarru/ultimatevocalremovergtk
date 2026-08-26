@@ -6,7 +6,7 @@ import hashlib
 import threading
 from dataclasses import dataclass, field, replace
 from types import MappingProxyType
-from typing import Any, Callable, Mapping, Optional
+from typing import Any, Callable, Mapping
 
 from bundled.constants import (
     APOLLO_ARCH_TYPE,
@@ -19,6 +19,12 @@ from bundled.constants import (
 from .access_policy import AccessPolicy, current_access_policy
 from .catalogue_types import (
     ADAPTER_SCHEMA,
+    UPSTREAM_DEMUCS_KEYS,
+    UPSTREAM_DEMUCS_VIP_KEYS,
+    UPSTREAM_MDX_KEYS,
+    UPSTREAM_MDX_VIP_KEYS,
+    UPSTREAM_VR_KEYS,
+    UPSTREAM_VR_VIP_KEYS,
     CatalogueDelta,
     DeltaKind,
     RefreshMode,
@@ -26,14 +32,6 @@ from .catalogue_types import (
     RevisionVector,
     SourceContent,
     SourceId,
-    SourceState,
-    UPSTREAM_DEMUCS_KEYS,
-    UPSTREAM_DEMUCS_VIP_KEYS,
-    UPSTREAM_MDX_KEYS,
-    UPSTREAM_MDX_VIP_KEYS,
-    UPSTREAM_VR_KEYS,
-    UPSTREAM_VR_VIP_KEYS,
-    readonly_mapping,
 )
 from .debug_log import debug, log_event
 from .remote_catalog_cache import RemoteJsonSource
@@ -68,6 +66,17 @@ def flatten_upstream_lists(
     return vr, mdx, demucs
 
 
+def yaml_basename_from_ref(ref: object) -> str | None:
+    """Return a basename-only YAML reference from a compact catalogue value."""
+    if not isinstance(ref, str):
+        return None
+    if "/" in ref or "\\" in ref:
+        return None
+    if not ref.casefold().endswith((".yaml", ".yml")):
+        return None
+    return ref
+
+
 def _mapping(value: object) -> dict[str, Any]:
     return dict(value) if isinstance(value, dict) else {}
 
@@ -94,8 +103,11 @@ class CatalogueSnapshot:
     checkpoint_yaml_index: Mapping[str, str]
     entry_sources: Mapping[str, Mapping[str, str]] = field(default_factory=dict)
     report: RefreshReport | None = None
+    checkpoint_yaml_url_index: Mapping[tuple[str, str], str] = field(default_factory=dict)
 
-    def download_lists(self) -> tuple[Mapping[str, Any], Mapping[str, Any], Mapping[str, Any], Mapping[str, Any]]:
+    def download_lists(
+        self,
+    ) -> tuple[Mapping[str, Any], Mapping[str, Any], Mapping[str, Any], Mapping[str, Any]]:
         return self.vr, self.mdx, self.demucs, self.apollo
 
 
@@ -113,9 +125,7 @@ def build_meta_by_family(
 ) -> dict[str, dict[str, Any]]:
     from .catalog_sources import _build_meta, _metadata_alias_index
 
-    aliases = (
-        alias_meta if alias_meta is not None else _metadata_alias_index(extra_meta)
-    )
+    aliases = alias_meta if alias_meta is not None else _metadata_alias_index(extra_meta)
     return {
         "vr": _build_meta(vr, VR_ARCH_TYPE, extra_meta, aliases),
         "mdx": _build_meta(mdx, MDX_ARCH_TYPE, extra_meta, aliases),
@@ -233,11 +243,7 @@ class CatalogueCoordinator:
                 allow_metadata_writes=captured.allow_metadata_writes,
                 allow_cache_writes=captured.allow_cache_writes,
             )
-        mode = (
-            RefreshMode.STALE_WHILE_REVALIDATE
-            if captured.allow_network
-            else RefreshMode.OFFLINE
-        )
+        mode = RefreshMode.STALE_WHILE_REVALIDATE if captured.allow_network else RefreshMode.OFFLINE
         return self.snapshot(mode=mode, policy=captured)
 
     def refresh(
@@ -404,10 +410,7 @@ class CatalogueCoordinator:
             source.load(mode=mode, policy=policy)
 
     def _contents(self) -> dict[SourceId, SourceContent | None]:
-        return {
-            source_id: source.state.content
-            for source_id, source in self._sources.items()
-        }
+        return {source_id: source.state.content for source_id, source in self._sources.items()}
 
     def _revision(
         self,
@@ -429,12 +432,12 @@ class CatalogueCoordinator:
         )
 
     def _publish(self, *, report: RefreshReport | None) -> CatalogueSnapshot:
+        from .catalog_dedupe import dedupe_download_catalogue
         from .catalog_sources import (
             EntryMeta,
             _checkpoint_urls,
             _metadata_alias_index,
         )
-        from .catalog_dedupe import dedupe_download_catalogue
         from .download_sizes import trusted_content_ids_from_cache
         from .extra_catalog import apollo_download_list
         from .mvsepless_catalog import unsupported_mvsepless_downloads
@@ -443,9 +446,7 @@ class CatalogueCoordinator:
         if self._closed and self._latest is not None:
             return self._latest
         contents = self._contents()
-        identity_map = trusted_content_ids_from_cache(
-            _identity_urls_from_contents(contents)
-        )
+        identity_map = trusted_content_ids_from_cache(_identity_urls_from_contents(contents))
         identity = _identity_digest(identity_map)
         revision = self._revision(contents, identity=identity)
         cache_key = revision.digest()
@@ -502,9 +503,8 @@ class CatalogueCoordinator:
         extras = contents.get(SourceId.EXTRAS)
         mvsepless = contents.get(SourceId.MVSEPLESS)
 
-        vr, mdx, demucs = flatten_upstream_lists(
-            dict(upstream.payload) if upstream is not None else {}
-        )
+        upstream_payload = dict(upstream.payload) if upstream is not None else {}
+        vr, mdx, demucs = flatten_upstream_lists(upstream_payload)
         source_owners: dict[str, dict[str, str]] = {
             "vr": {str(label): SourceId.UPSTREAM.value for label in vr},
             "mdx": {str(label): SourceId.UPSTREAM.value for label in mdx},
@@ -525,9 +525,7 @@ class CatalogueCoordinator:
 
         if politrees is not None:
             before = (dict(vr), dict(mdx), dict(demucs))
-            vr, mdx, demucs = merge_politrees_catalogues(
-                vr, mdx, demucs, dict(politrees.payload)
-            )
+            vr, mdx, demucs = merge_politrees_catalogues(vr, mdx, demucs, dict(politrees.payload))
             for family, old, merged in zip(
                 ("vr", "mdx", "demucs"), before, (vr, mdx, demucs), strict=True
             ):
@@ -536,9 +534,7 @@ class CatalogueCoordinator:
             from .extra_catalog import merge_extra_catalogues
 
             before = (dict(vr), dict(mdx), dict(demucs))
-            vr, mdx, demucs = merge_extra_catalogues(
-                vr, mdx, demucs, extra=dict(extras.payload)
-            )
+            vr, mdx, demucs = merge_extra_catalogues(vr, mdx, demucs, extra=dict(extras.payload))
             for family, old, merged in zip(
                 ("vr", "mdx", "demucs"), before, (vr, mdx, demucs), strict=True
             ):
@@ -566,25 +562,17 @@ class CatalogueCoordinator:
                 track_source(family, old, merged, SourceId.MVSEPLESS)
             extra_meta = dict(converted.get("metadata") or {})
 
-        apollo = apollo_download_list(
-            extra=dict(extras.payload) if extras is not None else None
-        )
-        source_owners["apollo"] = {
-            str(label): SourceId.EXTRAS.value for label in apollo
-        }
+        apollo = apollo_download_list(extra=dict(extras.payload) if extras is not None else None)
+        source_owners["apollo"] = {str(label): SourceId.EXTRAS.value for label in apollo}
         alias_meta = _metadata_alias_index(extra_meta)
-        meta_by_family = build_meta_by_family(
-            vr, mdx, demucs, apollo, extra_meta, alias_meta
-        )
+        meta_by_family = build_meta_by_family(vr, mdx, demucs, apollo, extra_meta, alias_meta)
         meta: dict[str, Any] = {}
         for family_meta in meta_by_family.values():
             meta.update(family_meta)  # transitional; identity must not use this
 
         from .download_sizes import trusted_content_ids_from_cache
 
-        content_ids = trusted_content_ids_from_cache(
-            _checkpoint_urls(vr, mdx, apollo)
-        )
+        content_ids = trusted_content_ids_from_cache(_checkpoint_urls(vr, mdx, apollo))
         vr_out = dedupe_download_catalogue(vr, content_ids=content_ids)
         mdx_out = dedupe_download_catalogue(mdx, content_ids=content_ids)
         demucs_out = dedupe_download_catalogue(demucs, demucs_bags=True)
@@ -599,10 +587,9 @@ class CatalogueCoordinator:
         self._index_builds += 1
         display_vr = _basename_index(meta_by_family["vr"], VR_ARCH_TYPE)
         display_mdx = _basename_index(meta_by_family["mdx"], MDX_ARCH_TYPE)
-        display_demucs = _basename_index(
-            meta_by_family["demucs"], DEMUCS_ARCH_TYPE
-        )
+        display_demucs = _basename_index(meta_by_family["demucs"], DEMUCS_ARCH_TYPE)
         yaml_index = _checkpoint_yaml_index(vr, mdx, demucs, apollo)
+        yaml_url_index = _checkpoint_yaml_url_index(upstream_payload)
         return CatalogueSnapshot(
             revision=revision,
             vr=_readonly_catalogue(vr_out),
@@ -611,10 +598,7 @@ class CatalogueCoordinator:
             apollo=_readonly_catalogue(apollo_out),
             meta=MappingProxyType(meta),
             meta_by_family=MappingProxyType(
-                {
-                    family: MappingProxyType(entries)
-                    for family, entries in meta_by_family.items()
-                }
+                {family: MappingProxyType(entries) for family, entries in meta_by_family.items()}
             ),
             pre_dedupe_vr=_readonly_catalogue(vr),
             pre_dedupe_mdx=_readonly_catalogue(mdx),
@@ -637,6 +621,7 @@ class CatalogueCoordinator:
                 }
             ),
             report=report,
+            checkpoint_yaml_url_index=MappingProxyType(yaml_url_index),
         )
 
     def apply_trusted_identities(self, content_ids: Mapping[str, str]) -> CatalogueDelta | None:
@@ -713,11 +698,7 @@ def _basename_index(meta: Mapping[str, Any], arch: str) -> dict[str, str]:
         display = str(getattr(entry, "display", "") or "")
         files = getattr(entry, "files", {}) or {}
         if arch == DEMUCS_ARCH_TYPE:
-            yaml_names = [
-                name
-                for name in files
-                if str(name).lower().endswith((".yaml", ".yml"))
-            ]
+            yaml_names = [name for name in files if str(name).lower().endswith((".yaml", ".yml"))]
             if yaml_names:
                 for yaml_name in yaml_names:
                     stem = os.path.splitext(os.path.basename(str(yaml_name)))[0]
@@ -751,14 +732,55 @@ def _checkpoint_yaml_index(*catalogues: Mapping[str, Any]) -> dict[str, str]:
                 continue
             checkpoint = None
             yaml_name = None
-            for name in model:
+            for name, ref in model.items():
                 text = str(name)
                 if _is_checkpoint_name(text):
                     checkpoint = os.path.basename(text)
-                elif text.endswith((".yaml", ".yml")):
+                    compact_yaml = yaml_basename_from_ref(ref)
+                    if compact_yaml:
+                        index.setdefault(checkpoint, compact_yaml)
+                elif text.casefold().endswith((".yaml", ".yml")):
                     yaml_name = os.path.basename(text)
             if checkpoint and yaml_name:
                 index.setdefault(checkpoint, yaml_name)
+    return index
+
+
+def _checkpoint_yaml_url_index(
+    upstream_payload: Mapping[str, Any],
+) -> dict[tuple[str, str], str]:
+    """Index YAML URLs from the non-selectable upstream evidence list."""
+    import os
+
+    from .model_display import _is_checkpoint_name
+
+    evidence = upstream_payload.get("other_network_list")
+    if not isinstance(evidence, dict):
+        return {}
+    index: dict[tuple[str, str], str] = {}
+    for model in evidence.values():
+        if not isinstance(model, dict):
+            continue
+        checkpoints: list[str] = []
+        yaml_urls: list[tuple[str, str]] = []
+        for name, ref in model.items():
+            basename = os.path.basename(str(name))
+            if (
+                _is_checkpoint_name(basename)
+                and isinstance(ref, str)
+                and ref.startswith(("http://", "https://"))
+            ):
+                checkpoints.append(basename)
+            elif (
+                basename.casefold().endswith((".yaml", ".yml"))
+                and isinstance(ref, str)
+                and ref.startswith(("http://", "https://"))
+            ):
+                yaml_urls.append((basename, ref))
+        if len(checkpoints) != 1 or len(yaml_urls) != 1:
+            continue
+        yaml_name, yaml_url = yaml_urls[0]
+        index.setdefault((checkpoints[0], yaml_name), yaml_url)
     return index
 
 
@@ -779,11 +801,7 @@ def _delta_between(
         add = tuple(sorted(new_keys - old_keys))
         drop = tuple(sorted(old_keys - new_keys))
         chg = tuple(
-            sorted(
-                label
-                for label in old_keys & new_keys
-                if old_map[label] != new_map[label]
-            )
+            sorted(label for label in old_keys & new_keys if old_map[label] != new_map[label])
         )
         if add:
             added[arch] = add
@@ -824,8 +842,9 @@ def _identity_urls_from_contents(
 
 
 def _default_sources() -> dict[SourceId, RemoteJsonSource]:
-    from . import extra_catalog, mvsepless_catalog, paths, politrees_catalog
     from bundled.constants import MVSEPLESS_MODELS_JSON_URL, POLITREES_MODEL_LINKS_URL
+
+    from . import extra_catalog, mvsepless_catalog, paths, politrees_catalog
 
     def politrees_open(target: str | Any) -> Any:
         return politrees_catalog._urlopen(target)
@@ -887,4 +906,5 @@ __all__ = [
     "SourceId",
     "build_meta_by_family",
     "flatten_upstream_lists",
+    "yaml_basename_from_ref",
 ]

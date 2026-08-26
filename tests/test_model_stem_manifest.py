@@ -862,7 +862,7 @@ class ManifestValidationTests(unittest.TestCase):
         """The checked-in review is exhaustive, never inferred at runtime."""
         registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)
 
-        self.assertEqual(len(registry.models), 483)
+        self.assertEqual(len(registry.models), 484)
         self.assertEqual(
             set(registry.waivers),
             {
@@ -915,7 +915,7 @@ class ManifestValidationTests(unittest.TestCase):
     def test_bundled_manifest_loads_core_roles_pairs_and_reviewed_catalogue(self) -> None:
         registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)
 
-        self.assertEqual(len(registry.models), 483)
+        self.assertEqual(len(registry.models), 484)
         self.assertEqual(len(registry.waivers), 2)
         self.assertIn(StemRoleId("vocal.vocals"), registry.roles)
         self.assertEqual(
