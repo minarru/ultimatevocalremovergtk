@@ -32,7 +32,7 @@ def _guarded_add_skip(
     original: Callable[..., None],
 ) -> Callable[..., None]:
     def add_skip(result: Any, test: Any, reason: object) -> None:
-        if not _is_display_skip(reason):
+        if os.getenv("UVR_REQUIRE_PRIVATE_GTK") != "1" or not _is_display_skip(reason):
             original(result, test, reason)
             return
         try:

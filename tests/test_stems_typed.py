@@ -523,6 +523,7 @@ class RunExportRoutesTests(unittest.TestCase):
         mode: str,
         routes: tuple[StemRoute, ...],
         focus: str,
+        sidecar: tuple[str, ...] = (),
     ):
         from unittest import mock
 
@@ -539,7 +540,7 @@ class RunExportRoutesTests(unittest.TestCase):
             primary_stem="vocals",
             secondary_stem="other",
             mdx_model_stems=[route.native.raw for route in routes if route.native is not None],
-            mdxnet_stems_selected=[],
+            mdxnet_stems_selected=list(sidecar),
         )
         with mock.patch("core.stems.model_stem_routes", return_value=routes):
             ModelConfig._apply_stem_focus(model)  # type: ignore[arg-type]
@@ -577,7 +578,7 @@ class RunExportRoutesTests(unittest.TestCase):
         self.assertTrue(exports_named_stem(model, "vocals"))
         self.assertTrue(exports_named_stem(model, "bass"))
 
-    def test_both_stem_modes_preserve_semantic_and_positional_focus(self) -> None:
+    def test_stem_mode_focus_resolves_exactly_from_available_routes(self) -> None:
         available = (
             StemRoute(
                 StemId("drums"),
@@ -596,6 +597,7 @@ class RunExportRoutesTests(unittest.TestCase):
                 StemRoleId("residual.other"),
                 label="Residual",
                 filename_tag="Residual",
+                logical_secondary=True,
             ),
             StemRoute(
                 StemId("vocals"),
@@ -604,19 +606,80 @@ class RunExportRoutesTests(unittest.TestCase):
                 filename_tag="Vocals",
                 logical_primary=True,
             ),
+            StemRoute(
+                StemId("mystery"),
+                StemLiteral("mystery"),
+                label="Mystery",
+                filename_tag="Mystery",
+                selected_by_default=False,
+                selection_scope="fixture",
+            ),
         )
         cases = (
-            ("instrument.bass", (StemRoleId("instrument.bass"),)),
-            (FOCUS_PRIMARY, (StemRoleId("vocal.vocals"),)),
+            (
+                "mode.four_stem",
+                "instrument.bass",
+                available,
+                StemRoleId("instrument.bass"),
+            ),
+            (
+                "mode.multi_stem",
+                persisted_stem_focus(available[4]),
+                tuple(route for route in available if route.selected_by_default),
+                StemLiteral("mystery"),
+            ),
+            ("mode.four_stem", FOCUS_PRIMARY, available, StemRoleId("vocal.vocals")),
+            (
+                "mode.multi_stem",
+                "secondary",
+                tuple(route for route in available if route.selected_by_default),
+                StemRoleId("residual.other"),
+            ),
         )
-        for mode in ("mode.four_stem", "mode.multi_stem"):
-            for focus, expected_roles in cases:
-                with self.subTest(mode=mode, focus=focus):
-                    model = self._apply_focus(mode=mode, routes=available, focus=focus)
-                    self.assertEqual(
-                        tuple(route.role for route in run_export_routes(model)),
-                        expected_roles,
-                    )
+        for mode, focus, preselected, expected_role in cases:
+            with self.subTest(mode=mode, focus=focus):
+                settings = Settings.defaults()
+                settings.ensemble.main_stem = mode
+                settings.process.stem_focus = focus
+                model = self._model(
+                    available_stem_routes=available,
+                    selected_stem_routes=preselected,
+                    is_ensemble_mode=True,
+                    settings=settings,
+                )
+
+                exported = run_export_routes(model)
+
+                self.assertEqual(len(exported), 1)
+                self.assertEqual(exported[0].role, expected_role)
+
+    def test_model_config_records_default_focus_and_sidecar_provenance(self) -> None:
+        routes = (
+            _route("drums", StemBucket.DRUMS.value),
+            _route("bass", StemBucket.BASS.value),
+            _route("other", StemBucket.OTHER.value),
+            _route("vocals", StemBucket.VOCALS.value),
+        )
+        cases = (
+            ("", (), False, routes),
+            ("instrument.bass", (), True, routes[1:2]),
+            ("", ("drums", "bass"), True, routes[:2]),
+            ("", ("drums", "bass", "other", "vocals"), True, routes),
+        )
+        for focus, sidecar, explicit, expected in cases:
+            with self.subTest(focus=focus, sidecar=sidecar):
+                model = self._apply_focus(
+                    mode="mode.multi_stem",
+                    routes=routes,
+                    focus=focus,
+                    sidecar=sidecar,
+                )
+
+                self.assertEqual(model.selected_stem_routes, expected)
+                self.assertEqual(
+                    getattr(model, "selected_stem_routes_explicit", None),
+                    explicit,
+                )
 
     def test_giant_default_false_route_materializes_when_explicitly_focused(self) -> None:
         from core.model_stem_manifest import resolve_model_stem_semantics
@@ -627,10 +690,14 @@ class RunExportRoutesTests(unittest.TestCase):
             backend_primary="vocals",
         )
         routes = _semantic_routes(semantics)
-        model = self._apply_focus(
-            mode="mode.multi_stem",
-            routes=routes,
-            focus="mix.instrumental_with_backing_vocals",
+        settings = Settings.defaults()
+        settings.ensemble.main_stem = "mode.multi_stem"
+        settings.process.stem_focus = "mix.instrumental_with_backing_vocals"
+        model = self._model(
+            available_stem_routes=routes,
+            selected_stem_routes=tuple(route for route in routes if route.selected_by_default),
+            is_ensemble_mode=True,
+            settings=settings,
         )
 
         exported = run_export_routes(model)
@@ -694,23 +761,75 @@ class RunExportRoutesTests(unittest.TestCase):
 
         self.assertEqual(run_export_routes(model), available)
 
-    def test_explicit_focus_without_resolved_routes_fails_actionably(self) -> None:
-        settings = Settings.defaults()
-        settings.ensemble.main_stem = "mode.four_stem"
-        settings.process.stem_focus = FOCUS_PRIMARY
-        available = (_route("vocals", StemBucket.VOCALS.value),)
-        model = self._model(
-            available_stem_routes=available,
-            selected_stem_routes=(),
-            is_ensemble_mode=True,
-            settings=settings,
+    def test_explicit_focus_fails_on_zero_ambiguous_or_explicit_mismatch(self) -> None:
+        bass = StemRoute(
+            StemId("bass"),
+            StemRoleId("instrument.bass"),
+            label="Bass",
+            filename_tag="Bass",
         )
+        duplicate_bass = StemRoute(
+            StemId("bass-copy"),
+            StemRoleId("instrument.bass"),
+            label="Bass Copy",
+            filename_tag="Bass_Copy",
+        )
+        drums = StemRoute(
+            StemId("drums"),
+            StemRoleId("instrument.drums"),
+            label="Drums",
+            filename_tag="Drums",
+        )
+        cases = (
+            ("raw:missing", (bass,), (bass,), False, "resolved 0"),
+            ("instrument.bass", (bass, duplicate_bass), (bass,), False, "resolved 2"),
+            ("instrument.bass", (bass, drums), (drums,), True, "conflicts"),
+        )
+        for focus, available, selected, explicit, error in cases:
+            with self.subTest(focus=focus, error=error):
+                settings = Settings.defaults()
+                settings.ensemble.main_stem = "mode.multi_stem"
+                settings.process.stem_focus = focus
+                model = self._model(
+                    available_stem_routes=available,
+                    selected_stem_routes=selected,
+                    selected_stem_routes_explicit=explicit,
+                    is_ensemble_mode=True,
+                    settings=settings,
+                )
 
-        with self.assertRaisesRegex(
-            RuntimeError,
-            "explicit stem-mode focus.*resolved no export routes",
-        ):
-            run_export_routes(model)
+                with self.assertRaisesRegex(RuntimeError, error):
+                    run_export_routes(model)
+
+    def test_no_focus_honors_explicit_selection_provenance(self) -> None:
+        default = _route("vocals", StemBucket.VOCALS.value)
+        optional = StemRoute(
+            native=None,
+            role=StemRoleId("mix.instrumental"),
+            label="Optional Mix",
+            filename_tag="Optional_Mix",
+            kind=StemRouteKind.DERIVED,
+            selected_by_default=False,
+        )
+        available = (default, optional)
+        cases = (
+            (False, available, (default,)),
+            (True, available, available),
+            (True, (optional,), (optional,)),
+        )
+        for explicit, selected, expected in cases:
+            with self.subTest(explicit=explicit, selected=len(selected)):
+                settings = Settings.defaults()
+                settings.ensemble.main_stem = "mode.multi_stem"
+                model = self._model(
+                    available_stem_routes=available,
+                    selected_stem_routes=selected,
+                    selected_stem_routes_explicit=explicit,
+                    is_ensemble_mode=True,
+                    settings=settings,
+                )
+
+                self.assertEqual(run_export_routes(model), expected)
 
     def test_dual_pair_keeps_its_explicit_selected_route(self) -> None:
         routes = (

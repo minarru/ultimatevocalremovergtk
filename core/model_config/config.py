@@ -503,7 +503,8 @@ class ModelConfig:
     def _apply_stem_focus(self) -> None:
         """Honor ``process.stem_focus`` as the exclusive-pick (GTK and CLI).
 
-        Fills ``available_stem_routes`` / ``selected_stem_routes`` only.
+        Fills ``available_stem_routes`` / ``selected_stem_routes`` and records
+        whether the latter came from an explicit focus or MDX subset sidecar.
         Native yaml keys and exclusive-save flags stay as assembled from
         settings; engines read the routes. Vocal splitters still receive a
         selection, but :func:`~core.stems.run_export_routes` writes the full
@@ -538,6 +539,7 @@ class ModelConfig:
         focus = str(getattr(self.settings.process, "stem_focus", "") or "")
         routes = model_stem_routes(self)
         self.available_stem_routes = routes
+        selected_stem_routes_explicit = bool(focus.strip())
         positional = positional_stem_focus(focus)
         selection_matched = False
         if positional:
@@ -580,13 +582,9 @@ class ModelConfig:
                     if stem
                 )
                 if len(mdx_stems) > 2 and sidecar:
-                    native_concepts = {
-                        route.concept for route in routes if route.native is not None
-                    }
                     matched = routes_matching_stems(routes, sidecar, self)
-                    matched_concepts = {route.concept for route in matched}
-                    if matched and matched_concepts < native_concepts:
-                        selected = matched
+                    selected = matched
+                    selected_stem_routes_explicit = True
 
         # Dual-stem ensemble members default to the pair, not a 4-stem model's
         # full native inventory. Four/multi-stem members keep the selection for
@@ -606,6 +604,7 @@ class ModelConfig:
                     selected = pair_routes
 
         self.selected_stem_routes = selected
+        self.selected_stem_routes_explicit = selected_stem_routes_explicit
 
     def _exclusive_sides_from_routes(self) -> tuple[bool, bool]:
         """``(primary_only, secondary_only)`` from a single selected route.
