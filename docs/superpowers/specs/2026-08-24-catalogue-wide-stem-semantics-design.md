@@ -55,6 +55,33 @@ specialty-pair language, and fixed semantic-row target below. It preserves the
 - The generated semantic TSV row count is derived from the rendered schema-2
   snapshot. It is not pinned to the historical 1,206 rows.
 
+### Correction — 2026-08-26: Karaoke Logical Primary and Pair Order
+
+For every ordinary `karaoke`-intent model, accompaniment is the user-facing
+result and Lead Vocals is its complement:
+
+- `full_mix` uses `mix.instrumental_with_backing_vocals` as logical primary and
+  `vocal.lead` (display `Lead Vocals`) as explicit logical secondary;
+- `vocal_split` uses `vocal.backing` as logical primary and `vocal.lead`
+  (display `Lead Vocals`) as explicit logical secondary; and
+- `pair.karaoke` is ordered accompaniment first and Lead Vocals second, with
+  display `Instrumental with Backing Vocals/Lead Vocals`.
+
+This correction changes semantic primary and presentation order only. Exact
+native keys, authored output arrays, backend primary/target values, polarity,
+production recipes, and `selected_by_default` values remain unchanged. Logical
+primary and default selection are independent: GiantAILAB's derived full-mix
+accompaniment is logical primary while remaining `selected_by_default: false`.
+It is the sole current default-false logical primary. The exact VR BVE
+vocals-intent model retains its distinct BVE mapping.
+
+The final `karaoke` population is exactly 30 canonical IDs: the 28 exact
+karaoke declarations in the starting manifest, GiantAILAB promoted during the
+reviewed declaration correction, and `mdx:UVR_MDXNET_KARA` promoted with its
+runtime contract. The independently authored decision fixture pins the complete
+30-ID set. Both MelBand BVE IDs are inside it; the exact VR BVE ID is outside it
+with intent `vocals`.
+
 ```mermaid
 flowchart LR
   native["Native StemId<br/>opaque backend key"]
@@ -276,6 +303,7 @@ class SemanticStemOutput:
     derived_from: tuple[StemRoleId, ...] = ()
     complement_of: StemRoleId | None = None
     selected_by_default: bool = True
+    logical_secondary: bool = False
 
 @dataclass(frozen=True, slots=True)
 class StemSemanticRoute:
@@ -288,6 +316,7 @@ class StemSemanticRoute:
     complement_of: StemRoleId | None = None
     derived_from: tuple[StemRoleId, ...] = ()
     selected_by_default: bool = True
+    logical_secondary: bool = False
 
 @dataclass(frozen=True, slots=True)
 class ModelStemSemantics:
@@ -298,7 +327,14 @@ class ModelStemSemantics:
     status: StemReviewStatus
     evidence: str
     warning: str = ""
+    logical_secondary_role: StemRoleId | StemLiteral | None = None
 ```
+
+The optional manifest `logical_secondary` role projects to
+`ModelStemSemantics.logical_secondary_role` and marks exactly one
+`SemanticStemOutput`/`StemSemanticRoute.logical_secondary` flag when present.
+Its absence remains `None`/all-false; consumers never infer a semantic
+secondary from route order, intent, display text, or model ID.
 
 `StemRoute` uses the semantic role as its selection and ensemble identity. Its
 existing string `concept` remains a read-only compatibility projection during
@@ -336,10 +372,10 @@ schema and is not a runtime declaration):
   },
   "pairs": {
     "pair.karaoke": {
-      "display": "Lead Vocals/Instrumental with Backing Vocals",
+      "display": "Instrumental with Backing Vocals/Lead Vocals",
       "roles": [
-        "vocal.lead",
-        "mix.instrumental_with_backing_vocals"
+        "mix.instrumental_with_backing_vocals",
+        "vocal.lead"
       ]
     }
   },
@@ -349,7 +385,8 @@ schema and is not a runtime declaration):
       "intent": "karaoke",
       "contexts": {
         "full_mix": {
-          "logical_primary": "vocal.lead",
+          "logical_primary": "mix.instrumental_with_backing_vocals",
+          "logical_secondary": "vocal.lead",
           "outputs": [
             {
               "native": "lead",
@@ -372,6 +409,27 @@ schema and is not a runtime declaration):
               "production": "derived",
               "derived_from": ["vocal.backing", "mix.instrumental"],
               "selected_by_default": false
+            }
+          ]
+        },
+        "vocal_split": {
+          "logical_primary": "vocal.backing",
+          "logical_secondary": "vocal.lead",
+          "outputs": [
+            {
+              "native": "lead",
+              "role": "vocal.lead",
+              "production": "native"
+            },
+            {
+              "native": "backing",
+              "role": "vocal.backing",
+              "production": "native"
+            },
+            {
+              "native": "instrumental",
+              "role": "mix.instrumental",
+              "production": "native"
             }
           ]
         }
@@ -399,6 +457,8 @@ Rules:
 6. `selected_by_default` is optional but, when present, must be a strict
    Boolean. It defaults to `true` when omitted. An explicit `false` survives
    parsing, semantic projection, public JSON rendering, and route selection.
+   Default selection controls an unfiltered run; it does not determine logical
+   primary.
 7. A derived output has `native: null`, `production: "derived"`, and exactly
    one dependency form. `complement_of` means mix minus one exact native role;
    `derived_from` means the ordered sum of two or more exact native roles.
@@ -408,9 +468,16 @@ Rules:
    route must be materialized or the job/selection must fail with an actionable
    diagnostic; it must never be silently omitted. Native outputs have neither
    dependency form.
-8. A logical-primary output remains selected by default.
-9. Every logical-primary role must exist exactly once in that context's output
-   list.
+8. Each context has exactly one logical-primary output. Its
+   `selected_by_default` value is independent and may be `false`; GiantAILAB's
+   optional derived accompaniment is the sole current default-false logical
+   primary. This is a general schema invariant, not a model-ID special case.
+9. `logical_secondary` is an optional context role distinct from
+   `logical_primary`. When present, it must occur exactly once in that context's
+   outputs and projects as the sole logical-secondary route. Ordinary karaoke
+   contexts require `logical_secondary: "vocal.lead"`. When absent, semantic
+   consumers expose no logical secondary; they never infer one by output order,
+   intent, display text, or model ID.
 10. Role displays and filename tags are unique after Unicode normalization and
    case-folding unless an explicit reviewed collision waiver explains why.
 11. A current-catalogue model must be reviewed or explicitly waived. A newly
@@ -554,13 +621,13 @@ meaning.
 
 ## Context-Sensitive Karaoke and BVE Semantics
 
-An ordinary karaoke model has different accompaniment semantics depending on
-its input:
+An ordinary karaoke model has different logical-primary accompaniment semantics
+depending on its input:
 
-| Context | Vocal-side role | Complement role |
+| Context | Logical primary | Logical secondary |
 |---|---|---|
-| Full mix | `Lead Vocals` | `Instrumental with Backing Vocals` |
-| Vocal Splitter (vocals-only input) | `Lead Vocals` | `Backing Vocals` |
+| Full mix | `Instrumental with Backing Vocals` | `Lead Vocals` |
+| Vocal Splitter (vocals-only input) | `Backing Vocals` | `Lead Vocals` |
 
 Exact raw layouts including `Vocals/Instrumental`, `vocals/other`,
 `other/vocals`, `lead/back_instrum`, and `karaoke/other` map to these roles by
@@ -581,15 +648,24 @@ The two MelBand BVE models use the approved ordinary-karaoke projection:
 
 Their raw `Lead/Back` outputs become:
 
-- full mix: `Lead Vocals` / `Instrumental with Backing Vocals`;
-- Vocal Splitter: `Lead Vocals` / `Backing Vocals`.
+- full mix: logical-primary `Instrumental with Backing Vocals` / complementary
+  logical-secondary `Lead Vocals`;
+- Vocal Splitter: logical-primary `Backing Vocals` / complementary
+  logical-secondary `Lead Vocals`.
 
 GiantAILAB is the only approved multi-source sum. Its three exact native
 full-mix outputs remain selected by default. The combined karaoke accompaniment
 is a reviewed `derived_from` sum of `vocal.backing` and `mix.instrumental` with
-`selected_by_default: false`; it is available only through explicit selection
-or the karaoke-pair route. Vocal Splitter may project all exact native meanings
-for auditability, but schedules only its Lead/Backing pair.
+`selected_by_default: false` and is nevertheless the full-mix logical primary
+and the sole current default-false logical primary. It is available only through
+explicit primary/focus selection or the karaoke-pair route. `pair.karaoke`
+schedules that accompaniment first and `vocal.lead` second. Vocal Splitter may
+project all exact native meanings for auditability, but uses `vocal.backing` as
+logical primary and `vocal.lead` as logical secondary, scheduling only Backing
+Vocals followed by Lead Vocals. In full-mix processing, `Secondary Stem Only`
+also selects Lead Vocals despite the four available routes. The native output
+order and all default-selection values remain unchanged, so a normal/default
+full-mix run still schedules the three native outputs only.
 
 ## Logical Primary and Export Behavior
 
@@ -599,15 +675,21 @@ Backend primary and user-facing logical primary are separate fields.
   polarity, and model-specific execution behavior.
 - Logical primary controls ordering, `Primary Stem Only`, CLI positional
   `primary`, recommended-result presentation, and semantic diagnostics.
-- A no-filter run continues to export every normally selected output.
+- `selected_by_default`, not logical-primary status, controls a no-filter run;
+  it continues to export every normally selected output.
 - Exact target/complement routes remain selected by default on both sides,
   regardless of whether their reviewed intent is `instrumental`, `vocals`,
   `special_fx`, or `specialty_stem`; intent never suppresses a valid inverse.
 - An explicit semantic focus wins over logical-primary ordering.
-- A positional `secondary` chooses the first declared non-logical-primary
-  route for a two-route model. Multi-route positional behavior remains the
-  existing backend-primary/backend-secondary behavior unless the manifest
-  supplies an explicit logical secondary.
+- Ordinary karaoke routes use accompaniment as logical primary in both
+  contexts: `mix.instrumental_with_backing_vocals` for `full_mix` and
+  `vocal.backing` for `vocal_split`, with explicit logical-secondary
+  `vocal.lead` in each.
+- A positional `secondary` and every `Secondary Stem Only` consumer use only an
+  explicit `logical_secondary` when one is declared. They never infer semantic
+  secondary from route order, intent, display text, or model ID. If the field is
+  absent, no semantic secondary is projected; an existing backend-positional
+  request remains backend behavior rather than a manufactured semantic route.
 - Semantic resolution remains per assembled model and never mutates `Settings`.
 
 ### Exact MDX runtime inventories
@@ -679,7 +761,7 @@ shown only when at least two distinct installed models can contribute the
 requested semantic roles. Standard choices include:
 
 - `Vocals/Instrumental`;
-- `Lead Vocals/Instrumental with Backing Vocals`;
+- `Instrumental with Backing Vocals/Lead Vocals`;
 - `Backing Vocals/Instrumental with Lead Vocals`;
 - `Center/Side`;
 - the reserved four- and multi-stem modes.
@@ -706,19 +788,33 @@ JSON retains raw backend metadata and adds:
 
 ```json
 {
-  "backend_primary_stem": "other",
-  "backend_target_stem": "other",
-  "logical_primary_role": "mix.instrumental",
+  "backend_primary_stem": "Vocals",
+  "backend_target_stem": "",
+  "logical_primary_role": "mix.instrumental_with_backing_vocals",
+  "logical_secondary_role": "vocal.lead",
   "stem_semantics_status": "reviewed",
   "stem_context": "full_mix",
   "stem_routes": [
     {
-      "native": "other",
-      "role": "mix.instrumental",
-      "display": "Instrumental",
-      "filename_tag": "Instrumental",
+      "native": "Vocals",
+      "role": "vocal.lead",
+      "display": "Lead Vocals",
+      "filename_tag": "Lead_Vocals",
+      "production": "native",
+      "logical_primary": false,
+      "logical_secondary": true,
+      "complement_of": null,
+      "derived_from": [],
+      "selected_by_default": true
+    },
+    {
+      "native": "Instrumental",
+      "role": "mix.instrumental_with_backing_vocals",
+      "display": "Instrumental with Backing Vocals",
+      "filename_tag": "Instrumental_with_Backing_Vocals",
       "production": "native",
       "logical_primary": true,
+      "logical_secondary": false,
       "complement_of": null,
       "derived_from": [],
       "selected_by_default": true
@@ -746,6 +842,7 @@ production
 backend_primary
 backend_target
 logical_primary
+logical_secondary
 role_id
 canonical_name
 filename_tag
@@ -769,8 +866,9 @@ The generator must:
 - compare role displays and filename tags after Unicode normalization and
   case-folding;
 - fail on missing declarations, signature drift, duplicate roles within one
-  model/context, missing logical primaries, pair references to absent roles,
-  unreviewed current entries, or accidental collisions; and
+  model/context, missing logical primaries, invalid or ambiguous logical
+  secondaries, pair references to absent roles, unreviewed current entries, or
+  accidental collisions; and
 - keep `--check` read-only, including when combined with reference-output
   options.
 
@@ -780,6 +878,12 @@ sum renders its role IDs as an ordered `|`-joined value; and a default renders
 as lowercase `true` or `false`. A dependency cell is blank when its recipe form
 does not apply. All three final cells are blank only for a waiver row with no
 output route.
+
+`logical_secondary` renders lowercase `true` only on the one named route and
+`false` on every other output row in a context that has the field. It is blank
+for all output rows when the context omits `logical_secondary`, and on waiver
+rows. The structured audit validates these cells from the context declaration;
+the renderer never infers them from row order or another metadata field.
 
 Online, matching warm-offline, and cold-offline installed models use the same
 bundled semantic declarations. A live catalogue refresh may expose an
@@ -812,14 +916,32 @@ it.
   manifest against the generated reference.
 - Cover every observed contextual meaning of `other`, `inst`, `instrument`,
   `lead`, `back`, `dry`, and `noreverb`.
-- Cover all 28 karaoke identities, the two MelBand BVE identities, the VR BVE
-  context reversal, and GiantAILAB's three native outputs plus its explicitly
-  selected, default-false ordered sum.
+- Pin the exact final 30-ID `karaoke` set in the independent decision fixture:
+  the starting 28 declarations plus GiantAILAB and
+  `mdx:UVR_MDXNET_KARA`. Assert ordinary `full_mix`
+  accompaniment-primary/Lead-secondary semantics, ordinary `vocal_split`
+  Backing-primary/Lead-secondary semantics, and accompaniment-first
+  `pair.karaoke` display and role order. Keep both MelBand BVE IDs inside that
+  exact set and the distinct vocals-intent VR BVE ID outside it.
+- Cover no-filter/default export for ordinary native/native and native/derived
+  karaoke layouts, including each of the two MelBand BVE IDs. Primary and
+  secondary corrections must not suppress either normally selected output.
+  Cover GiantAILAB's three default-selected native outputs plus its
+  logical-primary, default-false ordered sum.
 - Verify all eight spatial entries project to and ensemble as `Center/Side`.
 - Verify exact target-plus-complement models use `<Target> Removed` and genuine
   multi-stem residuals use `Residual`.
 - Verify `selected_by_default` defaulting and explicit `false` through parsing,
   projection, JSON, routing, and the final three TSV cells.
+- Verify logical-primary membership and uniqueness independently of default
+  selection, with GiantAILAB as the sole current default-false logical primary;
+  do not special-case its model ID in validation.
+- Verify optional `logical_secondary` membership, uniqueness, and distinction
+  from primary through manifest parsing, model/route projections, JSON,
+  structured audit, TSV, and every Primary/Secondary Stem consumer. Every
+  ordinary karaoke context names `vocal.lead`; GiantAILAB Secondary Stem Only
+  selects Lead Vocals in both its four-route and three-route contexts without
+  order, intent, or model-ID inference.
 - Verify logical primary never mutates backend-primary lookup or unrestricted
   all-output behavior.
 - Verify friendly output filenames and stable internal tags.
