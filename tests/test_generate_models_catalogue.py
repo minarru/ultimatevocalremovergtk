@@ -122,6 +122,8 @@ class RuntimeStemSignatureTests(unittest.TestCase):
             instruments=["Instrumental", "Vocals"],
             primary_stem="Vocals",
             name_intent="vocals",
+            best_result="Guessed vocal result",
+            ui_export_note="UI: guessed vocal pair",
             metadata_source="community_models.txt",
             flags=["NAME says vocals but backend is not vocal-focused"],
         )
@@ -140,6 +142,8 @@ class RuntimeStemSignatureTests(unittest.TestCase):
             unreviewed.flags,
             ["NAME says vocals but backend is not vocal-focused"],
         )
+        self.assertEqual(unreviewed.best_result, "Guessed vocal result")
+        self.assertEqual(unreviewed.ui_export_note, "UI: guessed vocal pair")
         self.assertEqual(unreviewed.stem_semantics.guessed_intent, "vocals")
 
     def test_exact_mdx_c_catalogue_evidence_requires_config_digest(self) -> None:
@@ -218,6 +222,83 @@ class RuntimeStemSignatureTests(unittest.TestCase):
             ),
             ("Vocals", "Instrumental"),
         )
+
+
+class ReviewedResultProjectionTests(unittest.TestCase):
+    """Reviewed routes, not pre-review guesses, own published result prose."""
+
+    def _entries(self) -> list[catalogue.ModelEntry]:
+        from core.model_stem_manifest import load_bundled_stem_semantics
+
+        entries = [
+            catalogue.ModelEntry(
+                source="mvsepless",
+                family="MDX-Net",
+                catalogue_label="BS Roformer Drums Duality by Gilliaaan",
+                weight_file="bs_drums_gilliaaan.ckpt",
+                config_yaml="bs_drums_gilliaaan_config.yaml",
+                instruments=["drums", "other"],
+                primary_stem="drums",
+                stem_count=2,
+                name_intent="dual_voc_inst",
+                backend_focus="two_stem",
+                best_result="User picks Vocals or Instrumental (dual 2-stem)",
+                ui_export_note=(
+                    "UI: Vocals / Instrumental (either stem is a valid primary export)"
+                ),
+                metadata_source="bundled_yaml:bs_drums_gilliaaan_config.yaml",
+            ),
+            catalogue.ModelEntry(
+                source="Politrees",
+                family="Roformer",
+                catalogue_label=(
+                    "Roformer Model: MelBand Roformer | Bleed Suppressor v1 by Unwa & 97chris"
+                ),
+                weight_file="mel_band_roformer_bleed_suppressor_v1.ckpt",
+                config_yaml="config_melband_roformer_bleed_suppressor_v1.yaml",
+                instruments=["Instrumental", "Bleed"],
+                primary_stem="Instrumental",
+                target_instrument="Instrumental",
+                stem_count=2,
+                name_intent="instrumental",
+                backend_focus="instrumental_target",
+                best_result="Instrumental (complement = Vocals)",
+                ui_export_note="UI: Instrumental / Vocals",
+                metadata_source=("bundled_yaml:config_melband_roformer_bleed_suppressor_v1.yaml"),
+            ),
+        ]
+
+        catalogue.reconcile_stem_semantics(
+            entries,
+            registry=load_bundled_stem_semantics(),
+        )
+        return entries
+
+    def test_markdown_uses_exact_reviewed_route_prose(self) -> None:
+        rendered = render._render(self._entries())
+
+        self.assertIn("- **Name intent:** specialty_stem", rendered)
+        self.assertIn("- **Best result:** Drums, Drums Removed", rendered)
+        self.assertIn("- **Save stems UI:** UI: Drums / Drums Removed subset", rendered)
+        self.assertIn("- **Name intent:** special_fx", rendered)
+        self.assertIn("- **Best result:** Instrumental (+ Bleed complement)", rendered)
+        self.assertIn("- **Save stems UI:** UI: Instrumental / Bleed", rendered)
+        self.assertNotIn("User picks Vocals or Instrumental", rendered)
+        self.assertNotIn("Instrumental (complement = Vocals)", rendered)
+
+    def test_ir_uses_exact_reviewed_route_prose(self) -> None:
+        ir = catalogue.build_ir(self._entries(), report=None, unsupported_count=0)
+        by_weight = {entry["weight_file"]: entry for entry in ir["entries"]}
+
+        drums = by_weight["bs_drums_gilliaaan.ckpt"]
+        self.assertEqual(drums["name_intent"], "specialty_stem")
+        self.assertEqual(drums["best_result"], "Drums, Drums Removed")
+        self.assertEqual(drums["ui_export_note"], "UI: Drums / Drums Removed subset")
+
+        bleed = by_weight["mel_band_roformer_bleed_suppressor_v1.ckpt"]
+        self.assertEqual(bleed["name_intent"], "special_fx")
+        self.assertEqual(bleed["best_result"], "Instrumental (+ Bleed complement)")
+        self.assertEqual(bleed["ui_export_note"], "UI: Instrumental / Bleed")
 
 
 class UiNoteTests(unittest.TestCase):

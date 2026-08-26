@@ -659,6 +659,34 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
         )
         self.assertIn("context-unreviewed", _codes(result))
 
+    def test_context_native_membership_allows_authored_output_reordering(self) -> None:
+        registry = _registry(
+            {
+                "mdx:reordered": _declaration(
+                    ("Vocals", "Instrumental"),
+                    _context(
+                        VOCALS,
+                        _native("Instrumental", INSTRUMENTAL),
+                        _native("Vocals", VOCALS),
+                    ),
+                )
+            }
+        )
+
+        result = audit_catalogue_stems(
+            [_entry("reordered")],
+            collect.CatalogueContext(),
+            expected_reference_text="same",
+            actual_reference_text="same",
+            registry=registry,
+        )
+
+        self.assertNotIn("context-native-signature", _codes(result))
+        self.assertEqual(
+            [row.native_stem for row in result.reference_rows],
+            ["Instrumental", "Vocals"],
+        )
+
     def test_target_projection_requires_one_native_target_and_dependent_complement(self) -> None:
         roles = {
             BASS: _role(BASS, "Bass", "Bass", StemRoleFamily.INSTRUMENT),

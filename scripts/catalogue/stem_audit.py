@@ -274,7 +274,7 @@ def _audit_key(value: object) -> str:
 def _signature_matches(expected: Sequence[str], actual: Sequence[str]) -> bool:
     expected_keys = tuple(_audit_key(value) for value in expected)
     actual_keys = tuple(_audit_key(value) for value in actual)
-    return expected_keys == actual_keys
+    return len(expected_keys) == len(actual_keys) and set(expected_keys) == set(actual_keys)
 
 
 def _sorted_model_ids(model_ids: Iterable[str]) -> tuple[str, ...]:

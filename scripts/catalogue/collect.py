@@ -53,6 +53,7 @@ from core.model_data import (  # noqa: E402
 from core.model_naming import canonical_display_name  # noqa: E402
 from core.model_stem_manifest import StemSemanticsRegistry  # noqa: E402
 from core.model_stem_semantics import (  # noqa: E402
+    INTENT_DUAL_VOC_INST,
     INTENT_MULTI_STEM,
     INTENT_SPECIALTY_STEM,
     INTENT_UNKNOWN,
@@ -75,6 +76,7 @@ from core.stem_roles import (  # noqa: E402
     ModelStemSemantics,
     StemProcessingContext,
     StemReviewStatus,
+    StemRoleId,
 )
 
 OUTPUT_PATH = os.path.join(ROOT, "docs", "models-catalogue.md")
@@ -248,6 +250,15 @@ class ReconciledStemEvidence:
     guessed_flags: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True, slots=True)
+class ReviewedResultProjection:
+    """Human-facing result fields derived only from exact reviewed routes."""
+
+    intent: str
+    best_result: str
+    ui_export_note: str
+
+
 _RUNTIME_FAMILY_BY_CATALOGUE_FAMILY = {
     "VR Architecture": "vr",
     "Demucs": "demucs",
@@ -291,6 +302,62 @@ def catalogue_projection(entry: ModelEntry) -> tuple[str, str]:
     return model_id, project_catalogue_display(family, entry.catalogue_label, files, meta)
 
 
+def _reviewed_result_projection(
+    contexts: tuple[ModelStemSemantics, ...],
+    registry: StemSemanticsRegistry,
+) -> ReviewedResultProjection:
+    """Project result prose from one reviewed default context and exact roles."""
+    semantics = next(
+        (context for context in contexts if context.context is StemProcessingContext.FULL_MIX),
+        contexts[0],
+    )
+    routes: list[tuple[Any, str]] = []
+    for output in semantics.outputs:
+        if isinstance(output.role, StemRoleId):
+            definition = registry.roles.get(output.role)
+            display = definition.display if definition is not None else output.role.value
+        elif output.native is not None:
+            display = output.native.raw
+        else:
+            display = output.role.tag
+        routes.append((output, display))
+
+    displays = tuple(display for _output, display in routes)
+    if not displays:
+        return ReviewedResultProjection(semantics.intent, semantics.intent, "")
+
+    primary_output, primary_display = next(
+        ((output, display) for output, display in routes if output.logical_primary),
+        routes[0],
+    )
+    complement_display = next(
+        (
+            display
+            for output, display in routes
+            if output.complement_of is not None and output.complement_of == primary_output.role
+        ),
+        "",
+    )
+    if semantics.intent == INTENT_MULTI_STEM:
+        best_result = f"Multi-stem: {', '.join(displays)}"
+    elif semantics.intent == INTENT_DUAL_VOC_INST and len(displays) == 2:
+        best_result = f"{displays[0]} or {displays[1]} — both are first-class 2-stem exports"
+    elif complement_display:
+        best_result = f"{primary_display} (+ {complement_display} complement)"
+    else:
+        best_result = ", ".join(displays)
+
+    if len(displays) < 2:
+        ui_export_note = ""
+    elif semantics.intent in (INTENT_MULTI_STEM, INTENT_SPECIALTY_STEM):
+        ui_export_note = f"UI: {' / '.join(displays)} subset"
+    elif semantics.intent == INTENT_DUAL_VOC_INST:
+        ui_export_note = f"UI: {' / '.join(displays)} (either stem is a valid primary export)"
+    else:
+        ui_export_note = f"UI: {' / '.join(displays)}"
+    return ReviewedResultProjection(semantics.intent, best_result, ui_export_note)
+
+
 def reconcile_stem_semantics(
     entries: List[ModelEntry],
     *,
@@ -331,7 +398,11 @@ def reconcile_stem_semantics(
         guessed_intent = "" if reviewed else entry.name_intent
         guessed_flags = () if reviewed else tuple(entry.flags)
         if reviewed:
-            entry.name_intent = projections[0].intent
+            result = _reviewed_result_projection(projections, registry)
+            entry.name_intent = result.intent
+            entry.best_result = result.best_result
+            entry.ui_export_note = result.ui_export_note
+            entry.best_result_override = ""
             entry.flags.clear()
         entry.stem_semantics = ReconciledStemEvidence(
             model_id=model_id,
