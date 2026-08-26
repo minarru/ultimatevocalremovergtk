@@ -74,7 +74,9 @@ from core.model_stem_semantics import (  # noqa: E402
 )
 from core.stem_roles import (  # noqa: E402
     ModelStemSemantics,
+    SemanticStemOutput,
     StemProcessingContext,
+    StemProduction,
     StemReviewStatus,
     StemRoleId,
 )
@@ -306,13 +308,13 @@ def _reviewed_result_projection(
     contexts: tuple[ModelStemSemantics, ...],
     registry: StemSemanticsRegistry,
 ) -> ReviewedResultProjection:
-    """Project result prose from one reviewed default context and exact roles."""
+    """Project result prose from semantic priority without reordering routes."""
     semantics = next(
         (context for context in contexts if context.context is StemProcessingContext.FULL_MIX),
         contexts[0],
     )
-    routes: list[tuple[Any, str]] = []
-    for output in semantics.outputs:
+    routes: list[tuple[int, SemanticStemOutput, str]] = []
+    for index, output in enumerate(semantics.outputs):
         if isinstance(output.role, StemRoleId):
             definition = registry.roles.get(output.role)
             display = definition.display if definition is not None else output.role.value
@@ -320,41 +322,122 @@ def _reviewed_result_projection(
             display = output.native.raw
         else:
             display = output.role.tag
-        routes.append((output, display))
+        routes.append((index, output, display))
 
-    displays = tuple(display for _output, display in routes)
-    if not displays:
+    if not routes:
         return ReviewedResultProjection(semantics.intent, semantics.intent, "")
 
-    primary_output, primary_display = next(
-        ((output, display) for output, display in routes if output.logical_primary),
-        routes[0],
+    primary_route = next(
+        ((index, output, display) for index, output, display in routes if output.logical_primary),
+        None,
     )
-    complement_display = next(
+    if primary_route is None:
+        raise ValueError("reviewed result projection has no logical primary route")
+    primary_index, primary_output, primary_display = primary_route
+
+    secondary_index = next(
+        (index for index, output, _display in routes if output.logical_secondary),
+        None,
+    )
+    if secondary_index is None and semantics.logical_secondary_role is not None:
+        secondary_index = next(
+            (
+                index
+                for index, output, _display in routes
+                if output.role == semantics.logical_secondary_role
+            ),
+            None,
+        )
+    role_indices = {
+        output.role: index
+        for index, output, _display in routes
+        if isinstance(output.role, StemRoleId)
+    }
+    matching_pair = (
+        next(
+            (
+                pair
+                for pair in registry.pairs.values()
+                if primary_output.role in pair.roles and set(pair.roles).issubset(role_indices)
+            ),
+            None,
+        )
+        if isinstance(primary_output.role, StemRoleId)
+        else None
+    )
+    if secondary_index is None and matching_pair is not None:
+        secondary_role = next(role for role in matching_pair.roles if role != primary_output.role)
+        secondary_index = role_indices[secondary_role]
+
+    priority_indices = [primary_index]
+    if secondary_index is not None and secondary_index != primary_index:
+        priority_indices.append(secondary_index)
+    used_indices = set(priority_indices)
+    priority_indices.extend(
+        index
+        for index, output, _display in routes
+        if index not in used_indices and output.selected_by_default
+    )
+    used_indices.update(priority_indices)
+    priority_indices.extend(
+        index for index, _output, _display in routes if index not in used_indices
+    )
+    routes_by_index = {index: (output, display) for index, output, display in routes}
+    ordered_routes = tuple(routes_by_index[index] for index in priority_indices)
+
+    def availability_label(output: SemanticStemOutput, display: str) -> str:
+        if output.selected_by_default:
+            return display
+        kind = "derived output" if output.production is StemProduction.DERIVED else "output"
+        return f"{display} (available {kind}; not selected by default)"
+
+    ordered_labels = tuple(
+        availability_label(output, display) for output, display in ordered_routes
+    )
+    primary_complement_source = next(
         (
             display
-            for output, display in routes
+            for _index, output, display in routes
+            if primary_output.complement_of is not None
+            and output.role == primary_output.complement_of
+        ),
+        "",
+    )
+    complement_of_primary = next(
+        (
+            availability_label(output, display)
+            for _index, output, display in routes
             if output.complement_of is not None and output.complement_of == primary_output.role
         ),
         "",
     )
-    if semantics.intent == INTENT_MULTI_STEM:
-        best_result = f"Multi-stem: {', '.join(displays)}"
-    elif semantics.intent == INTENT_DUAL_VOC_INST and len(displays) == 2:
-        best_result = f"{displays[0]} or {displays[1]} — both are first-class 2-stem exports"
-    elif complement_display:
-        best_result = f"{primary_display} (+ {complement_display} complement)"
+    if (
+        matching_pair is not None
+        and len(ordered_routes) == 2
+        and (primary_complement_source or complement_of_primary)
+    ):
+        best_result = " / ".join(ordered_labels)
+    elif primary_complement_source and len(ordered_routes) == 2:
+        best_result = f"{primary_display} (complement of {primary_complement_source})"
+    elif complement_of_primary and len(ordered_routes) == 2:
+        best_result = f"{ordered_labels[0]} (+ {complement_of_primary} complement)"
+    elif semantics.intent == INTENT_MULTI_STEM:
+        best_result = f"Multi-stem: {', '.join(ordered_labels)}"
+    elif semantics.intent == INTENT_DUAL_VOC_INST and len(ordered_labels) == 2:
+        best_result = (
+            f"{ordered_labels[0]} or {ordered_labels[1]} — both are first-class 2-stem exports"
+        )
     else:
-        best_result = ", ".join(displays)
+        best_result = ", ".join(ordered_labels)
 
-    if len(displays) < 2:
+    if len(ordered_labels) < 2:
         ui_export_note = ""
     elif semantics.intent in (INTENT_MULTI_STEM, INTENT_SPECIALTY_STEM):
-        ui_export_note = f"UI: {' / '.join(displays)} subset"
+        ui_export_note = f"UI: {' / '.join(ordered_labels)} subset"
     elif semantics.intent == INTENT_DUAL_VOC_INST:
-        ui_export_note = f"UI: {' / '.join(displays)} (either stem is a valid primary export)"
+        ui_export_note = f"UI: {' / '.join(ordered_labels)} (either stem is a valid primary export)"
     else:
-        ui_export_note = f"UI: {' / '.join(displays)}"
+        ui_export_note = f"UI: {' / '.join(ordered_labels)}"
     return ReviewedResultProjection(semantics.intent, best_result, ui_export_note)
 
 

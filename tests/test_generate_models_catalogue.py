@@ -24,7 +24,15 @@ from catalogue.stem_audit import (  # noqa: E402
 
 from core.catalogue_types import SourceId  # noqa: E402
 from core.model_stem_manifest import load_stem_manifest_document  # noqa: E402
-from core.stem_roles import StemProcessingContext  # noqa: E402
+from core.stem_roles import (  # noqa: E402
+    ModelStemSemantics,
+    SemanticStemOutput,
+    StemId,
+    StemProcessingContext,
+    StemProduction,
+    StemReviewStatus,
+    StemRoleId,
+)
 
 
 def _clean_stem_audit(*_args: object, **_kwargs: object) -> StemAuditResult:
@@ -226,6 +234,197 @@ class RuntimeStemSignatureTests(unittest.TestCase):
 
 class ReviewedResultProjectionTests(unittest.TestCase):
     """Reviewed routes, not pre-review guesses, own published result prose."""
+
+    def _bundled_projection(self, model_id: str) -> catalogue.ReviewedResultProjection:
+        from core.model_stem_manifest import (
+            load_bundled_stem_semantics,
+            resolve_model_stem_semantics,
+        )
+
+        registry = load_bundled_stem_semantics()
+        declaration = registry.models[model_id]
+        semantics = resolve_model_stem_semantics(
+            model_id,
+            native_stems=declaration.native_signature,
+            context=StemProcessingContext.FULL_MIX,
+            registry=registry,
+        )
+        self.assertEqual(semantics.status, StemReviewStatus.REVIEWED)
+        return catalogue._reviewed_result_projection((semantics,), registry)
+
+    def _explicit_secondary_projection(self) -> catalogue.ReviewedResultProjection:
+        from core.model_stem_manifest import load_bundled_stem_semantics
+
+        registry = load_bundled_stem_semantics()
+        semantics = ModelStemSemantics(
+            model_id="mdx:explicit-secondary",
+            context=StemProcessingContext.FULL_MIX,
+            intent="specialty_stem",
+            outputs=(
+                SemanticStemOutput(
+                    native=StemId("backing"),
+                    role=StemRoleId("vocal.backing"),
+                    production=StemProduction.NATIVE,
+                    backend_primary=False,
+                    logical_primary=False,
+                    selected_by_default=False,
+                ),
+                SemanticStemOutput(
+                    native=StemId("drums"),
+                    role=StemRoleId("instrument.drums"),
+                    production=StemProduction.NATIVE,
+                    backend_primary=False,
+                    logical_primary=False,
+                    logical_secondary=True,
+                ),
+                SemanticStemOutput(
+                    native=StemId("side"),
+                    role=StemRoleId("spatial.side"),
+                    production=StemProduction.NATIVE,
+                    backend_primary=False,
+                    logical_primary=False,
+                ),
+                SemanticStemOutput(
+                    native=StemId("center"),
+                    role=StemRoleId("spatial.center"),
+                    production=StemProduction.NATIVE,
+                    backend_primary=False,
+                    logical_primary=True,
+                ),
+            ),
+            status=StemReviewStatus.REVIEWED,
+            evidence="fixture",
+            logical_secondary_role=StemRoleId("instrument.drums"),
+        )
+        return catalogue._reviewed_result_projection((semantics,), registry)
+
+    def _pair_secondary_projection(self) -> catalogue.ReviewedResultProjection:
+        from core.model_stem_manifest import load_bundled_stem_semantics
+
+        registry = load_bundled_stem_semantics()
+        semantics = ModelStemSemantics(
+            model_id="mdx:pair-secondary",
+            context=StemProcessingContext.FULL_MIX,
+            intent="specialty_stem",
+            outputs=(
+                SemanticStemOutput(
+                    native=StemId("drums"),
+                    role=StemRoleId("instrument.drums"),
+                    production=StemProduction.NATIVE,
+                    backend_primary=False,
+                    logical_primary=False,
+                ),
+                SemanticStemOutput(
+                    native=StemId("side"),
+                    role=StemRoleId("spatial.side"),
+                    production=StemProduction.NATIVE,
+                    backend_primary=False,
+                    logical_primary=False,
+                ),
+                SemanticStemOutput(
+                    native=StemId("center"),
+                    role=StemRoleId("spatial.center"),
+                    production=StemProduction.NATIVE,
+                    backend_primary=False,
+                    logical_primary=True,
+                ),
+            ),
+            status=StemReviewStatus.REVIEWED,
+            evidence="fixture",
+        )
+        return catalogue._reviewed_result_projection((semantics,), registry)
+
+    def test_result_prose_orders_exact_routes_by_semantic_priority(self) -> None:
+        cases = (
+            (
+                "ordinary karaoke complement",
+                self._bundled_projection("mdx:mbr_bve_gonzaluigi"),
+                "Instrumental with Backing Vocals / Lead Vocals",
+                "UI: Instrumental with Backing Vocals / Lead Vocals",
+            ),
+            (
+                "non-default derived logical primary",
+                self._bundled_projection("mdx:bs_karaoke_3stem_giantailab"),
+                (
+                    "Instrumental with Backing Vocals "
+                    "(available derived output; not selected by default), "
+                    "Lead Vocals, Backing Vocals, Instrumental"
+                ),
+                (
+                    "UI: Instrumental with Backing Vocals "
+                    "(available derived output; not selected by default) / "
+                    "Lead Vocals / Backing Vocals / Instrumental"
+                ),
+            ),
+            (
+                "derived drum bass logical primary",
+                self._bundled_projection("mdx:model_bs_roformer_ep_937_sdr_10.5309"),
+                "Drum/Bass (complement of Drum/Bass Removed)",
+                "UI: Drum/Bass / Drum/Bass Removed",
+            ),
+            (
+                "reviewed dual pair",
+                self._bundled_projection("mdx:UVR_MDXNET_Main"),
+                "Vocals or Instrumental — both are first-class 2-stem exports",
+                "UI: Vocals / Instrumental (either stem is a valid primary export)",
+            ),
+            (
+                "ordinary multi-stem",
+                self._bundled_projection("demucs:demucs"),
+                "Multi-stem: Vocals, Drums, Bass, Residual",
+                "UI: Vocals / Drums / Bass / Residual subset",
+            ),
+            (
+                "explicit logical secondary",
+                self._explicit_secondary_projection(),
+                "Center, Drums, Side, Backing Vocals (available output; not selected by default)",
+                (
+                    "UI: Center / Drums / Side / "
+                    "Backing Vocals (available output; not selected by default) subset"
+                ),
+            ),
+            (
+                "reviewed pair semantic secondary",
+                self._pair_secondary_projection(),
+                "Center, Side, Drums",
+                "UI: Center / Side / Drums subset",
+            ),
+        )
+
+        for label, projection, best_result, ui_export_note in cases:
+            with self.subTest(label):
+                self.assertEqual(projection.best_result, best_result)
+                self.assertEqual(projection.ui_export_note, ui_export_note)
+
+    def test_raw_result_prose_remains_unchanged(self) -> None:
+        from core.model_stem_manifest import load_bundled_stem_semantics
+
+        cases = (
+            (
+                catalogue.ModelEntry(
+                    source="fixture",
+                    family="VR Architecture",
+                    catalogue_label="vr:private_result_order",
+                    weight_file="private_result_order.pth",
+                    instruments=["vocals", "instrumental"],
+                    name_intent="vocals",
+                    best_result="Guessed vocals first",
+                    ui_export_note="UI: guessed vocals / instrumental",
+                ),
+                "Guessed vocals first",
+                "UI: guessed vocals / instrumental",
+            ),
+        )
+
+        for entry, best_result, ui_export_note in cases:
+            with self.subTest(entry.catalogue_label):
+                catalogue.reconcile_stem_semantics(
+                    [entry],
+                    registry=load_bundled_stem_semantics(),
+                )
+                self.assertFalse(entry.stem_semantics.reviewed)
+                self.assertEqual(entry.best_result, best_result)
+                self.assertEqual(entry.ui_export_note, ui_export_note)
 
     def _entries(self) -> list[catalogue.ModelEntry]:
         from core.model_stem_manifest import load_bundled_stem_semantics
