@@ -15,6 +15,7 @@ from core.model_stem_semantics import (
 from core.stem_roles import StemRoleId
 from core.stems import (
     StemBucket,
+    StemRoute,
     StemRouteKind,
 )
 from ml import spec_utils
@@ -210,13 +211,15 @@ def mdx_export_routing_flags(
     derived = tuple(route for route in routes if route.kind is StemRouteKind.DERIVED)
     native_names = [route.native.raw for route in natives if route.native is not None]
     has_derived_inst = any(route.concept == StemBucket.INSTRUMENTAL.value for route in derived)
-    has_other_derived = any(route.concept != StemBucket.INSTRUMENTAL.value for route in derived)
+    has_other_complement = any(
+        route.concept != StemBucket.INSTRUMENTAL.value and route.complement_of is not None
+        for route in derived
+    )
+    has_sum_recipe = any(route.derived_from for route in derived)
     is_full_selection = (not native_names) or set(name.casefold() for name in native_names) == set(
         str(stem).casefold() for stem in stem_list
     )
-    is_all_stems = (
-        mdxnet_stem_select == ALL_STEMS and not derived and (not native_names or is_full_selection)
-    )
+    is_all_stems = mdxnet_stem_select == ALL_STEMS and (not native_names or is_full_selection)
     is_not_ensemble_master = not is_ensemble_master
     is_not_single_stem = not len(stem_list) <= 2
     is_not_secondary_model = not is_secondary_model
@@ -234,7 +237,8 @@ def mdx_export_routing_flags(
         is_not_single_stem
         and len(natives) == 1
         and not has_derived_inst
-        and (bool(include_stem_complement) or has_other_derived)
+        and (bool(include_stem_complement) or has_other_complement)
+        and not has_sum_recipe
         and not is_vocals_quick_export
     )
     is_native_pick = (
@@ -321,6 +325,87 @@ def _channel_last_for_write(arr: typing.Any) -> typing.Any:
     if data.ndim == 2 and data.shape[0] == 2:
         return data.T
     return data
+
+
+def materialize_mdx_route_sources(
+    *,
+    available_routes: typing.Sequence[StemRoute],
+    export_routes: typing.Sequence[StemRoute],
+    native_sources: typing.Mapping[str, typing.Any],
+    mix: typing.Any,
+    invert_spec: bool = False,
+    match_frequency_pitch: typing.Any = None,
+) -> dict[str, typing.Any]:
+    """Materialize exact scheduled MDX-C routes from reviewed recipes.
+
+    Native arrays are associated with semantic roles only through their route's
+    exact backend key (case-insensitive spelling reconciliation is allowed).
+    Presentation labels and filename tags never participate in dependency
+    lookup. The returned map uses exact route-native keys for native outputs and
+    stable role concepts for derived outputs.
+    """
+    sources_by_role: dict[StemRoleId, typing.Any] = {}
+    for route in available_routes:
+        if route.native is None or not isinstance(route.role, StemRoleId):
+            continue
+        source_key = _exact_mdx_source_key(native_sources, route.native.raw)
+        if source_key is None:
+            continue
+        source = native_sources[source_key]
+        sources_by_role[route.role] = source
+
+    available_keys = sorted(map(str, native_sources.keys()))
+
+    def require_roles(route: StemRoute, roles: typing.Sequence[StemRoleId]) -> list[typing.Any]:
+        missing = [role.value for role in roles if role not in sources_by_role]
+        if missing:
+            raise RuntimeError(
+                f"Cannot materialize scheduled derived route {route.concept!r}: "
+                f"missing reviewed source roles {missing!r}; "
+                f"available native source keys={available_keys!r}"
+            )
+        return [sources_by_role[role] for role in roles]
+
+    result: dict[str, typing.Any] = {}
+    for route in export_routes:
+        if route.native is not None:
+            source_key = _exact_mdx_source_key(native_sources, route.native.raw)
+            if source_key is not None:
+                result[route.native.raw] = _channel_last_for_write(native_sources[source_key])
+            continue
+        if not isinstance(route.role, StemRoleId):
+            continue
+        if route.complement_of is not None:
+            (source,) = require_roles(route, (route.complement_of,))
+            result[route.concept] = derive_mdx_complement(
+                source,
+                mix,
+                invert_spec=invert_spec,
+                match_frequency_pitch=match_frequency_pitch,
+            )
+            continue
+        if not route.derived_from:
+            continue
+        if len(route.derived_from) < 2:
+            raise RuntimeError(
+                f"Cannot materialize scheduled derived route {route.concept!r}: "
+                "derived_from requires at least two reviewed source roles"
+            )
+
+        dependencies = [
+            np.asarray(_channel_last_for_write(source))
+            for source in require_roles(route, route.derived_from)
+        ]
+        invalid_shapes = [tuple(source.shape) for source in dependencies if source.ndim != 2]
+        channel_counts = {source.shape[1] for source in dependencies if source.ndim == 2}
+        if invalid_shapes or channel_counts != {2}:
+            shapes = [tuple(source.shape) for source in dependencies]
+            raise RuntimeError(
+                f"Cannot materialize scheduled derived route {route.concept!r}: "
+                f"incompatible channel-last dependency shapes {shapes!r}"
+            )
+        result[route.concept] = spec_utils.combine_arrarys(dependencies, is_swap=True)
+    return result
 
 
 def mdx_vocal_split_chain_sources(

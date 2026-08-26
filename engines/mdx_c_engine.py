@@ -32,6 +32,7 @@ from .mdx_c import (
     build_mdx_c_model,
     derive_mdx_complement,
     derive_mdx_multi_complement,
+    materialize_mdx_route_sources,
     mdx_combined_secondary_key,
     mdx_export_routing_flags,
     mdx_selected_stems,
@@ -154,12 +155,26 @@ class SeperateMDXC(SeperateAttributes):
             for route in available_routes
             if route.native is None
             and target_route is not None
-            and (
-                route.complement_of == target_route.role
-                or route.derived_from == (target_route.role,)
-            )
+            and route.complement_of == target_route.role
         )
         is_reviewed_target_pair = bool(target_native_key and dependent_routes)
+        native_source_map: dict[str, Any]
+        if isinstance(sources, dict):
+            native_source_map = sources
+        elif target_route is not None and target_route.native is not None:
+            native_source_map = {target_route.native.raw: sources}
+        else:
+            native_source_map = {}
+        reviewed_recipe_routes = tuple(
+            route
+            for route in export_routes
+            if route.native is None
+            and isinstance(route.role, StemRoleId)
+            and (route.complement_of is not None or route.derived_from)
+        )
+        is_reviewed_recipe_only = bool(reviewed_recipe_routes) and not any(
+            route.native is not None for route in export_routes
+        )
 
         def _export_source_key(stem: str) -> str:
             route = next(
@@ -190,12 +205,19 @@ class SeperateMDXC(SeperateAttributes):
         is_complement_export = routing["is_complement_export"]
         export_sources: dict[str, Any] = {}
 
-        if is_complement_export:
+        if is_reviewed_recipe_only and not is_reviewed_target_pair:
+            pass
+        elif is_complement_export:
             stem = selected_stems[0]
             complement_stem = secondary_stem(stem)
-            export_sources[stem] = sources[stem].T
+            source_key = _exact_mdx_source_key(native_source_map, stem)
+            if source_key is None:
+                raise KeyError(
+                    f"stem {stem!r} not in sources {sorted(map(str, native_source_map))}"
+                )
+            export_sources[stem] = native_source_map[source_key].T
             export_sources[complement_stem] = derive_mdx_complement(
-                sources[stem],
+                native_source_map[source_key],
                 mix,
                 invert_spec=self.is_invert_spec,
                 match_frequency_pitch=self.match_frequency_pitch,
@@ -213,7 +235,12 @@ class SeperateMDXC(SeperateAttributes):
                     allow_match_mix=allow_match,
                 )
             for stem in export_stems:
-                self.primary_source = sources[stem].T
+                source_key = _exact_mdx_source_key(native_source_map, stem)
+                if source_key is None:
+                    raise KeyError(
+                        f"stem {stem!r} not in sources {sorted(map(str, native_source_map))}"
+                    )
+                self.primary_source = native_source_map[source_key].T
                 export_sources[stem] = self.primary_source
         else:
             working_sources: Any = dict(sources) if isinstance(sources, dict) else sources
@@ -279,12 +306,15 @@ class SeperateMDXC(SeperateAttributes):
                 )
                 if selected_derived:
                     if not isinstance(self.secondary_source, np.ndarray):
-                        self.secondary_source = derive_mdx_complement(
-                            source_primary,
-                            mix,
+                        materialized_complement = materialize_mdx_route_sources(
+                            available_routes=available_routes,
+                            export_routes=selected_derived,
+                            native_sources=native_source_map,
+                            mix=mix,
                             invert_spec=bool(self.is_invert_spec),
                             match_frequency_pitch=self.match_frequency_pitch,
                         )
+                        self.secondary_source = materialized_complement[selected_derived[0].concept]
                     derived_audio = self.process_secondary_stem(
                         self.secondary_source,
                         self.secondary_source_secondary,
@@ -349,6 +379,22 @@ class SeperateMDXC(SeperateAttributes):
                     self.primary_source, self.secondary_source_primary
                 )
 
+        routes_to_materialize = tuple(
+            route
+            for route in reviewed_recipe_routes
+            if route.derived_from or route.concept not in export_sources
+        )
+        materialized_routes = materialize_mdx_route_sources(
+            available_routes=available_routes,
+            export_routes=routes_to_materialize,
+            native_sources=native_source_map,
+            mix=mix,
+            invert_spec=bool(self.is_invert_spec),
+            match_frequency_pitch=self.match_frequency_pitch,
+        )
+        for route in routes_to_materialize:
+            export_sources[route.concept] = materialized_routes[route.concept]
+
         secondary_sources = mdx_vocal_split_chain_sources(
             export_sources,
             sources,
@@ -398,8 +444,6 @@ class SeperateMDXC(SeperateAttributes):
                     if route.native is not None or not isinstance(route.role, StemRoleId):
                         continue
                     dependency = route.complement_of
-                    if dependency is None and len(route.derived_from) == 1:
-                        dependency = route.derived_from[0]
                     existing = sources_by_role.get(dependency) if dependency is not None else None
                     if existing is None:
                         continue

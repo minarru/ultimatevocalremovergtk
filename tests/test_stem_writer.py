@@ -557,17 +557,41 @@ class ExportSourceMapTests(unittest.TestCase):
             [("/tmp/Vocals.wav", vocals, 44100, "Vocals")],
         )
 
-    def test_derived_route_looks_up_label(self) -> None:
-        from core.stems import StemBucket, derived_stem_route
+    def test_reviewed_derived_route_uses_stable_role_key_not_presentation(self) -> None:
+        from core.stem_roles import StemRoleId
+        from core.stems import StemRoute, StemRouteKind
         from engines.stem_writer import export_source_map
 
         complement = object()
-        route = derived_stem_route(StemBucket.INSTRUMENTAL, label="Instrumental")
+        label_decoy = object()
+        tag_decoy = object()
+        route = StemRoute(
+            native=None,
+            role=StemRoleId("mix.instrumental"),
+            label="Rendered Instrumental",
+            filename_tag="Rendered_Instrumental",
+            kind=StemRouteKind.DERIVED,
+        )
         sep = _FakeSep((route,))
-        export_source_map(sep, {"Instrumental": complement}, samplerate=44100)
+        export_source_map(
+            sep,
+            {
+                "mix.instrumental": complement,
+                route.label: label_decoy,
+                route.filename_tag: tag_decoy,
+            },
+            samplerate=44100,
+        )
         self.assertEqual(
             sep.writes,
-            [("/tmp/Instrumental.wav", complement, 44100, "Instrumental")],
+            [
+                (
+                    "/tmp/Rendered Instrumental.wav",
+                    complement,
+                    44100,
+                    "Rendered Instrumental",
+                )
+            ],
         )
 
     def test_karaoke_complement_matches_plain_instrumental_source(self) -> None:
