@@ -140,15 +140,15 @@ always works directly from the checkout.
 uvr models list --family mdx
 uvr separate song.wav -o ~/stems --model mdx:UVR-MDX-NET-Inst_HQ_4
 uvr separate ~/Music -o ~/stems --recursive --include '*.flac' --dry-run
-uvr ensemble song.wav -o ~/stems --ensemble "Curated: kim vocal"
+uvr ensemble song.wav -o ~/stems --ensemble "Curated: Vocal Clean"
 uvr ensemble song.wav -o ~/stems --model mdx:model-a \
-  --model demucs:hdemucs_mmi --main-stem vocals_instrumental
+  --model demucs:hdemucs_mmi --main-stem pair.vocals_instrumental
 uvr audio inspect song.wav
 uvr audio stretch song.wav -o ~/processed --rate 1.1 --dry-run
 uvr audio restore song.wav -o ~/processed --model apollo:apollo_edm_by_essid
 uvr models catalog --family apollo --query restoration
 uvr ensembles create my-mix --member mdx:model-a --member demucs:model-b \
-  --main-stem vocals_instrumental --algorithm 'Max Spec/Min Spec'
+  --main-stem pair.vocals_instrumental --algorithm 'Max Spec/Min Spec'
 uvr update check
 ```
 
@@ -198,7 +198,7 @@ Everything else must be downloaded or placed manually:
 2. Download the models you need for VR, MDX-Net, or Demucs.
 3. For **Apollo** restoration, place checkpoint files (`.ckpt` or `.bin`) in `models/Apollo_Models/`.
 4. **Roformer**, **SCNet**, and **Bandit** checkpoints download like other MDX models; enable the *Roformer Model* flag in MDX-C model parameters when using them. See [docs/models.md](docs/models.md) for stem layouts.
-5. **Community models** from [Politrees UVR_resources](https://github.com/Politrees/UVR_resources) and [mvsepless_resources](https://huggingface.co/noblebarkrr/mvsepless_resources) appear in **Download Center** after refresh (alongside the official TRvlvr catalogue). Weights download from Hugging Face; YAML configs are fetched automatically. Models this build cannot run yet show as **Unsupported** (grayed). Set `UVR_DISABLE_POLITREES=1` / `UVR_DISABLE_MVSEPLESS=1` to skip those supplements (see [docs/environment.md](docs/environment.md)). TRvlvr download URLs that fail fall back to the Politrees Hugging Face mirror when available.
+5. **Download Center** merges the official TRvlvr catalogue, [Politrees UVR_resources](https://github.com/Politrees/UVR_resources), bundled fork extras, and [mvsepless_resources](https://huggingface.co/noblebarkrr/mvsepless_resources). Weights download from Hugging Face; YAML configs are fetched automatically. Models this build cannot run yet show as **Unsupported** (grayed). Set `UVR_DISABLE_POLITREES=1`, `UVR_DISABLE_EXTRA_MODELS=1`, and/or `UVR_DISABLE_MVSEPLESS=1` to disable individual supplements (see [docs/environment.md](docs/environment.md)); disabling Politrees alone does not leave only TRvlvr. TRvlvr download URLs that fail fall back to the Politrees Hugging Face mirror when available.
 
 Downloaded weights are ignored by git (see `.gitignore`). Runtime data (settings, temp files) lives under the project directory in portable mode, or under `~/.local/share/ultimatevocalremover` when the install directory is read-only.
 
@@ -223,9 +223,9 @@ Source code is grouped by layer at the repository root:
 **Runtime (your machine, not in git):** `settings.json`, `profiles/*.json`, `ensembles/*.json`, `ensemble_temps/`, downloaded model weights. In a writable checkout these live at the repo root; otherwise they resolve under `DATA_DIR` (see `core/paths.py`). Legacy `data.pkl` is imported once when present.
 
 The GUI and CLI share canonical model IDs (`vr:…`, `mdx:…`, `demucs:…`, and `apollo:…`)
-and the same frontend-neutral job resolver. On the first GUI startup after this
-change, stored GUI model references are migrated offline on a worker thread.
-Every changed JSON file receives a one-time `.pre-canonical-id.bak` backup;
+and the same frontend-neutral job resolver. Stored model references are not
+silently migrated: a malformed or unavailable ID remains stored until the user
+repicks it in the relevant picker; see [docs/models.md](docs/models.md#model-identity).
 CLI profile operations remain separate and never rewrite GUI storage. The GUI
 performs runtime preflight before Separation, Ensemble, and Audio Tools jobs and, by default,
 asks for confirmation of Separation and Ensemble plans. This confirmation can
@@ -258,7 +258,7 @@ For shared dependency questions (FFmpeg, Rubber Band, etc.), upstream [GitHub Is
 
 Report bugs in **this GTK fork** on [GitHub Issues](https://github.com/minarru/ultimatevocalremovergtk/issues). Use **Report Issue** in the Error Log to pre-fill version and log details.
 
-Known upstream-applicable bugs and roadmap gaps are tracked in [docs/tracked-issues.md](docs/tracked-issues.md) (items 1–7 + product gaps).
+Known upstream-applicable bugs and roadmap gaps are tracked in [docs/tracked-issues.md](docs/tracked-issues.md), including numbered findings F1–F24 and product gaps.
 
 ## License
 

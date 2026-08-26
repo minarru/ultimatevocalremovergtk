@@ -1,9 +1,15 @@
 # Model Display Quality Audit
 
 **Date:** 2026-08-24
-**Status:** Revised, implemented, and enforced
-**Scope:** Complete current public catalogue, runtime display projection, and
-online/offline verification
+**Status:** Historical 2026-08-24 snapshot; implemented delivery record
+**Scope:** The 2026-08-24 public-catalogue, runtime display-projection, and
+online/offline verification snapshot
+
+> **Historical snapshot.** This audit records the completed 2026-08-24
+> 485-row delivery snapshot. It is not the live catalogue count: at the
+> 2026-08-26 review, the generated reference/catalogue contains 486 rows. Use
+> [`model_display_reference.tsv`](model_display_reference.tsv) and the
+> generated [`models-catalogue.md`](models-catalogue.md) as the current source.
 
 ## Contract
 
@@ -32,9 +38,9 @@ alone as the final runtime display.
 
 ## Checked-in reference
 
-[`model_display_reference.tsv`](model_display_reference.tsv) contains exactly
-485 current public catalogue rows and their syntactic presentation IDs. Runtime
-inventory projects 484 of those rows. The remaining row,
+At the time of this snapshot, [`model_display_reference.tsv`](model_display_reference.tsv)
+contained exactly 485 public catalogue rows and their syntactic presentation
+IDs. Runtime inventory projected 484 of those rows. The remaining row,
 `BandSplit_Roformer_4stems_FT_by_SYH99999.pth`, is intentionally ineligible
 under the MDX `.ckpt`/`.onnx` execution contract; its exact `mdx:` presentation
 ID lets catalogue surfaces use the audited title without creating an executable

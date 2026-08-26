@@ -100,14 +100,15 @@ the rotating cache log or use `journalctl --user -f` for the active process.
 
 | Variable | Values | Purpose |
 |----------|--------|---------|
-| `UVR_DISABLE_POLITREES` | `1`, `true`, `yes` | Use only the official TRvlvr catalogue (skip Politrees community models) |
+| `UVR_DISABLE_POLITREES` | `1`, `true`, `yes` | Skip the remote Politrees community supplement; bundled extras and mvsepless membership remain enabled unless separately disabled |
+| `UVR_DISABLE_EXTRA_MODELS` | `1`, `true`, `yes` | Skip bundled fork-extra catalogue membership (a local source) |
 | `UVR_DISABLE_MVSEPLESS` | `1`, `true`, `yes` | Skip the [mvsepless_resources](https://huggingface.co/noblebarkrr/mvsepless_resources) catalogue supplement |
 | `UVR_DISABLE_CATALOGUE_STEMS` | `1`, `true`, `yes` | Skip background fetch of catalogue YAML configs for Download Center stem subtitles (mvsepless stems unchanged; use for offline/CI) |
 | `UVR_DISABLE_MODEL_SCORES` | `1`, `true`, `yes` | Skip the benchmarked SDR catalogue (network fetch + seven-day cache); rows fall back to stems and size |
 | `UVR_SIZE_HEAD_WORKERS` | positive int (default `8`) | Parallelism for Download Center size/identity HEAD warmup, and the size of each submitted wave. Non-numeric or `0` falls back to the default |
 | `UVR_INSECURE_DOWNLOADS` | `1` | Disable TLS certificate verification (**dev only**) |
 
-Download size-cache warmup (`size_cache_warmup start` in logs) is scheduled when the Download Center opens, not at main-window map. HEADs are submitted a wave at a time so quitting mid-warmup only waits on the wave in flight, not the whole backlog. When the warmup's identity pass drops rehosted duplicates, the open Download Center removes those rows in place (`catalogue refresh removed N row(s)` in logs) instead of rebuilding the list. Catalogue YAML stem fetches are rate-limited (≤2 concurrent), notify per completed chunk, and prioritize visible Download Center rows — a row already queued in the bulk backlog is promoted when it becomes visible. Name-mapper refresh merges local-only keys; see [models.md](models.md).
+`CatalogueCoordinator` merges membership in this order: upstream/TRvlvr, Politrees, bundled fork extras, then mvsepless. Upstream/TRvlvr, Politrees, and mvsepless are remote membership sources; extras is bundled and local. For a TRvlvr-only membership view, disable all three supplements (`UVR_DISABLE_POLITREES=1`, `UVR_DISABLE_EXTRA_MODELS=1`, and `UVR_DISABLE_MVSEPLESS=1`). Download size-cache warmup (`size_cache_warmup start` in logs) is scheduled when the Download Center opens, not at main-window map. HEADs are submitted a wave at a time so quitting mid-warmup only waits on the wave in flight, not the whole backlog. When the warmup's identity pass drops rehosted duplicates, the open Download Center removes those rows in place (`catalogue refresh removed N row(s)` in logs) instead of rebuilding the list. Catalogue YAML stem fetches are rate-limited (≤2 concurrent), notify per completed chunk, and prioritize visible Download Center rows — a row already queued in the bulk backlog is promoted when it becomes visible. Name-mapper refresh merges local-only keys; see [models.md](models.md).
 
 ---
 
@@ -167,7 +168,7 @@ uvr separate song.wav -o /tmp/stems \
 
 uvr ensemble song.wav -o /tmp/stems \
   --model mdx:model-a --model demucs:hdemucs_mmi \
-  --main-stem vocals_instrumental
+  --main-stem pair.vocals_instrumental
 ```
 
 Canonical model IDs are `vr:<basename>`, `mdx:<basename>`, `demucs:<basename>`,

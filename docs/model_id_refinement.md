@@ -2,10 +2,15 @@
 
 **Date:** 2026-08-21
 
+> **Implementation status — historical delivery record.** The strict-ID
+> contract described here is implemented. Read its invariants as current
+> behavior; the phase sequence and delivery wording below record the completed
+> 2026-08-21 implementation rather than pending work.
+
 This document is the locked product contract for a shared model-identity
 pipeline. It supersedes architecture-specific display-to-filename inversion as
-the runtime lookup mechanism. Implementation must follow these locks; do not
-re-open them to preserve old settings, replays, or ensembles.
+the runtime lookup mechanism. The shipped implementation follows these locks;
+do not re-open them to preserve old settings, replays, or ensembles.
 
 ## Status and decisions
 
@@ -729,9 +734,9 @@ missing source layout from its name or directory.
 
 There is no identity migrator and no `identity_schema_version` field in this
 story. Format readers ignore an obsolete field, and normal writers omit it on
-the next save without converting model values. Remove `core/identity_migration.py`,
-the settings dataclass/default field, ensemble emission, and the UI migration
-hooks.
+the next save without converting model values. The completed delivery removed
+`core/identity_migration.py`, the settings dataclass/default field, ensemble
+emission, and the UI migration hooks.
 
 Validation is deliberately two-stage because settings load before the lazy
 repository is available:
@@ -839,7 +844,7 @@ documentation to distinguish IDs, displays, selectables, backend names, and
 artifacts. Document that legacy settings/ensembles/replays are not converted
 and that the user must re-pick models.
 
-## Implementation sequence
+## Historical implementation sequence
 
 ### Phase 1: Lock regressions and contracts
 
