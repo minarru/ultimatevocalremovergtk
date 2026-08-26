@@ -98,9 +98,7 @@ class CatalogueCoordinatorTests(unittest.TestCase):
         coordinator = self._coordinator()
         snapshot = coordinator.snapshot(
             mode=RefreshMode.OFFLINE,
-            policy=AccessPolicy(
-                allow_network=False, allow_metadata_writes=False
-            ),
+            policy=AccessPolicy(allow_network=False, allow_metadata_writes=False),
         )
 
         self.assertEqual(snapshot.entry_sources["mdx"]["Kept"], "upstream")
@@ -111,28 +109,18 @@ class CatalogueCoordinatorTests(unittest.TestCase):
             "vr_download_list": {"VR Public": "public.pth"},
             "vr_download_vip_list": {"VR VIP: Added": "added.pth"},
             "mdx_download_list": {"MDX Public": "public.onnx"},
-            "mdx_download_vip_list": {
-                "MDX-Net Model VIP: Added MDX": "mdx.onnx"
-            },
-            "mdx23_download_vip_list": {
-                "MDX23 Model VIP: Added MDX23": {"23.ckpt": "23.yaml"}
-            },
+            "mdx_download_vip_list": {"MDX-Net Model VIP: Added MDX": "mdx.onnx"},
+            "mdx23_download_vip_list": {"MDX23 Model VIP: Added MDX23": {"23.ckpt": "23.yaml"}},
             "mdx23c_download_vip_list": {
                 "MDX23C Model VIP: Added MDX23C": {"23c.ckpt": "23c.yaml"}
             },
             "roformer_download_vip_list": {
                 "Roformer Model VIP: Added Roformer": {"r.ckpt": "r.yaml"}
             },
-            "scnet_download_vip_list": {
-                "SCNet Model VIP: Added": {"s.ckpt": "s.yaml"}
-            },
-            "bandit_download_vip_list": {
-                "Bandit Model VIP: Added": {"b.ckpt": "b.yaml"}
-            },
+            "scnet_download_vip_list": {"SCNet Model VIP: Added": {"s.ckpt": "s.yaml"}},
+            "bandit_download_vip_list": {"Bandit Model VIP: Added": {"b.ckpt": "b.yaml"}},
             "demucs_download_list": {},
-            "demucs_download_vip_list": {
-                "Demucs Model VIP: Added": "demucs.yaml"
-            },
+            "demucs_download_vip_list": {"Demucs Model VIP: Added": "demucs.yaml"},
         }
         coordinator = self._coordinator(payload)
         policy = AccessPolicy(allow_network=False, allow_metadata_writes=False)
@@ -332,8 +320,7 @@ class CatalogueCoordinatorTests(unittest.TestCase):
         self.assertIn("catalogue_refresh_started", names)
         self.assertIn("catalogue_refresh_completed", names)
         completed = next(
-            call for call in event.call_args_list
-            if call.args[1] == "catalogue_refresh_completed"
+            call for call in event.call_args_list if call.args[1] == "catalogue_refresh_completed"
         )
         self.assertEqual(completed.kwargs["mdx_count"], 1)
         coordinator.close()
@@ -447,9 +434,7 @@ class CatalogueCoordinatorTests(unittest.TestCase):
             clock=clock,
         )
 
-    def _swr_coordinator(
-        self, sources: dict[SourceId, RemoteJsonSource]
-    ) -> CatalogueCoordinator:
+    def _swr_coordinator(self, sources: dict[SourceId, RemoteJsonSource]) -> CatalogueCoordinator:
         mapping = {
             SourceId.UPSTREAM: _disabled(SourceId.UPSTREAM),
             SourceId.POLITREES: _disabled(SourceId.POLITREES),
@@ -500,17 +485,14 @@ class CatalogueCoordinatorTests(unittest.TestCase):
         deltas: list = []
         coordinator.subscribe_delta(lambda delta: deltas.append(delta))
         policy = AccessPolicy(allow_network=True, allow_metadata_writes=True)
-        stale = coordinator.refresh(
-            mode=RefreshMode.STALE_WHILE_REVALIDATE, policy=policy
-        )
+        stale = coordinator.refresh(mode=RefreshMode.STALE_WHILE_REVALIDATE, policy=policy)
         self.assertTrue(stale.usable)
         self.assertIn("Old", coordinator._latest.mdx if coordinator._latest else {})
         self.assertTrue(fetched.wait(timeout=2))
         release.set()
         self.assertTrue(
             _wait_until(
-                lambda: coordinator._latest is not None
-                and "New" in coordinator._latest.mdx
+                lambda: coordinator._latest is not None and "New" in coordinator._latest.mdx
             )
         )
         latest = coordinator._latest
@@ -555,9 +537,7 @@ class CatalogueCoordinatorTests(unittest.TestCase):
                     clock=clock,
                     opener=_gated_opener(
                         {
-                            "mdx_download_list": {
-                                "New": {"n.ckpt": "https://u/n.ckpt"}
-                            },
+                            "mdx_download_list": {"New": {"n.ckpt": "https://u/n.ckpt"}},
                             "vr_download_list": {},
                             "demucs_download_list": {},
                         },
@@ -571,11 +551,7 @@ class CatalogueCoordinatorTests(unittest.TestCase):
                     path=po_path,
                     clock=clock,
                     opener=_gated_opener(
-                        {
-                            "mdx_download_list": {
-                                "P-new": {"pn.ckpt": "https://p/pn.ckpt"}
-                            }
-                        },
+                        {"mdx_download_list": {"P-new": {"pn.ckpt": "https://p/pn.ckpt"}}},
                         po_fetched,
                         po_release,
                     ),
@@ -584,9 +560,7 @@ class CatalogueCoordinatorTests(unittest.TestCase):
             }
         )
         policy = AccessPolicy(allow_network=True, allow_metadata_writes=True)
-        stale = coordinator.refresh(
-            mode=RefreshMode.STALE_WHILE_REVALIDATE, policy=policy
-        )
+        stale = coordinator.refresh(mode=RefreshMode.STALE_WHILE_REVALIDATE, policy=policy)
         self.assertTrue(stale.usable)
         latest = coordinator._latest
         self.assertIsNotNone(latest)
@@ -606,9 +580,11 @@ class CatalogueCoordinatorTests(unittest.TestCase):
             up_release.set()
         self.assertTrue(
             _wait_until(
-                lambda: coordinator._latest is not None
-                and "New" in coordinator._latest.mdx
-                and "P-new" in coordinator._latest.mdx
+                lambda: (
+                    coordinator._latest is not None
+                    and "New" in coordinator._latest.mdx
+                    and "P-new" in coordinator._latest.mdx
+                )
             )
         )
         final = coordinator._latest
@@ -651,15 +627,12 @@ class CatalogueCoordinatorTests(unittest.TestCase):
             }
         )
         policy = AccessPolicy(allow_network=True, allow_metadata_writes=True)
-        stale = coordinator.refresh(
-            mode=RefreshMode.STALE_WHILE_REVALIDATE, policy=policy
-        )
+        stale = coordinator.refresh(mode=RefreshMode.STALE_WHILE_REVALIDATE, policy=policy)
         self.assertTrue(stale.usable)
         self.assertTrue(fetched.wait(timeout=2))
         self.assertTrue(
             _wait_until(
-                lambda: coordinator.source(SourceId.UPSTREAM).state.status.error
-                is not None
+                lambda: coordinator.source(SourceId.UPSTREAM).state.status.error is not None
             )
         )
         latest = coordinator._latest
@@ -708,9 +681,7 @@ class CatalogueCoordinatorTests(unittest.TestCase):
             }
         )
         policy = AccessPolicy(allow_network=True, allow_metadata_writes=True)
-        stale = coordinator.refresh(
-            mode=RefreshMode.STALE_WHILE_REVALIDATE, policy=policy
-        )
+        stale = coordinator.refresh(mode=RefreshMode.STALE_WHILE_REVALIDATE, policy=policy)
         self.assertTrue(stale.usable)
         disk_payload = coordinator.source(SourceId.UPSTREAM).state.content
         self.assertIsNotNone(disk_payload)
