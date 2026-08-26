@@ -286,7 +286,8 @@ def stem_semantics_reference_tsv(
     lines = [
         "\t".join(identity_headers)
         + "\tmodel_id\tmodel_display\tnative_signature\tprocessing_context\tnative_stem\t"
-        "production\tbackend_primary\tbackend_target\tlogical_primary\trole_id\t"
+        "production\tbackend_primary\tbackend_target\tlogical_primary\tlogical_secondary\t"
+        "role_id\t"
         "canonical_name\tfilename_tag\tpair_id\tintent\tintent_source\treview_status\t"
         "evidence_or_waiver\tcomplement_of\tderived_from\tselected_by_default"
     ]
@@ -339,6 +340,11 @@ def stem_semantics_reference_tsv(
                             entry.primary_stem,
                             entry.target_instrument,
                             str(output.logical_primary).lower(),
+                            (
+                                str(output.logical_secondary).lower()
+                                if semantics.logical_secondary_role is not None
+                                else ""
+                            ),
                             role,
                             definition.display
                             if definition
@@ -374,6 +380,7 @@ def stem_semantics_reference_tsv(
                         _display_label(entry),
                         "",
                         "full_mix",
+                        "",
                         "",
                         "",
                         "",

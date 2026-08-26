@@ -132,6 +132,7 @@ class StemSemanticRoute:
     derived_from: tuple[str, ...] = ()
     complement_of: str | None = None
     selected_by_default: bool = True
+    logical_secondary: bool = False
 
     def as_dict(self) -> dict[str, Any]:
         result = {
@@ -141,6 +142,7 @@ class StemSemanticRoute:
             "filename_tag": self.filename_tag,
             "production": self.production,
             "logical_primary": self.logical_primary,
+            "logical_secondary": self.logical_secondary,
         }
         if self.derived_from:
             result["derived_from"] = list(self.derived_from)
@@ -157,6 +159,7 @@ class StemSemanticProjection:
     backend_primary_stem: str | None
     backend_target_stem: str | None
     logical_primary_role: str | None
+    logical_secondary_role: str | None
     status: str
     context: str
     routes: tuple[StemSemanticRoute, ...]
@@ -169,6 +172,7 @@ class StemSemanticProjection:
             "backend_primary_stem": self.backend_primary_stem,
             "backend_target_stem": self.backend_target_stem,
             "logical_primary_role": self.logical_primary_role,
+            "logical_secondary_role": self.logical_secondary_role,
             "stem_semantics_status": self.status,
             "stem_context": self.context,
             "stem_routes": [route.as_dict() for route in self.routes],

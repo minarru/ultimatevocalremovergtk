@@ -120,6 +120,7 @@ class StemRoute:
     conditional: bool
     selected_by_default: bool
     logical_primary: bool
+    logical_secondary: bool
     selection_scope: str
     derived_from: tuple[StemRoleId, ...]
     complement_of: StemRoleId | None
@@ -138,6 +139,7 @@ class StemRoute:
         derived_from: tuple[StemRoleId, ...] = (),
         complement_of: StemRoleId | None = None,
         *,
+        logical_secondary: bool = False,
         concept: str | None = None,
     ) -> None:
         """Create a route; ``concept=`` remains constructor compatibility only."""
@@ -153,6 +155,7 @@ class StemRoute:
         object.__setattr__(self, "conditional", conditional)
         object.__setattr__(self, "selected_by_default", selected_by_default)
         object.__setattr__(self, "logical_primary", logical_primary)
+        object.__setattr__(self, "logical_secondary", logical_secondary)
         object.__setattr__(self, "selection_scope", selection_scope)
         object.__setattr__(self, "derived_from", tuple(derived_from))
         object.__setattr__(self, "complement_of", complement_of)
@@ -882,6 +885,7 @@ def _dedupe_routes(routes: Sequence[StemRoute]) -> Tuple[StemRoute, ...]:
             conditional=existing.conditional and route.conditional,
             selected_by_default=(existing.selected_by_default or route.selected_by_default),
             logical_primary=(existing.logical_primary or route.logical_primary),
+            logical_secondary=(existing.logical_secondary or route.logical_secondary),
             selection_scope=chosen.selection_scope,
             derived_from=chosen.derived_from,
             complement_of=chosen.complement_of,
@@ -994,6 +998,7 @@ def _semantic_routes(semantics: ModelStemSemantics) -> tuple[StemRoute, ...]:
                 ),
                 selected_by_default=output.selected_by_default,
                 logical_primary=output.logical_primary,
+                logical_secondary=output.logical_secondary,
                 selection_scope=(
                     raw_scope
                     if isinstance(output.role, StemLiteral)
@@ -1085,6 +1090,23 @@ def _route_matches_focus(route: StemRoute, requested: str) -> bool:
             and (actual is wanted or _plain_family(actual) is _plain_family(wanted))
         )
     return persisted_stem_focus(route) == requested
+
+
+def logical_primary_route(routes: Sequence[StemRoute]) -> StemRoute | None:
+    """Return the sole explicitly marked logical-primary route, if valid."""
+    matches = tuple(route for route in routes if route.logical_primary)
+    return matches[0] if len(matches) == 1 else None
+
+
+def logical_secondary_route(routes: Sequence[StemRoute]) -> StemRoute | None:
+    """Return the sole explicitly marked logical-secondary route, if valid.
+
+    Absence and ambiguity both return ``None``. Callers then retain their
+    backend-positional fallback without manufacturing a semantic role from
+    route order, intent, display text, or model identity.
+    """
+    matches = tuple(route for route in routes if route.logical_secondary)
+    return matches[0] if len(matches) == 1 else None
 
 
 def select_stem_routes(routes: Sequence[StemRoute], focus: str) -> StemSelection:

@@ -61,6 +61,7 @@ class StemPairDefinition:
 class _ModelStemContext:
     logical_primary: StemRoleId
     outputs: tuple[SemanticStemOutput, ...]
+    logical_secondary: StemRoleId | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -448,13 +449,32 @@ def _parse_models(
                 raw_context_value,
                 context_path,
                 required=frozenset({"logical_primary", "outputs"}),
-                optional=frozenset(),
+                optional=frozenset({"logical_secondary"}),
             )
             logical_primary = _role_id(
                 context_value["logical_primary"], context_path + ("logical_primary",)
             )
             if logical_primary not in roles:
                 raise _error(context_path + ("logical_primary",), "missing logical primary role")
+            logical_secondary = (
+                _role_id(
+                    context_value["logical_secondary"],
+                    context_path + ("logical_secondary",),
+                )
+                if "logical_secondary" in context_value
+                else None
+            )
+            if logical_secondary is not None:
+                if logical_secondary not in roles:
+                    raise _error(
+                        context_path + ("logical_secondary",),
+                        "missing logical secondary role",
+                    )
+                if logical_secondary == logical_primary:
+                    raise _error(
+                        context_path + ("logical_secondary",),
+                        "logical secondary must be distinct from logical primary",
+                    )
             raw_outputs = context_value["outputs"]
             if not isinstance(raw_outputs, list) or not raw_outputs:
                 raise _error(context_path + ("outputs",), "must be a non-empty list")
@@ -484,6 +504,13 @@ def _parse_models(
                     context_path + ("outputs", primary_indexes[1], "role"),
                     "multiple logical primaries",
                 )
+            if logical_secondary is not None:
+                secondary_count = sum(output.role == logical_secondary for output in outputs)
+                if secondary_count != 1:
+                    raise _error(
+                        context_path + ("logical_secondary",),
+                        "logical secondary role must occur exactly once in outputs",
+                    )
             if not outputs[primary_indexes[0]].selected_by_default:
                 raise _error(
                     context_path + ("outputs", primary_indexes[0], "selected_by_default"),
@@ -499,7 +526,11 @@ def _parse_models(
                     )
                 seen_roles[output.role] = index
             _validate_context_dependencies(outputs, context_path)
-            contexts[context] = _ModelStemContext(logical_primary, outputs)
+            contexts[context] = _ModelStemContext(
+                logical_primary=logical_primary,
+                outputs=outputs,
+                logical_secondary=logical_secondary,
+            )
         result[canonical_model_id] = _ModelStemDeclaration(
             signature, intent, MappingProxyType(contexts), evidence
         )
@@ -589,13 +620,13 @@ def _raw_semantics(
         for native in native_stems
     )
     return ModelStemSemantics(
-        model_id,
-        context,
-        "",
-        outputs,
-        StemReviewStatus.RAW,
-        "",
-        reason,
+        model_id=model_id,
+        context=context,
+        intent="",
+        outputs=outputs,
+        status=StemReviewStatus.RAW,
+        evidence="",
+        warning=reason,
     )
 
 
@@ -658,14 +689,16 @@ def resolve_model_stem_semantics(
                 and _native_key(output.native.raw) == primary_key
             ),
             logical_primary=output.role == selected_context.logical_primary,
+            logical_secondary=output.role == selected_context.logical_secondary,
         )
         for output in selected_context.outputs
     )
     return ModelStemSemantics(
-        model_id,
-        context,
-        declaration.intent,
-        outputs,
-        StemReviewStatus.REVIEWED,
-        declaration.evidence,
+        model_id=model_id,
+        context=context,
+        intent=declaration.intent,
+        outputs=outputs,
+        status=StemReviewStatus.REVIEWED,
+        evidence=declaration.evidence,
+        logical_secondary_role=selected_context.logical_secondary,
     )

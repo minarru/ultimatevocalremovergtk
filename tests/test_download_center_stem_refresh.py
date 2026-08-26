@@ -100,12 +100,13 @@ class StemSubtitleDebounceTests(unittest.TestCase):
             stems=["vocals", "other"],
             intent="karaoke",
             stem_semantics=StemSemanticProjection(
-                "vocals",
-                "",
-                "vocal.lead",
-                "reviewed",
-                "full_mix",
-                (
+                backend_primary_stem="vocals",
+                backend_target_stem="",
+                logical_primary_role="vocal.lead",
+                logical_secondary_role=None,
+                status="reviewed",
+                context="full_mix",
+                routes=(
                     StemSemanticRoute(
                         native="vocals",
                         role="vocal.lead",

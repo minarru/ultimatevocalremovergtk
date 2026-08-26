@@ -113,6 +113,7 @@ class SemanticStemOutput:
     derived_from: tuple[StemRoleId, ...] = ()
     complement_of: StemRoleId | None = None
     selected_by_default: bool = True
+    logical_secondary: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,3 +127,4 @@ class ModelStemSemantics:
     status: StemReviewStatus
     evidence: str
     warning: str = ""
+    logical_secondary_role: StemRoleId | StemLiteral | None = None

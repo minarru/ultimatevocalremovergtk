@@ -375,6 +375,7 @@ class DiscoveryTests(unittest.TestCase):
                 "backend_primary_stem",
                 "backend_target_stem",
                 "logical_primary_role",
+                "logical_secondary_role",
                 "stem_semantics_status",
                 "stem_context",
                 "stem_routes",
@@ -394,12 +395,13 @@ class DiscoveryTests(unittest.TestCase):
             "config.yaml": "https://example.invalid/config.yaml",
         }
         projection = StemSemanticProjection(
-            "other",
-            "other",
-            "mix.instrumental",
-            "reviewed",
-            "full_mix",
-            (
+            backend_primary_stem="other",
+            backend_target_stem="other",
+            logical_primary_role="mix.instrumental",
+            logical_secondary_role=None,
+            status="reviewed",
+            context="full_mix",
+            routes=(
                 StemSemanticRoute(
                     native="vocals",
                     role="vocal.vocals",
@@ -417,8 +419,8 @@ class DiscoveryTests(unittest.TestCase):
                     logical_primary=True,
                 ),
             ),
-            ("vocal.vocals", "mix.instrumental"),
-            "catalogue_id=mdx:bs_neo_inst_beta; native_signature=vocals,other",
+            canonical_roles=("vocal.vocals", "mix.instrumental"),
+            evidence="catalogue_id=mdx:bs_neo_inst_beta; native_signature=vocals,other",
         )
         manager: Any = SimpleNamespace(
             _coordinator=None,
@@ -530,21 +532,38 @@ class DiscoveryTests(unittest.TestCase):
     def test_human_model_stems_read_exact_projection_routes(self) -> None:
         args = argparse.Namespace(report="human")
         row = {
-            "primary_stem": "other",
-            "secondary_stem": "vocals",
-            "logical_primary_role": "mix.instrumental",
+            "primary_stem": "Backing",
+            "secondary_stem": "Instrumental",
+            "logical_primary_role": "mix.instrumental_with_backing_vocals",
+            "logical_secondary_role": "vocal.lead",
             "stem_routes": [
                 {
-                    "native": "vocals",
-                    "role": "vocal.vocals",
-                    "display": "Vocals",
+                    "native": "Lead",
+                    "role": "vocal.lead",
+                    "display": "Lead Vocals",
                     "logical_primary": False,
+                    "logical_secondary": True,
                 },
                 {
-                    "native": "other",
+                    "native": "Backing",
+                    "role": "vocal.backing",
+                    "display": "Backing Vocals",
+                    "logical_primary": False,
+                    "logical_secondary": False,
+                },
+                {
+                    "native": "Instrumental",
                     "role": "mix.instrumental",
                     "display": "Instrumental",
+                    "logical_primary": False,
+                    "logical_secondary": False,
+                },
+                {
+                    "native": None,
+                    "role": "mix.instrumental_with_backing_vocals",
+                    "display": "Instrumental with Backing Vocals",
                     "logical_primary": True,
+                    "logical_secondary": False,
                 },
             ],
         }
@@ -552,13 +571,18 @@ class DiscoveryTests(unittest.TestCase):
         list_out = io.StringIO()
         with redirect_stdout(list_out):
             self.assertEqual(_print_rows(args, [row]), 0)
-        self.assertTrue(list_out.getvalue().startswith("Instrumental\tVocals\t"))
+        self.assertTrue(
+            list_out.getvalue().startswith("Instrumental with Backing Vocals\tLead Vocals\t")
+        )
 
         detail_out = io.StringIO()
         with redirect_stdout(detail_out):
             self.assertEqual(_print_detail(args, row), 0)
-        self.assertEqual(detail_out.getvalue().splitlines()[0], "primary_stem\tInstrumental")
-        self.assertEqual(detail_out.getvalue().splitlines()[1], "secondary_stem\tVocals")
+        self.assertEqual(
+            detail_out.getvalue().splitlines()[0],
+            "primary_stem\tInstrumental with Backing Vocals",
+        )
+        self.assertEqual(detail_out.getvalue().splitlines()[1], "secondary_stem\tLead Vocals")
 
     def test_human_raw_primary_uses_its_marked_projection_route(self) -> None:
         args = argparse.Namespace(report="human")

@@ -48,6 +48,7 @@ STEM_SEMANTICS_REFERENCE_HEADERS = (
     "backend_primary",
     "backend_target",
     "logical_primary",
+    "logical_secondary",
     "role_id",
     "canonical_name",
     "filename_tag",
@@ -597,6 +598,24 @@ def _context_diagnostics(
                     actual=tuple(role for role in roles if role == logical_primary),
                 )
             )
+        logical_secondary_value = getattr(declared_context, "logical_secondary", None)
+        if logical_secondary_value is not None:
+            logical_secondary = str(logical_secondary_value)
+            secondary_matches = tuple(role for role in roles if role == logical_secondary)
+            if logical_secondary == logical_primary or len(secondary_matches) != 1:
+                diagnostics.append(
+                    StemAuditDiagnostic(
+                        code="context-logical-secondary",
+                        model_ids=(model_id,),
+                        context=context,
+                        message=(
+                            "processing context logical secondary must be distinct from "
+                            "primary and occur exactly once"
+                        ),
+                        expected=(logical_secondary,),
+                        actual=secondary_matches,
+                    )
+                )
         native_names = tuple(output.native.raw for output in _native_outputs(declared_context))
         if not _signature_matches(declaration.native_signature, native_names):
             diagnostics.append(

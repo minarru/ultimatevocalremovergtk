@@ -3026,6 +3026,7 @@ class StemSemanticsReferenceRenderTests(unittest.TestCase):
                         "contexts": {
                             "full_mix": {
                                 "logical_primary": "vocal.lead",
+                                "logical_secondary": "vocal.lead.removed",
                                 "outputs": [
                                     {"native": "Lead", "role": "vocal.lead"},
                                     {"native": "Backing", "role": "vocal.backing"},
@@ -3050,7 +3051,18 @@ class StemSemanticsReferenceRenderTests(unittest.TestCase):
                                         "selected_by_default": False,
                                     },
                                 ],
-                            }
+                            },
+                            "vocal_split": {
+                                "logical_primary": "vocal.backing",
+                                "outputs": [
+                                    {"native": "Lead", "role": "vocal.lead"},
+                                    {"native": "Backing", "role": "vocal.backing"},
+                                    {
+                                        "native": "Instrumental",
+                                        "role": "mix.instrumental",
+                                    },
+                                ],
+                            },
                         },
                         "evidence": "fixture",
                     }
@@ -3078,8 +3090,11 @@ class StemSemanticsReferenceRenderTests(unittest.TestCase):
 
         lines = render.stem_semantics_reference_tsv(entries, registry=registry).splitlines()
         headers = lines[0].split("\t")
-        by_role = {
-            columns[headers.index("role_id")]: columns
+        by_context_role = {
+            (
+                columns[headers.index("processing_context")],
+                columns[headers.index("role_id")],
+            ): columns
             for columns in (line.split("\t") for line in lines[1:])
             if columns[headers.index("role_id")]
         }
@@ -3087,12 +3102,22 @@ class StemSemanticsReferenceRenderTests(unittest.TestCase):
             line.split("\t") for line in lines[1:] if line.startswith("apollo\trestoration\t")
         )
 
-        self.assertEqual(by_role["vocal.lead"][-3:], ["", "", "true"])
-        self.assertEqual(by_role["vocal.lead.removed"][-3:], ["vocal.lead", "", "true"])
+        full_lead = by_context_role[("full_mix", "vocal.lead")]
+        full_removed = by_context_role[("full_mix", "vocal.lead.removed")]
+        full_sum = by_context_role[("full_mix", "mix.instrumental_with_backing_vocals")]
+        split_lead = by_context_role[("vocal_split", "vocal.lead")]
+
+        self.assertEqual(full_lead[headers.index("logical_secondary")], "false")
+        self.assertEqual(full_removed[headers.index("logical_secondary")], "true")
+        self.assertEqual(split_lead[headers.index("logical_secondary")], "")
+        self.assertEqual(full_lead[-3:], ["", "", "true"])
+        self.assertEqual(full_removed[-3:], ["vocal.lead", "", "true"])
         self.assertEqual(
-            by_role["mix.instrumental_with_backing_vocals"][-3:],
+            full_sum[-3:],
             ["", "vocal.backing|mix.instrumental", "false"],
         )
+        self.assertEqual(full_sum[headers.index("logical_secondary")], "false")
+        self.assertEqual(waiver[headers.index("logical_secondary")], "")
         self.assertEqual(waiver[-3:], ["", "", ""])
 
 

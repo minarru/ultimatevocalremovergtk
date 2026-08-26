@@ -499,10 +499,11 @@ class ModelConfig:
         inventory.
 
         CLI ``--stems primary|secondary`` stores positional sentinels in
-        ``stem_focus``. Those pick the primary/secondary native (or derived
-        complement) here so engines export that one route. A multi-stem MDX-C
-        custom subset still lives in ``mdxnet_stems_selected`` (natives) and
-        is applied after that. Do not fold subset names into ``stem_focus``.
+        ``stem_focus``. Those prefer the explicitly declared logical route and
+        otherwise retain the backend primary/secondary match so engines export
+        that one route. A multi-stem MDX-C custom subset still lives in
+        ``mdxnet_stems_selected`` (natives) and is applied after that. Do not
+        fold subset names into ``stem_focus``.
 
         Resolution is **per-config only**: assembling a model must never write
         back into ``self.settings``. One ``Settings`` assembles many configs
@@ -513,6 +514,8 @@ class ModelConfig:
         from core.stems import (
             FOCUS_PRIMARY,
             StemSelectionStatus,
+            logical_primary_route,
+            logical_secondary_route,
             model_stem_routes,
             positional_stem_focus,
             route_matches_stem,
@@ -527,11 +530,13 @@ class ModelConfig:
         positional = positional_stem_focus(focus)
         selection_matched = False
         if positional:
-            logical = tuple(route for route in routes if route.logical_primary)
-            if positional == FOCUS_PRIMARY and len(logical) == 1:
-                matched = logical
-            elif positional != FOCUS_PRIMARY and len(routes) == 2 and len(logical) == 1:
-                matched = tuple(route for route in routes if not route.logical_primary)
+            logical = (
+                logical_primary_route(routes)
+                if positional == FOCUS_PRIMARY
+                else logical_secondary_route(routes)
+            )
+            if logical is not None:
+                matched = (logical,)
             else:
                 target = self.primary_stem if positional == FOCUS_PRIMARY else self.secondary_stem
                 matched = tuple(

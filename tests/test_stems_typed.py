@@ -127,6 +127,42 @@ class StemRouteTests(unittest.TestCase):
             [StemRoleId("vocal.vocals")],
         )
 
+    def test_explicit_logical_secondary_survives_semantic_route_projection(self) -> None:
+        secondary_role = StemRoleId("vocal.lead")
+        semantics = ModelStemSemantics(
+            model_id="mdx:fixture",
+            context=StemProcessingContext.FULL_MIX,
+            intent="karaoke",
+            outputs=(
+                SemanticStemOutput(
+                    native=StemId("Lead"),
+                    role=secondary_role,
+                    production=StemProduction.NATIVE,
+                    backend_primary=False,
+                    logical_primary=False,
+                    logical_secondary=True,
+                ),
+                SemanticStemOutput(
+                    native=StemId("Backing"),
+                    role=StemRoleId("vocal.backing"),
+                    production=StemProduction.NATIVE,
+                    backend_primary=True,
+                    logical_primary=True,
+                ),
+            ),
+            status=StemReviewStatus.REVIEWED,
+            evidence="fixture",
+            logical_secondary_role=secondary_role,
+        )
+
+        routes = _semantic_routes(semantics)
+
+        self.assertEqual([route.logical_secondary for route in routes], [False, True])
+        self.assertEqual(
+            [route.role for route in routes if route.logical_secondary],
+            [secondary_role],
+        )
+
     def test_target_instrument_route_keeps_explicit_derived_dependency(self) -> None:
         class Model:
             canonical_id = "mdx:mbr_inst2_unwa"

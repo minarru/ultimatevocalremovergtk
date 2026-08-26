@@ -61,6 +61,42 @@ def _four_desc(identifier: str) -> ModelDescriptor:
     )
 
 
+def _giant_shaped_routes(*, vocal_split: bool) -> tuple[StemRoute, ...]:
+    routes = [
+        StemRoute(
+            native=StemId("Lead"),
+            role=StemRoleId("vocal.lead"),
+            label="Lead Vocals",
+            filename_tag="Lead_Vocals",
+            logical_secondary=True,
+        ),
+        StemRoute(
+            native=StemId("Backing"),
+            role=StemRoleId("vocal.backing"),
+            label="Backing Vocals",
+            filename_tag="Backing_Vocals",
+            logical_primary=vocal_split,
+        ),
+        StemRoute(
+            native=StemId("Instrumental"),
+            role=StemRoleId("mix.instrumental"),
+            label="Instrumental",
+            filename_tag="Instrumental",
+        ),
+    ]
+    if not vocal_split:
+        routes.append(
+            StemRoute(
+                native=None,
+                role=StemRoleId("mix.instrumental_with_backing_vocals"),
+                label="Instrumental with Backing Vocals",
+                filename_tag="Instrumental_with_Backing_Vocals",
+                logical_primary=True,
+            )
+        )
+    return tuple(routes)
+
+
 class PlannedOutputStemTests(unittest.TestCase):
     def test_plan_json_carries_raw_backend_and_exact_semantic_route_fields(self) -> None:
         from core.job_plan import ResolvedJob, ValidationLevel
@@ -107,6 +143,7 @@ class PlannedOutputStemTests(unittest.TestCase):
                     "backend_primary_stem",
                     "backend_target_stem",
                     "logical_primary_role",
+                    "logical_secondary_role",
                     "stem_semantics_status",
                     "stem_context",
                     "stem_routes",
@@ -118,6 +155,7 @@ class PlannedOutputStemTests(unittest.TestCase):
                 "backend_primary_stem",
                 "backend_target_stem",
                 "logical_primary_role",
+                "logical_secondary_role",
                 "stem_semantics_status",
                 "stem_context",
                 "stem_routes",
@@ -126,6 +164,7 @@ class PlannedOutputStemTests(unittest.TestCase):
         self.assertEqual(model["backend_primary_stem"], "other")
         self.assertEqual(model["backend_target_stem"], "other")
         self.assertEqual(model["logical_primary_role"], "mix.instrumental")
+        self.assertIsNone(model["logical_secondary_role"])
         self.assertEqual(model["stem_semantics_status"], "reviewed")
         self.assertEqual(model["stem_context"], "full_mix")
         self.assertIsNone(model["stem_routes"][0]["native"])
@@ -134,6 +173,7 @@ class PlannedOutputStemTests(unittest.TestCase):
         self.assertEqual(model["stem_routes"][0]["complement_of"], "mix.instrumental")
         self.assertEqual(model["stem_routes"][1]["native"], "other")
         self.assertTrue(model["stem_routes"][1]["logical_primary"])
+        self.assertFalse(model["stem_routes"][1]["logical_secondary"])
 
     def test_raw_semantic_fallback_is_an_actionable_plan_warning(self) -> None:
         from core.job_plan import ResolvedJob, ValidationLevel
@@ -268,6 +308,7 @@ class PlannedOutputStemTests(unittest.TestCase):
                     role=StemRoleId("vocal.vocals"),
                     label="Vocals",
                     filename_tag="Vocals",
+                    logical_secondary=True,
                 ),
                 StemRoute(
                     native=StemId("Instrumental"),
@@ -289,6 +330,60 @@ class PlannedOutputStemTests(unittest.TestCase):
             planned_output_stems(settings, (descriptor,), command="separate"),
             (("Vocals", False),),
         )
+
+    def test_absent_logical_secondary_preserves_backend_position(self) -> None:
+        settings = Settings.defaults()
+        settings.process.stem_focus = FOCUS_SECONDARY
+        descriptor = ModelDescriptor(
+            "mdx:fixture",
+            "mdx",
+            "fixture",
+            "No semantic secondary",
+            primary_stem="Vocals",
+            secondary_stem="Instrumental",
+            routes=(
+                StemRoute(
+                    native=StemId("Vocals"),
+                    role=StemRoleId("vocal.vocals"),
+                    label="Vocals",
+                    filename_tag="Vocals",
+                ),
+                StemRoute(
+                    native=StemId("Instrumental"),
+                    role=StemRoleId("mix.instrumental"),
+                    label="Instrumental",
+                    filename_tag="Instrumental",
+                    logical_primary=True,
+                ),
+            ),
+        )
+
+        self.assertEqual(
+            planned_output_stems(settings, (descriptor,), command="separate"),
+            (("Instrumental", False),),
+        )
+
+    def test_positional_secondary_uses_explicit_role_across_four_and_three_routes(self) -> None:
+        settings = Settings.defaults()
+        settings.process.stem_focus = FOCUS_SECONDARY
+
+        for vocal_split in (False, True):
+            routes = _giant_shaped_routes(vocal_split=vocal_split)
+            descriptor = ModelDescriptor(
+                "mdx:fixture",
+                "mdx",
+                "fixture",
+                "Giant-shaped fixture",
+                primary_stem="Backing",
+                secondary_stem="Instrumental",
+                routes=routes,
+            )
+
+            with self.subTest(route_count=len(routes)):
+                self.assertEqual(
+                    planned_output_stems(settings, (descriptor,), command="separate"),
+                    (("Lead Vocals", False),),
+                )
 
     def test_separate_uses_descriptor_stems(self) -> None:
         settings = Settings.defaults()

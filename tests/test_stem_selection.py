@@ -4,12 +4,50 @@ from __future__ import annotations
 
 import unittest
 from typing import cast
+from unittest.mock import patch
 
 from bundled.constants import ALL_STEMS, BASS_STEM, INST_STEM, VOCAL_STEM
 from cli.job import _resolved_settings
 from core.settings import Settings
-from core.stem_selection import apply_stem_selection
-from core.stems import StemBucket, StemRoute, exclusive_flags_for_focus
+from core.stem_roles import StemId, StemRoleId
+from core.stem_selection import ExclusiveView, StemSelectionState, apply_stem_selection
+from core.stems import FOCUS_SECONDARY, StemBucket, StemRoute, exclusive_flags_for_focus
+
+
+def _giant_shaped_routes(*, vocal_split: bool) -> tuple[StemRoute, ...]:
+    routes = [
+        StemRoute(
+            native=StemId("Lead"),
+            role=StemRoleId("vocal.lead"),
+            label="Lead Vocals",
+            filename_tag="Lead_Vocals",
+            logical_secondary=True,
+        ),
+        StemRoute(
+            native=StemId("Backing"),
+            role=StemRoleId("vocal.backing"),
+            label="Backing Vocals",
+            filename_tag="Backing_Vocals",
+            logical_primary=vocal_split,
+        ),
+        StemRoute(
+            native=StemId("Instrumental"),
+            role=StemRoleId("mix.instrumental"),
+            label="Instrumental",
+            filename_tag="Instrumental",
+        ),
+    ]
+    if not vocal_split:
+        routes.append(
+            StemRoute(
+                native=None,
+                role=StemRoleId("mix.instrumental_with_backing_vocals"),
+                label="Instrumental with Backing Vocals",
+                filename_tag="Instrumental_with_Backing_Vocals",
+                logical_primary=True,
+            )
+        )
+    return tuple(routes)
 
 
 class ApplyStemSelectionTests(unittest.TestCase):
@@ -219,3 +257,46 @@ class StemSelectionProvenanceTests(unittest.TestCase):
         )
         selected_routes = cast("tuple[StemRoute, ...]", model.selected_stem_routes)
         self.assertEqual(selected_routes[0].concept, "mix.instrumental")
+
+    def test_runtime_positional_secondary_uses_explicit_multi_route_contract(self) -> None:
+        from core.model_config.config import ModelConfig
+
+        for vocal_split in (False, True):
+            settings = Settings.defaults()
+            settings.process.stem_focus = FOCUS_SECONDARY
+            model = ModelConfig.__new__(ModelConfig)
+            model.settings = settings
+            model.primary_stem = "Backing"
+            model.secondary_stem = "Instrumental"
+            model.mdx_model_stems = ["Lead", "Backing", "Instrumental"]
+            model.mdxnet_stems_selected = []
+            model.is_vocal_split_model = False
+            model.is_ensemble_mode = False
+            routes = _giant_shaped_routes(vocal_split=vocal_split)
+
+            with (
+                self.subTest(route_count=len(routes)),
+                patch("core.stems.model_stem_routes", return_value=routes),
+            ):
+                ModelConfig._apply_stem_focus(model)
+
+            selected = cast("tuple[StemRoute, ...]", model.selected_stem_routes)
+            self.assertEqual([route.role for route in selected], [StemRoleId("vocal.lead")])
+
+    def test_secondary_stem_only_view_uses_explicit_multi_route_contract(self) -> None:
+        settings = Settings.defaults()
+        settings.process.stem_focus = FOCUS_SECONDARY
+        state = StemSelectionState()
+        state.mode = "exclusive"
+        state.has_model = True
+        state.exclusive_primary = "Backing"
+        state.exclusive_secondary = "Instrumental"
+
+        for vocal_split in (False, True):
+            state.routes = _giant_shaped_routes(vocal_split=vocal_split)
+
+            with self.subTest(route_count=len(state.routes)):
+                self.assertEqual(
+                    state.read(settings),
+                    ExclusiveView(choice="vocal.lead"),
+                )

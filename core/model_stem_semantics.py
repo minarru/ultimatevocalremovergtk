@@ -109,12 +109,13 @@ def stem_semantics_projection(
     target = None if backend_target is None else str(backend_target)
     if semantics is None:
         return StemSemanticProjection(
-            primary,
-            target,
-            None,
-            StemReviewStatus.RAW.value,
-            StemProcessingContext.FULL_MIX.value,
-            (),
+            backend_primary_stem=primary,
+            backend_target_stem=target,
+            logical_primary_role=None,
+            logical_secondary_role=None,
+            status=StemReviewStatus.RAW.value,
+            context=StemProcessingContext.FULL_MIX.value,
+            routes=(),
         )
 
     from .model_stem_manifest import load_bundled_stem_semantics
@@ -123,8 +124,17 @@ def stem_semantics_projection(
     routes: list[StemSemanticRoute] = []
     roles: list[str] = []
     logical_primary_role: str | None = None
+    logical_secondary_role = (
+        semantics.logical_secondary_role.value
+        if isinstance(semantics.logical_secondary_role, StemRoleId)
+        else (
+            f"raw:{semantics.logical_secondary_role.tag.strip().casefold()}"
+            if semantics.logical_secondary_role is not None
+            else None
+        )
+    )
     # ``outputs`` preserves the exact reviewed manifest/native declaration
-    # order. Logical-primary is presentation metadata, never an ordering rule.
+    # order. Logical route markers are metadata, never an ordering rule.
     for output in semantics.outputs:
         native = output.native.raw if output.native is not None else None
         if isinstance(output.role, StemRoleId):
@@ -147,6 +157,7 @@ def stem_semantics_projection(
                 filename_tag=filename_tag,
                 production=output.production.value,
                 logical_primary=output.logical_primary,
+                logical_secondary=output.logical_secondary,
                 derived_from=tuple(item.value for item in output.derived_from),
                 complement_of=(
                     output.complement_of.value if output.complement_of is not None else None
@@ -155,15 +166,16 @@ def stem_semantics_projection(
             )
         )
     return StemSemanticProjection(
-        primary,
-        target,
-        logical_primary_role,
-        semantics.status.value,
-        semantics.context.value,
-        tuple(routes),
-        tuple(roles),
-        semantics.evidence,
-        semantics.warning,
+        backend_primary_stem=primary,
+        backend_target_stem=target,
+        logical_primary_role=logical_primary_role,
+        logical_secondary_role=logical_secondary_role,
+        status=semantics.status.value,
+        context=semantics.context.value,
+        routes=tuple(routes),
+        canonical_roles=tuple(roles),
+        evidence=semantics.evidence,
+        warning=semantics.warning,
     )
 
 

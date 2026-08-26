@@ -351,6 +351,68 @@ class ManifestValidationTests(unittest.TestCase):
         with self.assertRaisesRegex(StemManifestError, "multiple logical primaries"):
             load_stem_manifest_document(document)
 
+    def test_logical_secondary_is_optional_and_marks_one_distinct_output(self) -> None:
+        omitted_registry = load_stem_manifest_document(_manifest())
+        omitted_context = omitted_registry.models["mdx:fixture"].contexts[
+            StemProcessingContext.FULL_MIX
+        ]
+        omitted = resolve_model_stem_semantics(
+            "mdx:fixture",
+            native_stems=("Vocals", "Other"),
+            registry=omitted_registry,
+        )
+
+        self.assertIsNone(omitted_context.logical_secondary)
+        self.assertIsNone(omitted.logical_secondary_role)
+        self.assertEqual([output.logical_secondary for output in omitted.outputs], [False] * 3)
+
+        document = _manifest()
+        document["models"]["mdx:fixture"]["contexts"]["full_mix"]["logical_secondary"] = (
+            "mix.instrumental"
+        )
+        registry = load_stem_manifest_document(document)
+        context = registry.models["mdx:fixture"].contexts[StemProcessingContext.FULL_MIX]
+        semantics = resolve_model_stem_semantics(
+            "mdx:fixture",
+            native_stems=("Vocals", "Other"),
+            registry=registry,
+        )
+
+        self.assertEqual(context.logical_secondary, StemRoleId("mix.instrumental"))
+        self.assertEqual(semantics.logical_secondary_role, StemRoleId("mix.instrumental"))
+        self.assertEqual(
+            [output.logical_secondary for output in semantics.outputs],
+            [False, True, False],
+        )
+
+    def test_logical_secondary_rejects_invalid_or_ambiguous_membership(self) -> None:
+        cases = ("missing", "duplicate", "primary", "non-string")
+        for case in cases:
+            document = _manifest()
+            context = document["models"]["mdx:fixture"]["contexts"]["full_mix"]
+            if case == "missing":
+                context["logical_secondary"] = "vocal.backing"
+                expected = "exactly once"
+            elif case == "duplicate":
+                context["logical_secondary"] = "mix.instrumental"
+                context["outputs"][2]["role"] = "mix.instrumental"
+                expected = "exactly once"
+            elif case == "primary":
+                context["logical_secondary"] = "vocal.vocals"
+                expected = "distinct"
+            else:
+                context["logical_secondary"] = 1
+                expected = "non-empty string"
+            with (
+                self.subTest(case=case),
+                self.assertRaisesRegex(StemManifestError, expected) as raised,
+            ):
+                load_stem_manifest_document(document)
+            self.assertEqual(
+                raised.exception.path,
+                ("models", "mdx:fixture", "contexts", "full_mix", "logical_secondary"),
+            )
+
     def test_role_id_namespace_must_match_declared_family(self) -> None:
         document = _manifest()
         document["roles"]["vocal.vocals"]["family"] = "mix"

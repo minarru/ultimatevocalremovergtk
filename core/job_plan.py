@@ -53,6 +53,8 @@ from .stems import (
     StemRouteKind,
     StemSelectionStatus,
     derived_stem_route,
+    logical_primary_route,
+    logical_secondary_route,
     model_stem_count,
     model_stem_routes,
     positional_stem_focus,
@@ -831,9 +833,9 @@ def planned_output_routes(
     if positional:
         if positional == FOCUS_PRIMARY:
             primary = descriptors[0].primary_stem if descriptors else None
-            logical = tuple(route for route in routes if route.logical_primary)
-            if len(logical) == 1:
-                matched = logical
+            logical = logical_primary_route(routes)
+            if logical is not None:
+                matched = (logical,)
                 reason = "positional-primary-logical-match"
             else:
                 matched = tuple(
@@ -852,10 +854,10 @@ def planned_output_routes(
                 reason = f"positional-primary-fallback-defaults primary_stem={primary!r}"
         else:
             secondary = descriptors[0].secondary_stem if descriptors else None
-            logical = tuple(route for route in routes if route.logical_primary)
-            if len(routes) == 2 and len(logical) == 1:
-                matched = tuple(route for route in routes if not route.logical_primary)
-                reason = "positional-secondary-logical-match"
+            logical = logical_secondary_route(routes)
+            if logical is not None:
+                matched = (logical,)
+                reason = "positional-secondary-explicit-logical-match"
             else:
                 matched = tuple(
                     route

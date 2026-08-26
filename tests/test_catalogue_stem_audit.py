@@ -70,8 +70,13 @@ def _derived(role: StemRoleId, source_role: StemRoleId) -> SemanticStemOutput:
 def _context(
     logical_primary: StemRoleId,
     *outputs: SemanticStemOutput,
+    logical_secondary: StemRoleId | None = None,
 ) -> SimpleNamespace:
-    return SimpleNamespace(logical_primary=logical_primary, outputs=outputs)
+    return SimpleNamespace(
+        logical_primary=logical_primary,
+        logical_secondary=logical_secondary,
+        outputs=outputs,
+    )
 
 
 def _declaration(
@@ -486,6 +491,7 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
                 "backend_primary",
                 "backend_target",
                 "logical_primary",
+                "logical_secondary",
                 "role_id",
                 "canonical_name",
                 "filename_tag",
@@ -499,6 +505,51 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
                 "selected_by_default",
             ),
         )
+
+    def test_context_logical_secondary_must_be_distinct_and_present_exactly_once(self) -> None:
+        roles = {
+            VOCALS: _role(VOCALS, "Vocals", "Vocals", StemRoleFamily.VOCAL),
+            INSTRUMENTAL: _role(
+                INSTRUMENTAL,
+                "Instrumental",
+                "Instrumental",
+                StemRoleFamily.MIX,
+            ),
+            BASS: _role(BASS, "Bass", "Bass", StemRoleFamily.INSTRUMENT),
+        }
+        cases = (
+            ("missing", BASS, (BASS,)),
+            ("primary", VOCALS, (VOCALS,)),
+        )
+        for label, logical_secondary, expected in cases:
+            registry = _registry(
+                {
+                    "mdx:fixture": _declaration(
+                        ("Vocals", "Instrumental"),
+                        _context(
+                            VOCALS,
+                            _native("Vocals", VOCALS),
+                            _native("Instrumental", INSTRUMENTAL),
+                            logical_secondary=logical_secondary,
+                        ),
+                    )
+                },
+                roles=roles,
+            )
+
+            result = audit_catalogue_stems(
+                [_entry("fixture")],
+                collect.CatalogueContext(),
+                expected_reference_text="same",
+                actual_reference_text="same",
+                registry=registry,
+            )
+
+            with self.subTest(label=label):
+                diagnostic = _diagnostic(result, "context-logical-secondary")
+                self.assertEqual(diagnostic.model_ids, ("mdx:fixture",))
+                self.assertEqual(diagnostic.context, StemProcessingContext.FULL_MIX)
+                self.assertEqual(diagnostic.expected, tuple(str(role) for role in expected))
 
     def test_relationship_projections_are_model_specific_filtered_and_deterministic(self) -> None:
         """Reordering entries cannot add waivers, orphans, or derived outputs."""

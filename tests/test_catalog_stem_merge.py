@@ -191,6 +191,7 @@ class SemanticProjectionTests(unittest.TestCase):
                 "backend_primary_stem",
                 "backend_target_stem",
                 "logical_primary_role",
+                "logical_secondary_role",
                 "stem_semantics_status",
                 "stem_context",
                 "stem_routes",
@@ -203,6 +204,7 @@ class SemanticProjectionTests(unittest.TestCase):
                     "backend_primary_stem",
                     "backend_target_stem",
                     "logical_primary_role",
+                    "logical_secondary_role",
                     "stem_semantics_status",
                     "stem_context",
                 )
@@ -211,6 +213,7 @@ class SemanticProjectionTests(unittest.TestCase):
                 "backend_primary_stem": "other",
                 "backend_target_stem": "other",
                 "logical_primary_role": "mix.instrumental",
+                "logical_secondary_role": None,
                 "stem_semantics_status": "reviewed",
                 "stem_context": "full_mix",
             },
@@ -224,6 +227,7 @@ class SemanticProjectionTests(unittest.TestCase):
                 "filename_tag": "Vocals",
                 "production": "derived",
                 "logical_primary": False,
+                "logical_secondary": False,
                 "complement_of": "mix.instrumental",
                 "selected_by_default": True,
             },
@@ -237,6 +241,7 @@ class SemanticProjectionTests(unittest.TestCase):
                 "filename_tag": "Instrumental",
                 "production": "native",
                 "logical_primary": True,
+                "logical_secondary": False,
                 "selected_by_default": True,
             },
         )
@@ -274,6 +279,53 @@ class SemanticProjectionTests(unittest.TestCase):
         route = stem_semantics_projection(semantics).as_dict()["stem_routes"][0]
 
         self.assertIs(route["selected_by_default"], False)
+
+    def test_projection_exposes_only_the_explicit_logical_secondary(self) -> None:
+        from core.model_stem_semantics import stem_semantics_projection
+        from core.stem_roles import (
+            ModelStemSemantics,
+            SemanticStemOutput,
+            StemId,
+            StemProcessingContext,
+            StemProduction,
+            StemReviewStatus,
+            StemRoleId,
+        )
+
+        secondary_role = StemRoleId("vocal.lead")
+        semantics = ModelStemSemantics(
+            model_id="mdx:fixture",
+            context=StemProcessingContext.FULL_MIX,
+            intent="karaoke",
+            outputs=(
+                SemanticStemOutput(
+                    native=StemId("Lead"),
+                    role=secondary_role,
+                    production=StemProduction.NATIVE,
+                    backend_primary=False,
+                    logical_primary=False,
+                    logical_secondary=True,
+                ),
+                SemanticStemOutput(
+                    native=StemId("Backing"),
+                    role=StemRoleId("vocal.backing"),
+                    production=StemProduction.NATIVE,
+                    backend_primary=True,
+                    logical_primary=True,
+                ),
+            ),
+            status=StemReviewStatus.REVIEWED,
+            evidence="fixture",
+            logical_secondary_role=secondary_role,
+        )
+
+        payload = stem_semantics_projection(semantics).as_dict()
+
+        self.assertEqual(payload["logical_secondary_role"], "vocal.lead")
+        self.assertEqual(
+            [route["logical_secondary"] for route in payload["stem_routes"]],
+            [True, False],
+        )
 
     def test_projection_covers_reviewed_waived_and_raw_statuses(self) -> None:
         from core.model_stem_semantics import (

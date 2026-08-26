@@ -31,6 +31,8 @@ from core.stems import (
     StemRouteKind,
     StemSelectionStatus,
     concept_is,
+    logical_primary_route,
+    logical_secondary_route,
     model_stem_routes,
     persisted_stem_focus,
     positional_stem_focus,
@@ -612,6 +614,9 @@ class StemSelectionState:
     def _primary_route(self) -> Optional[StemRoute]:
         if not self.routes:
             return None
+        logical = logical_primary_route(self.routes)
+        if logical is not None:
+            return logical
         if self.exclusive_primary:
             match = _route_for_native(self.routes, self.exclusive_primary)
             if match is not None:
@@ -619,6 +624,9 @@ class StemSelectionState:
         return self.routes[0]
 
     def _secondary_route(self) -> Optional[StemRoute]:
+        logical = logical_secondary_route(self.routes)
+        if logical is not None:
+            return logical
         if self.exclusive_secondary:
             match = _route_for_native(self.routes, self.exclusive_secondary)
             if match is not None:

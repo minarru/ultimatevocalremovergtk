@@ -78,7 +78,15 @@ class EntryMeta:
     #: Name/category inference retained strictly as inspectable audit evidence.
     guessed_intent: str = INTENT_UNKNOWN
     stem_semantics: StemSemanticProjection = field(
-        default_factory=lambda: StemSemanticProjection(None, None, None, "raw", "full_mix", ())
+        default_factory=lambda: StemSemanticProjection(
+            backend_primary_stem=None,
+            backend_target_stem=None,
+            logical_primary_role=None,
+            logical_secondary_role=None,
+            status="raw",
+            context="full_mix",
+            routes=(),
+        )
     )
 
 

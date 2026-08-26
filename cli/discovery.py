@@ -84,18 +84,21 @@ def _projected_stem_label(row: Mapping[str, Any] | None, key: str) -> str | None
     routes = row.get("stem_routes")
     if not isinstance(routes, (list, tuple)):
         return None
-    if key == "primary_stem":
-        role = row.get("logical_primary_role")
+    if key in {"primary_stem", "secondary_stem"}:
+        role_field = "logical_primary_role" if key == "primary_stem" else "logical_secondary_role"
+        marker_field = "logical_primary" if key == "primary_stem" else "logical_secondary"
+        role = row.get(role_field)
         for route in routes:
             if not isinstance(route, Mapping):
                 continue
             if (role is not None and route.get("role") == role) or (
-                role is None and route.get("logical_primary")
+                role is None and route.get(marker_field)
             ):
                 display = route.get("display")
                 if isinstance(display, str) and display:
                     return display
-        return None
+        if role is not None:
+            return None
     native = row.get(key)
     for route in routes:
         if not isinstance(route, Mapping) or route.get("native") != native:
