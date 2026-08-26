@@ -1,0 +1,574 @@
+{
+  "schema_version": 1,
+  "contracts": {
+    "mdx:Kim_Inst": {
+      "backend": "classic_onnx",
+      "native_signature": [
+        "Instrumental",
+        "Vocals"
+      ],
+      "primary_native": "Instrumental",
+      "config_yamls": [],
+      "evidence": {
+        "artifact_sources": [
+          "https://huggingface.co/Politrees/UVR_resources/resolve/main/models/MDXNet/Kim_Inst.onnx",
+          "bundled/model_manual_download.json"
+        ],
+        "runtime_metadata_sources": [
+          "models/MDX_Net_Models/model_data/model_data.json"
+        ],
+        "review_note": "Exact public artifact basename and actual-MD5 hash record establish both classic engine export keys."
+      }
+    },
+    "mdx:UVR_MDXNET_KARA_2": {
+      "backend": "classic_onnx",
+      "native_signature": [
+        "Instrumental",
+        "Vocals"
+      ],
+      "primary_native": "Instrumental",
+      "config_yamls": [],
+      "evidence": {
+        "artifact_sources": [
+          "https://huggingface.co/Politrees/UVR_resources/resolve/main/models/MDXNet/UVR_MDXNET_KARA_2.onnx",
+          "bundled/model_manual_download.json"
+        ],
+        "runtime_metadata_sources": [
+          "models/MDX_Net_Models/model_data/model_data.json"
+        ],
+        "review_note": "Exact public artifact basename and actual-MD5 hash record establish both classic engine export keys."
+      }
+    },
+    "mdx:Kim_Vocal_1": {
+      "backend": "classic_onnx",
+      "native_signature": [
+        "Vocals",
+        "Instrumental"
+      ],
+      "primary_native": "Vocals",
+      "config_yamls": [],
+      "evidence": {
+        "artifact_sources": [
+          "https://huggingface.co/Politrees/UVR_resources/resolve/main/models/MDXNet/Kim_Vocal_1.onnx",
+          "bundled/model_manual_download.json"
+        ],
+        "runtime_metadata_sources": [
+          "models/MDX_Net_Models/model_data/model_data.json"
+        ],
+        "review_note": "Exact public artifact basename and actual-MD5 hash record establish both classic engine export keys."
+      }
+    },
+    "mdx:Kim_Vocal_2": {
+      "backend": "classic_onnx",
+      "native_signature": [
+        "Vocals",
+        "Instrumental"
+      ],
+      "primary_native": "Vocals",
+      "config_yamls": [],
+      "evidence": {
+        "artifact_sources": [
+          "https://huggingface.co/Politrees/UVR_resources/resolve/main/models/MDXNet/Kim_Vocal_2.onnx",
+          "bundled/model_manual_download.json"
+        ],
+        "runtime_metadata_sources": [
+          "models/MDX_Net_Models/model_data/model_data.json"
+        ],
+        "review_note": "Exact public artifact basename and actual-MD5 hash record establish both classic engine export keys."
+      }
+    },
+    "mdx:UVR_MDXNET_1_9703": {
+      "backend": "classic_onnx",
+      "native_signature": [
+        "Vocals",
+        "Instrumental"
+      ],
+      "primary_native": "Vocals",
+      "config_yamls": [],
+      "evidence": {
+        "artifact_sources": [
+          "https://huggingface.co/Politrees/UVR_resources/resolve/main/models/MDXNet/UVR_MDXNET_1_9703.onnx",
+          "bundled/model_manual_download.json"
+        ],
+        "runtime_metadata_sources": [
+          "models/MDX_Net_Models/model_data/model_data.json"
+        ],
+        "review_note": "Exact public artifact basename and actual-MD5 hash record establish both classic engine export keys."
+      }
+    },
+    "mdx:UVR_MDXNET_2_9682": {
+      "backend": "classic_onnx",
+      "native_signature": [
+        "Vocals",
+        "Instrumental"
+      ],
+      "primary_native": "Vocals",
+      "config_yamls": [],
+      "evidence": {
+        "artifact_sources": [
+          "https://huggingface.co/Politrees/UVR_resources/resolve/main/models/MDXNet/UVR_MDXNET_2_9682.onnx",
+          "bundled/model_manual_download.json"
+        ],
+        "runtime_metadata_sources": [
+          "models/MDX_Net_Models/model_data/model_data.json"
+        ],
+        "review_note": "Exact public artifact basename and actual-MD5 hash record establish both classic engine export keys."
+      }
+    },
+    "mdx:UVR_MDXNET_3_9662": {
+      "backend": "classic_onnx",
+      "native_signature": [
+        "Vocals",
+        "Instrumental"
+      ],
+      "primary_native": "Vocals",
+      "config_yamls": [],
+      "evidence": {
+        "artifact_sources": [
+          "https://huggingface.co/Politrees/UVR_resources/resolve/main/models/MDXNet/UVR_MDXNET_3_9662.onnx",
+          "bundled/model_manual_download.json"
+        ],
+        "runtime_metadata_sources": [
+          "models/MDX_Net_Models/model_data/model_data.json"
+        ],
+        "review_note": "Exact public artifact basename and actual-MD5 hash record establish both classic engine export keys."
+      }
+    },
+    "mdx:UVR_MDXNET_9482": {
+      "backend": "classic_onnx",
+      "native_signature": [
+        "Vocals",
+        "Instrumental"
+      ],
+      "primary_native": "Vocals",
+      "config_yamls": [],
+      "evidence": {
+        "artifact_sources": [
+          "https://huggingface.co/Politrees/UVR_resources/resolve/main/models/MDXNet/UVR_MDXNET_9482.onnx",
+          "bundled/model_manual_download.json"
+        ],
+        "runtime_metadata_sources": [
+          "models/MDX_Net_Models/model_data/model_data.json"
+        ],
+        "review_note": "Exact public artifact basename and actual-MD5 hash record establish both classic engine export keys."
+      }
+    },
+    "mdx:UVR_MDXNET_KARA": {
+      "backend": "classic_onnx",
+      "native_signature": [
+        "Vocals",
+        "Instrumental"
+      ],
+      "primary_native": "Vocals",
+      "config_yamls": [],
+      "evidence": {
+        "artifact_sources": [
+          "https://huggingface.co/Politrees/UVR_resources/resolve/main/models/MDXNet/UVR_MDXNET_KARA.onnx",
+          "bundled/model_manual_download.json"
+        ],
+        "runtime_metadata_sources": [
+          "models/MDX_Net_Models/model_data/model_data.json"
+        ],
+        "review_note": "Exact public artifact basename and actual-MD5 hash record establish both classic engine export keys."
+      }
+    },
+    "mdx:Reverb_HQ_By_FoxJoy": {
+      "backend": "classic_onnx",
+      "native_signature": [
+        "Reverb",
+        "No Reverb"
+      ],
+      "primary_native": "Reverb",
+      "config_yamls": [],
+      "evidence": {
+        "artifact_sources": [
+          "https://huggingface.co/Politrees/UVR_resources/resolve/main/models/MDXNet/Reverb_HQ_By_FoxJoy.onnx",
+          "bundled/model_manual_download.json"
+        ],
+        "runtime_metadata_sources": [
+          "models/MDX_Net_Models/model_data/model_data.json"
+        ],
+        "review_note": "Exact public artifact basename and actual-MD5 hash record establish both classic engine export keys."
+      }
+    },
+    "mdx:UVR-MDX-NET_Crowd_HQ_1": {
+      "backend": "classic_onnx",
+      "native_signature": [
+        "No Crowd",
+        "Crowd"
+      ],
+      "primary_native": "No Crowd",
+      "config_yamls": [],
+      "evidence": {
+        "artifact_sources": [
+          "https://huggingface.co/Politrees/UVR_resources/resolve/main/models/MDXNet/UVR-MDX-NET_Crowd_HQ_1.onnx",
+          "cache:upstream_download_checks.json"
+        ],
+        "runtime_metadata_sources": [
+          "models/MDX_Net_Models/model_data/model_data.json"
+        ],
+        "review_note": "Exact public artifact basename and actual-MD5 hash record establish both classic engine export keys."
+      }
+    },
+    "mdx:kuielab_a_bass": {
+      "backend": "classic_onnx",
+      "native_signature": [
+        "Bass",
+        "No Bass"
+      ],
+      "primary_native": "Bass",
+      "config_yamls": [],
+      "evidence": {
+        "artifact_sources": [
+          "https://huggingface.co/Politrees/UVR_resources/resolve/main/models/MDXNet/kuielab_a_bass.onnx",
+          "bundled/model_manual_download.json"
+        ],
+        "runtime_metadata_sources": [
+          "models/MDX_Net_Models/model_data/model_data.json"
+        ],
+        "review_note": "Exact public artifact basename and actual-MD5 hash record establish both classic engine export keys."
+      }
+    },
+    "mdx:kuielab_b_bass": {
+      "backend": "classic_onnx",
+      "native_signature": [
+        "Bass",
+        "No Bass"
+      ],
+      "primary_native": "Bass",
+      "config_yamls": [],
+      "evidence": {
+        "artifact_sources": [
+          "https://huggingface.co/Politrees/UVR_resources/resolve/main/models/MDXNet/kuielab_b_bass.onnx",
+          "bundled/model_manual_download.json"
+        ],
+        "runtime_metadata_sources": [
+          "models/MDX_Net_Models/model_data/model_data.json"
+        ],
+        "review_note": "Exact public artifact basename and actual-MD5 hash record establish both classic engine export keys."
+      }
+    },
+    "mdx:kuielab_a_drums": {
+      "backend": "classic_onnx",
+      "native_signature": [
+        "Drums",
+        "No Drums"
+      ],
+      "primary_native": "Drums",
+      "config_yamls": [],
+      "evidence": {
+        "artifact_sources": [
+          "https://huggingface.co/Politrees/UVR_resources/resolve/main/models/MDXNet/kuielab_a_drums.onnx",
+          "bundled/model_manual_download.json"
+        ],
+        "runtime_metadata_sources": [
+          "models/MDX_Net_Models/model_data/model_data.json"
+        ],
+        "review_note": "Exact public artifact basename and actual-MD5 hash record establish both classic engine export keys."
+      }
+    },
+    "mdx:kuielab_b_drums": {
+      "backend": "classic_onnx",
+      "native_signature": [
+        "Drums",
+        "No Drums"
+      ],
+      "primary_native": "Drums",
+      "config_yamls": [],
+      "evidence": {
+        "artifact_sources": [
+          "https://huggingface.co/Politrees/UVR_resources/resolve/main/models/MDXNet/kuielab_b_drums.onnx",
+          "bundled/model_manual_download.json"
+        ],
+        "runtime_metadata_sources": [
+          "models/MDX_Net_Models/model_data/model_data.json"
+        ],
+        "review_note": "Exact public artifact basename and actual-MD5 hash record establish both classic engine export keys."
+      }
+    },
+    "mdx:kuielab_a_other": {
+      "backend": "classic_onnx",
+      "native_signature": [
+        "Other",
+        "No Other"
+      ],
+      "primary_native": "Other",
+      "config_yamls": [],
+      "evidence": {
+        "artifact_sources": [
+          "https://huggingface.co/Politrees/UVR_resources/resolve/main/models/MDXNet/kuielab_a_other.onnx",
+          "bundled/model_manual_download.json"
+        ],
+        "runtime_metadata_sources": [
+          "models/MDX_Net_Models/model_data/model_data.json"
+        ],
+        "review_note": "Exact public artifact basename and actual-MD5 hash record establish both classic engine export keys."
+      }
+    },
+    "mdx:kuielab_b_other": {
+      "backend": "classic_onnx",
+      "native_signature": [
+        "Other",
+        "No Other"
+      ],
+      "primary_native": "Other",
+      "config_yamls": [],
+      "evidence": {
+        "artifact_sources": [
+          "https://huggingface.co/Politrees/UVR_resources/resolve/main/models/MDXNet/kuielab_b_other.onnx",
+          "bundled/model_manual_download.json"
+        ],
+        "runtime_metadata_sources": [
+          "models/MDX_Net_Models/model_data/model_data.json"
+        ],
+        "review_note": "Exact public artifact basename and actual-MD5 hash record establish both classic engine export keys."
+      }
+    },
+    "mdx:kuielab_a_vocals": {
+      "backend": "classic_onnx",
+      "native_signature": [
+        "Vocals",
+        "Instrumental"
+      ],
+      "primary_native": "Vocals",
+      "config_yamls": [],
+      "evidence": {
+        "artifact_sources": [
+          "https://huggingface.co/Politrees/UVR_resources/resolve/main/models/MDXNet/kuielab_a_vocals.onnx",
+          "bundled/model_manual_download.json"
+        ],
+        "runtime_metadata_sources": [
+          "models/MDX_Net_Models/model_data/model_data.json"
+        ],
+        "review_note": "Exact public artifact basename and actual-MD5 hash record establish both classic engine export keys."
+      }
+    },
+    "mdx:kuielab_b_vocals": {
+      "backend": "classic_onnx",
+      "native_signature": [
+        "Vocals",
+        "Instrumental"
+      ],
+      "primary_native": "Vocals",
+      "config_yamls": [],
+      "evidence": {
+        "artifact_sources": [
+          "https://huggingface.co/Politrees/UVR_resources/resolve/main/models/MDXNet/kuielab_b_vocals.onnx",
+          "bundled/model_manual_download.json"
+        ],
+        "runtime_metadata_sources": [
+          "models/MDX_Net_Models/model_data/model_data.json"
+        ],
+        "review_note": "Exact public artifact basename and actual-MD5 hash record establish both classic engine export keys."
+      }
+    },
+    "mdx:MDX23C-8KFFT-InstVoc_HQ": {
+      "backend": "mdx_c_multi",
+      "native_signature": [
+        "Vocals",
+        "Instrumental"
+      ],
+      "primary_native": "Vocals",
+      "config_yamls": [
+        "model_2_stem_full_band_8k.yaml"
+      ],
+      "evidence": {
+        "artifact_sources": [
+          "https://huggingface.co/Politrees/UVR_resources/resolve/main/models/MDX23C/MDX23C-8KFFT-InstVoc_HQ.ckpt"
+        ],
+        "runtime_metadata_sources": [
+          "models/MDX_Net_Models/model_data/model_data.json",
+          "models/MDX_Net_Models/model_data/mdx_c_configs/model_2_stem_full_band_8k.yaml"
+        ],
+        "review_note": "Exact checkpoint hash selects the accepted null-target two-instrument config."
+      }
+    },
+    "mdx:MDX23C-8KFFT-InstVoc_HQ_2": {
+      "backend": "mdx_c_multi",
+      "native_signature": [
+        "Vocals",
+        "Instrumental"
+      ],
+      "primary_native": "Vocals",
+      "config_yamls": [
+        "model_2_stem_full_band_8k.yaml"
+      ],
+      "evidence": {
+        "artifact_sources": [
+          "https://huggingface.co/Politrees/UVR_resources/resolve/main/models/MDX23C/MDX23C-8KFFT-InstVoc_HQ_2.ckpt"
+        ],
+        "runtime_metadata_sources": [
+          "models/MDX_Net_Models/model_data/model_data.json",
+          "models/MDX_Net_Models/model_data/mdx_c_configs/model_2_stem_full_band_8k.yaml"
+        ],
+        "review_note": "Exact checkpoint hash selects the accepted null-target two-instrument config."
+      }
+    },
+    "mdx:melband_roformer_instvoc_duality_v1": {
+      "backend": "mdx_c_multi",
+      "native_signature": [
+        "Vocals",
+        "Instrumental"
+      ],
+      "primary_native": "Vocals",
+      "config_yamls": [
+        "config_melbandroformer_instvoc_duality.yaml"
+      ],
+      "evidence": {
+        "artifact_sources": [
+          "https://huggingface.co/pcunwa/Mel-Band-Roformer-InstVoc-Duality/resolve/main/melband_roformer_instvoc_duality_v1.ckpt"
+        ],
+        "runtime_metadata_sources": [
+          "models/MDX_Net_Models/model_data/model_data.json",
+          "models/MDX_Net_Models/model_data/mdx_c_configs/config_melbandroformer_instvoc_duality.yaml"
+        ],
+        "review_note": "Exact checkpoint association selects the accepted null-target two-instrument config."
+      }
+    },
+    "mdx:melband_roformer_instvox_duality_v2": {
+      "backend": "mdx_c_multi",
+      "native_signature": [
+        "Vocals",
+        "Instrumental"
+      ],
+      "primary_native": "Vocals",
+      "config_yamls": [
+        "config_melbandroformer_instvoc_duality.yaml"
+      ],
+      "evidence": {
+        "artifact_sources": [
+          "https://huggingface.co/pcunwa/Mel-Band-Roformer-InstVoc-Duality/resolve/main/melband_roformer_instvox_duality_v2.ckpt"
+        ],
+        "runtime_metadata_sources": [
+          "models/MDX_Net_Models/model_data/model_data.json",
+          "models/MDX_Net_Models/model_data/mdx_c_configs/config_melbandroformer_instvoc_duality.yaml"
+        ],
+        "review_note": "Exact checkpoint association selects the accepted null-target two-instrument config."
+      }
+    },
+    "mdx:melband_roformer_inst_v1": {
+      "backend": "mdx_c_target",
+      "native_signature": [
+        "Instrumental"
+      ],
+      "primary_native": "Instrumental",
+      "config_yamls": [
+        "config_melbandroformer_inst.yaml"
+      ],
+      "evidence": {
+        "artifact_sources": [
+          "https://huggingface.co/pcunwa/Mel-Band-Roformer-Inst/resolve/main/melband_roformer_inst_v1.ckpt"
+        ],
+        "runtime_metadata_sources": [
+          "models/MDX_Net_Models/model_data/model_data.json",
+          "models/MDX_Net_Models/model_data/mdx_c_configs/config_melbandroformer_inst.yaml"
+        ],
+        "review_note": "Exact checkpoint hash and parsed config establish Instrumental as the sole runtime target."
+      }
+    },
+    "mdx:melband_roformer_inst_v2": {
+      "backend": "mdx_c_target",
+      "native_signature": [
+        "Instrumental"
+      ],
+      "primary_native": "Instrumental",
+      "config_yamls": [
+        "config_melbandroformer_inst_v2.yaml"
+      ],
+      "evidence": {
+        "artifact_sources": [
+          "https://huggingface.co/pcunwa/Mel-Band-Roformer-Inst/resolve/main/melband_roformer_inst_v2.ckpt"
+        ],
+        "runtime_metadata_sources": [
+          "models/MDX_Net_Models/model_data/model_data.json",
+          "models/MDX_Net_Models/model_data/mdx_c_configs/config_melbandroformer_inst_v2.yaml"
+        ],
+        "review_note": "Exact checkpoint association and parsed config establish Instrumental as the sole runtime target."
+      }
+    },
+    "mdx:model_bs_roformer_ep_317_sdr_12.9755": {
+      "backend": "mdx_c_target",
+      "native_signature": [
+        "Vocals"
+      ],
+      "primary_native": "Vocals",
+      "config_yamls": [
+        "model_bs_roformer_ep_317_sdr_12.9755.yaml",
+        "config_bs_roformer_ep_317_sdr_12.9755.yaml"
+      ],
+      "evidence": {
+        "artifact_sources": [
+          "https://github.com/TRvlvr/model_repo/releases/download/all_public_uvr_models/model_bs_roformer_ep_317_sdr_12.9755.ckpt"
+        ],
+        "runtime_metadata_sources": [
+          "models/MDX_Net_Models/model_data/model_data.json",
+          "models/MDX_Net_Models/model_data/mdx_c_configs/model_bs_roformer_ep_317_sdr_12.9755.yaml",
+          "models/MDX_Net_Models/model_data/mdx_c_configs/config_bs_roformer_ep_317_sdr_12.9755.yaml"
+        ],
+        "review_note": "Exact checkpoint-to-config association and parsed target establish the sole runtime output; only locally proven aliases are accepted."
+      }
+    },
+    "mdx:model_bs_roformer_ep_368_sdr_12.9628": {
+      "backend": "mdx_c_target",
+      "native_signature": [
+        "Vocals"
+      ],
+      "primary_native": "Vocals",
+      "config_yamls": [
+        "model_bs_roformer_ep_368_sdr_12.9628.yaml",
+        "config_bs_roformer_ep_368_sdr_12.9628.yaml"
+      ],
+      "evidence": {
+        "artifact_sources": [
+          "https://github.com/TRvlvr/model_repo/releases/download/all_public_uvr_models/model_bs_roformer_ep_368_sdr_12.9628.ckpt"
+        ],
+        "runtime_metadata_sources": [
+          "models/MDX_Net_Models/model_data/model_data.json",
+          "models/MDX_Net_Models/model_data/mdx_c_configs/model_bs_roformer_ep_368_sdr_12.9628.yaml",
+          "models/MDX_Net_Models/model_data/mdx_c_configs/config_bs_roformer_ep_368_sdr_12.9628.yaml"
+        ],
+        "review_note": "Exact checkpoint-to-config association and parsed target establish the sole runtime output; only locally proven aliases are accepted."
+      }
+    },
+    "mdx:model_bs_roformer_ep_937_sdr_10.5309": {
+      "backend": "mdx_c_target",
+      "native_signature": [
+        "No Drum-Bass"
+      ],
+      "primary_native": "No Drum-Bass",
+      "config_yamls": [
+        "model_bs_roformer_ep_937_sdr_10.5309.yaml"
+      ],
+      "evidence": {
+        "artifact_sources": [
+          "https://github.com/TRvlvr/model_repo/releases/download/all_public_uvr_models/model_bs_roformer_ep_937_sdr_10.5309.ckpt"
+        ],
+        "runtime_metadata_sources": [
+          "models/MDX_Net_Models/model_data/model_data.json",
+          "models/MDX_Net_Models/model_data/mdx_c_configs/model_bs_roformer_ep_937_sdr_10.5309.yaml"
+        ],
+        "review_note": "Exact checkpoint-to-config association and parsed target establish the sole runtime output; only locally proven aliases are accepted."
+      }
+    },
+    "mdx:model_mel_band_roformer_ep_3005_sdr_11.4360": {
+      "backend": "mdx_c_target",
+      "native_signature": [
+        "Vocals"
+      ],
+      "primary_native": "Vocals",
+      "config_yamls": [
+        "model_mel_band_roformer_ep_3005_sdr_11.4360.yaml"
+      ],
+      "evidence": {
+        "artifact_sources": [
+          "https://github.com/TRvlvr/model_repo/releases/download/all_public_uvr_models/model_mel_band_roformer_ep_3005_sdr_11.4360.ckpt"
+        ],
+        "runtime_metadata_sources": [
+          "models/MDX_Net_Models/model_data/model_data.json",
+          "models/MDX_Net_Models/model_data/mdx_c_configs/model_mel_band_roformer_ep_3005_sdr_11.4360.yaml"
+        ],
+        "review_note": "Exact checkpoint-to-config association and parsed target establish the sole runtime output; only locally proven aliases are accepted."
+      }
+    }
+  }
+}

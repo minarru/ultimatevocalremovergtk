@@ -7,6 +7,7 @@ Derives display-label overrides and export intent from resolved model metadata
 from __future__ import annotations
 
 import typing
+from dataclasses import replace
 from typing import Dict, List, Mapping, Optional, Sequence, Tuple
 
 from bundled.constants import (
@@ -52,21 +53,6 @@ MODEL_STEM_INTENTS = frozenset(
     }
 )
 
-# Community catalogue metadata describes this classic ONNX model with the
-# semantic pair ``other|vocals``. The classic MDX engine does not address
-# those metadata tokens: ModelConfig's hash record selects ``Instrumental`` as
-# the primary source and the engine computes/writes its exact ``Vocals``
-# complement. Keep this correction exact-ID-only so community metadata never
-# becomes a general spelling rewrite at runtime.
-_EXACT_CLASSIC_MDX_RUNTIME_SIGNATURES = {
-    "mdx:UVR_MDXNET_KARA_2": ("Instrumental", "Vocals"),
-}
-
-
-def classic_mdx_runtime_stem_signature(model_id: str) -> tuple[str, ...]:
-    """Return an exact reviewed classic-MDX runtime signature, if known."""
-    return _EXACT_CLASSIC_MDX_RUNTIME_SIGNATURES.get(model_id, ())
-
 
 def resolve_catalogue_stem_semantics(
     model_id: str,
@@ -75,6 +61,8 @@ def resolve_catalogue_stem_semantics(
     backend_primary: str = "",
     backend_target: str = "",
     context: StemProcessingContext = StemProcessingContext.FULL_MIX,
+    runtime_warning: str = "",
+    registry: typing.Any = None,
 ) -> ModelStemSemantics:
     """Resolve a catalogue row through exact declarations or an exact waiver.
 
@@ -82,18 +70,24 @@ def resolve_catalogue_stem_semantics(
     lookup.  A waiver is audit evidence for an exact canonical identity, not a
     declaration of output membership, so it carries no routes.
     """
-    from .model_stem_manifest import load_bundled_stem_semantics, resolve_model_stem_semantics
+    from .model_stem_manifest import (
+        StemSemanticsRegistry,
+        load_bundled_stem_semantics,
+        resolve_model_stem_semantics,
+    )
 
-    registry = load_bundled_stem_semantics()
+    selected_registry = registry if registry is not None else load_bundled_stem_semantics()
     semantics = resolve_model_stem_semantics(
         model_id,
         native_stems=native_stems,
         backend_primary=backend_primary,
         backend_target=backend_target,
         context=context,
-        registry=registry,
+        registry=StemSemanticsRegistry.empty() if runtime_warning else selected_registry,
     )
-    waiver = registry.waivers.get(model_id)
+    if runtime_warning:
+        return replace(semantics, warning=runtime_warning)
+    waiver = selected_registry.waivers.get(model_id)
     if waiver is not None and semantics.status is StemReviewStatus.RAW:
         return ModelStemSemantics(
             model_id=model_id,

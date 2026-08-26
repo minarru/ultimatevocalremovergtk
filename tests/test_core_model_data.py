@@ -2,6 +2,7 @@ import os
 import tempfile
 import typing
 import unittest
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from bundled.constants import DEFAULT, ENSEMBLE_MODE, MDX_ARCH_TYPE, VR_ARCH_TYPE
@@ -27,6 +28,78 @@ class OverlapMdxDefaultTests(unittest.TestCase):
             model = ModelConfig(settings, repo, "missing.pth", VR_ARCH_TYPE, is_dry_check=True)
         self.assertEqual(model.overlap_mdx, 0.25)
         self.assertIsInstance(model.overlap_mdx, float)
+
+
+class InstalledMdxRuntimeContractTests(unittest.TestCase):
+    def test_model_config_reconciles_without_overwriting_observed_engine_keys(self) -> None:
+        stub = SimpleNamespace(
+            canonical_id="mdx:Kim_Inst",
+            mdx_model_stems=["INSTALLED INSTRUMENTAL", "INSTALLED VOCALS"],
+            mdx_config_yaml="",
+            primary_stem_native="INSTALLED INSTRUMENTAL",
+            primary_stem="INSTALLED INSTRUMENTAL",
+            secondary_stem="INSTALLED VOCALS",
+            mdx_runtime_reconciliation=None,
+        )
+
+        ModelConfig._reconcile_mdx_runtime_contract(stub)  # type: ignore[arg-type]
+
+        self.assertEqual(
+            stub.mdx_model_stems,
+            ["INSTALLED INSTRUMENTAL", "INSTALLED VOCALS"],
+        )
+        self.assertEqual(
+            stub.mdx_runtime_reconciliation.native_signature,
+            ("INSTALLED INSTRUMENTAL", "INSTALLED VOCALS"),
+        )
+        self.assertFalse(stub.mdx_runtime_reconciliation.reviewed)
+        self.assertIn("runtime-contract-mismatch", stub.mdx_runtime_reconciliation.warning)
+
+    def test_all_promoted_contracts_project_reviewed_installed_routes(self) -> None:
+        from core.mdx_runtime_contract import load_bundled_mdx_runtime_contracts
+        from core.stem_roles import StemReviewStatus
+        from core.stems import model_stem_routes
+
+        contracts = load_bundled_mdx_runtime_contracts().contracts
+        promoted = {
+            model_id: contract
+            for model_id, contract in contracts.items()
+            if model_id != "mdx:UVR_MDXNET_KARA_2"
+        }
+        self.assertEqual(len(promoted), 28)
+        for model_id, contract in promoted.items():
+            with self.subTest(model_id=model_id):
+                native_stems = (
+                    [] if contract.backend == "classic_onnx" else list(contract.native_signature)
+                )
+                secondary = (
+                    contract.native_signature[1]
+                    if contract.backend != "mdx_c_target"
+                    else "Derived complement"
+                )
+                model = SimpleNamespace(
+                    canonical_id=model_id,
+                    stem_semantics=None,
+                    mdx_runtime_reconciliation=None,
+                    mdx_model_stems=native_stems,
+                    demucs_source_list=[],
+                    mdx_config_yaml=(contract.config_yamls[0] if contract.config_yamls else ""),
+                    primary_stem_native=contract.primary_native,
+                    primary_stem=contract.primary_native,
+                    secondary_stem=secondary,
+                    target_instrument=(
+                        contract.primary_native if contract.backend == "mdx_c_target" else ""
+                    ),
+                    is_vocal_split_model=False,
+                )
+
+                routes = model_stem_routes(model)
+
+                self.assertEqual(model.stem_semantics.status, StemReviewStatus.REVIEWED)
+                self.assertEqual(
+                    {route.native.raw.casefold() for route in routes if route.native is not None},
+                    {native.casefold() for native in contract.native_signature},
+                )
 
 
 class AssembleEnsembleTests(unittest.TestCase):

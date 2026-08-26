@@ -10,6 +10,7 @@ Reviewed ensemble pairs and modes are exact IDs owned by :mod:`core.stem_pairs`.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from enum import Enum
 from hashlib import sha256
@@ -40,11 +41,15 @@ from bundled.constants import (
     VOCAL_STEM,
 )
 
+from .mdx_runtime_contract import (
+    ReconciledMdxRuntimeSignature,
+    reconcile_mdx_runtime_signature,
+)
 from .model_stem_manifest import (
     StemPairDefinition,
     load_bundled_stem_semantics,
-    resolve_model_stem_semantics,
 )
+from .model_stem_semantics import resolve_catalogue_stem_semantics
 from .stem_roles import (
     ModelStemSemantics,
     StemId,
@@ -914,7 +919,34 @@ def _model_native_stems(model: Any) -> tuple[str, ...]:
             )
             if item
         )
+    if str(getattr(model, "canonical_id", "") or "").startswith("mdx:"):
+        return _installed_mdx_reconciliation(model, native_stems).native_signature
     return native_stems
+
+
+def _installed_mdx_reconciliation(
+    model: Any,
+    observed: Sequence[str],
+) -> ReconciledMdxRuntimeSignature:
+    cached = getattr(model, "mdx_runtime_reconciliation", None)
+    if isinstance(cached, ReconciledMdxRuntimeSignature) and (
+        cached.native_signature == tuple(observed)
+    ):
+        return cached
+    reconciled = reconcile_mdx_runtime_signature(
+        str(getattr(model, "canonical_id", "") or ""),
+        observed_native_stems=observed,
+        config_yaml=os.path.basename(str(getattr(model, "mdx_config_yaml", "") or "")),
+        observed_primary_native=str(
+            getattr(model, "primary_stem_native", None) or getattr(model, "primary_stem", "") or ""
+        ),
+        source="installed",
+    )
+    try:
+        model.mdx_runtime_reconciliation = reconciled
+    except (AttributeError, TypeError):
+        pass
+    return reconciled
 
 
 def _model_semantics(model: Any, native_stems: Sequence[str]) -> ModelStemSemantics | None:
@@ -927,17 +959,22 @@ def _model_semantics(model: Any, native_stems: Sequence[str]) -> ModelStemSemant
         if bool(getattr(model, "is_vocal_split_model", False))
         else StemProcessingContext.FULL_MIX
     )
+    reconciled = (
+        _installed_mdx_reconciliation(model, native_stems) if model_id.startswith("mdx:") else None
+    )
+    runtime_warning = reconciled.warning if reconciled is not None else ""
     cache_key = (
         model_id,
         tuple((StemId(stem).casefold(), str(stem)) for stem in native_stems),
         context,
+        runtime_warning,
     )
     cached = getattr(model, "stem_semantics", None)
     if isinstance(cached, ModelStemSemantics) and (
         getattr(model, "_stem_semantics_cache_key", None) == cache_key
     ):
         return cached
-    semantics = resolve_model_stem_semantics(
+    semantics = resolve_catalogue_stem_semantics(
         model_id,
         native_stems=native_stems,
         backend_primary=str(
@@ -945,6 +982,7 @@ def _model_semantics(model: Any, native_stems: Sequence[str]) -> ModelStemSemant
         ),
         backend_target=str(getattr(model, "target_instrument", "") or ""),
         context=context,
+        runtime_warning=runtime_warning,
     )
     # Model configuration state is per assembled model; never write the shared
     # Settings object while retaining this exact resolution for later routes.

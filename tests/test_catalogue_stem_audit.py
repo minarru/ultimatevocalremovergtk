@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.join(ROOT, "scripts"))
 
 from catalogue import collect  # noqa: E402
 from catalogue import stem_audit as stem_audit_module  # noqa: E402
+from catalogue.render import stem_semantics_reference_tsv  # noqa: E402
 from catalogue.stem_audit import (  # noqa: E402
     STEM_SEMANTICS_REFERENCE_HEADERS,
     StemAuditDiagnostic,
@@ -719,8 +720,8 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
         self.assertEqual(len(result.native_to_role_ambiguities), 1)
         self.assertEqual(len(result.role_to_native_variants), 1)
 
-    def test_bundled_relationship_projection_retains_reviewed_six_and_fourteen(self) -> None:
-        """A projection that admits waivers/derived rows changes the reviewed baseline."""
+    def test_task5_bundled_relationship_projection_is_exact(self) -> None:
+        """Promoted native routes are visible until Task 6 tightens diagnostics."""
         from core.model_stem_manifest import BUNDLED_MANIFEST_PATH, load_stem_manifest
 
         registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)
@@ -729,8 +730,136 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
             tuple((*registry.models, *registry.waivers)),
         )
 
-        self.assertEqual(len(ambiguities), 6)
-        self.assertEqual(len(variants), 14)
+        self.assertEqual(
+            [(item.normalized_native, item.role_ids) for item in ambiguities],
+            [
+                ("bass", ("instrument.bass", "vocal.bass")),
+                (
+                    "dry",
+                    (
+                        "effect.noise.removed",
+                        "effect.reverb.removed",
+                        "effect.reverb_echo.removed",
+                    ),
+                ),
+                (
+                    "instrumental",
+                    (
+                        "mix.instrumental",
+                        "mix.instrumental_with_backing_vocals",
+                        "mix.instrumental_with_lead_vocals",
+                        "vocal.backing",
+                        "vocal.lead",
+                    ),
+                ),
+                ("lead", ("instrument.guitar.lead", "vocal.lead")),
+                ("no dry", ("effect.reverb", "effect.reverb_echo")),
+                (
+                    "no reverb",
+                    ("effect.reverb.removed", "effect.reverb_echo.removed"),
+                ),
+                (
+                    "other",
+                    (
+                        "effect.noise",
+                        "instrument.bowed_strings.removed",
+                        "instrument.drums.removed",
+                        "mix.instrumental",
+                        "mix.instrumental_with_backing_vocals",
+                        "mix.music",
+                        "residual.other",
+                        "vocal.aspiration.removed",
+                        "vocal.backing",
+                    ),
+                ),
+                ("reverb", ("effect.reverb", "effect.reverb_echo")),
+                ("strings", ("instrument.bowed_strings", "instrument.strings")),
+                (
+                    "vocals",
+                    ("cinematic.speech", "vocal.backing", "vocal.lead", "vocal.vocals"),
+                ),
+            ],
+        )
+        self.assertEqual(
+            [(item.role_id, item.normalized_natives) for item in variants],
+            [
+                ("cinematic.sfx", ("effects", "sfx")),
+                ("cinematic.speech", ("speech", "vocals")),
+                ("effect.noise", ("noise", "other")),
+                ("effect.noise.removed", ("dry", "no noise")),
+                ("effect.reverb", ("no dry", "reverb")),
+                ("effect.reverb.removed", ("dry", "no reverb", "noreverb")),
+                ("effect.reverb_echo", ("no dry", "reverb")),
+                ("effect.reverb_echo.removed", ("dry", "no reverb")),
+                ("instrument.bowed_strings", ("bowed_strings", "strings")),
+                ("instrument.drums.removed", ("no drums", "other")),
+                ("instrument.percussion", ("percussion", "percussions")),
+                ("instrument.woodwinds", ("woodwind", "woodwinds")),
+                ("mix.instrumental", ("instrument", "instrumental", "other")),
+                (
+                    "mix.instrumental_with_backing_vocals",
+                    ("instrumental", "other"),
+                ),
+                ("mix.music", ("music", "other")),
+                ("spatial.center", ("cen", "center", "mid", "similarity")),
+                ("spatial.side", ("side", "wide")),
+                (
+                    "vocal.backing",
+                    ("back-vocal", "backing_vocal", "instrumental", "other", "vocals"),
+                ),
+                (
+                    "vocal.lead",
+                    ("instrumental", "karaoke", "lead", "lead-vocal", "vocals"),
+                ),
+                ("vocal.vocals", ("vocal", "vocals", "voices", "vox")),
+            ],
+        )
+
+    def test_all_28_promoted_ids_are_present_in_semantic_reference_tsv(self) -> None:
+        from core.mdx_runtime_contract import load_bundled_mdx_runtime_contracts
+        from core.model_stem_manifest import load_bundled_stem_semantics
+
+        contracts = {
+            model_id: contract
+            for model_id, contract in load_bundled_mdx_runtime_contracts().contracts.items()
+            if model_id != "mdx:UVR_MDXNET_KARA_2"
+        }
+        entries = [
+            collect.ModelEntry(
+                source="runtime-contract-test",
+                family="MDX-Net ONNX",
+                catalogue_label=model_id,
+                weight_file=(
+                    model_id.removeprefix("mdx:")
+                    + (".onnx" if contract.backend == "classic_onnx" else ".ckpt")
+                ),
+                config_yaml=(contract.config_yamls[0] if contract.config_yamls else ""),
+                primary_stem=contract.primary_native,
+                instruments=list(contract.native_signature),
+                target_instrument=(
+                    contract.primary_native if contract.backend == "mdx_c_target" else ""
+                ),
+                metadata_source=(
+                    f"bundled_yaml:{contract.config_yamls[0]}"
+                    if contract.config_yamls
+                    else "runtime-contract-test"
+                ),
+            )
+            for model_id, contract in contracts.items()
+        ]
+
+        rendered = stem_semantics_reference_tsv(
+            entries,
+            registry=load_bundled_stem_semantics(),
+        )
+        rows = [line.split("\t") for line in rendered.splitlines()]
+        model_id_column = rows[0].index("model_id")
+        status_column = rows[0].index("review_status")
+        rendered_ids = {row[model_id_column] for row in rows[1:]}
+
+        self.assertEqual(len(contracts), 28)
+        self.assertEqual(rendered_ids, set(contracts))
+        self.assertTrue(all(row[status_column] == "reviewed" for row in rows[1:]))
 
 
 if __name__ == "__main__":

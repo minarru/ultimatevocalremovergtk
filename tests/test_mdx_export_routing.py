@@ -9,7 +9,7 @@ import numpy as np
 
 from bundled.constants import ALL_STEMS, INST_STEM, VOCAL_STEM
 from core.stem_roles import StemRoleId
-from core.stems import StemBucket, StemId, StemRoute, StemRouteKind
+from core.stems import StemBucket, StemId, StemRoute, StemRouteKind, model_stem_routes
 from engines.mdx_c import (
     derive_mdx_complement,
     derive_mdx_multi_complement,
@@ -229,6 +229,36 @@ class MDXExportRoutingTests(unittest.TestCase):
         self.assertTrue(routing["is_native_pick"])
         self.assertTrue(routing["multi_stem_export"])
         self.assertEqual(routing["export_stems"], ["vocals"])
+
+    def test_runtime_contract_keeps_installed_casing_as_the_export_key(self) -> None:
+        model = SimpleNamespace(
+            canonical_id="mdx:MDX23C-8KFFT-InstVoc_HQ",
+            stem_semantics=None,
+            mdx_runtime_reconciliation=None,
+            mdx_model_stems=["vocals", "INSTRUMENTAL"],
+            demucs_source_list=[],
+            mdx_config_yaml="MODEL_2_STEM_FULL_BAND_8K.YAML",
+            primary_stem_native="vocals",
+            primary_stem="vocals",
+            secondary_stem="INSTRUMENTAL",
+            target_instrument="",
+            is_vocal_split_model=False,
+        )
+        vocals = next(
+            route
+            for route in model_stem_routes(model)
+            if route.native is not None and route.native.raw == "vocals"
+        )
+
+        routing = mdx_export_routing_flags(
+            **self._base_kwargs(
+                stem_list=model.mdx_model_stems,
+                export_routes=(vocals,),
+                mdxnet_stem_select="vocals",
+            )
+        )
+
+        self.assertEqual(routing["export_stems"], ["vocals", "INSTRUMENTAL"])
 
     def test_stem_subset_routing(self) -> None:
         routing = mdx_export_routing_flags(

@@ -108,6 +108,8 @@ class ModelConfig:
         self.is_mdx_combine_stems = mdx.is_mdx23_combine_stems
         self.is_mdx_include_stem_complement = mdx.is_mdx_include_stem_complement
         self.mdx_c_configs: Any = None
+        self.mdx_config_yaml = ""
+        self.mdx_runtime_reconciliation: Any = None
         self.mdx_model_stems: list[str] = []
         self.mdx_dim_f_set: int | None = None
         self.mdx_dim_t_set: int | None = None
@@ -287,7 +289,8 @@ class ModelConfig:
                         self.model_type = str(self.model_data["model_type"])
                     if "config_yaml" in self.model_data:
                         self.is_mdx_c = True
-                        config_name = self.model_data["config_yaml"]
+                        config_name = str(self.model_data["config_yaml"])
+                        self.mdx_config_yaml = os.path.basename(config_name)
                         config_path = os.path.join(paths.MDX_C_CONFIG_PATH, config_name)
                         if not os.path.isfile(config_path):
                             ensure_mdx_c_config(config_name)
@@ -416,6 +419,7 @@ class ModelConfig:
 
         if self.process_method == MDX_ARCH_TYPE and self.model_data:
             self.apply_karaoke_metadata(str(self.model_data.get("config_yaml") or ""))
+            self._reconcile_mdx_runtime_contract()
 
         self.pre_proc_model_activated = (
             self.pre_proc_model_activated if not self.is_secondary_model else False
@@ -797,6 +801,25 @@ class ModelConfig:
             self.is_bv_model = self.model_data[IS_BV_MODEL]
         if IS_BV_MODEL_REBAL in self.model_data.keys() and self.is_bv_model:
             self.bv_model_rebalance = self.model_data[IS_BV_MODEL_REBAL]
+
+    def _reconcile_mdx_runtime_contract(self) -> None:
+        """Validate installed hash/config output keys without replacing them."""
+        from ..mdx_runtime_contract import reconcile_mdx_runtime_signature
+
+        observed = tuple(str(stem) for stem in self.mdx_model_stems if stem)
+        if not observed:
+            observed = tuple(
+                str(stem)
+                for stem in (self.primary_stem_native or self.primary_stem, self.secondary_stem)
+                if stem
+            )
+        self.mdx_runtime_reconciliation = reconcile_mdx_runtime_signature(
+            self.canonical_id,
+            observed_native_stems=observed,
+            config_yaml=self.mdx_config_yaml,
+            observed_primary_native=str(self.primary_stem_native or self.primary_stem or ""),
+            source="installed",
+        )
 
     def apply_karaoke_metadata(self, config_yaml: str = "") -> None:
         """Set ``is_karaoke``/``is_karaoke_curated`` from hash JSON and

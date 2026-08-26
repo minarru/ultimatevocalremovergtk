@@ -24,12 +24,10 @@ from catalogue.collect import (
     CatalogueContext,
     ModelEntry,
     is_runtime_target_instrument,
-    runtime_stem_signature,
+    runtime_stem_reconciliation,
 )
-from core.model_stem_manifest import (
-    StemSemanticsRegistry,
-    resolve_model_stem_semantics,
-)
+from core.model_stem_manifest import StemSemanticsRegistry
+from core.model_stem_semantics import resolve_catalogue_stem_semantics
 from core.stem_roles import (
     StemId,
     StemProcessingContext,
@@ -548,6 +546,7 @@ def _context_diagnostics(
     entry: ModelEntry,
     declaration: Any,
     runtime_signature: tuple[str, ...],
+    runtime_warning: str,
     registry: StemSemanticsRegistry,
 ) -> tuple[list[StemAuditDiagnostic], bool, list[_ContextRoleProjection]]:
     diagnostics = []
@@ -629,13 +628,14 @@ def _context_diagnostics(
                 )
             )
         try:
-            resolved = resolve_model_stem_semantics(
+            resolved = resolve_catalogue_stem_semantics(
                 model_id,
                 native_stems=runtime_signature,
                 backend_primary=entry.primary_stem,
                 backend_target=entry.target_instrument,
                 context=context,
                 registry=registry,
+                runtime_warning=runtime_warning,
             )
         except (AttributeError, KeyError, TypeError, ValueError) as error:
             projections.append(
@@ -761,12 +761,14 @@ def audit_catalogue_stems(
         if declaration is None:
             raw_ids.add(model_id)
             continue
-        runtime_signature = runtime_stem_signature(
+        reconciled = runtime_stem_reconciliation(
             model_id,
             entry.instruments,
             target_instrument=entry.target_instrument,
+            config_yaml=entry.config_yaml,
             metadata_source=entry.metadata_source,
         )
+        runtime_signature = reconciled.native_signature
         if not _signature_matches(declaration.native_signature, runtime_signature):
             diagnostics.append(
                 StemAuditDiagnostic(
@@ -782,6 +784,7 @@ def audit_catalogue_stems(
             entry,
             declaration,
             runtime_signature,
+            reconciled.warning,
             selected_registry,
         )
         diagnostics.extend(context_findings)
@@ -794,6 +797,7 @@ def audit_catalogue_stems(
             model_id,
             target_instrument=entry.target_instrument,
             metadata_source=entry.metadata_source,
+            config_yaml=entry.config_yaml,
         ):
             diagnostics.extend(
                 _target_projection_diagnostics(model_id, declaration, runtime_signature)

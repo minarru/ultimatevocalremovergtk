@@ -38,11 +38,11 @@ from .catalog_dedupe import (
 from .catalogue_types import StemSemanticProjection
 from .debug_log import debug
 from .extra_catalog import apollo_download_list, merge_extra_catalogues
+from .mdx_runtime_contract import reconcile_catalogue_mdx_runtime_signature
 from .model_identity import ModelId
 from .model_naming import canonical_display_name
 from .model_stem_semantics import (
     INTENT_UNKNOWN,
-    classic_mdx_runtime_stem_signature,
     resolve_catalogue_intent,
     resolve_catalogue_stem_semantics,
     resolve_is_karaoke,
@@ -227,19 +227,26 @@ def _build_meta(
         backend_primary = str(source_meta.get("primary_stem") or "")
         backend_target = str(target or "")
         model_id = _catalogue_model_id(arch, checkpoint)
-        has_yaml_config = any(str(name).casefold().endswith((".yaml", ".yml")) for name in files)
-        classic_signature = classic_mdx_runtime_stem_signature(model_id)
-        if classic_signature:
-            runtime_stems = list(classic_signature)
-        elif model_id.startswith("mdx:") and backend_target and has_yaml_config:
-            runtime_stems = [backend_target]
-        else:
-            runtime_stems = stems
+        config_yaml = next(
+            (
+                os.path.basename(str(name))
+                for name in files
+                if str(name).casefold().endswith((".yaml", ".yml"))
+            ),
+            "",
+        )
+        reconciled = reconcile_catalogue_mdx_runtime_signature(
+            model_id,
+            stems,
+            target_instrument=backend_target,
+            config_yaml=config_yaml,
+        )
         semantics = resolve_catalogue_stem_semantics(
             model_id,
-            native_stems=runtime_stems,
+            native_stems=reconciled.native_signature,
             backend_primary=backend_primary,
             backend_target=backend_target,
+            runtime_warning=reconciled.warning,
         )
         projection = stem_semantics_projection(
             semantics,

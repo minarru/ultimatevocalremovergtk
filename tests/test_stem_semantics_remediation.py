@@ -11,19 +11,14 @@ from unittest import mock
 import numpy as np
 
 from core.model_config.config import ModelConfig
-from core.model_stem_manifest import (
-    StemSemanticsRegistry,
-    load_bundled_stem_semantics,
-    load_stem_manifest_document,
-    resolve_model_stem_semantics,
-)
+from core.model_stem_manifest import load_bundled_stem_semantics
 from core.settings import Settings
 from core.stem_roles import StemReviewStatus
 from core.stems import FOCUS_PRIMARY, FOCUS_SECONDARY
 from engines.mdx import SeperateMDX
 
 DECISION_FIXTURE = Path(__file__).with_name("fixtures") / "stem_manifest_decisions.json"
-TASK4_PROMOTION_IDS = frozenset(
+TASK5_PROMOTION_IDS = frozenset(
     {
         "mdx:Kim_Inst",
         "mdx:Kim_Vocal_1",
@@ -185,21 +180,19 @@ class ReviewedDecisionLedgerTests(unittest.TestCase):
         self.assertIn("mdx:model_MelBand-Roformer_BVE_by-Gonza", karaoke_ids)
         self.assertNotIn("vr:UVR-BVE-4B_SN-44100-1", karaoke_ids)
 
-    def test_task4_manifest_matches_every_shared_ordered_decision(self) -> None:
+    def test_task5_manifest_matches_every_shared_ordered_decision(self) -> None:
         expected_models = self.fixture["models"]
         actual_models = self.manifest["models"]
-        self.assertEqual(len(actual_models), 455)
-        self.assertEqual(len(self.manifest["waivers"]), 30)
+        self.assertEqual(len(actual_models), 483)
         self.assertEqual(
-            set(self.manifest["waivers"]),
-            TASK4_PROMOTION_IDS | set(self.fixture["waivers"]),
+            self.manifest["waivers"],
+            {model_id: self.manifest["waivers"][model_id] for model_id in self.fixture["waivers"]},
         )
         self.assertEqual(
             sum(len(model["contexts"]) for model in actual_models.values()),
-            485,
+            514,
         )
-        self.assertEqual(set(expected_models) - set(actual_models), TASK4_PROMOTION_IDS)
-        self.assertEqual(set(actual_models), set(expected_models) - TASK4_PROMOTION_IDS)
+        self.assertEqual(set(actual_models), set(expected_models))
         for model_id in sorted(actual_models):
             with self.subTest(model_id=model_id):
                 self.assertEqual(
@@ -210,10 +203,7 @@ class ReviewedDecisionLedgerTests(unittest.TestCase):
         actual_karaoke_ids = {
             model_id for model_id, model in actual_models.items() if model["intent"] == "karaoke"
         }
-        self.assertEqual(
-            actual_karaoke_ids,
-            set(self.fixture["karaoke_model_ids"]) - {"mdx:UVR_MDXNET_KARA"},
-        )
+        self.assertEqual(actual_karaoke_ids, set(self.fixture["karaoke_model_ids"]))
 
     def test_reviewed_roles_are_exact_and_used_by_the_final_oracle(self) -> None:
         expected_roles = {
@@ -309,144 +299,6 @@ class ReviewedDecisionLedgerTests(unittest.TestCase):
                 )
             ],
         )
-
-
-def _staged_classic_registry() -> StemSemanticsRegistry:
-    """Strict planned declarations for classic models promoted in Task 5.
-
-    This verifies today's exact resolver/projection/focus seam without making
-    Task 3 depend on future bundled declaration work.
-    """
-    roles = {
-        "vocal.vocals": {
-            "display": "Vocals",
-            "filename_tag": "Vocals",
-            "family": "vocal",
-        },
-        "mix.instrumental": {
-            "display": "Instrumental",
-            "filename_tag": "Instrumental",
-            "family": "mix",
-        },
-        "effect.reverb": {
-            "display": "Reverb",
-            "filename_tag": "Reverb",
-            "family": "effect",
-        },
-        "effect.reverb.removed": {
-            "display": "Reverb Removed",
-            "filename_tag": "Reverb_Removed",
-            "family": "effect",
-            "removed_of": "effect.reverb",
-        },
-        "cinematic.crowd": {
-            "display": "Crowd",
-            "filename_tag": "Crowd",
-            "family": "cinematic",
-        },
-        "cinematic.crowd.removed": {
-            "display": "Crowd Removed",
-            "filename_tag": "Crowd_Removed",
-            "family": "cinematic",
-            "removed_of": "cinematic.crowd",
-        },
-        "instrument.bass": {
-            "display": "Bass",
-            "filename_tag": "Bass",
-            "family": "instrument",
-        },
-        "instrument.bass.removed": {
-            "display": "Bass Removed",
-            "filename_tag": "Bass_Removed",
-            "family": "instrument",
-            "removed_of": "instrument.bass",
-        },
-        "instrument.drums": {
-            "display": "Drums",
-            "filename_tag": "Drums",
-            "family": "instrument",
-        },
-        "instrument.drums.removed": {
-            "display": "Drums Removed",
-            "filename_tag": "Drums_Removed",
-            "family": "instrument",
-            "removed_of": "instrument.drums",
-        },
-        "residual.other": {
-            "display": "Residual",
-            "filename_tag": "Residual",
-            "family": "residual",
-        },
-        "residual.other.removed": {
-            "display": "Residual Removed",
-            "filename_tag": "Residual_Removed",
-            "family": "residual",
-            "removed_of": "residual.other",
-        },
-    }
-    models: dict[str, object] = {
-        "mdx:Reverb_HQ_By_FoxJoy": {
-            "native_signature": ["Reverb", "No Reverb"],
-            "intent": "special_fx",
-            "contexts": {
-                "full_mix": {
-                    "logical_primary": "effect.reverb.removed",
-                    "outputs": [
-                        {"native": "Reverb", "role": "effect.reverb"},
-                        {"native": "No Reverb", "role": "effect.reverb.removed"},
-                    ],
-                }
-            },
-            "evidence": "staged exact classic runtime review",
-        },
-        "mdx:UVR-MDX-NET_Crowd_HQ_1": {
-            "native_signature": ["No Crowd", "Crowd"],
-            "intent": "specialty_stem",
-            "contexts": {
-                "full_mix": {
-                    "logical_primary": "cinematic.crowd.removed",
-                    "outputs": [
-                        {"native": "No Crowd", "role": "cinematic.crowd.removed"},
-                        {"native": "Crowd", "role": "cinematic.crowd"},
-                    ],
-                }
-            },
-            "evidence": "staged exact classic runtime review",
-        },
-    }
-    target_roles = {
-        "bass": ("instrument.bass", "instrument.bass.removed"),
-        "drums": ("instrument.drums", "instrument.drums.removed"),
-        "other": ("residual.other", "residual.other.removed"),
-        "vocals": ("vocal.vocals", "mix.instrumental"),
-    }
-    for variant in ("a", "b"):
-        for target, (target_role, inverse_role) in target_roles.items():
-            primary = target.title()
-            inverse = "Instrumental" if target == "vocals" else f"No {primary}"
-            models[f"mdx:kuielab_{variant}_{target}"] = {
-                "native_signature": [primary, inverse],
-                "intent": "specialty_stem",
-                "contexts": {
-                    "full_mix": {
-                        "logical_primary": target_role,
-                        "outputs": [
-                            {"native": primary, "role": target_role},
-                            {"native": inverse, "role": inverse_role},
-                        ],
-                    }
-                },
-                "evidence": "staged exact classic runtime review",
-            }
-    return load_stem_manifest_document(
-        {
-            "schema_version": 2,
-            "roles": roles,
-            "pairs": {},
-            "models": models,
-            "waivers": {},
-        }
-    )
 
 
 def _classic_fake(
@@ -624,25 +476,11 @@ class ClassicMdxReviewedRoutingTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        cls.staged_registry = _staged_classic_registry()
+        cls.registry = load_bundled_stem_semantics()
 
     def test_classic_focus_resolves_reviewed_routes_to_exact_engine_keys(self) -> None:
-        bundled = load_bundled_stem_semantics()
-        bundled_ids = {"mdx:UVR_MDXNET_Main", "mdx:UVR_MDXNET_KARA_2"}
-
-        def _resolver_for(registry: StemSemanticsRegistry):
-            def _resolve_exact(model_id: str, **kwargs: object):
-                return resolve_model_stem_semantics(
-                    model_id,
-                    registry=registry,
-                    **kwargs,  # type: ignore[arg-type]
-                )
-
-            return _resolve_exact
-
         for name, model_id, signature, backend_primary, focus, selected_natives in self.CASES:
             with self.subTest(case=name):
-                registry = bundled if model_id in bundled_ids else self.staged_registry
                 fake = _classic_fake(
                     canonical_id=model_id,
                     signature=signature,
@@ -651,8 +489,10 @@ class ClassicMdxReviewedRoutingTests(unittest.TestCase):
                 )
 
                 with (
-                    mock.patch("core.stems.resolve_model_stem_semantics", _resolver_for(registry)),
-                    mock.patch("core.stems.load_bundled_stem_semantics", return_value=registry),
+                    mock.patch(
+                        "core.stems.load_bundled_stem_semantics",
+                        return_value=self.registry,
+                    ),
                 ):
                     ModelConfig._apply_stem_focus(fake)  # type: ignore[arg-type]
 

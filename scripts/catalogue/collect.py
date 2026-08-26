@@ -33,6 +33,14 @@ from core.catalogue_types import (  # noqa: E402
     SourceId,
 )
 from core.extra_catalog import APOLLO_LIST_KEY  # noqa: E402
+from core.mdx_runtime_contract import (  # noqa: E402
+    BUNDLED_MDX_RUNTIME_CONTRACT_PATH,
+    MdxRuntimeContractError,
+    ReconciledMdxRuntimeSignature,
+    is_catalogue_mdx_target_runtime,
+    load_mdx_runtime_contracts,
+    reconcile_catalogue_mdx_runtime_signature,
+)
 from core.model_data import (  # noqa: E402
     _mdx_c_training,
     load_mdx_c_config,
@@ -44,7 +52,6 @@ from core.model_stem_semantics import (  # noqa: E402
     INTENT_SPECIALTY_STEM,
     INTENT_UNKNOWN,
     backend_focus_label,
-    classic_mdx_runtime_stem_signature,
     describe_kuielab_component,
     describe_special_fx_stem,
     export_intent_from_fields,
@@ -107,24 +114,7 @@ def reviewed_stem_signature(model_id: str, instruments: Any) -> tuple[str, ...]:
     return _REVIEWED_MISSING_NATIVE_SIGNATURES.get(model_id, ())
 
 
-def is_runtime_target_instrument(
-    model_id: str,
-    *,
-    target_instrument: str = "",
-    metadata_source: str = "",
-) -> bool:
-    """Whether catalogue evidence selects ModelConfig's single-target branch.
-
-    A target read from an actual MDX-C yaml changes the runtime-native source
-    inventory to exactly that target. Community tables can describe a primary
-    as a target too, but do not configure the engine and therefore must not
-    collapse an otherwise native two-output inventory.
-    """
-    return bool(
-        model_id.startswith("mdx:")
-        and str(target_instrument or "").strip()
-        and str(metadata_source or "").startswith(("bundled_yaml:", "remote_yaml:"))
-    )
+is_runtime_target_instrument = is_catalogue_mdx_target_runtime
 
 
 def runtime_stem_signature(
@@ -132,19 +122,46 @@ def runtime_stem_signature(
     instruments: Any,
     *,
     target_instrument: str = "",
+    config_yaml: str = "",
     metadata_source: str = "",
 ) -> tuple[str, ...]:
     """Project collected training evidence to actual engine-native source keys."""
-    classic_signature = classic_mdx_runtime_stem_signature(model_id)
-    if classic_signature:
-        return classic_signature
-    if is_runtime_target_instrument(
+    return runtime_stem_reconciliation(
         model_id,
+        instruments,
         target_instrument=target_instrument,
+        config_yaml=config_yaml,
         metadata_source=metadata_source,
-    ):
-        return (str(target_instrument),)
-    return reviewed_stem_signature(model_id, instruments)
+    ).native_signature
+
+
+def runtime_stem_reconciliation(
+    model_id: str,
+    instruments: Any,
+    *,
+    target_instrument: str = "",
+    config_yaml: str = "",
+    metadata_source: str = "",
+) -> ReconciledMdxRuntimeSignature:
+    """Return the one shared exact runtime-signature reconciliation result."""
+    reconciled = reconcile_catalogue_mdx_runtime_signature(
+        model_id,
+        tuple(str(native) for native in instruments),
+        target_instrument=target_instrument,
+        config_yaml=config_yaml,
+        metadata_source=metadata_source,
+    )
+    if reconciled.native_signature:
+        return reconciled
+    fallback = reviewed_stem_signature(model_id, instruments)
+    if not fallback:
+        return reconciled
+    return ReconciledMdxRuntimeSignature(
+        native_signature=fallback,
+        contract=reconciled.contract,
+        reviewed=reconciled.reviewed,
+        warning=reconciled.warning,
+    )
 
 
 @dataclass
@@ -519,6 +536,10 @@ def _build_catalogue_context(
     unavailable = []
     if not community_available:
         unavailable.append("community models.txt reference")
+    try:
+        load_mdx_runtime_contracts(BUNDLED_MDX_RUNTIME_CONTRACT_PATH)
+    except MdxRuntimeContractError as error:
+        unavailable.append(f"MDX runtime contract ({error})")
     return CatalogueContext(
         community_by_file=community,
         unavailable_supplemental_evidence=tuple(unavailable),

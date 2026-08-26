@@ -549,7 +549,10 @@ class ManifestValidationTests(unittest.TestCase):
             native_stems = [
                 output.native.raw.casefold() if output.native else "" for output in outputs
             ]
-            if len(outputs) == 2:
+            if len(outputs) == 2 and model_id not in {
+                "mdx:kuielab_a_other",
+                "mdx:kuielab_b_other",
+            }:
                 self.assertNotIn("residual.other", roles, model_id)
             elif "other" in {
                 output.native.raw.casefold() for output in outputs if output.native is not None
@@ -846,22 +849,27 @@ class ManifestValidationTests(unittest.TestCase):
                 self.assertIsNone(outputs[1].native)
                 self.assertEqual(outputs[1].complement_of, StemRoleId("vocal.lead"))
 
-    def test_exact_two_output_target_complements_never_use_residual_other(self) -> None:
-        """A declared target/complement pair keeps the target semantic identity."""
+    def test_exact_two_output_other_components_use_reviewed_residual_roles(self) -> None:
         registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)
-        for model_id, declaration in registry.models.items():
+        for model_id in ("mdx:kuielab_a_other", "mdx:kuielab_b_other"):
+            declaration = registry.models[model_id]
             outputs = declaration.contexts[StemProcessingContext.FULL_MIX].outputs
-            if len(declaration.native_signature) != 2:
-                continue
             roles = {str(output.role) for output in outputs}
             with self.subTest(model_id=model_id):
-                self.assertNotIn("residual.other", roles)
+                self.assertEqual(roles, {"residual.other", "residual.other.removed"})
 
     def test_bundled_catalogue_covers_every_current_exact_identity(self) -> None:
         """The checked-in review is exhaustive, never inferred at runtime."""
         registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)
 
-        self.assertEqual(len(registry.models) + len(registry.waivers), 485)
+        self.assertEqual(len(registry.models), 483)
+        self.assertEqual(
+            set(registry.waivers),
+            {
+                "apollo:apollo_edm_big_by_essid",
+                "apollo:apollo_edm_by_essid",
+            },
+        )
         self.assertFalse(set(registry.models) & set(registry.waivers))
 
     def test_accepts_all_supported_canonical_model_families(self) -> None:
@@ -907,7 +915,8 @@ class ManifestValidationTests(unittest.TestCase):
     def test_bundled_manifest_loads_core_roles_pairs_and_reviewed_catalogue(self) -> None:
         registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)
 
-        self.assertEqual(len(registry.models) + len(registry.waivers), 485)
+        self.assertEqual(len(registry.models), 483)
+        self.assertEqual(len(registry.waivers), 2)
         self.assertIn(StemRoleId("vocal.vocals"), registry.roles)
         self.assertEqual(
             registry.pairs["pair.center_side"].roles,

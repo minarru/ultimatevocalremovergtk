@@ -216,8 +216,8 @@ class CatalogueIntentOverlayTests(unittest.TestCase):
             merged = catalog_sources.merged_catalogues(vr={}, mdx={}, demucs={})
 
         meta = merged.meta[label]
-        self.assertEqual(meta.intent, "vocal_pair")
-        self.assertNotEqual(meta.guessed_intent, meta.intent)
+        self.assertEqual(meta.intent, "instrumental")
+        self.assertEqual(meta.guessed_intent, "instrumental")
         self.assertEqual(meta.stem_semantics.status, "reviewed")
         self.assertEqual(meta.stem_semantics.logical_primary_role, "mix.instrumental")
         self.assertEqual(meta.stem_semantics.canonical_roles, ("vocal.vocals", "mix.instrumental"))
@@ -258,12 +258,12 @@ class CatalogueIntentOverlayTests(unittest.TestCase):
             ],
         )
 
-    def test_exact_waiver_is_visible_without_inventing_stem_membership(self) -> None:
+    def test_exact_runtime_contract_promotes_missing_catalogue_inventory(self) -> None:
         label = "Known waived metadata-only model"
         with _with_supplements(
             (
                 {},
-                {label: {"Kim_Inst.ckpt": "https://example.test/model.ckpt"}},
+                {label: {"Kim_Inst.onnx": "https://example.test/Kim_Inst.onnx"}},
                 {},
                 {label: {"primary_stem": "Instrumental", "intent": "vocals"}},
             )
@@ -271,11 +271,101 @@ class CatalogueIntentOverlayTests(unittest.TestCase):
             merged = catalog_sources.merged_catalogues(vr={}, mdx={}, demucs={})
 
         meta = merged.meta[label]
-        self.assertEqual(meta.stem_semantics.status, "waived")
-        self.assertEqual(meta.stem_semantics.logical_primary_role, None)
-        self.assertEqual(meta.stem_semantics.canonical_roles, ())
-        self.assertEqual(meta.stem_semantics.routes, ())
-        self.assertIn("no native inventory", meta.stem_semantics.evidence)
+        self.assertEqual(meta.stem_semantics.status, "reviewed")
+        self.assertEqual(meta.stem_semantics.logical_primary_role, "mix.instrumental")
+        self.assertEqual(
+            [(route.native, route.role) for route in meta.stem_semantics.routes],
+            [
+                ("Instrumental", "mix.instrumental"),
+                ("Vocals", "vocal.vocals"),
+            ],
+        )
+        self.assertIn(
+            "runtime_contract=model_runtime_stem_contracts.json", meta.stem_semantics.evidence
+        )
+
+    def test_runtime_contract_warning_fails_live_projection_raw(self) -> None:
+        from core.mdx_runtime_contract import ReconciledMdxRuntimeSignature
+
+        label = "Exact artifact with unavailable runtime contract"
+        with (
+            _with_supplements(
+                (
+                    {},
+                    {label: {"Kim_Inst.onnx": "https://example.test/Kim_Inst.onnx"}},
+                    {},
+                    {label: {"primary_stem": "Instrumental"}},
+                )
+            ),
+            unittest.mock.patch.object(
+                catalog_sources,
+                "reconcile_catalogue_mdx_runtime_signature",
+                return_value=ReconciledMdxRuntimeSignature(
+                    ("Installed key",),
+                    None,
+                    False,
+                    "runtime-contract-unavailable error=test",
+                ),
+            ),
+        ):
+            merged = catalog_sources.merged_catalogues(vr={}, mdx={}, demucs={})
+
+        projection = merged.meta[label].stem_semantics
+        self.assertEqual(projection.status, "raw")
+        self.assertEqual(projection.routes[0].native, "Installed key")
+        self.assertEqual(
+            projection.warning,
+            "runtime-contract-unavailable error=test",
+        )
+
+    def test_all_28_promoted_ids_use_the_shared_contract_in_live_projection(self) -> None:
+        from core.mdx_runtime_contract import load_bundled_mdx_runtime_contracts
+
+        contracts = {
+            model_id: contract
+            for model_id, contract in load_bundled_mdx_runtime_contracts().contracts.items()
+            if model_id != "mdx:UVR_MDXNET_KARA_2"
+        }
+        self.assertEqual(len(contracts), 28)
+        catalogue = {}
+        metadata = {}
+        model_id_by_label = {}
+        for index, (model_id, contract) in enumerate(contracts.items()):
+            basename = model_id.removeprefix("mdx:")
+            label = f"runtime-contract-{index:02d}"
+            extension = ".onnx" if contract.backend == "classic_onnx" else ".ckpt"
+            files = {f"{basename}{extension}": f"https://example.test/{basename}{extension}"}
+            if contract.config_yamls:
+                files[contract.config_yamls[0]] = "https://example.test/config.yaml"
+            catalogue[label] = files
+            metadata[label] = {
+                "stems": list(contract.native_signature),
+                "primary_stem": contract.primary_native,
+                "target_instrument": (
+                    contract.primary_native if contract.backend == "mdx_c_target" else ""
+                ),
+            }
+            model_id_by_label[label] = model_id
+
+        with _with_supplements(({}, catalogue, {}, metadata)):
+            merged = catalog_sources.merged_catalogues(vr={}, mdx={}, demucs={})
+
+        self.assertEqual(
+            set(merged.meta),
+            set(model_id_by_label)
+            | {
+                "Apollo Model: EDM Restoration Big by essid",
+                "Apollo Model: EDM Restoration by essid",
+            },
+        )
+        for label, model_id in model_id_by_label.items():
+            with self.subTest(model_id=model_id):
+                projection = merged.meta[label].stem_semantics
+                self.assertEqual(projection.status, "reviewed")
+                self.assertIn(
+                    "runtime_contract=model_runtime_stem_contracts.json",
+                    projection.evidence,
+                )
 
 
 @_STEM_CACHE_OFF

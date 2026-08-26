@@ -13219,38 +13219,785 @@
         }
       },
       "evidence": "catalogue_id=vr:UVR-DeNoise-Lite; source=TRvlvr+Politrees; metadata_source=politrees_vr_hash; native_signature=No Noise|Noise; backend_primary=noise; backend_target=; reviewed_contexts=full_mix"
+    },
+    "mdx:Kim_Inst": {
+      "native_signature": [
+        "Instrumental",
+        "Vocals"
+      ],
+      "intent": "instrumental",
+      "contexts": {
+        "full_mix": {
+          "logical_primary": "mix.instrumental",
+          "outputs": [
+            {
+              "native": "Instrumental",
+              "role": "mix.instrumental",
+              "production": "native",
+              "selected_by_default": true
+            },
+            {
+              "native": "Vocals",
+              "role": "vocal.vocals",
+              "production": "native",
+              "selected_by_default": true
+            }
+          ]
+        }
+      },
+      "evidence": "catalogue_id=mdx:Kim_Inst; source=TRvlvr+Politrees; metadata_source=community_models.txt; backend_primary=Instrumental; backend_target=; native_signature=Instrumental|Vocals; runtime_contract=model_runtime_stem_contracts.json"
+    },
+    "mdx:Kim_Vocal_1": {
+      "native_signature": [
+        "Vocals",
+        "Instrumental"
+      ],
+      "intent": "vocals",
+      "contexts": {
+        "full_mix": {
+          "logical_primary": "vocal.vocals",
+          "outputs": [
+            {
+              "native": "Vocals",
+              "role": "vocal.vocals",
+              "production": "native",
+              "selected_by_default": true
+            },
+            {
+              "native": "Instrumental",
+              "role": "mix.instrumental",
+              "production": "native",
+              "selected_by_default": true
+            }
+          ]
+        }
+      },
+      "evidence": "catalogue_id=mdx:Kim_Vocal_1; source=TRvlvr+Politrees; metadata_source=community_models.txt; backend_primary=Vocals; backend_target=; native_signature=Vocals|Instrumental; runtime_contract=model_runtime_stem_contracts.json"
+    },
+    "mdx:Kim_Vocal_2": {
+      "native_signature": [
+        "Vocals",
+        "Instrumental"
+      ],
+      "intent": "vocals",
+      "contexts": {
+        "full_mix": {
+          "logical_primary": "vocal.vocals",
+          "outputs": [
+            {
+              "native": "Vocals",
+              "role": "vocal.vocals",
+              "production": "native",
+              "selected_by_default": true
+            },
+            {
+              "native": "Instrumental",
+              "role": "mix.instrumental",
+              "production": "native",
+              "selected_by_default": true
+            }
+          ]
+        }
+      },
+      "evidence": "catalogue_id=mdx:Kim_Vocal_2; source=TRvlvr+Politrees; metadata_source=community_models.txt; backend_primary=Vocals; backend_target=; native_signature=Vocals|Instrumental; runtime_contract=model_runtime_stem_contracts.json"
+    },
+    "mdx:MDX23C-8KFFT-InstVoc_HQ": {
+      "native_signature": [
+        "Vocals",
+        "Instrumental"
+      ],
+      "intent": "dual_voc_inst",
+      "contexts": {
+        "full_mix": {
+          "logical_primary": "vocal.vocals",
+          "outputs": [
+            {
+              "native": "Vocals",
+              "role": "vocal.vocals",
+              "production": "native",
+              "selected_by_default": true
+            },
+            {
+              "native": "Instrumental",
+              "role": "mix.instrumental",
+              "production": "native",
+              "selected_by_default": true
+            }
+          ]
+        }
+      },
+      "evidence": "catalogue_id=mdx:MDX23C-8KFFT-InstVoc_HQ; source=TRvlvr; metadata_source=community_models.txt; backend_primary=Vocals; backend_target=; native_signature=Vocals|Instrumental; runtime_contract=model_runtime_stem_contracts.json"
+    },
+    "mdx:MDX23C-8KFFT-InstVoc_HQ_2": {
+      "native_signature": [
+        "Vocals",
+        "Instrumental"
+      ],
+      "intent": "dual_voc_inst",
+      "contexts": {
+        "full_mix": {
+          "logical_primary": "vocal.vocals",
+          "outputs": [
+            {
+              "native": "Vocals",
+              "role": "vocal.vocals",
+              "production": "native",
+              "selected_by_default": true
+            },
+            {
+              "native": "Instrumental",
+              "role": "mix.instrumental",
+              "production": "native",
+              "selected_by_default": true
+            }
+          ]
+        }
+      },
+      "evidence": "catalogue_id=mdx:MDX23C-8KFFT-InstVoc_HQ_2; source=TRvlvr; metadata_source=community_models.txt; backend_primary=Vocals; backend_target=; native_signature=Vocals|Instrumental; runtime_contract=model_runtime_stem_contracts.json"
+    },
+    "mdx:Reverb_HQ_By_FoxJoy": {
+      "native_signature": [
+        "Reverb",
+        "No Reverb"
+      ],
+      "intent": "special_fx",
+      "contexts": {
+        "full_mix": {
+          "logical_primary": "effect.reverb.removed",
+          "outputs": [
+            {
+              "native": "Reverb",
+              "role": "effect.reverb",
+              "production": "native",
+              "selected_by_default": true
+            },
+            {
+              "native": "No Reverb",
+              "role": "effect.reverb.removed",
+              "production": "native",
+              "selected_by_default": true
+            }
+          ]
+        }
+      },
+      "evidence": "catalogue_id=mdx:Reverb_HQ_By_FoxJoy; source=TRvlvr+Politrees; metadata_source=community_models.txt; backend_primary=reverb; backend_target=; native_signature=Reverb|No Reverb; runtime_contract=model_runtime_stem_contracts.json"
+    },
+    "mdx:UVR-MDX-NET_Crowd_HQ_1": {
+      "native_signature": [
+        "No Crowd",
+        "Crowd"
+      ],
+      "intent": "specialty_stem",
+      "contexts": {
+        "full_mix": {
+          "logical_primary": "cinematic.crowd.removed",
+          "outputs": [
+            {
+              "native": "No Crowd",
+              "role": "cinematic.crowd.removed",
+              "production": "native",
+              "selected_by_default": true
+            },
+            {
+              "native": "Crowd",
+              "role": "cinematic.crowd",
+              "production": "native",
+              "selected_by_default": true
+            }
+          ]
+        }
+      },
+      "evidence": "catalogue_id=mdx:UVR-MDX-NET_Crowd_HQ_1; source=TRvlvr+Politrees; metadata_source=community_models.txt; backend_primary=no crowd; backend_target=; native_signature=No Crowd|Crowd; runtime_contract=model_runtime_stem_contracts.json"
+    },
+    "mdx:UVR_MDXNET_1_9703": {
+      "native_signature": [
+        "Vocals",
+        "Instrumental"
+      ],
+      "intent": "vocals",
+      "contexts": {
+        "full_mix": {
+          "logical_primary": "vocal.vocals",
+          "outputs": [
+            {
+              "native": "Vocals",
+              "role": "vocal.vocals",
+              "production": "native",
+              "selected_by_default": true
+            },
+            {
+              "native": "Instrumental",
+              "role": "mix.instrumental",
+              "production": "native",
+              "selected_by_default": true
+            }
+          ]
+        }
+      },
+      "evidence": "catalogue_id=mdx:UVR_MDXNET_1_9703; source=TRvlvr+Politrees; metadata_source=community_models.txt; backend_primary=Vocals; backend_target=; native_signature=Vocals|Instrumental; runtime_contract=model_runtime_stem_contracts.json"
+    },
+    "mdx:UVR_MDXNET_2_9682": {
+      "native_signature": [
+        "Vocals",
+        "Instrumental"
+      ],
+      "intent": "vocals",
+      "contexts": {
+        "full_mix": {
+          "logical_primary": "vocal.vocals",
+          "outputs": [
+            {
+              "native": "Vocals",
+              "role": "vocal.vocals",
+              "production": "native",
+              "selected_by_default": true
+            },
+            {
+              "native": "Instrumental",
+              "role": "mix.instrumental",
+              "production": "native",
+              "selected_by_default": true
+            }
+          ]
+        }
+      },
+      "evidence": "catalogue_id=mdx:UVR_MDXNET_2_9682; source=TRvlvr+Politrees; metadata_source=community_models.txt; backend_primary=Vocals; backend_target=; native_signature=Vocals|Instrumental; runtime_contract=model_runtime_stem_contracts.json"
+    },
+    "mdx:UVR_MDXNET_3_9662": {
+      "native_signature": [
+        "Vocals",
+        "Instrumental"
+      ],
+      "intent": "vocals",
+      "contexts": {
+        "full_mix": {
+          "logical_primary": "vocal.vocals",
+          "outputs": [
+            {
+              "native": "Vocals",
+              "role": "vocal.vocals",
+              "production": "native",
+              "selected_by_default": true
+            },
+            {
+              "native": "Instrumental",
+              "role": "mix.instrumental",
+              "production": "native",
+              "selected_by_default": true
+            }
+          ]
+        }
+      },
+      "evidence": "catalogue_id=mdx:UVR_MDXNET_3_9662; source=TRvlvr+Politrees; metadata_source=community_models.txt; backend_primary=Vocals; backend_target=; native_signature=Vocals|Instrumental; runtime_contract=model_runtime_stem_contracts.json"
+    },
+    "mdx:UVR_MDXNET_9482": {
+      "native_signature": [
+        "Vocals",
+        "Instrumental"
+      ],
+      "intent": "vocals",
+      "contexts": {
+        "full_mix": {
+          "logical_primary": "vocal.vocals",
+          "outputs": [
+            {
+              "native": "Vocals",
+              "role": "vocal.vocals",
+              "production": "native",
+              "selected_by_default": true
+            },
+            {
+              "native": "Instrumental",
+              "role": "mix.instrumental",
+              "production": "native",
+              "selected_by_default": true
+            }
+          ]
+        }
+      },
+      "evidence": "catalogue_id=mdx:UVR_MDXNET_9482; source=TRvlvr+Politrees; metadata_source=community_models.txt; backend_primary=Vocals; backend_target=; native_signature=Vocals|Instrumental; runtime_contract=model_runtime_stem_contracts.json"
+    },
+    "mdx:UVR_MDXNET_KARA": {
+      "native_signature": [
+        "Vocals",
+        "Instrumental"
+      ],
+      "intent": "karaoke",
+      "contexts": {
+        "full_mix": {
+          "logical_primary": "mix.instrumental_with_backing_vocals",
+          "logical_secondary": "vocal.lead",
+          "outputs": [
+            {
+              "native": "Vocals",
+              "role": "vocal.lead",
+              "production": "native",
+              "selected_by_default": true
+            },
+            {
+              "native": "Instrumental",
+              "role": "mix.instrumental_with_backing_vocals",
+              "production": "native",
+              "selected_by_default": true
+            }
+          ]
+        },
+        "vocal_split": {
+          "logical_primary": "vocal.backing",
+          "logical_secondary": "vocal.lead",
+          "outputs": [
+            {
+              "native": "Vocals",
+              "role": "vocal.lead",
+              "production": "native",
+              "selected_by_default": true
+            },
+            {
+              "native": "Instrumental",
+              "role": "vocal.backing",
+              "production": "native",
+              "selected_by_default": true
+            }
+          ]
+        }
+      },
+      "evidence": "catalogue_id=mdx:UVR_MDXNET_KARA; source=TRvlvr+Politrees; metadata_source=community_models.txt; backend_primary=Vocals; backend_target=; native_signature=Vocals|Instrumental; runtime_contract=model_runtime_stem_contracts.json"
+    },
+    "mdx:kuielab_a_bass": {
+      "native_signature": [
+        "Bass",
+        "No Bass"
+      ],
+      "intent": "specialty_stem",
+      "contexts": {
+        "full_mix": {
+          "logical_primary": "instrument.bass",
+          "outputs": [
+            {
+              "native": "Bass",
+              "role": "instrument.bass",
+              "production": "native",
+              "selected_by_default": true
+            },
+            {
+              "native": "No Bass",
+              "role": "instrument.bass.removed",
+              "production": "native",
+              "selected_by_default": true
+            }
+          ]
+        }
+      },
+      "evidence": "catalogue_id=mdx:kuielab_a_bass; source=TRvlvr+Politrees; metadata_source=community_models.txt; backend_primary=bass; backend_target=; native_signature=Bass|No Bass; runtime_contract=model_runtime_stem_contracts.json"
+    },
+    "mdx:kuielab_a_drums": {
+      "native_signature": [
+        "Drums",
+        "No Drums"
+      ],
+      "intent": "specialty_stem",
+      "contexts": {
+        "full_mix": {
+          "logical_primary": "instrument.drums",
+          "outputs": [
+            {
+              "native": "Drums",
+              "role": "instrument.drums",
+              "production": "native",
+              "selected_by_default": true
+            },
+            {
+              "native": "No Drums",
+              "role": "instrument.drums.removed",
+              "production": "native",
+              "selected_by_default": true
+            }
+          ]
+        }
+      },
+      "evidence": "catalogue_id=mdx:kuielab_a_drums; source=TRvlvr+Politrees; metadata_source=community_models.txt; backend_primary=drums; backend_target=; native_signature=Drums|No Drums; runtime_contract=model_runtime_stem_contracts.json"
+    },
+    "mdx:kuielab_a_other": {
+      "native_signature": [
+        "Other",
+        "No Other"
+      ],
+      "intent": "specialty_stem",
+      "contexts": {
+        "full_mix": {
+          "logical_primary": "residual.other",
+          "outputs": [
+            {
+              "native": "Other",
+              "role": "residual.other",
+              "production": "native",
+              "selected_by_default": true
+            },
+            {
+              "native": "No Other",
+              "role": "residual.other.removed",
+              "production": "native",
+              "selected_by_default": true
+            }
+          ]
+        }
+      },
+      "evidence": "catalogue_id=mdx:kuielab_a_other; source=TRvlvr+Politrees; metadata_source=community_models.txt; backend_primary=other; backend_target=; native_signature=Other|No Other; runtime_contract=model_runtime_stem_contracts.json"
+    },
+    "mdx:kuielab_a_vocals": {
+      "native_signature": [
+        "Vocals",
+        "Instrumental"
+      ],
+      "intent": "specialty_stem",
+      "contexts": {
+        "full_mix": {
+          "logical_primary": "vocal.vocals",
+          "outputs": [
+            {
+              "native": "Vocals",
+              "role": "vocal.vocals",
+              "production": "native",
+              "selected_by_default": true
+            },
+            {
+              "native": "Instrumental",
+              "role": "mix.instrumental",
+              "production": "native",
+              "selected_by_default": true
+            }
+          ]
+        }
+      },
+      "evidence": "catalogue_id=mdx:kuielab_a_vocals; source=TRvlvr+Politrees; metadata_source=community_models.txt; backend_primary=Vocals; backend_target=; native_signature=Vocals|Instrumental; runtime_contract=model_runtime_stem_contracts.json"
+    },
+    "mdx:kuielab_b_bass": {
+      "native_signature": [
+        "Bass",
+        "No Bass"
+      ],
+      "intent": "specialty_stem",
+      "contexts": {
+        "full_mix": {
+          "logical_primary": "instrument.bass",
+          "outputs": [
+            {
+              "native": "Bass",
+              "role": "instrument.bass",
+              "production": "native",
+              "selected_by_default": true
+            },
+            {
+              "native": "No Bass",
+              "role": "instrument.bass.removed",
+              "production": "native",
+              "selected_by_default": true
+            }
+          ]
+        }
+      },
+      "evidence": "catalogue_id=mdx:kuielab_b_bass; source=TRvlvr+Politrees; metadata_source=community_models.txt; backend_primary=bass; backend_target=; native_signature=Bass|No Bass; runtime_contract=model_runtime_stem_contracts.json"
+    },
+    "mdx:kuielab_b_drums": {
+      "native_signature": [
+        "Drums",
+        "No Drums"
+      ],
+      "intent": "specialty_stem",
+      "contexts": {
+        "full_mix": {
+          "logical_primary": "instrument.drums",
+          "outputs": [
+            {
+              "native": "Drums",
+              "role": "instrument.drums",
+              "production": "native",
+              "selected_by_default": true
+            },
+            {
+              "native": "No Drums",
+              "role": "instrument.drums.removed",
+              "production": "native",
+              "selected_by_default": true
+            }
+          ]
+        }
+      },
+      "evidence": "catalogue_id=mdx:kuielab_b_drums; source=TRvlvr+Politrees; metadata_source=community_models.txt; backend_primary=drums; backend_target=; native_signature=Drums|No Drums; runtime_contract=model_runtime_stem_contracts.json"
+    },
+    "mdx:kuielab_b_other": {
+      "native_signature": [
+        "Other",
+        "No Other"
+      ],
+      "intent": "specialty_stem",
+      "contexts": {
+        "full_mix": {
+          "logical_primary": "residual.other",
+          "outputs": [
+            {
+              "native": "Other",
+              "role": "residual.other",
+              "production": "native",
+              "selected_by_default": true
+            },
+            {
+              "native": "No Other",
+              "role": "residual.other.removed",
+              "production": "native",
+              "selected_by_default": true
+            }
+          ]
+        }
+      },
+      "evidence": "catalogue_id=mdx:kuielab_b_other; source=TRvlvr+Politrees; metadata_source=community_models.txt; backend_primary=other; backend_target=; native_signature=Other|No Other; runtime_contract=model_runtime_stem_contracts.json"
+    },
+    "mdx:kuielab_b_vocals": {
+      "native_signature": [
+        "Vocals",
+        "Instrumental"
+      ],
+      "intent": "specialty_stem",
+      "contexts": {
+        "full_mix": {
+          "logical_primary": "vocal.vocals",
+          "outputs": [
+            {
+              "native": "Vocals",
+              "role": "vocal.vocals",
+              "production": "native",
+              "selected_by_default": true
+            },
+            {
+              "native": "Instrumental",
+              "role": "mix.instrumental",
+              "production": "native",
+              "selected_by_default": true
+            }
+          ]
+        }
+      },
+      "evidence": "catalogue_id=mdx:kuielab_b_vocals; source=TRvlvr+Politrees; metadata_source=community_models.txt; backend_primary=Vocals; backend_target=; native_signature=Vocals|Instrumental; runtime_contract=model_runtime_stem_contracts.json"
+    },
+    "mdx:melband_roformer_inst_v1": {
+      "native_signature": [
+        "Instrumental"
+      ],
+      "intent": "instrumental",
+      "contexts": {
+        "full_mix": {
+          "logical_primary": "mix.instrumental",
+          "outputs": [
+            {
+              "native": "Instrumental",
+              "role": "mix.instrumental",
+              "production": "native",
+              "selected_by_default": true
+            },
+            {
+              "native": null,
+              "role": "vocal.vocals",
+              "production": "derived",
+              "complement_of": "mix.instrumental",
+              "selected_by_default": true
+            }
+          ]
+        }
+      },
+      "evidence": "catalogue_id=mdx:melband_roformer_inst_v1; source=TRvlvr; metadata_source=community_models.txt; backend_primary=Instrumental; backend_target=; native_signature=Instrumental; runtime_contract=model_runtime_stem_contracts.json"
+    },
+    "mdx:melband_roformer_inst_v2": {
+      "native_signature": [
+        "Instrumental"
+      ],
+      "intent": "instrumental",
+      "contexts": {
+        "full_mix": {
+          "logical_primary": "mix.instrumental",
+          "outputs": [
+            {
+              "native": "Instrumental",
+              "role": "mix.instrumental",
+              "production": "native",
+              "selected_by_default": true
+            },
+            {
+              "native": null,
+              "role": "vocal.vocals",
+              "production": "derived",
+              "complement_of": "mix.instrumental",
+              "selected_by_default": true
+            }
+          ]
+        }
+      },
+      "evidence": "catalogue_id=mdx:melband_roformer_inst_v2; source=TRvlvr; metadata_source=community_models.txt; backend_primary=Instrumental; backend_target=; native_signature=Instrumental; runtime_contract=model_runtime_stem_contracts.json"
+    },
+    "mdx:melband_roformer_instvoc_duality_v1": {
+      "native_signature": [
+        "Vocals",
+        "Instrumental"
+      ],
+      "intent": "dual_voc_inst",
+      "contexts": {
+        "full_mix": {
+          "logical_primary": "vocal.vocals",
+          "outputs": [
+            {
+              "native": "Vocals",
+              "role": "vocal.vocals",
+              "production": "native",
+              "selected_by_default": true
+            },
+            {
+              "native": "Instrumental",
+              "role": "mix.instrumental",
+              "production": "native",
+              "selected_by_default": true
+            }
+          ]
+        }
+      },
+      "evidence": "catalogue_id=mdx:melband_roformer_instvoc_duality_v1; source=TRvlvr; metadata_source=community_models.txt; backend_primary=Vocals; backend_target=; native_signature=Vocals|Instrumental; runtime_contract=model_runtime_stem_contracts.json"
+    },
+    "mdx:melband_roformer_instvox_duality_v2": {
+      "native_signature": [
+        "Vocals",
+        "Instrumental"
+      ],
+      "intent": "dual_voc_inst",
+      "contexts": {
+        "full_mix": {
+          "logical_primary": "vocal.vocals",
+          "outputs": [
+            {
+              "native": "Vocals",
+              "role": "vocal.vocals",
+              "production": "native",
+              "selected_by_default": true
+            },
+            {
+              "native": "Instrumental",
+              "role": "mix.instrumental",
+              "production": "native",
+              "selected_by_default": true
+            }
+          ]
+        }
+      },
+      "evidence": "catalogue_id=mdx:melband_roformer_instvox_duality_v2; source=TRvlvr; metadata_source=community_models.txt; backend_primary=Vocals; backend_target=; native_signature=Vocals|Instrumental; runtime_contract=model_runtime_stem_contracts.json"
+    },
+    "mdx:model_bs_roformer_ep_317_sdr_12.9755": {
+      "native_signature": [
+        "Vocals"
+      ],
+      "intent": "vocals",
+      "contexts": {
+        "full_mix": {
+          "logical_primary": "vocal.vocals",
+          "outputs": [
+            {
+              "native": "Vocals",
+              "role": "vocal.vocals",
+              "production": "native",
+              "selected_by_default": true
+            },
+            {
+              "native": null,
+              "role": "mix.instrumental",
+              "production": "derived",
+              "complement_of": "vocal.vocals",
+              "selected_by_default": true
+            }
+          ]
+        }
+      },
+      "evidence": "catalogue_id=mdx:model_bs_roformer_ep_317_sdr_12.9755; source=TRvlvr; metadata_source=community_models.txt; backend_primary=Vocals; backend_target=; native_signature=Vocals; runtime_contract=model_runtime_stem_contracts.json"
+    },
+    "mdx:model_bs_roformer_ep_368_sdr_12.9628": {
+      "native_signature": [
+        "Vocals"
+      ],
+      "intent": "vocals",
+      "contexts": {
+        "full_mix": {
+          "logical_primary": "vocal.vocals",
+          "outputs": [
+            {
+              "native": "Vocals",
+              "role": "vocal.vocals",
+              "production": "native",
+              "selected_by_default": true
+            },
+            {
+              "native": null,
+              "role": "mix.instrumental",
+              "production": "derived",
+              "complement_of": "vocal.vocals",
+              "selected_by_default": true
+            }
+          ]
+        }
+      },
+      "evidence": "catalogue_id=mdx:model_bs_roformer_ep_368_sdr_12.9628; source=TRvlvr; metadata_source=community_models.txt; backend_primary=Vocals; backend_target=; native_signature=Vocals; runtime_contract=model_runtime_stem_contracts.json"
+    },
+    "mdx:model_bs_roformer_ep_937_sdr_10.5309": {
+      "native_signature": [
+        "No Drum-Bass"
+      ],
+      "intent": "drum_bass_sep",
+      "contexts": {
+        "full_mix": {
+          "logical_primary": "instrument.drum_bass",
+          "outputs": [
+            {
+              "native": "No Drum-Bass",
+              "role": "instrument.drum_bass.removed",
+              "production": "native",
+              "selected_by_default": true
+            },
+            {
+              "native": null,
+              "role": "instrument.drum_bass",
+              "production": "derived",
+              "complement_of": "instrument.drum_bass.removed",
+              "selected_by_default": true
+            }
+          ]
+        }
+      },
+      "evidence": "catalogue_id=mdx:model_bs_roformer_ep_937_sdr_10.5309; source=TRvlvr; metadata_source=community_models.txt; backend_primary=no drum-bass; backend_target=; native_signature=No Drum-Bass; runtime_contract=model_runtime_stem_contracts.json"
+    },
+    "mdx:model_mel_band_roformer_ep_3005_sdr_11.4360": {
+      "native_signature": [
+        "Vocals"
+      ],
+      "intent": "vocals",
+      "contexts": {
+        "full_mix": {
+          "logical_primary": "vocal.vocals",
+          "outputs": [
+            {
+              "native": "Vocals",
+              "role": "vocal.vocals",
+              "production": "native",
+              "selected_by_default": true
+            },
+            {
+              "native": null,
+              "role": "mix.instrumental",
+              "production": "derived",
+              "complement_of": "vocal.vocals",
+              "selected_by_default": true
+            }
+          ]
+        }
+      },
+      "evidence": "catalogue_id=mdx:model_mel_band_roformer_ep_3005_sdr_11.4360; source=TRvlvr; metadata_source=community_models.txt; backend_primary=Vocals; backend_target=; native_signature=Vocals; runtime_contract=model_runtime_stem_contracts.json"
     }
   },
   "waivers": {
     "apollo:apollo_edm_big_by_essid": "no native inventory: catalogue_id=apollo:apollo_edm_big_by_essid; source=extras; metadata_source=bundled_yaml:apollo_edm_big_by_essid.yaml; backend_primary=; backend_target=",
-    "apollo:apollo_edm_by_essid": "no native inventory: catalogue_id=apollo:apollo_edm_by_essid; source=extras; metadata_source=bundled_yaml:apollo_edm_by_essid.yaml; backend_primary=; backend_target=",
-    "mdx:Kim_Inst": "no native inventory: catalogue_id=mdx:Kim_Inst; source=TRvlvr+Politrees; metadata_source=community_models.txt; backend_primary=Instrumental; backend_target=",
-    "mdx:Kim_Vocal_1": "no native inventory: catalogue_id=mdx:Kim_Vocal_1; source=TRvlvr+Politrees; metadata_source=community_models.txt; backend_primary=Vocals; backend_target=",
-    "mdx:Kim_Vocal_2": "no native inventory: catalogue_id=mdx:Kim_Vocal_2; source=TRvlvr+Politrees; metadata_source=community_models.txt; backend_primary=Vocals; backend_target=",
-    "mdx:MDX23C-8KFFT-InstVoc_HQ": "no native inventory: catalogue_id=mdx:MDX23C-8KFFT-InstVoc_HQ; source=TRvlvr; metadata_source=community_models.txt; backend_primary=Vocals; backend_target=",
-    "mdx:MDX23C-8KFFT-InstVoc_HQ_2": "no native inventory: catalogue_id=mdx:MDX23C-8KFFT-InstVoc_HQ_2; source=TRvlvr; metadata_source=community_models.txt; backend_primary=Vocals; backend_target=",
-    "mdx:Reverb_HQ_By_FoxJoy": "no native inventory: catalogue_id=mdx:Reverb_HQ_By_FoxJoy; source=TRvlvr+Politrees; metadata_source=community_models.txt; backend_primary=reverb; backend_target=",
-    "mdx:UVR-MDX-NET_Crowd_HQ_1": "no native inventory: catalogue_id=mdx:UVR-MDX-NET_Crowd_HQ_1; source=TRvlvr+Politrees; metadata_source=community_models.txt; backend_primary=no crowd; backend_target=",
-    "mdx:UVR_MDXNET_1_9703": "no native inventory: catalogue_id=mdx:UVR_MDXNET_1_9703; source=TRvlvr+Politrees; metadata_source=community_models.txt; backend_primary=Vocals; backend_target=",
-    "mdx:UVR_MDXNET_2_9682": "no native inventory: catalogue_id=mdx:UVR_MDXNET_2_9682; source=TRvlvr+Politrees; metadata_source=community_models.txt; backend_primary=Vocals; backend_target=",
-    "mdx:UVR_MDXNET_3_9662": "no native inventory: catalogue_id=mdx:UVR_MDXNET_3_9662; source=TRvlvr+Politrees; metadata_source=community_models.txt; backend_primary=Vocals; backend_target=",
-    "mdx:UVR_MDXNET_9482": "no native inventory: catalogue_id=mdx:UVR_MDXNET_9482; source=TRvlvr+Politrees; metadata_source=community_models.txt; backend_primary=Vocals; backend_target=",
-    "mdx:UVR_MDXNET_KARA": "no native inventory: catalogue_id=mdx:UVR_MDXNET_KARA; source=TRvlvr+Politrees; metadata_source=community_models.txt; backend_primary=Vocals; backend_target=",
-    "mdx:kuielab_a_bass": "no native inventory: catalogue_id=mdx:kuielab_a_bass; source=TRvlvr+Politrees; metadata_source=community_models.txt; backend_primary=bass; backend_target=",
-    "mdx:kuielab_a_drums": "no native inventory: catalogue_id=mdx:kuielab_a_drums; source=TRvlvr+Politrees; metadata_source=community_models.txt; backend_primary=drums; backend_target=",
-    "mdx:kuielab_a_other": "no native inventory: catalogue_id=mdx:kuielab_a_other; source=TRvlvr+Politrees; metadata_source=community_models.txt; backend_primary=other; backend_target=",
-    "mdx:kuielab_a_vocals": "no native inventory: catalogue_id=mdx:kuielab_a_vocals; source=TRvlvr+Politrees; metadata_source=community_models.txt; backend_primary=Vocals; backend_target=",
-    "mdx:kuielab_b_bass": "no native inventory: catalogue_id=mdx:kuielab_b_bass; source=TRvlvr+Politrees; metadata_source=community_models.txt; backend_primary=bass; backend_target=",
-    "mdx:kuielab_b_drums": "no native inventory: catalogue_id=mdx:kuielab_b_drums; source=TRvlvr+Politrees; metadata_source=community_models.txt; backend_primary=drums; backend_target=",
-    "mdx:kuielab_b_other": "no native inventory: catalogue_id=mdx:kuielab_b_other; source=TRvlvr+Politrees; metadata_source=community_models.txt; backend_primary=other; backend_target=",
-    "mdx:kuielab_b_vocals": "no native inventory: catalogue_id=mdx:kuielab_b_vocals; source=TRvlvr+Politrees; metadata_source=community_models.txt; backend_primary=Vocals; backend_target=",
-    "mdx:melband_roformer_inst_v1": "no native inventory: catalogue_id=mdx:melband_roformer_inst_v1; source=TRvlvr; metadata_source=community_models.txt; backend_primary=Instrumental; backend_target=",
-    "mdx:melband_roformer_inst_v2": "no native inventory: catalogue_id=mdx:melband_roformer_inst_v2; source=TRvlvr; metadata_source=community_models.txt; backend_primary=Instrumental; backend_target=",
-    "mdx:melband_roformer_instvoc_duality_v1": "no native inventory: catalogue_id=mdx:melband_roformer_instvoc_duality_v1; source=TRvlvr; metadata_source=community_models.txt; backend_primary=Vocals; backend_target=",
-    "mdx:melband_roformer_instvox_duality_v2": "no native inventory: catalogue_id=mdx:melband_roformer_instvox_duality_v2; source=TRvlvr; metadata_source=community_models.txt; backend_primary=Vocals; backend_target=",
-    "mdx:model_bs_roformer_ep_317_sdr_12.9755": "no native inventory: catalogue_id=mdx:model_bs_roformer_ep_317_sdr_12.9755; source=TRvlvr; metadata_source=community_models.txt; backend_primary=Vocals; backend_target=",
-    "mdx:model_bs_roformer_ep_368_sdr_12.9628": "no native inventory: catalogue_id=mdx:model_bs_roformer_ep_368_sdr_12.9628; source=TRvlvr; metadata_source=community_models.txt; backend_primary=Vocals; backend_target=",
-    "mdx:model_bs_roformer_ep_937_sdr_10.5309": "no native inventory: catalogue_id=mdx:model_bs_roformer_ep_937_sdr_10.5309; source=TRvlvr; metadata_source=community_models.txt; backend_primary=no drum-bass; backend_target=",
-    "mdx:model_mel_band_roformer_ep_3005_sdr_11.4360": "no native inventory: catalogue_id=mdx:model_mel_band_roformer_ep_3005_sdr_11.4360; source=TRvlvr; metadata_source=community_models.txt; backend_primary=Vocals; backend_target="
+    "apollo:apollo_edm_by_essid": "no native inventory: catalogue_id=apollo:apollo_edm_by_essid; source=extras; metadata_source=bundled_yaml:apollo_edm_by_essid.yaml; backend_primary=; backend_target="
   }
 }

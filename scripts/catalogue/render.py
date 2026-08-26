@@ -19,14 +19,15 @@ from catalogue.collect import (
     YAML_CACHE_DIR,
     CommunityRef,
     ModelEntry,
-    runtime_stem_signature,
+    runtime_stem_reconciliation,
 )
 from core.model_catalogue import (
     catalogue_presentation_id,
     project_catalogue_display,
 )
 from core.model_naming import load_model_display_manifest
-from core.model_stem_manifest import StemSemanticsRegistry, resolve_model_stem_semantics
+from core.model_stem_manifest import StemSemanticsRegistry
+from core.model_stem_semantics import resolve_catalogue_stem_semantics
 
 
 def _reference_tsv_text(refs: Dict[str, CommunityRef]) -> str:
@@ -293,24 +294,27 @@ def stem_semantics_reference_tsv(
     ]
     for entry in sorted(entries, key=_canonical_model_id):
         model_id = _canonical_model_id(entry)
-        native_signature = runtime_stem_signature(
+        reconciled = runtime_stem_reconciliation(
             model_id,
             entry.instruments,
             target_instrument=entry.target_instrument,
+            config_yaml=entry.config_yaml,
             metadata_source=entry.metadata_source,
         )
+        native_signature = reconciled.native_signature
         contexts = [StemProcessingContext.FULL_MIX]
         declaration = registry.models.get(model_id)
         if declaration is not None and StemProcessingContext.VOCAL_SPLIT in declaration.contexts:
             contexts.append(StemProcessingContext.VOCAL_SPLIT)
         for context in contexts:
-            semantics = resolve_model_stem_semantics(
+            semantics = resolve_catalogue_stem_semantics(
                 model_id,
                 native_stems=native_signature,
                 backend_primary=entry.primary_stem,
                 backend_target=entry.target_instrument,
                 context=context,
                 registry=registry,
+                runtime_warning=reconciled.warning,
             )
             context_roles = {output.role for output in semantics.outputs}
             for output in semantics.outputs:
