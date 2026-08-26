@@ -7,8 +7,7 @@ import unittest
 from dataclasses import fields
 from pathlib import Path
 
-from core.model_config import ModelConfig, StemRouting
-from core.model_config import process_determine_secondary_model
+from core.model_config import ModelConfig, StemRouting, process_determine_secondary_model
 
 _REPO = Path(__file__).resolve().parents[1]
 _EXCLUSIVE_ATTRS = (
@@ -20,6 +19,10 @@ _EXCLUSIVE_ATTRS = (
 
 
 class ExclusiveAttrDeletionTests(unittest.TestCase):
+    def test_stem_routing_provenance_defaults_to_unfiltered(self) -> None:
+        self.assertIs(StemRouting().selected_routes_explicit, False)
+        self.assertIs(StemRouting(selected_routes_explicit=True).selected_routes_explicit, True)
+
     def test_stem_routing_has_no_exclusive_flag_fields(self) -> None:
         names = {item.name for item in fields(StemRouting)}
         for attr in ("is_primary_stem_only", "is_secondary_stem_only"):

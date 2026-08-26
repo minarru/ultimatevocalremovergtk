@@ -187,6 +187,65 @@ class _FakeSep:
         self.console_messages.append(str(message))
 
 
+class _EngineModelFixture:
+    """Minimal ModelConfig-shaped input for the real engine attribute copy."""
+
+    def __init__(
+        self,
+        *,
+        routes: tuple,
+        selected: tuple,
+        settings: object,
+        explicit: bool | None,
+    ) -> None:
+        self.settings = settings
+        self.available_stem_routes = routes
+        self.selected_stem_routes = selected
+        if explicit is not None:
+            self.selected_stem_routes_explicit = explicit
+        self.primary_stem = "vocals"
+        self.primary_stem_native = "vocals"
+        self.secondary_stem = "instrumental"
+        self.process_method = ""
+        self.is_ensemble_mode = True
+        self.model_name = "fixture"
+        self.model_basename = "fixture"
+
+    def __getattr__(self, _name: str) -> object:
+        if _name == "selected_stem_routes_explicit":
+            raise AttributeError(_name)
+        return False
+
+
+def _copy_engine_attributes(model: object):
+    from core.process_data import ProcessData
+    from engines.base import SeperateAttributes
+
+    process = ProcessData(
+        export_path="/tmp",
+        audio_file_base="fixture",
+        audio_file="/tmp/fixture.wav",
+        set_progress_bar=lambda *_args, **_kwargs: None,
+        write_to_console=lambda *_args, **_kwargs: None,
+        process_iteration=lambda: None,
+        check_run_control=lambda: None,
+        cached_source_callback=lambda *_args, **_kwargs: (None, None),
+        cached_model_source_holder=lambda *_args, **_kwargs: None,
+        list_all_models=[],
+    )
+    return SeperateAttributes(model, process)  # type: ignore[arg-type]
+
+
+def _route_result(model: object) -> tuple[str, object]:
+    from core.stems import run_export_routes
+
+    try:
+        routes = run_export_routes(model)
+    except RuntimeError as exc:
+        return "error", str(exc)
+    return "routes", tuple(route.concept for route in routes)
+
+
 class FinishExportTests(unittest.TestCase):
     def test_empty_plan_skips_export_and_split(self) -> None:
         from engines.stem_writer import ExportPlan, finish_export
@@ -285,6 +344,211 @@ class FinishExportTests(unittest.TestCase):
 
 
 class ExportSourceMapTests(unittest.TestCase):
+    @staticmethod
+    def _stem_mode_settings(*, focus: str = ""):
+        from core.settings import Settings
+
+        settings = Settings.defaults()
+        settings.ensemble.main_stem = "mode.multi_stem"
+        settings.process.stem_focus = focus
+        return settings
+
+    @staticmethod
+    def _inventory_routes():
+        from core.stem_roles import StemRoleId
+        from core.stems import StemId, StemRoute, StemRouteKind
+
+        return (
+            StemRoute(
+                native=StemId("vocals"),
+                role=StemRoleId("vocal.vocals"),
+                label="Vocals",
+                filename_tag="Vocals",
+                logical_primary=True,
+            ),
+            StemRoute(
+                native=None,
+                role=StemRoleId("mix.instrumental"),
+                label="Instrumental Mix",
+                filename_tag="Instrumental_Mix",
+                kind=StemRouteKind.DERIVED,
+                selected_by_default=False,
+                logical_secondary=True,
+            ),
+        )
+
+    def test_engine_copy_preserves_explicit_stem_mode_selection_behavior(self) -> None:
+        from core.stem_roles import StemRoleId
+        from core.stems import StemId, StemRoute
+
+        inventory = self._inventory_routes()
+        bass = StemRoute(
+            StemId("bass"),
+            StemRoleId("instrument.bass"),
+            label="Bass",
+            filename_tag="Bass",
+        )
+        drums = StemRoute(
+            StemId("drums"),
+            StemRoleId("instrument.drums"),
+            label="Drums",
+            filename_tag="Drums",
+        )
+        cases = (
+            (
+                "full inventory includes optional route",
+                inventory,
+                inventory,
+                True,
+                "",
+                ("routes", ("vocal.vocals", "mix.instrumental")),
+            ),
+            (
+                "explicit empty selection is actionable",
+                inventory,
+                (),
+                True,
+                "",
+                (
+                    "error",
+                    "explicit stem-mode selection resolved no export routes: "
+                    "mode='mode.multi_stem'",
+                ),
+            ),
+            (
+                "explicit selection conflicts with focus",
+                (bass, drums),
+                (drums,),
+                True,
+                "instrument.bass",
+                (
+                    "error",
+                    "explicit selected stem routes conflicts with stem-mode focus: "
+                    "mode='mode.multi_stem' focus='instrument.bass'",
+                ),
+            ),
+            (
+                "legacy unannotated subset keeps provenance inference",
+                inventory,
+                inventory[1:],
+                None,
+                "",
+                ("routes", ("mix.instrumental",)),
+            ),
+            (
+                "known unfiltered selection keeps default filtering",
+                inventory,
+                inventory,
+                False,
+                "",
+                ("routes", ("vocal.vocals",)),
+            ),
+        )
+        for label, routes, selected, explicit, focus, expected in cases:
+            with self.subTest(label=label):
+                model = _EngineModelFixture(
+                    routes=routes,
+                    selected=selected,
+                    settings=self._stem_mode_settings(focus=focus),
+                    explicit=explicit,
+                )
+                copied = _copy_engine_attributes(model)
+
+                self.assertEqual(_route_result(model), expected)
+                self.assertEqual(_route_result(copied), expected)
+                self.assertEqual(
+                    getattr(copied, "selected_stem_routes_explicit", None),
+                    explicit,
+                )
+
+    def test_engine_copy_preserves_dual_pair_selection(self) -> None:
+        from core.settings import Settings
+
+        routes = self._inventory_routes()
+        settings = Settings.defaults()
+        settings.ensemble.main_stem = "pair.vocals_instrumental"
+        model = _EngineModelFixture(
+            routes=routes,
+            selected=routes[:1],
+            settings=settings,
+            explicit=True,
+        )
+        copied = _copy_engine_attributes(model)
+
+        self.assertEqual(_route_result(model), ("routes", ("vocal.vocals",)))
+        self.assertEqual(_route_result(copied), _route_result(model))
+
+    def test_writer_preserves_explicit_engine_selection_provenance(self) -> None:
+        from core.stem_roles import StemRoleId
+        from core.stems import StemId, StemRoute
+        from engines.stem_writer import export_source_map
+
+        inventory = self._inventory_routes()
+        bass = StemRoute(
+            StemId("bass"),
+            StemRoleId("instrument.bass"),
+            label="Bass",
+            filename_tag="Bass",
+        )
+        drums = StemRoute(
+            StemId("drums"),
+            StemRoleId("instrument.drums"),
+            label="Drums",
+            filename_tag="Drums",
+        )
+        cases = (
+            ("full inventory", inventory, inventory, "", list(inventory), None),
+            (
+                "explicit empty",
+                inventory,
+                (),
+                "",
+                [],
+                "explicit stem-mode selection resolved no export routes",
+            ),
+            (
+                "focus conflict",
+                (bass, drums),
+                (drums,),
+                "instrument.bass",
+                [],
+                "explicit selected stem routes conflicts with stem-mode focus",
+            ),
+        )
+        for label, routes, selected, focus, expected_writes, error in cases:
+            with self.subTest(label=label):
+                model = _EngineModelFixture(
+                    routes=routes,
+                    selected=selected,
+                    settings=self._stem_mode_settings(focus=focus),
+                    explicit=True,
+                )
+                sep = _copy_engine_attributes(model)
+                writes: list[object] = []
+                sep.begin_save_phase = lambda _total: None  # type: ignore[method-assign]
+                sep.stem_export_wav_path = (  # type: ignore[method-assign]
+                    lambda stem, *, route=None: f"/tmp/{stem}.wav"
+                )
+                sep.write_audio = (  # type: ignore[method-assign]
+                    lambda _path, _source, _samplerate, stem_name=None, *, route=None, writes=writes: (
+                        writes.append(route)
+                    )
+                )
+                sources = {
+                    "vocals": object(),
+                    "mix.instrumental": object(),
+                    "bass": object(),
+                    "drums": object(),
+                }
+
+                if error is None:
+                    export_source_map(sep, sources, samplerate=44100)
+                else:
+                    with self.assertRaisesRegex(RuntimeError, error):
+                        export_source_map(sep, sources, samplerate=44100)
+
+                self.assertEqual(writes, expected_writes)
+
     def test_vocal_split_schedules_only_the_declared_pair(self) -> None:
         from types import SimpleNamespace
 

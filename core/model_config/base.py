@@ -70,6 +70,7 @@ class StemRouting:
     demucs_source_list: Tuple[str, ...] = ()
     available_routes: Tuple[StemRoute, ...] = ()
     selected_routes: Tuple[StemRoute, ...] = ()
+    selected_routes_explicit: bool = False
     semantics: ModelStemSemantics | None = None
 
 

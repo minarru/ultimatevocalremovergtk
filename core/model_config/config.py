@@ -1102,6 +1102,7 @@ class ModelConfig:
             demucs_source_list=tuple(self.demucs_source_list),
             available_routes=tuple(getattr(self, "available_stem_routes", ())),
             selected_routes=tuple(getattr(self, "selected_stem_routes", ())),
+            selected_routes_explicit=bool(getattr(self, "selected_stem_routes_explicit", False)),
             semantics=self.stem_semantics,
         )
         self.secondary_chain = SecondaryChain(
