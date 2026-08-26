@@ -1269,8 +1269,9 @@ def run_export_routes(model: Any) -> Tuple[StemRoute, ...]:
     """Routes this run should write, including splitter and 4-stem member rules.
 
     Vocal splitters keep both lead/backing writes. Four-stem and multi-stem
-    ensemble *members* emit their full inventory so the final combine can
-    still apply ``process.stem_focus``. Every other run uses
+    ensemble *members* emit their full default-selected inventory so the final
+    combine can still apply ``process.stem_focus`` without materializing
+    optional routes. Every other run uses
     ``selected_stem_routes``.
     """
     available = tuple(getattr(model, "available_stem_routes", ()) or ())
@@ -1290,7 +1291,8 @@ def run_export_routes(model: Any) -> Tuple[StemRoute, ...]:
 
         pair_id = normalize_stem_pair_id(getattr(ensemble, "main_stem", None))
         if is_stem_mode(pair_id):
-            return available
+            default_routes = tuple(route for route in available if route.selected_by_default)
+            return default_routes or available
         if pair_id:
             # A dual pair has already been filtered to its complete reviewed
             # role coverage by ``ModelConfig._apply_stem_focus``.  An empty

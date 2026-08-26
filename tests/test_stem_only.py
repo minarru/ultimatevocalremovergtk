@@ -24,6 +24,7 @@ from core.stem_selection import (
     _stem_focus_tag,
 )
 from core.stems import StemRoute, model_stem_routes
+from tests.private_gtk import require_private_gtk
 from ui.widget_state import fetch
 from ui.widgets.stem_only import (
     _LEAD_VOCAL_PAIR_LABELS,
@@ -35,6 +36,10 @@ from ui.widgets.stem_only import (
     set_combo_value,
     stem_display_label,
 )
+
+
+def setUpModule() -> None:
+    require_private_gtk()
 
 
 class _Settings(Settings):

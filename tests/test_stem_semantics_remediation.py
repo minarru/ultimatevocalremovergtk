@@ -11,10 +11,22 @@ from unittest import mock
 import numpy as np
 
 from core.model_config.config import ModelConfig
-from core.model_stem_manifest import load_bundled_stem_semantics
+from core.model_stem_manifest import (
+    load_bundled_stem_semantics,
+    resolve_model_stem_semantics,
+)
+from core.model_stem_semantics import stem_semantics_projection
 from core.settings import Settings
-from core.stem_roles import StemReviewStatus
-from core.stems import FOCUS_PRIMARY, FOCUS_SECONDARY
+from core.stem_pairs import stem_pair_definition
+from core.stem_roles import StemProcessingContext, StemReviewStatus, StemRoleId
+from core.stem_selection import ExclusiveView, StemSelectionState
+from core.stems import (
+    FOCUS_PRIMARY,
+    FOCUS_SECONDARY,
+    _semantic_routes,
+    routes_for_ensemble_pair,
+    select_stem_routes,
+)
 from engines.mdx import SeperateMDX
 
 DECISION_FIXTURE = Path(__file__).with_name("fixtures") / "stem_manifest_decisions.json"
@@ -299,6 +311,275 @@ class ReviewedDecisionLedgerTests(unittest.TestCase):
                 )
             ],
         )
+
+
+class SemanticConsumerMatrixTests(unittest.TestCase):
+    """Exact reviewed declarations projected through shared consumer boundaries."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.registry = load_bundled_stem_semantics()
+        cls.manifest = json.loads(
+            Path("bundled/model_stem_manifest.json").read_text(encoding="utf-8")
+        )
+
+    def _resolve(
+        self,
+        model_id: str,
+        *,
+        context: StemProcessingContext = StemProcessingContext.FULL_MIX,
+        backend_primary: str | None = None,
+    ):
+        signature = tuple(self.manifest["models"][model_id]["native_signature"])
+        return resolve_model_stem_semantics(
+            model_id,
+            native_stems=signature,
+            backend_primary=backend_primary or (signature[0] if signature else ""),
+            context=context,
+            registry=self.registry,
+        )
+
+    def test_every_karaoke_declaration_projects_explicit_primary_and_secondary(self) -> None:
+        pair = stem_pair_definition("pair.karaoke")
+        assert pair is not None
+        self.assertEqual(
+            (pair.display, tuple(role.value for role in pair.roles)),
+            (
+                "Instrumental with Backing Vocals/Lead Vocals",
+                ("mix.instrumental_with_backing_vocals", "vocal.lead"),
+            ),
+        )
+        expected_primaries = {
+            StemProcessingContext.FULL_MIX: "mix.instrumental_with_backing_vocals",
+            StemProcessingContext.VOCAL_SPLIT: "vocal.backing",
+        }
+        settings = Settings.defaults()
+        state = StemSelectionState()
+        state.mode = "exclusive"
+        state.has_model = True
+
+        for model_id in EXPECTED_FINAL_KARAOKE_IDS:
+            for context, expected_primary in expected_primaries.items():
+                with self.subTest(model_id=model_id, context=context.value):
+                    semantics = self._resolve(model_id, context=context)
+                    projection = stem_semantics_projection(semantics).as_dict()
+                    self.assertEqual(semantics.status, StemReviewStatus.REVIEWED)
+                    self.assertEqual(semantics.intent, "karaoke")
+                    self.assertEqual(projection["logical_primary_role"], expected_primary)
+                    self.assertEqual(projection["logical_secondary_role"], "vocal.lead")
+                    projected = {route["role"]: route for route in projection["stem_routes"]}
+                    self.assertTrue(projected[expected_primary]["logical_primary"])
+                    self.assertTrue(projected["vocal.lead"]["logical_secondary"])
+
+                    routes = _semantic_routes(semantics)
+                    state.routes = routes
+                    settings.process.stem_focus = FOCUS_PRIMARY
+                    self.assertEqual(state.read(settings), ExclusiveView(choice=expected_primary))
+                    settings.process.stem_focus = FOCUS_SECONDARY
+                    self.assertEqual(state.read(settings), ExclusiveView(choice="vocal.lead"))
+
+                    if context is StemProcessingContext.FULL_MIX:
+                        pair_routes = routes_for_ensemble_pair(routes, pair)
+                        self.assertEqual(
+                            tuple(route.role for route in pair_routes),
+                            (
+                                StemRoleId("mix.instrumental_with_backing_vocals"),
+                                StemRoleId("vocal.lead"),
+                            ),
+                        )
+                        self.assertEqual(
+                            tuple(route.label for route in pair_routes),
+                            ("Instrumental with Backing Vocals", "Lead Vocals"),
+                        )
+
+    def test_two_route_intent_categories_export_both_sides_by_default(self) -> None:
+        cases = {
+            "instrumental": "mdx:Kim_Inst",
+            "vocals": "vr:3_HP-Vocal-UVR",
+            "dual_voc_inst": "mdx:UVR_MDXNET_Main",
+            "special_fx": "mdx:Reverb_HQ_By_FoxJoy",
+            "specialty_stem": "mdx:UVR-MDX-NET_Crowd_HQ_1",
+        }
+        for intent, model_id in cases.items():
+            with self.subTest(intent=intent, model_id=model_id):
+                semantics = self._resolve(model_id)
+                routes = _semantic_routes(semantics)
+                selection = select_stem_routes(routes, "")
+                self.assertEqual(semantics.intent, intent)
+                self.assertEqual(len(routes), 2)
+                self.assertEqual(selection.routes, routes)
+                self.assertTrue(all(route.selected_by_default for route in selection.routes))
+
+    def test_karaoke_native_layouts_and_both_melband_bve_models_keep_all_defaults(
+        self,
+    ) -> None:
+        cases = (
+            ("mdx:UVR_MDXNET_KARA_2", ("Instrumental", "Vocals"), ("native", "native")),
+            ("mdx:bs_karaoke_anvuew", ("Vocals", None), ("native", "derived")),
+            ("mdx:mbr_bve_gonzaluigi", ("Lead", None), ("native", "derived")),
+            (
+                "mdx:model_MelBand-Roformer_BVE_by-Gonza",
+                ("Lead", None),
+                ("native", "derived"),
+            ),
+        )
+        for model_id, expected_natives, expected_production in cases:
+            for context in (
+                StemProcessingContext.FULL_MIX,
+                StemProcessingContext.VOCAL_SPLIT,
+            ):
+                with self.subTest(model_id=model_id, context=context.value):
+                    semantics = self._resolve(model_id)
+                    if context is StemProcessingContext.VOCAL_SPLIT:
+                        semantics = self._resolve(model_id, context=context)
+                    self.assertEqual(
+                        tuple(
+                            output.native.raw if output.native is not None else None
+                            for output in semantics.outputs
+                        ),
+                        expected_natives,
+                    )
+                    self.assertEqual(
+                        tuple(output.production.value for output in semantics.outputs),
+                        expected_production,
+                    )
+                    self.assertEqual(
+                        select_stem_routes(_semantic_routes(semantics), "").routes,
+                        _semantic_routes(semantics),
+                    )
+                    self.assertEqual(
+                        tuple(output.backend_primary for output in semantics.outputs),
+                        (True, False),
+                    )
+
+    def test_vr_bve_retains_distinct_vocals_polarity_in_both_contexts(self) -> None:
+        expected = {
+            StemProcessingContext.FULL_MIX: (
+                ("Vocals", "vocal.backing", True),
+                ("Instrumental", "mix.instrumental_with_lead_vocals", False),
+            ),
+            StemProcessingContext.VOCAL_SPLIT: (
+                ("Vocals", "vocal.backing", True),
+                ("Instrumental", "vocal.lead", False),
+            ),
+        }
+        for context, outputs in expected.items():
+            with self.subTest(context=context.value):
+                semantics = self._resolve(
+                    "vr:UVR-BVE-4B_SN-44100-1",
+                    context=context,
+                    backend_primary="Vocals",
+                )
+                self.assertEqual(semantics.intent, "vocals")
+                self.assertIsNone(semantics.logical_secondary_role)
+                actual_outputs: list[tuple[str | None, str, bool]] = []
+                for output in semantics.outputs:
+                    self.assertIsInstance(output.role, StemRoleId)
+                    assert isinstance(output.role, StemRoleId)
+                    actual_outputs.append(
+                        (
+                            output.native.raw if output.native is not None else None,
+                            output.role.value,
+                            output.backend_primary,
+                        )
+                    )
+                self.assertEqual(tuple(actual_outputs), outputs)
+
+    def test_giantailab_projection_selection_and_splitter_matrix(self) -> None:
+        full = self._resolve("mdx:bs_karaoke_3stem_giantailab", backend_primary="vocals")
+        split = self._resolve(
+            "mdx:bs_karaoke_3stem_giantailab",
+            context=StemProcessingContext.VOCAL_SPLIT,
+            backend_primary="vocals",
+        )
+        full_projection = stem_semantics_projection(full).as_dict()
+        split_projection = stem_semantics_projection(split).as_dict()
+        self.assertEqual(
+            tuple(
+                (route["native"], route["role"], route["selected_by_default"])
+                for route in full_projection["stem_routes"]
+            ),
+            (
+                ("vocals", "vocal.lead", True),
+                ("backing_vocal", "vocal.backing", True),
+                ("instrumental", "mix.instrumental", True),
+                (None, "mix.instrumental_with_backing_vocals", False),
+            ),
+        )
+        self.assertEqual(full_projection["logical_secondary_role"], "vocal.lead")
+        self.assertEqual(split_projection["logical_secondary_role"], "vocal.lead")
+        self.assertEqual(
+            tuple(route.label for route in select_stem_routes(_semantic_routes(full), "").routes),
+            ("Lead Vocals", "Backing Vocals", "Instrumental"),
+        )
+        self.assertEqual(
+            tuple(
+                route.label
+                for route in select_stem_routes(
+                    _semantic_routes(full), "mix.instrumental_with_backing_vocals"
+                ).routes
+            ),
+            ("Instrumental with Backing Vocals",),
+        )
+        from engines.stem_writer import vocal_split_pair_routes
+
+        self.assertEqual(
+            tuple(route.label for route in vocal_split_pair_routes(_semantic_routes(split))),
+            ("Backing Vocals", "Lead Vocals"),
+        )
+        self.assertEqual(
+            tuple(route.native.raw for route in _semantic_routes(split) if route.native),
+            ("backing_vocal", "vocals", "instrumental"),
+        )
+
+    def test_specialty_routes_remain_explicitly_selectable_without_new_pairs(self) -> None:
+        cases = (
+            ("vr:UVR-DeEcho-DeReverb", "effect.reverb_echo"),
+            ("mdx:mbr_lead_rhythm_guitar_listra92", "instrument.guitar.rhythm"),
+            ("mdx:bs_orch_xlancer", "instrument.orchestra"),
+            ("mdx:scnet_choirsep_exp", "vocal.soprano"),
+            ("mdx:model_bs_roformer_ep_937_sdr_10.5309", "instrument.drum_bass"),
+        )
+        for model_id, role in cases:
+            with self.subTest(model_id=model_id, role=role):
+                routes = _semantic_routes(self._resolve(model_id))
+                selected = select_stem_routes(routes, role).routes
+                self.assertEqual(len(selected), 1)
+                self.assertEqual(selected[0].role, StemRoleId(role))
+        self.assertEqual(
+            tuple(self.registry.pairs),
+            (
+                "pair.vocals_instrumental",
+                "pair.karaoke",
+                "pair.backing_vocals",
+                "pair.center_side",
+            ),
+        )
+
+    def test_mbr_bgm_jasper_keeps_vocals_native_primary_and_derived_complement(self) -> None:
+        semantics = self._resolve("mdx:mbr_bgm_jasper", backend_primary="vocals")
+        routes = _semantic_routes(semantics)
+        self.assertEqual(semantics.intent, "instrumental")
+        actual_routes: list[tuple[str | None, str, bool, bool]] = []
+        for route in routes:
+            self.assertIsInstance(route.role, StemRoleId)
+            assert isinstance(route.role, StemRoleId)
+            actual_routes.append(
+                (
+                    route.native.raw if route.native is not None else None,
+                    route.role.value,
+                    route.logical_primary,
+                    route.selected_by_default,
+                )
+            )
+        self.assertEqual(
+            tuple(actual_routes),
+            (
+                ("vocals", "vocal.vocals", True, True),
+                (None, "mix.instrumental", False, True),
+            ),
+        )
+        self.assertEqual(select_stem_routes(routes, "").routes, routes)
 
 
 def _classic_fake(

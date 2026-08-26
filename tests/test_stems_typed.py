@@ -456,7 +456,7 @@ class StemsModuleBoundaryTests(unittest.TestCase):
         source = (Path(__file__).resolve().parents[1] / "core" / "stems.py").read_text(
             encoding="utf-8"
         )
-        self.assertIn("resolve_model_stem_semantics", source)
+        self.assertIn("resolve_catalogue_stem_semantics", source)
 
     def test_semantics_does_not_reexport_stem_labels(self) -> None:
         source = (
@@ -547,6 +547,30 @@ class RunExportRoutesTests(unittest.TestCase):
         self.assertEqual(run_export_routes(model), available)
         self.assertTrue(exports_named_stem(model, "vocals"))
         self.assertTrue(exports_named_stem(model, "bass"))
+
+    def test_multi_stem_member_omits_optional_default_false_routes(self) -> None:
+        settings = Settings.defaults()
+        settings.ensemble.main_stem = "mode.multi_stem"
+        available = (
+            _route("vocals", StemBucket.VOCALS.value),
+            StemRoute(
+                native=None,
+                role=StemRoleId("mix.instrumental"),
+                label="Optional Mix",
+                filename_tag="Optional_Mix",
+                kind=StemRouteKind.DERIVED,
+                selected_by_default=False,
+                logical_primary=True,
+            ),
+        )
+        model = self._model(
+            available_stem_routes=available,
+            selected_stem_routes=available,
+            is_ensemble_mode=True,
+            settings=settings,
+        )
+
+        self.assertEqual(run_export_routes(model), available[:1])
 
     def test_focused_run_uses_selected(self) -> None:
         available = (

@@ -159,6 +159,34 @@ class ReviewedPairEligibilityTests(unittest.TestCase):
         self.assertEqual(_eligible([unknown], "mode.multi_stem"), [unknown.canonical_id])
         self.assertEqual(_eligible([unknown], "pair.center_side"), [])
 
+    def test_speechsep_models_are_multi_members_but_never_existing_pair_members(self) -> None:
+        speech_models = [
+            _FakeModel(
+                "mdx:bs_speech_alicen",
+                ["vocals"],
+                backend_primary="vocals",
+                backend_target="vocals",
+            ),
+            _FakeModel(
+                "mdx:mbr_speech_alicen",
+                ["vocals", "other"],
+                backend_primary="vocals",
+            ),
+        ]
+
+        self.assertEqual(
+            _eligible(speech_models, "mode.multi_stem"),
+            [model.canonical_id for model in speech_models],
+        )
+        for pair_id in (
+            "pair.vocals_instrumental",
+            "pair.karaoke",
+            "pair.backing_vocals",
+            "pair.center_side",
+        ):
+            with self.subTest(pair_id=pair_id):
+                self.assertEqual(_eligible(speech_models, pair_id), [])
+
 
 if __name__ == "__main__":
     unittest.main()

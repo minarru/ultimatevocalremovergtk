@@ -322,7 +322,7 @@ class ExportSourceMapTests(unittest.TestCase):
         self.assertEqual(sep.save_phase_total, 2)
         self.assertEqual(
             [write[3] for write in sep.writes],
-            ["Lead Vocals", "Backing Vocals"],
+            ["Backing Vocals", "Lead Vocals"],
         )
 
     def test_full_mix_keeps_giantailab_third_route(self) -> None:
@@ -346,7 +346,7 @@ class ExportSourceMapTests(unittest.TestCase):
             mdxnet_stems_selected=[],
         )
         routes = model_stem_routes(model)
-        sep = _FakeSep(routes)
+        sep = _FakeSep(tuple(route for route in routes if route.selected_by_default))
 
         export_source_map(
             sep,
@@ -361,7 +361,7 @@ class ExportSourceMapTests(unittest.TestCase):
         self.assertEqual(sep.save_phase_total, 3)
         self.assertEqual(
             [write[3] for write in sep.writes],
-            ["Lead Vocals", "Backing Vocal", "Instrumental with Backing Vocals"],
+            ["Lead Vocals", "Backing Vocals", "Instrumental"],
         )
 
     def test_native_lookup_uses_raw_key_but_writes_canonical_route_label(self) -> None:
@@ -416,6 +416,58 @@ class ExportSourceMapTests(unittest.TestCase):
 
         self.assertEqual(sep.writes, [])
 
+    def test_reviewed_role_labels_never_replace_exact_engine_source_keys(self) -> None:
+        from unittest import mock
+
+        from core.model_stem_manifest import resolve_model_stem_semantics
+        from core.stem_roles import StemRoleId
+        from core.stems import _semantic_routes
+        from engines.stem_writer import export_source_map
+
+        cases = (
+            ("mdx:bs_mega_53stem_hh_mvsep", ("hh",), "instrument.hi_hat", "Hi-Hat"),
+            ("mdx:bs_orch_xlancer", ("orch",), "instrument.orchestra", "Orchestra"),
+            (
+                "vr:UVR-DeEcho-DeReverb",
+                ("No Reverb", "Reverb"),
+                "effect.reverb_echo",
+                "Reverb/Echo",
+            ),
+        )
+        for model_id, signature, role_id, expected_label in cases:
+            with self.subTest(model_id=model_id):
+                semantics = resolve_model_stem_semantics(
+                    model_id,
+                    native_stems=signature,
+                    backend_primary=signature[0],
+                )
+                route = next(
+                    route
+                    for route in _semantic_routes(semantics)
+                    if route.role == StemRoleId(role_id)
+                )
+                assert route.native is not None
+                source = object()
+                label_decoy = object()
+                sep = _FakeSep((route,))
+
+                with mock.patch("engines.stem_writer.log_event") as log_event:
+                    export_source_map(
+                        sep,
+                        {route.native.raw.swapcase(): source, route.label: label_decoy},
+                        samplerate=44100,
+                    )
+
+                self.assertEqual(route.label, expected_label)
+                self.assertEqual(sep.writes[0][1], source)
+                self.assertNotEqual(sep.writes[0][1], label_decoy)
+                write_log = next(
+                    call
+                    for call in log_event.call_args_list
+                    if len(call.args) >= 2 and call.args[1] == "write_scheduled"
+                )
+                self.assertEqual(write_log.kwargs["stem"], expected_label)
+
     def test_reviewed_multistem_writes_components_and_residual_only(self) -> None:
         from types import SimpleNamespace
 
@@ -445,7 +497,7 @@ class ExportSourceMapTests(unittest.TestCase):
 
         self.assertEqual(
             [write[3] for write in sep.writes],
-            ["Drums", "Bass", "Residual", "Vocals"],
+            ["Vocals", "Drums", "Bass", "Residual"],
         )
         self.assertNotIn("Drums Removed", [write[3] for write in sep.writes])
         self.assertNotIn("Bass Removed", [write[3] for write in sep.writes])

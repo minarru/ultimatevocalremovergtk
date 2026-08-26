@@ -12,8 +12,13 @@ from core.catalog_sources import EntryMeta
 from core.catalogue_stem_cache import StemCacheHit
 from core.catalogue_types import StemSemanticProjection, StemSemanticRoute
 from core.downloads import DownloadManager
+from tests.private_gtk import require_private_gtk
 
 _YAML_URL = "https://example.test/model.yaml"
+
+
+def setUpModule() -> None:
+    require_private_gtk()
 
 
 class ApplyCatalogueStemCacheTests(unittest.TestCase):

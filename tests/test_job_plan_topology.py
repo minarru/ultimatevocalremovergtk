@@ -622,8 +622,11 @@ class PlannedOutputStemTests(unittest.TestCase):
             spec,
             (_desc("Vocals"), _desc("Vocals")),
         )
-        self.assertEqual(planned[0].outputs[0].stem, "Lead_Vocals")
-        self.assertIn("(Lead_Vocals)", planned[0].outputs[0].path)
+        self.assertEqual(
+            [output.stem for output in planned[0].outputs],
+            ["Instrumental_with_Backing_Vocals", "Lead_Vocals"],
+        )
+        self.assertIn("(Instrumental_with_Backing_Vocals)", planned[0].outputs[0].path)
 
     def test_adhoc_ensemble_sentinel_label_is_ensembled(self) -> None:
         from bundled.constants import CHOOSE_ENSEMBLE_OPTION

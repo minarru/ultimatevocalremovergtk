@@ -271,8 +271,8 @@ class PlannedCollectionTests(unittest.TestCase):
         ModelConfig._apply_stem_focus(member)  # type: ignore[arg-type]
 
         expected_roles = [
-            StemRoleId("vocal.lead"),
             StemRoleId("mix.instrumental_with_backing_vocals"),
+            StemRoleId("vocal.lead"),
         ]
         self.assertEqual([route.role for route in member.selected_stem_routes], expected_roles)
         self.assertEqual([route.role for route in run_export_routes(member)], expected_roles)

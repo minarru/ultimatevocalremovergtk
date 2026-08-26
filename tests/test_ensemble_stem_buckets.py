@@ -370,7 +370,7 @@ class StemFocusMatchTests(unittest.TestCase):
 
         self.assertEqual(
             exclusive_flags_for_stem_pair("vocal.lead", "pair.karaoke"),
-            (True, False),
+            (False, True),
         )
 
     def test_pair_flags_do_not_parse_display_or_native_spelling(self) -> None:

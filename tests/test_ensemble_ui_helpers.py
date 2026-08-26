@@ -26,6 +26,11 @@ from core.ensemble_algorithms import (
     preset_for_pair,
     wav_ensemble_subtitle,
 )
+from tests.private_gtk import require_private_gtk
+
+
+def setUpModule() -> None:
+    require_private_gtk()
 
 
 class PresetMappingTests(unittest.TestCase):

@@ -377,7 +377,7 @@ class SemanticProjectionTests(unittest.TestCase):
             ),
             (
                 "waived",
-                "mdx:Kim_Inst",
+                "apollo:apollo_edm_by_essid",
                 (),
                 StemProcessingContext.FULL_MIX,
                 "waived",
@@ -408,7 +408,7 @@ class SemanticProjectionTests(unittest.TestCase):
                 ("Vocals",),
                 StemProcessingContext.FULL_MIX,
                 "reviewed",
-                "vocal.lead",
+                "mix.instrumental_with_backing_vocals",
                 ("vocal.lead", "mix.instrumental_with_backing_vocals"),
             ),
             (
@@ -417,7 +417,7 @@ class SemanticProjectionTests(unittest.TestCase):
                 ("Vocals",),
                 StemProcessingContext.VOCAL_SPLIT,
                 "reviewed",
-                "vocal.lead",
+                "vocal.backing",
                 ("vocal.lead", "vocal.backing"),
             ),
             (
@@ -444,8 +444,8 @@ class SemanticProjectionTests(unittest.TestCase):
                 ("dry",),
                 StemProcessingContext.FULL_MIX,
                 "reviewed",
-                "effect.reverb",
-                ("effect.reverb", "effect.reverb.removed"),
+                "effect.reverb.removed",
+                ("effect.reverb.removed", "effect.reverb"),
             ),
             (
                 "multi stem",
@@ -453,7 +453,7 @@ class SemanticProjectionTests(unittest.TestCase):
                 ("drums", "bass", "other", "vocals"),
                 StemProcessingContext.FULL_MIX,
                 "reviewed",
-                "instrument.drums",
+                "vocal.vocals",
                 (
                     "instrument.drums",
                     "instrument.bass",

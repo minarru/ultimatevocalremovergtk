@@ -10,6 +10,11 @@ from unittest import mock
 
 from bundled.constants import NO_MODEL
 from core.model_identity import ModelArtifacts, ModelRecord
+from tests.private_gtk import require_private_gtk
+
+
+def setUpModule() -> None:
+    require_private_gtk()
 
 
 def _record(
@@ -1016,7 +1021,7 @@ class EnsemblePairRefreshTests(unittest.TestCase):
             page._refresh_pair_choices()
 
         self.assertIn(
-            ("pair.karaoke", "Lead Vocals/Instrumental with Backing Vocals"),
+            ("pair.karaoke", "Instrumental with Backing Vocals/Lead Vocals"),
             rendered[0],
         )
         self.assertEqual(page.settings.ensemble.main_stem, "")

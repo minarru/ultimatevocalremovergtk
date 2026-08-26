@@ -36,6 +36,11 @@ from engines.base import SeperateAttributes
 from engines.mdx_c import mdx_vocal_split_chain_sources
 from engines.mdx_c_engine import SeperateMDXC
 from engines.orchestration import process_chain_model
+from tests.private_gtk import require_private_gtk
+
+
+def setUpModule() -> None:
+    require_private_gtk()
 
 
 def _arr(fill: float) -> np.ndarray:
@@ -74,6 +79,7 @@ def _semantic_model(
 
 def _classic_karaoke_2_model(root: Path, *, vocal_split: bool) -> Any:
     from core import Settings
+    from core.mdx_runtime_contract import load_bundled_mdx_runtime_contracts
     from core.model_config import ModelConfig
     from core.model_identity import MdxSpec, ModelArtifacts, ModelRecord
 
@@ -81,7 +87,8 @@ def _classic_karaoke_2_model(root: Path, *, vocal_split: bool) -> Any:
     model_dir.mkdir()
     checkpoint = model_dir / "UVR_MDXNET_KARA_2.onnx"
     checkpoint.write_bytes(b"fixture")
-    model_hash = "fixture-classic-karaoke-2"
+    contract = load_bundled_mdx_runtime_contracts().contracts["mdx:UVR_MDXNET_KARA_2"]
+    model_hash = contract.artifact_evidence[0].uvr_md5
     repo = MagicMock()
     repo.model_hash_table = {str(checkpoint): model_hash}
     repo.mdx_hash_MAPPER = {
@@ -145,11 +152,11 @@ class ReviewedVocalSplitContextTests(unittest.TestCase):
         model_id = "mdx:bs_karaoke_becruily"
         self.assertEqual(
             self._labels(model_id, ["Vocals"], "Vocals", vocal_split=False),
-            ["Lead Vocals", "Instrumental with Backing Vocals"],
+            ["Instrumental with Backing Vocals", "Lead Vocals"],
         )
         self.assertEqual(
             self._labels(model_id, ["Vocals"], "Vocals", vocal_split=True),
-            ["Lead Vocals", "Backing Vocals"],
+            ["Backing Vocals", "Lead Vocals"],
         )
 
     def test_vr_bve_reverses_context_semantics_without_flipping_native(self) -> None:
@@ -171,12 +178,12 @@ class ReviewedVocalSplitContextTests(unittest.TestCase):
             with self.subTest(model_id=model_id, context="full_mix"):
                 self.assertEqual(
                     self._labels(model_id, ["Lead"], "Lead", vocal_split=False),
-                    ["Lead Vocals", "Instrumental with Backing Vocals"],
+                    ["Instrumental with Backing Vocals", "Lead Vocals"],
                 )
             with self.subTest(model_id=model_id, context="vocal_split"):
                 self.assertEqual(
                     self._labels(model_id, ["Lead"], "Lead", vocal_split=True),
-                    ["Lead Vocals", "Backing Vocals"],
+                    ["Backing Vocals", "Lead Vocals"],
                 )
 
     def test_giantailab_third_route_stays_distinct_from_karaoke_pair(self) -> None:
@@ -188,7 +195,12 @@ class ReviewedVocalSplitContextTests(unittest.TestCase):
                 "vocals",
                 vocal_split=False,
             ),
-            ["Lead Vocals", "Backing Vocal", "Instrumental with Backing Vocals"],
+            [
+                "Instrumental with Backing Vocals",
+                "Lead Vocals",
+                "Backing Vocals",
+                "Instrumental",
+            ],
         )
         self.assertEqual(
             self._labels(
@@ -197,7 +209,7 @@ class ReviewedVocalSplitContextTests(unittest.TestCase):
                 "vocals",
                 vocal_split=True,
             ),
-            ["Lead Vocals", "Backing Vocal", "Backing Vocals"],
+            ["Backing Vocals", "Lead Vocals", "Instrumental"],
         )
 
     def test_giantailab_pair_and_multi_mode_keep_exact_role_membership(self) -> None:
@@ -214,8 +226,8 @@ class ReviewedVocalSplitContextTests(unittest.TestCase):
         self.assertEqual(
             [route.role for route in routes_for_ensemble_pair(routes, karaoke)],
             [
-                StemRoleId("vocal.lead"),
                 StemRoleId("mix.instrumental_with_backing_vocals"),
+                StemRoleId("vocal.lead"),
             ],
         )
 
@@ -226,7 +238,10 @@ class ReviewedVocalSplitContextTests(unittest.TestCase):
         model.selected_stem_routes = routes_for_ensemble_pair(routes, karaoke)
         model.settings = Settings.defaults()
         model.settings.ensemble.main_stem = "mode.multi_stem"
-        self.assertEqual(tuple(run_export_routes(model)), routes)
+        self.assertEqual(
+            tuple(run_export_routes(model)),
+            tuple(route for route in routes if route.native is not None),
+        )
 
 
 class ClassicOnnxKaraokeRouteTests(unittest.TestCase):
@@ -235,10 +250,10 @@ class ClassicOnnxKaraokeRouteTests(unittest.TestCase):
 
         expected_roles = {
             False: [
-                StemRoleId("vocal.lead"),
                 StemRoleId("mix.instrumental_with_backing_vocals"),
+                StemRoleId("vocal.lead"),
             ],
-            True: [StemRoleId("vocal.lead"), StemRoleId("vocal.backing")],
+            True: [StemRoleId("vocal.backing"), StemRoleId("vocal.lead")],
         }
         for vocal_split, roles in expected_roles.items():
             with self.subTest(vocal_split=vocal_split), TemporaryDirectory() as directory:
@@ -250,7 +265,7 @@ class ClassicOnnxKaraokeRouteTests(unittest.TestCase):
                 self.assertIs(model.stem_semantics.status, StemReviewStatus.REVIEWED)
                 self.assertEqual(
                     [route.native and route.native.raw for route in model.available_stem_routes],
-                    ["Vocals", "Instrumental"],
+                    ["Instrumental", "Vocals"],
                 )
                 self.assertEqual(
                     [route.role for route in model.available_stem_routes],
@@ -280,14 +295,14 @@ class ClassicOnnxKaraokeRouteTests(unittest.TestCase):
         calls = model.write_audio.call_args_list
         self.assertEqual(
             [call.kwargs["route"].native.raw for call in calls],
-            ["Vocals", "Instrumental"],
+            ["Instrumental", "Vocals"],
         )
         self.assertEqual(
             [call.kwargs["stem_name"] for call in calls],
-            ["Lead Vocals", "Backing Vocals"],
+            ["Backing Vocals", "Lead Vocals"],
         )
-        self.assertIs(calls[0].args[1], vocals)
-        self.assertIs(calls[1].args[1], instrumental)
+        self.assertIs(calls[0].args[1], instrumental)
+        self.assertIs(calls[1].args[1], vocals)
 
 
 class VocalSplitRoleBucketTests(unittest.TestCase):
@@ -1008,7 +1023,7 @@ class MdxcVocalSplitSourceTests(unittest.TestCase):
             routes=routes,
         )
 
-        self.assertEqual(list(built), ["vocals", "instrumental"])
+        self.assertEqual(list(built), ["backing_vocal", "vocals"])
 
     def test_route_less_three_stem_map_preserves_every_raw_key(self) -> None:
         self.assertEqual(
