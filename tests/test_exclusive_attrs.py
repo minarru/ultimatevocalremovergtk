@@ -6,8 +6,10 @@ import inspect
 import unittest
 from dataclasses import fields
 from pathlib import Path
+from typing import cast
 
 from core.model_config import ModelConfig, StemRouting, process_determine_secondary_model
+from core.stem_roles import ModelStemSemantics
 
 _REPO = Path(__file__).resolve().parents[1]
 _EXCLUSIVE_ATTRS = (
@@ -22,6 +24,13 @@ class ExclusiveAttrDeletionTests(unittest.TestCase):
     def test_stem_routing_provenance_defaults_to_unfiltered(self) -> None:
         self.assertIs(StemRouting().selected_routes_explicit, False)
         self.assertIs(StemRouting(selected_routes_explicit=True).selected_routes_explicit, True)
+
+    def test_stem_routing_preserves_existing_positional_semantics_argument(self) -> None:
+        semantics = cast(ModelStemSemantics, object())
+        routing = StemRouting("primary", "secondary", "native", "model", (), (), (), (), semantics)
+
+        self.assertIs(routing.semantics, semantics)
+        self.assertIs(routing.selected_routes_explicit, False)
 
     def test_stem_routing_has_no_exclusive_flag_fields(self) -> None:
         names = {item.name for item in fields(StemRouting)}
