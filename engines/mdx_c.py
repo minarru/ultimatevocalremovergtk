@@ -216,10 +216,10 @@ def mdx_export_routing_flags(
         for route in derived
     )
     has_sum_recipe = any(route.derived_from for route in derived)
-    is_full_selection = (not native_names) or set(name.casefold() for name in native_names) == set(
+    is_full_selection = bool(native_names) and set(name.casefold() for name in native_names) == set(
         str(stem).casefold() for stem in stem_list
     )
-    is_all_stems = mdxnet_stem_select == ALL_STEMS and (not native_names or is_full_selection)
+    is_all_stems = mdxnet_stem_select == ALL_STEMS and is_full_selection
     is_not_ensemble_master = not is_ensemble_master
     is_not_single_stem = not len(stem_list) <= 2
     is_not_secondary_model = not is_secondary_model

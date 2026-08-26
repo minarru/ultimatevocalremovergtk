@@ -167,6 +167,16 @@ class MDXExportRoutingTests(unittest.TestCase):
         self.assertFalse(routing["is_native_pick"])
         self.assertFalse(routing["multi_stem_export"])
 
+    def test_raw_derived_only_all_stems_is_not_a_full_native_selection(self) -> None:
+        routing = mdx_export_routing_flags(
+            **self._base_kwargs(
+                export_routes=(_derived(StemBucket.INSTRUMENTAL.value, "Instrumental"),),
+                mdxnet_stem_select=ALL_STEMS,
+            )
+        )
+
+        self.assertFalse(routing["multi_stem_export"])
+
     def test_multi_source_recipe_is_not_routed_as_complement(self) -> None:
         lead = _reviewed_native("lead", "vocal.lead")
         summed = _reviewed_derived(
@@ -549,6 +559,30 @@ class ReviewedRecipeMaterializationTests(unittest.TestCase):
             np.array_equal(plan.sources[self.sum_route.concept], (self.mix - self.lead).T)
         )
 
+    def test_raw_derived_only_focus_still_exports_the_legacy_complement(self) -> None:
+        instrumental_route = _derived(StemBucket.INSTRUMENTAL.value, "Instrumental")
+        fake = _mdxc_fake(
+            sources={
+                "lead": self.lead,
+                "backing": self.backing,
+                "instrument": self.instrument,
+            },
+            mix=self.mix,
+            available_routes=(instrumental_route,),
+            selected_routes=(instrumental_route,),
+            primary_stem="lead",
+            secondary_stem=StemBucket.INSTRUMENTAL.value,
+        )
+        fake.mdxnet_stem_select = ALL_STEMS
+
+        plan = SeperateMDXC.seperate(fake)  # type: ignore[arg-type]
+
+        self.assertEqual(list(plan.sources), [StemBucket.INSTRUMENTAL.value])
+        np.testing.assert_array_equal(
+            plan.sources[StemBucket.INSTRUMENTAL.value],
+            (self.mix - self.lead).T,
+        )
+
     def test_sum_recipe_materializes_after_native_level_routing(self) -> None:
         sources = {
             "lead": self.lead.copy(),
@@ -559,14 +593,18 @@ class ReviewedRecipeMaterializationTests(unittest.TestCase):
             sources=sources,
             mix=self.mix,
             available_routes=self.routes,
-            selected_routes=(self.lead_route, self.sum_route),
+            selected_routes=self.routes,
         )
+        fake.mdxnet_stem_select = ALL_STEMS
 
         def apply_levels(
             routed_sources: dict[str, np.ndarray],
             _mix: np.ndarray,
+            *,
+            stem_keys: typing.Sequence[str],
             **_kwargs: typing.Any,
         ) -> None:
+            self.assertEqual(tuple(stem_keys), ("lead", "backing", "instrument"))
             routed_sources["backing"] = np.full((2, 4), 4.0, dtype=np.float32)
             routed_sources["instrument"] = np.full((2, 5), 8.0, dtype=np.float32)
 
@@ -579,6 +617,10 @@ class ReviewedRecipeMaterializationTests(unittest.TestCase):
                 np.full((4, 2), 12.0, dtype=np.float32),
                 np.full((1, 2), 8.0, dtype=np.float32),
             )
+        )
+        self.assertEqual(
+            tuple(plan.sources),
+            ("lead", "backing", "instrument", self.sum_route.concept),
         )
         np.testing.assert_array_equal(plan.sources[self.sum_route.concept], expected)
 
