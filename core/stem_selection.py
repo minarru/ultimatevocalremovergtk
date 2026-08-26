@@ -361,6 +361,27 @@ def _route_for_native(routes: Sequence[StemRoute], stem: str) -> Optional[StemRo
     return None
 
 
+def _route_for_exact_backend_stem(
+    routes: Sequence[StemRoute],
+    stem: str | None,
+) -> Optional[StemRoute]:
+    """Resolve one exact backend native or derived-route identity."""
+    token = str(stem or "").strip()
+    if not token:
+        return None
+    folded = token.casefold()
+    matches = tuple(
+        route
+        for route in routes
+        if (
+            route.native.matches(token)
+            if route.native is not None
+            else route.concept.casefold() == folded or route.label.strip().casefold() == folded
+        )
+    )
+    return matches[0] if len(matches) == 1 else None
+
+
 def _route_for_exact_concept(routes: Sequence[StemRoute], concept: str) -> Optional[StemRoute]:
     matches = [route for route in routes if route.concept == concept]
     return matches[0] if len(matches) == 1 else None
@@ -627,13 +648,11 @@ class StemSelectionState:
         logical = logical_secondary_route(self.routes)
         if logical is not None:
             return logical
-        if self.exclusive_secondary:
-            match = _route_for_native(self.routes, self.exclusive_secondary)
-            if match is not None:
-                return match
-        if len(self.routes) < 2:
-            return None
-        return self.routes[1]
+        pair = stem_pair_definition(self.stem_pair_id)
+        if pair is not None and len(pair.roles) == 2:
+            pair_matches = tuple(route for route in self.routes if route.role == pair.roles[1])
+            return pair_matches[0] if len(pair_matches) == 1 else None
+        return _route_for_exact_backend_stem(self.routes, self.exclusive_secondary)
 
     def _concept_for_flag(self, flag: str) -> str:
         if flag == self.primary_key:

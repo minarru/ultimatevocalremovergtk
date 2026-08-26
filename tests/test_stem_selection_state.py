@@ -7,6 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from core.settings import Settings
+from core.stems import StemRoute
 
 _REPO = Path(__file__).resolve().parents[1]
 _STATE = _REPO / "core" / "stem_selection.py"
@@ -93,6 +94,202 @@ class StemSelectionStateRoundTripTests(unittest.TestCase):
         view = state.read(settings)
         assert isinstance(view, ExclusiveView)
         self.assertEqual(view.choice, INST_STEM)
+
+    def _read_secondary(
+        self,
+        *,
+        routes: tuple[StemRoute, ...],
+        backend_secondary: str | None,
+        stem_pair_id: str = "",
+    ) -> str:
+        from core.settings import Settings
+        from core.stem_selection import ExclusiveView, StemSelectionState
+        from core.stems import FOCUS_SECONDARY
+
+        state = StemSelectionState()
+        state.configure_exclusive(
+            primary_stem="Backing",
+            secondary_stem=backend_secondary,
+            primary_key="is_primary_stem_only",
+            secondary_key="is_secondary_stem_only",
+            stem_pair_id=stem_pair_id,
+        )
+        state.routes = routes
+        settings = Settings.defaults()
+        settings.process.stem_focus = FOCUS_SECONDARY
+
+        view = state.read(settings)
+
+        self.assertIsInstance(view, ExclusiveView)
+        assert isinstance(view, ExclusiveView)
+        return view.choice
+
+    def test_explicit_logical_secondary_wins_over_backend_secondary(self) -> None:
+        from core.stem_roles import StemId, StemRoleId
+        from core.stems import StemRoute
+
+        routes = (
+            StemRoute(
+                StemId("Backing"),
+                StemRoleId("vocal.backing"),
+                label="Backing Vocals",
+                logical_primary=True,
+            ),
+            StemRoute(
+                StemId("Instrumental"),
+                StemRoleId("mix.instrumental"),
+                label="Instrumental",
+            ),
+            StemRoute(
+                StemId("Lead"),
+                StemRoleId("vocal.lead"),
+                label="Lead Vocals",
+                logical_secondary=True,
+            ),
+        )
+
+        self.assertEqual(
+            self._read_secondary(routes=routes, backend_secondary="Instrumental"),
+            "vocal.lead",
+        )
+
+    def test_absent_semantic_secondary_uses_one_exact_backend_native(self) -> None:
+        from core.stem_roles import StemId, StemRoleId
+        from core.stems import StemRoute
+
+        routes = (
+            StemRoute(
+                StemId("Backing"),
+                StemRoleId("vocal.backing"),
+                label="Backing Vocals",
+                logical_primary=True,
+            ),
+            StemRoute(StemId("Lead"), StemRoleId("vocal.lead"), label="Lead Vocals"),
+            StemRoute(
+                StemId("Instrumental"),
+                StemRoleId("mix.instrumental"),
+                label="Instrumental",
+            ),
+        )
+
+        self.assertEqual(
+            self._read_secondary(routes=routes, backend_secondary="Instrumental"),
+            "mix.instrumental",
+        )
+
+    def test_exact_backend_value_can_name_a_derived_complement(self) -> None:
+        from core.stem_roles import StemId, StemRoleId
+        from core.stems import StemRoute, StemRouteKind
+
+        routes = (
+            StemRoute(
+                None,
+                StemRoleId("mix.instrumental"),
+                label="Instrumental",
+                kind=StemRouteKind.DERIVED,
+            ),
+            StemRoute(
+                StemId("Backing"),
+                StemRoleId("vocal.backing"),
+                label="Backing Vocals",
+                logical_primary=True,
+            ),
+        )
+
+        self.assertEqual(
+            self._read_secondary(routes=routes, backend_secondary="mix.instrumental"),
+            "mix.instrumental",
+        )
+
+    def test_absent_backend_secondary_falls_back_to_all(self) -> None:
+        from core.stem_roles import StemId, StemRoleId
+        from core.stem_selection import _TOGGLE_ALL
+        from core.stems import StemRoute
+
+        routes = (
+            StemRoute(
+                StemId("Backing"),
+                StemRoleId("vocal.backing"),
+                label="Backing Vocals",
+                logical_primary=True,
+            ),
+            StemRoute(StemId("Lead"), StemRoleId("vocal.lead"), label="Lead Vocals"),
+        )
+
+        self.assertEqual(
+            self._read_secondary(routes=routes, backend_secondary=None),
+            _TOGGLE_ALL,
+        )
+
+    def test_unmatched_backend_secondary_falls_back_to_all(self) -> None:
+        from core.stem_roles import StemId, StemRoleId
+        from core.stem_selection import _TOGGLE_ALL
+        from core.stems import StemRoute
+
+        routes = (
+            StemRoute(
+                StemId("Backing"),
+                StemRoleId("vocal.backing"),
+                label="Backing Vocals",
+                logical_primary=True,
+            ),
+            StemRoute(StemId("Lead"), StemRoleId("vocal.lead"), label="Lead Vocals"),
+        )
+
+        self.assertEqual(
+            self._read_secondary(routes=routes, backend_secondary="Instrumental"),
+            _TOGGLE_ALL,
+        )
+
+    def test_ambiguous_backend_secondary_falls_back_to_all(self) -> None:
+        from core.stem_roles import StemId, StemRoleId
+        from core.stem_selection import _TOGGLE_ALL
+        from core.stems import StemRoute
+
+        routes = (
+            StemRoute(
+                StemId("Backing"),
+                StemRoleId("vocal.backing"),
+                label="Backing Vocals",
+                logical_primary=True,
+            ),
+            StemRoute(
+                StemId("Instrumental"),
+                StemRoleId("mix.instrumental"),
+                label="Instrumental",
+            ),
+            StemRoute(
+                StemId("Instrumental"),
+                StemRoleId("mix.music"),
+                label="Music",
+            ),
+        )
+
+        self.assertEqual(
+            self._read_secondary(routes=routes, backend_secondary="Instrumental"),
+            _TOGGLE_ALL,
+        )
+
+    def test_explicit_pair_secondary_is_resolved_by_role_identity(self) -> None:
+        from core.stem_selection import StemSelectionState
+
+        state = StemSelectionState()
+        state.configure_exclusive(
+            primary_stem=None,
+            secondary_stem=None,
+            primary_key="is_primary_stem_only",
+            secondary_key="is_secondary_stem_only",
+            stem_pair_id="pair.karaoke",
+        )
+
+        self.assertEqual(
+            self._read_secondary(
+                routes=tuple(reversed(state.routes)),
+                backend_secondary=None,
+                stem_pair_id="pair.karaoke",
+            ),
+            "mix.instrumental_with_backing_vocals",
+        )
 
     def test_positional_sentinel_maps_to_primary_route_concept(self) -> None:
         from bundled.constants import INST_STEM, VOCAL_STEM

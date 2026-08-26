@@ -11,11 +11,13 @@ from __future__ import annotations
 import os
 import unittest
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, Mapping
 from unittest import mock
 
 from bundled.constants import CHOOSE_MODEL, DEMUCS_ARCH_TYPE, MDX_ARCH_TYPE
 from core.model_identity import ModelArtifacts, ModelRecord
+from core.stem_roles import StemId, StemRoleId
+from core.stems import StemRoute
 from ui.views.base import MethodView
 from ui.widgets.lazy_populate import LazyPopulator
 
@@ -136,6 +138,116 @@ class RefreshModelsTests(unittest.TestCase):
             MethodView._on_change_defaults(view, object())
 
         self.assertEqual(view.populates, 2)
+
+
+class StemLabelResolutionTests(unittest.TestCase):
+    def _configure_args(
+        self,
+        *,
+        backend_secondary: str | None,
+        routes: tuple[StemRoute, ...],
+    ) -> Mapping[str, object]:
+        model = SimpleNamespace(
+            primary_stem="Backing",
+            secondary_stem=backend_secondary,
+            is_karaoke=False,
+            is_karaoke_curated=False,
+            is_bv_model=False,
+        )
+        configure = mock.Mock()
+        view: Any = MethodView.__new__(MethodView)
+        view.context = SimpleNamespace(repo=SimpleNamespace(resolve_model_dry=lambda *_args: model))
+        view.settings = object()
+        view.method_key = MDX_ARCH_TYPE
+        view.resolution_method_key = ""
+        view.primary_only_key = "is_primary_stem_only"
+        view.secondary_only_key = "is_secondary_stem_only"
+        view.selected_model = mock.Mock(return_value="mdx:fixture")
+        view.has_model = mock.Mock(return_value=True)
+        view.save_stems = SimpleNamespace(
+            configure_exclusive=configure,
+            sync_from_settings=mock.Mock(),
+        )
+        view._on_model_resolved = mock.Mock()
+        view._update_stem_group_metadata = mock.Mock()
+        view.sync_dynamic_option_state = mock.Mock()
+
+        with (
+            mock.patch("ui.views.base.model_stem_routes", return_value=routes),
+            mock.patch("ui.views.base.model_stem_count", return_value=len(routes)),
+            mock.patch("ui.views.base.stem_display_overrides", return_value=None),
+            mock.patch("ui.views.base.recommended_export_note", return_value=""),
+        ):
+            MethodView.update_stem_labels(view)
+
+        configure.assert_called_once()
+        return configure.call_args.kwargs
+
+    def test_explicit_logical_secondary_crosses_the_save_stems_boundary(self) -> None:
+        routes = (
+            StemRoute(
+                StemId("Backing"),
+                StemRoleId("vocal.backing"),
+                label="Backing Vocals",
+                logical_primary=True,
+            ),
+            StemRoute(
+                StemId("Instrumental"),
+                StemRoleId("mix.instrumental"),
+                label="Instrumental",
+            ),
+            StemRoute(
+                StemId("Lead"),
+                StemRoleId("vocal.lead"),
+                label="Lead Vocals",
+                logical_secondary=True,
+            ),
+        )
+
+        configured = self._configure_args(
+            backend_secondary="Instrumental",
+            routes=routes,
+        )
+
+        self.assertEqual(configured["secondary_stem"], "Lead")
+
+    def test_absent_semantic_secondary_preserves_the_backend_value(self) -> None:
+        routes = (
+            StemRoute(
+                StemId("Backing"),
+                StemRoleId("vocal.backing"),
+                label="Backing Vocals",
+                logical_primary=True,
+            ),
+            StemRoute(StemId("Lead"), StemRoleId("vocal.lead"), label="Lead Vocals"),
+            StemRoute(
+                StemId("Instrumental"),
+                StemRoleId("mix.instrumental"),
+                label="Instrumental",
+            ),
+        )
+
+        configured = self._configure_args(
+            backend_secondary="Instrumental",
+            routes=routes,
+        )
+
+        self.assertEqual(configured["secondary_stem"], "Instrumental")
+
+    def test_absent_backend_secondary_does_not_manufacture_one_from_routes(self) -> None:
+        routes = (
+            StemRoute(
+                StemId("Backing"),
+                StemRoleId("vocal.backing"),
+                label="Backing Vocals",
+                logical_primary=True,
+            ),
+            StemRoute(StemId("Lead"), StemRoleId("vocal.lead"), label="Lead Vocals"),
+        )
+
+        configured = self._configure_args(backend_secondary=None, routes=routes)
+
+        self.assertIsNone(configured["secondary_stem"])
 
 
 def _record(

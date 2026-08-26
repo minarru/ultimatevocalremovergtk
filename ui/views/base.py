@@ -40,7 +40,7 @@ from core.model_scores import parse_sdr_score
 from core.model_stem_semantics import recommended_export_note, stem_display_overrides
 from core.run_estimate import compose_stem_group_tooltip, estimate_workload, format_workload_line
 from core.settings import Settings
-from core.stems import StemBucket, model_stem_count, model_stem_routes
+from core.stems import StemBucket, logical_secondary_route, model_stem_count, model_stem_routes
 
 from ..help_text import RUN_WORKLOAD_HINT
 from ..hints import HelpHintManager
@@ -368,17 +368,18 @@ class MethodView:
         routes = model_stem_routes(model) if model is not None else ()
         if routes:
             primary_route = next((route for route in routes if route.logical_primary), routes[0])
-            secondary_route = next((route for route in routes if route is not primary_route), None)
+            secondary_route = logical_secondary_route(routes)
             primary_stem = (
                 primary_route.native.raw
                 if primary_route.native is not None
                 else primary_route.label
             )
-            secondary = (
-                secondary_route.native.raw
-                if secondary_route is not None and secondary_route.native is not None
-                else (secondary_route.label if secondary_route is not None else None)
-            )
+            if secondary_route is not None:
+                secondary = (
+                    secondary_route.native.raw
+                    if secondary_route.native is not None
+                    else secondary_route.label
+                )
         self._resolved_primary_stem = primary_stem
         self._resolved_secondary_stem = secondary
         self._resolved_model = model
