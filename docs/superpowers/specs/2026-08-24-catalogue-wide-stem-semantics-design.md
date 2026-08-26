@@ -880,7 +880,7 @@ selected_by_default
 
 The generator must:
 
-- cover all 485 current catalogue identities;
+- cover all 486 current catalogue identities;
 - cover all 123 normalized raw names;
 - emit both full-mix and vocal-split rows where meanings differ;
 - include reviewed complement and sum routes;
@@ -930,9 +930,9 @@ it.
 
 ## Verification Requirements
 
-- Pin 485 catalogue models, 148 literal spellings, 123 normalized names, 92
+- Pin 486 catalogue models, 150 literal spellings, 123 normalized names, 92
   backend-primary names, and four complement-only names.
-- Require 483 reviewed declarations, exactly the two named Apollo waivers, and
+- Require 484 reviewed declarations, exactly the two named Apollo waivers, and
   a semantic-reference row count derived from the rendered schema-2 snapshot.
 - Exhaustively validate every role, pair, model context, and route in the
   manifest against the generated reference.
