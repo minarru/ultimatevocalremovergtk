@@ -24,14 +24,36 @@ as `other`, `lead`, `inst`, or `dry` can describe different audio content in
 different models.
 
 This design adds a reviewed, canonical-ID-aware semantic declaration for every
-current catalogue model. The declaration maps exact backend outputs to stable
-semantic role IDs, canonical display/export names, a reviewed model intent, a
+current catalogue model except an explicit, reviewed waiver. The declaration
+maps exact backend outputs to stable semantic role IDs, canonical display/export
+names, a reviewed model intent, a
 logical primary, and compatible ensemble pairs. Native backend keys and backend
 primary/target metadata remain unchanged for model execution.
 
 Unknown custom models and newly published catalogue models without a bundled
 declaration remain raw and ensemble-isolated. No fuzzy, filename-derived, or
 author-derived semantic inference is introduced.
+
+## Revision — 2026-08-25: Reviewed Schema-2 Contract
+
+This dated revision supersedes the schema-1 manifest example, generated
+specialty-pair language, and fixed semantic-row target below. It preserves the
+2026-08-24 measurements as historical baseline evidence.
+
+- The checked-in manifest is schema 2 only; it has no schema-1 runtime
+  migration path.
+- The reviewed end state covers 485 post-deduplication catalogue IDs through
+  483 declarations and exactly two Apollo waivers:
+  `apollo:apollo_edm_big_by_essid` and `apollo:apollo_edm_by_essid`.
+- The only pair definitions are `pair.vocals_instrumental`, `pair.karaoke`,
+  `pair.backing_vocals`, and `pair.center_side`. Specialty roles are available
+  to Multi-Stem and explicit selections, not as generated ensemble pairs.
+- Model intent is explicit reviewed data from the closed vocabulary
+  `karaoke`, `drum_bass_sep`, `dual_voc_inst`, `multi_stem`, `special_fx`,
+  `specialty_stem`, `instrumental`, `vocals`, and `unknown`. Runtime never
+  infers it from a label, basename, author, or guessed category.
+- The generated semantic TSV row count is derived from the rendered schema-2
+  snapshot. It is not pinned to the historical 1,206 rows.
 
 ```mermaid
 flowchart LR
@@ -98,11 +120,13 @@ Measured catalogue facts:
 - 24 case/spelling variant groups, including `Vocals/vocals`,
   `Similarity/similarity`, and `No Dry/No dry/no dry`.
 
-The semantic reference has 1,206 data rows: 455 reviewed declarations, 30
-waivers, and every required processing-context/output row. When two runnable
-mvsepless entries share a `full_name`, labels are deterministically suffixed
-with their exact entry IDs before cross-source deduplication; this preserves
-both artifacts without aliasing or selecting a winner.
+The historical semantic reference had 1,206 data rows: 455 reviewed
+declarations, 30 waivers, and every required processing-context/output row.
+When two runnable mvsepless entries share a `full_name`, labels are
+deterministically suffixed with their exact entry IDs before cross-source
+deduplication; this preserves both artifacts without aliasing or selecting a
+winner. The revision's row count is dynamic because reviewed contexts and
+derived routes are rendered from the schema-2 snapshot.
 
 ### Confirmed ambiguity
 
@@ -172,6 +196,12 @@ Role IDs are lowercase namespaced values such as:
 - `mix.instrumental_with_backing_vocals`;
 - `instrument.guitar`;
 - `instrument.guitar.removed`;
+- `instrument.hi_hat`;
+- `instrument.orchestra`;
+- `instrument.woodwinds`;
+- `instrument.guitar.lead`;
+- `instrument.guitar.rhythm`;
+- `instrument.drum_bass`;
 - `effect.reverb`;
 - `effect.reverb.removed`;
 - `spatial.center`; and
@@ -181,6 +211,23 @@ The full role set is data-driven and extensible. Code exposes constants for
 core roles, but does not define a giant enum containing every current or future
 stem. Unknown model outputs remain `StemLiteral` values and are not registered
 as semantic roles.
+
+The reviewed role corrections use `instrument.hi_hat`,
+`instrument.hi_hat.removed`, `instrument.orchestra`,
+`instrument.orchestra.removed`, `instrument.woodwinds`,
+`instrument.woodwinds.removed`, `instrument.guitar.lead`,
+`instrument.guitar.rhythm`, `instrument.drum_bass`,
+`instrument.drum_bass.removed`, `effect.reverb_echo`,
+`effect.reverb_echo.removed`, `cinematic.sfx`, and
+`residual.other.removed`; `vocal.bass` is the canonical bass-vocal role.
+Each reviewed `.removed` role declares its base through `removed_of`, including
+`mix.music.removed -> mix.music`.
+Historical role IDs `instrument.hh`, `instrument.hh.removed`,
+`instrument.orch`, `instrument.orch.removed`, `instrument.woodwind`,
+`instrument.woodwind.removed`, `instrument.rhythm`, `residual.back`,
+`residual.backing_vocal`, `residual.lead`, and `residual.others` are not
+aliases. Raw backend spellings such as `hh`, `orch`, and `woodwind` remain
+native keys and map only through an exact reviewed declaration.
 
 Enums are limited to genuinely closed behavior axes:
 
@@ -228,6 +275,19 @@ class SemanticStemOutput:
     logical_primary: bool
     derived_from: tuple[StemRoleId, ...] = ()
     complement_of: StemRoleId | None = None
+    selected_by_default: bool = True
+
+@dataclass(frozen=True, slots=True)
+class StemSemanticRoute:
+    native: StemId | None
+    role: StemRoleId | StemLiteral
+    label: str
+    filename_tag: str
+    production: StemProduction
+    logical_primary: bool
+    complement_of: StemRoleId | None = None
+    derived_from: tuple[StemRoleId, ...] = ()
+    selected_by_default: bool = True
 
 @dataclass(frozen=True, slots=True)
 class ModelStemSemantics:
@@ -246,11 +306,12 @@ the cutover; new code reads `route.role`.
 
 ## Manifest Contract
 
-Add `bundled/model_stem_manifest.json`:
+Add `bundled/model_stem_manifest.json` (the example is illustrative of the
+schema and is not a runtime declaration):
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "roles": {
     "vocal.lead": {
       "display": "Lead Vocals",
@@ -269,24 +330,34 @@ Add `bundled/model_stem_manifest.json`:
   },
   "models": {
     "mdx:example": {
-      "native_signature": ["vocals", "other"],
+      "native_signature": ["lead", "backing", "instrumental"],
       "intent": "karaoke",
       "contexts": {
         "full_mix": {
           "logical_primary": "vocal.lead",
           "outputs": [
-            {"native": "vocals", "role": "vocal.lead"},
             {
-              "native": "other",
-              "role": "mix.instrumental_with_backing_vocals"
+              "native": "lead",
+              "role": "vocal.lead",
+              "production": "native"
+            },
+            {
+              "native": "backing",
+              "role": "vocal.backing",
+              "production": "native"
+            },
+            {
+              "native": "instrumental",
+              "role": "mix.instrumental",
+              "production": "native"
+            },
+            {
+              "native": null,
+              "role": "mix.instrumental_with_backing_vocals",
+              "production": "derived",
+              "derived_from": ["vocal.backing", "mix.instrumental"],
+              "selected_by_default": false
             }
-          ]
-        },
-        "vocal_split": {
-          "logical_primary": "vocal.lead",
-          "outputs": [
-            {"native": "vocals", "role": "vocal.lead"},
-            {"native": "other", "role": "vocal.backing"}
           ]
         }
       },
@@ -294,7 +365,8 @@ Add `bundled/model_stem_manifest.json`:
     }
   },
   "waivers": {
-    "apollo:example": "restoration model has no separation stem inventory"
+    "apollo:apollo_edm_big_by_essid": "reviewed Apollo waiver",
+    "apollo:apollo_edm_by_essid": "reviewed Apollo waiver"
   }
 }
 ```
@@ -309,17 +381,26 @@ Rules:
 4. Preserve the actual runtime native spelling in `SemanticStemOutput.native`.
 5. A `vocal_split` projection is valid only when explicitly declared. Every
    model eligible for Vocal Splitter must declare it.
-6. A derived output has `native: null`, `production: "derived"`, and exactly
-   one non-empty dependency form: `derived_from` or `complement_of`. Native
-   outputs have neither dependency form.
-7. Every logical-primary role must exist exactly once in that context's output
+6. `selected_by_default` is optional but, when present, must be a strict
+   Boolean. It defaults to `true` when omitted. An explicit `false` survives
+   parsing, semantic projection, public JSON rendering, and route selection.
+7. A derived output has `native: null`, `production: "derived"`, and exactly
+   one dependency form. `complement_of` means mix minus one exact native role;
+   `derived_from` means the ordered sum of two or more exact native roles.
+   Dependencies are role IDs in the same model/context; display text and
+   native-name lookup, derived-to-derived chaining, self-dependency, and mixed
+   recipe forms are forbidden. Native outputs have neither dependency form.
+8. A logical-primary output remains selected by default.
+9. Every logical-primary role must exist exactly once in that context's output
    list.
-8. Role displays and filename tags are unique after Unicode normalization and
+10. Role displays and filename tags are unique after Unicode normalization and
    case-folding unless an explicit reviewed collision waiver explains why.
-9. A current-catalogue model must be reviewed or explicitly waived. A newly
+11. A current-catalogue model must be reviewed or explicitly waived. A newly
    encountered unknown model may be raw at runtime but fails the checked-in
    catalogue review gate.
-10. Manifest loading is local, deterministic, and network-free.
+12. `schema_version` is the exact integer `2`; Booleans, floats, strings, and
+    all other integers are invalid.
+13. Manifest loading is local, deterministic, and network-free.
 
 The public resolver is:
 
@@ -485,9 +566,12 @@ Their raw `Lead/Back` outputs become:
 - full mix: `Lead Vocals` / `Instrumental with Backing Vocals`;
 - Vocal Splitter: `Lead Vocals` / `Backing Vocals`.
 
-The three-output GiantAILAB karaoke model contributes only the two declared
-karaoke-pair roles in Karaoke ensemble mode. Its separate extra vocal route
-remains available in Multi-Stem mode.
+GiantAILAB is the only approved multi-source sum. Its three exact native
+full-mix outputs remain selected by default. The combined karaoke accompaniment
+is a reviewed `derived_from` sum of `vocal.backing` and `mix.instrumental` with
+`selected_by_default: false`; it is available only through explicit selection
+or the karaoke-pair route. Vocal Splitter may project all exact native meanings
+for auditability, but schedules only its Lead/Backing pair.
 
 ## Logical Primary and Export Behavior
 
@@ -498,12 +582,33 @@ Backend primary and user-facing logical primary are separate fields.
 - Logical primary controls ordering, `Primary Stem Only`, CLI positional
   `primary`, recommended-result presentation, and semantic diagnostics.
 - A no-filter run continues to export every normally selected output.
+- Exact target/complement routes remain selected by default on both sides,
+  regardless of whether their reviewed intent is `instrumental`, `vocals`,
+  `special_fx`, or `specialty_stem`; intent never suppresses a valid inverse.
 - An explicit semantic focus wins over logical-primary ordering.
 - A positional `secondary` chooses the first declared non-logical-primary
   route for a two-route model. Multi-route positional behavior remains the
   existing backend-primary/backend-secondary behavior unless the manifest
   supplies an explicit logical secondary.
 - Semantic resolution remains per assembled model and never mutates `Settings`.
+
+### Exact MDX runtime inventories
+
+The semantic manifest declares routes only after exact runtime evidence is
+reconciled through the
+[MDX runtime-contract supplement](../../../bundled/model_runtime_stem_contracts.json).
+There are three distinct inventories:
+
+- classic ONNX has two addressable export keys: its primary and the computed
+  inverse, even though the engine computes the latter as `mix - primary`;
+- MDX-C multi has every configured instrument as an addressable native output;
+  and
+- MDX-C target has one configured native target plus reviewed derived routes.
+
+Installed hash/config evidence must agree with that supplement. Observed
+metadata remains authoritative for engine addressing; a disagreement falls
+back to raw, isolated semantics with an actionable diagnostic rather than
+manufacturing or partially applying a route.
 
 Newly exported files use canonical friendly labels. Existing files are not
 renamed. Internal ensemble collection uses `filename_tag`, never text parsed
@@ -530,9 +635,10 @@ class StemPairDefinition:
     roles: tuple[StemRoleId, StemRoleId]
 ```
 
-Pair IDs are new namespaced values such as `pair.vocals_instrumental`,
-`pair.karaoke`, `pair.center_side`, and `pair.instrument.guitar`. Four-stem and
-multi-stem modes use new reserved IDs `mode.four_stem` and `mode.multi_stem`.
+There are exactly four pair IDs: `pair.vocals_instrumental`, `pair.karaoke`,
+`pair.backing_vocals`, and `pair.center_side`. There are no target, guitar,
+effect, removal, or other specialty pair IDs. Four-stem and multi-stem remain
+reserved modes (`mode.four_stem` and `mode.multi_stem`), not pair definitions.
 An empty string means “Choose Stem Pair.”
 
 Existing saved pair IDs are intentionally not supported:
@@ -556,8 +662,6 @@ requested semantic roles. Standard choices include:
 - `Lead Vocals/Instrumental with Backing Vocals`;
 - `Backing Vocals/Instrumental with Lead Vocals`;
 - `Center/Side`;
-- every reviewed `<Target>/<Target> Removed` pair supported by at least two
-  installed models; and
 - the reserved four- and multi-stem modes.
 
 Multi-Stem grouping uses `StemRoleId`. Unknown `StemLiteral` values remain
@@ -594,7 +698,10 @@ JSON retains raw backend metadata and adds:
       "display": "Instrumental",
       "filename_tag": "Instrumental",
       "production": "native",
-      "logical_primary": true
+      "logical_primary": true,
+      "complement_of": null,
+      "derived_from": [],
+      "selected_by_default": true
     }
   ]
 }
@@ -627,6 +734,9 @@ intent
 intent_source
 review_status
 evidence_or_waiver
+complement_of
+derived_from
+selected_by_default
 ```
 
 The generator must:
@@ -634,7 +744,7 @@ The generator must:
 - cover all 485 current catalogue identities;
 - cover all 123 normalized raw names;
 - emit both full-mix and vocal-split rows where meanings differ;
-- include derived complement-only routes;
+- include reviewed complement and sum routes;
 - record reviewed evidence or an explicit waiver;
 - compare role displays and filename tags after Unicode normalization and
   case-folding;
@@ -643,6 +753,13 @@ The generator must:
   unreviewed current entries, or accidental collisions; and
 - keep `--check` read-only, including when combined with reference-output
   options.
+
+The last three columns are always, in order, `complement_of`, `derived_from`,
+and `selected_by_default`. A complement dependency renders as one role ID; a
+sum renders its role IDs as an ordered `|`-joined value; and a default renders
+as lowercase `true` or `false`. A dependency cell is blank when its recipe form
+does not apply. All three final cells are blank only for a waiver row with no
+output route.
 
 Online, matching warm-offline, and cold-offline installed models use the same
 bundled semantic declarations. A live catalogue refresh may expose an
@@ -669,15 +786,20 @@ it.
 
 - Pin 485 catalogue models, 148 literal spellings, 123 normalized names, 92
   backend-primary names, and four complement-only names.
+- Require 483 reviewed declarations, exactly the two named Apollo waivers, and
+  a semantic-reference row count derived from the rendered schema-2 snapshot.
 - Exhaustively validate every role, pair, model context, and route in the
   manifest against the generated reference.
 - Cover every observed contextual meaning of `other`, `inst`, `instrument`,
   `lead`, `back`, `dry`, and `noreverb`.
 - Cover all 28 karaoke identities, the two MelBand BVE identities, the VR BVE
-  context reversal, and the GiantAILAB three-output model.
+  context reversal, and GiantAILAB's three native outputs plus its explicitly
+  selected, default-false ordered sum.
 - Verify all eight spatial entries project to and ensemble as `Center/Side`.
 - Verify exact target-plus-complement models use `<Target> Removed` and genuine
   multi-stem residuals use `Residual`.
+- Verify `selected_by_default` defaulting and explicit `false` through parsing,
+  projection, JSON, routing, and the final three TSV cells.
 - Verify logical primary never mutates backend-primary lookup or unrestricted
   all-output behavior.
 - Verify friendly output filenames and stable internal tags.
