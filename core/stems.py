@@ -1268,12 +1268,12 @@ def routes_for_ensemble_pair(
 def run_export_routes(model: Any) -> Tuple[StemRoute, ...]:
     """Routes this run should write, including splitter and 4-stem member rules.
 
-    Vocal splitters keep both lead/backing writes. Unfiltered Four-Stem and
-    Multi-Stem ensemble *members* emit their full default-selected inventory so
-    the final combine has every ordinary contributor without materializing
-    optional routes. A non-empty semantic, positional, or raw focus resolves
-    exactly once from the available inventory; no-focus subset/full selection
-    uses ModelConfig's explicit-selection provenance. Every other run uses
+    Vocal splitters keep both lead/backing writes. Four-Stem and Multi-Stem
+    ensemble *members* always emit their full default-selected inventory so the
+    final combine has every ordinary contributor without materializing optional
+    routes. Final semantic focus is applied only after aggregation in
+    :mod:`core.run_hooks`; member-side positional focus and explicit selection
+    provenance never narrow that inventory. Every other run uses
     ``selected_stem_routes``.
     """
     available: tuple[StemRoute, ...] = tuple(getattr(model, "available_stem_routes", ()) or ())
@@ -1294,78 +1294,7 @@ def run_export_routes(model: Any) -> Tuple[StemRoute, ...]:
         pair_id = normalize_stem_pair_id(getattr(ensemble, "main_stem", None))
         if is_stem_mode(pair_id):
             default_routes = tuple(route for route in available if route.selected_by_default)
-            unfiltered_routes = default_routes or available
-            process = getattr(settings, "process", None) if settings is not None else None
-            stored_focus = str(getattr(process, "stem_focus", "") or "").strip()
-            normalized_focus = normalize_stem_focus(stored_focus)
-            if stored_focus:
-                if not normalized_focus:
-                    raise RuntimeError(
-                        "explicit stem-mode focus is invalid: "
-                        f"mode={pair_id!r} focus={stored_focus!r}"
-                    )
-                positional = positional_stem_focus(normalized_focus)
-                if positional:
-                    logical_matches = tuple(
-                        route
-                        for route in available
-                        if (
-                            route.logical_primary
-                            if positional == FOCUS_PRIMARY
-                            else route.logical_secondary
-                        )
-                    )
-                    if logical_matches:
-                        matched = logical_matches
-                    else:
-                        target = (
-                            getattr(model, "primary_stem", None)
-                            if positional == FOCUS_PRIMARY
-                            else getattr(model, "secondary_stem", None)
-                        )
-                        matched = tuple(
-                            route for route in available if route_matches_stem(route, target, model)
-                        )
-                else:
-                    matched = tuple(
-                        route
-                        for route in available
-                        if _route_matches_focus(route, normalized_focus)
-                    )
-                if len(matched) != 1:
-                    raise RuntimeError(
-                        "explicit stem-mode focus must resolve exactly one export route: "
-                        f"mode={pair_id!r} focus={stored_focus!r} resolved {len(matched)}"
-                    )
-                resolved = matched
-                if bool(getattr(model, "selected_stem_routes_explicit", False)) and (
-                    selected != resolved
-                ):
-                    raise RuntimeError(
-                        "explicit selected stem routes conflicts with stem-mode focus: "
-                        f"mode={pair_id!r} focus={stored_focus!r}"
-                    )
-                return resolved
-            selection_provenance = getattr(model, "selected_stem_routes_explicit", None)
-            has_explicit_selection = (
-                bool(selection_provenance)
-                if selection_provenance is not None
-                else bool(selected and selected != unfiltered_routes and selected != available)
-            )
-            if has_explicit_selection:
-                if not selected:
-                    raise RuntimeError(
-                        f"explicit stem-mode selection resolved no export routes: mode={pair_id!r}"
-                    )
-                unavailable = tuple(route for route in selected if route not in available)
-                if unavailable:
-                    raise RuntimeError(
-                        "explicit stem-mode selection contains unavailable export routes: "
-                        f"mode={pair_id!r} "
-                        f"routes={[route.concept for route in unavailable]!r}"
-                    )
-                return selected
-            return unfiltered_routes
+            return default_routes or available
         if pair_id:
             # A dual pair has already been filtered to its complete reviewed
             # role coverage by ``ModelConfig._apply_stem_focus``.  An empty

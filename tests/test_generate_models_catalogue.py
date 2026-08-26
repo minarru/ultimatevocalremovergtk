@@ -21,6 +21,7 @@ from catalogue.stem_audit import (  # noqa: E402
     StemAuditDiagnostic,
     StemAuditResult,
     StemRelationshipEvidence,
+    StemSemanticReferenceRow,
     audit_catalogue_stems,
 )
 
@@ -4051,6 +4052,91 @@ class SummaryModeTests(unittest.TestCase):
         self.assertIn("`Lead Vocal`", text)
         self.assertNotIn("Nothing flagged", text)
         self.assertNotIn("No stem semantic audit findings.", text)
+
+    def test_semantic_summary_counts_distinct_reviewed_contexts_and_karaoke_models(self) -> None:
+        def row(
+            model_id: str,
+            context: StemProcessingContext,
+            *,
+            intent: str,
+            role_id: str,
+            review_status: str = "reviewed",
+        ) -> StemSemanticReferenceRow:
+            family, _separator, basename = model_id.partition(":")
+            return StemSemanticReferenceRow(
+                runtime_family=family,
+                runtime_basename=basename,
+                catalogue_source="fixture",
+                catalogue_label=model_id,
+                execution_arch="MDX",
+                model_id=model_id,
+                model_display=model_id,
+                native_signature=("Vocals", "Instrumental"),
+                processing_context=context,
+                native_stem="Vocals",
+                production="native",
+                backend_primary="Vocals",
+                backend_target="",
+                logical_primary=True,
+                logical_secondary=False,
+                role_id=role_id,
+                canonical_name="Vocals",
+                filename_tag="Vocals",
+                pair_id="",
+                intent=intent,
+                intent_source="reviewed_manifest",
+                review_status=review_status,
+                evidence_or_waiver="fixture",
+                selected_by_default=True,
+            )
+
+        rows = (
+            row(
+                "mdx:karaoke",
+                StemProcessingContext.FULL_MIX,
+                intent="karaoke",
+                role_id="mix.instrumental_with_backing_vocals",
+            ),
+            row(
+                "mdx:karaoke",
+                StemProcessingContext.FULL_MIX,
+                intent="karaoke",
+                role_id="vocal.lead",
+            ),
+            row(
+                "mdx:karaoke",
+                StemProcessingContext.VOCAL_SPLIT,
+                intent="karaoke",
+                role_id="vocal.backing",
+            ),
+            row(
+                "mdx:other",
+                StemProcessingContext.FULL_MIX,
+                intent="vocals",
+                role_id="vocal.vocals",
+            ),
+            row(
+                "apollo:waived",
+                StemProcessingContext.FULL_MIX,
+                intent="unknown",
+                role_id="",
+                review_status="waived",
+            ),
+        )
+        audit = StemAuditResult(
+            catalogue_model_ids=("mdx:karaoke", "mdx:other", "apollo:waived"),
+            reviewed_model_ids=("mdx:karaoke", "mdx:other"),
+            waived_model_ids=("apollo:waived",),
+            raw_model_ids=(),
+            evidence_counts=CatalogueEvidenceCounts(0, 0, 0, ()),
+            diagnostics=(),
+            reference_rows=rows,
+        )
+
+        text = render.render_summary_report(self._entries(), unsupported_count=0, stem_audit=audit)
+
+        self.assertIn("Reviewed contexts: **3**", text)
+        self.assertIn("Reviewed karaoke declarations: **1**", text)
 
     def test_summary_does_not_overwrite_the_document(self) -> None:
         """A summary is an ad-hoc query, not a replacement for the catalogue."""

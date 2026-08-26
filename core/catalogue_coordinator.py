@@ -565,7 +565,16 @@ class CatalogueCoordinator:
         apollo = apollo_download_list(extra=dict(extras.payload) if extras is not None else None)
         source_owners["apollo"] = {str(label): SourceId.EXTRAS.value for label in apollo}
         alias_meta = _metadata_alias_index(extra_meta)
-        meta_by_family = build_meta_by_family(vr, mdx, demucs, apollo, extra_meta, alias_meta)
+        yaml_index = _checkpoint_yaml_index(vr, mdx, demucs, apollo)
+        yaml_url_index = _checkpoint_yaml_url_index(upstream_payload)
+        meta_by_family = build_meta_by_family(
+            _metadata_catalogue_with_config_evidence(vr, yaml_index, yaml_url_index),
+            _metadata_catalogue_with_config_evidence(mdx, yaml_index, yaml_url_index),
+            _metadata_catalogue_with_config_evidence(demucs, yaml_index, yaml_url_index),
+            _metadata_catalogue_with_config_evidence(apollo, yaml_index, yaml_url_index),
+            extra_meta,
+            alias_meta,
+        )
         meta: dict[str, Any] = {}
         for family_meta in meta_by_family.values():
             meta.update(family_meta)  # transitional; identity must not use this
@@ -588,8 +597,6 @@ class CatalogueCoordinator:
         display_vr = _basename_index(meta_by_family["vr"], VR_ARCH_TYPE)
         display_mdx = _basename_index(meta_by_family["mdx"], MDX_ARCH_TYPE)
         display_demucs = _basename_index(meta_by_family["demucs"], DEMUCS_ARCH_TYPE)
-        yaml_index = _checkpoint_yaml_index(vr, mdx, demucs, apollo)
-        yaml_url_index = _checkpoint_yaml_url_index(upstream_payload)
         return CatalogueSnapshot(
             revision=revision,
             vr=_readonly_catalogue(vr_out),
@@ -782,6 +789,35 @@ def _checkpoint_yaml_url_index(
         yaml_name, yaml_url = yaml_urls[0]
         index.setdefault((checkpoints[0], yaml_name), yaml_url)
     return index
+
+
+def _metadata_catalogue_with_config_evidence(
+    catalogue: Mapping[str, Any],
+    checkpoint_yaml_index: Mapping[str, str],
+    checkpoint_yaml_url_index: Mapping[tuple[str, str], str],
+) -> dict[str, Any]:
+    """Add exact compact config associations to metadata-only entry copies."""
+    import os
+
+    from .model_display import _is_checkpoint_name
+
+    enriched: dict[str, Any] = {}
+    for label, model in catalogue.items():
+        if not isinstance(model, dict):
+            enriched[str(label)] = model
+            continue
+        files = dict(model)
+        for name, ref in model.items():
+            checkpoint = os.path.basename(str(name))
+            if not _is_checkpoint_name(checkpoint):
+                continue
+            compact_yaml = yaml_basename_from_ref(ref)
+            if compact_yaml is None or checkpoint_yaml_index.get(checkpoint) != compact_yaml:
+                continue
+            config_ref = checkpoint_yaml_url_index.get((checkpoint, compact_yaml), compact_yaml)
+            files.setdefault(compact_yaml, config_ref)
+        enriched[str(label)] = files
+    return enriched
 
 
 def _delta_between(

@@ -154,6 +154,157 @@ class CatalogueCoordinatorTests(unittest.TestCase):
         self.assertEqual(coordinator.builds, 1)
         coordinator.close()
 
+    def test_compact_exact_config_url_enriches_metadata_only_before_build(self) -> None:
+        checkpoint = "model_bs_roformer_ep_317_sdr_12.9755.ckpt"
+        config = "model_bs_roformer_ep_317_sdr_12.9755.yaml"
+        config_url = f"https://configs.test/{config}"
+        selectable = "Roformer Model: Exact Compact"
+        evidence_only = "Roformer Evidence: Exact Compact"
+        mismatch = "Roformer Model: Mismatch"
+        nested = "Roformer Model: Nested"
+        payload = {
+            "roformer_download_list": {
+                selectable: {checkpoint: config},
+                mismatch: {"mismatch.ckpt": "mismatch.yaml"},
+                nested: {"nested.ckpt": "configs/nested.yaml"},
+            },
+            "other_network_list": {
+                evidence_only: {
+                    checkpoint: f"https://weights.test/{checkpoint}",
+                    config: config_url,
+                },
+                mismatch: {
+                    "different.ckpt": "https://weights.test/different.ckpt",
+                    "mismatch.yaml": "https://configs.test/mismatch.yaml",
+                },
+            },
+        }
+        coordinator = self._coordinator(payload)
+        policy = AccessPolicy(allow_network=False, allow_metadata_writes=False)
+        with mock.patch("core.catalogue_stem_cache.lookup_stems", return_value=None):
+            snapshot = coordinator.snapshot(mode=RefreshMode.OFFLINE, policy=policy)
+        self.addCleanup(coordinator.close)
+
+        self.assertEqual(snapshot.mdx[selectable], {checkpoint: config})
+        self.assertNotIn(evidence_only, snapshot.mdx)
+        self.assertEqual(
+            snapshot.meta[selectable].files,
+            {checkpoint: config, config: config_url},
+        )
+        self.assertEqual(
+            snapshot.meta[mismatch].files,
+            {"mismatch.ckpt": "mismatch.yaml", "mismatch.yaml": "mismatch.yaml"},
+        )
+        self.assertEqual(snapshot.meta[nested].files, {"nested.ckpt": "configs/nested.yaml"})
+
+    def test_all_ten_compact_rows_have_exact_live_reviewed_semantics(self) -> None:
+        from core.catalogue_stem_cache import StemCacheHit
+        from core.mdx_runtime_contract import load_bundled_mdx_runtime_contracts
+
+        rows = (
+            ("MDX23C-8KFFT-InstVoc_HQ.ckpt", "model_2_stem_full_band_8k.yaml"),
+            ("MDX23C-8KFFT-InstVoc_HQ_2.ckpt", "model_2_stem_full_band_8k.yaml"),
+            ("melband_roformer_inst_v1.ckpt", "config_melbandroformer_inst.yaml"),
+            ("melband_roformer_inst_v2.ckpt", "config_melbandroformer_inst_v2.yaml"),
+            (
+                "melband_roformer_instvoc_duality_v1.ckpt",
+                "config_melbandroformer_instvoc_duality.yaml",
+            ),
+            (
+                "melband_roformer_instvox_duality_v2.ckpt",
+                "config_melbandroformer_instvoc_duality.yaml",
+            ),
+            (
+                "model_bs_roformer_ep_317_sdr_12.9755.ckpt",
+                "model_bs_roformer_ep_317_sdr_12.9755.yaml",
+            ),
+            (
+                "model_bs_roformer_ep_368_sdr_12.9628.ckpt",
+                "model_bs_roformer_ep_368_sdr_12.9628.yaml",
+            ),
+            (
+                "model_bs_roformer_ep_937_sdr_10.5309.ckpt",
+                "model_bs_roformer_ep_937_sdr_10.5309.yaml",
+            ),
+            (
+                "model_mel_band_roformer_ep_3005_sdr_11.4360.ckpt",
+                "model_mel_band_roformer_ep_3005_sdr_11.4360.yaml",
+            ),
+        )
+        contracts = load_bundled_mdx_runtime_contracts()
+        self.assertEqual(contracts.warning, "")
+        payload: dict[str, dict[str, object]] = {
+            "mdx23c_download_list": {},
+            "roformer_download_list": {},
+            "other_network_list": {},
+        }
+        hits_by_url: dict[str, StemCacheHit] = {}
+        expected_ref: dict[str, str] = {}
+        for checkpoint, config in rows:
+            label = f"Compact: {checkpoint}"
+            list_key = (
+                "mdx23c_download_list"
+                if checkpoint.startswith("MDX23C-")
+                else "roformer_download_list"
+            )
+            payload[list_key][label] = {checkpoint: config}
+            model_id = f"mdx:{os.path.splitext(checkpoint)[0]}"
+            evidence = contracts.contracts[model_id].config_evidence[config]
+            remote_url = (
+                ""
+                if checkpoint.startswith("MDX23C-")
+                else next(
+                    (source for source in evidence.sources if source.startswith("https://")),
+                    "",
+                )
+            )
+            expected_ref[label] = remote_url or config
+            if remote_url:
+                payload["other_network_list"][label] = {
+                    checkpoint: f"https://weights.test/{checkpoint}",
+                    config: remote_url,
+                }
+                hits_by_url[remote_url] = StemCacheHit(
+                    stems=evidence.training_instruments,
+                    target_instrument=evidence.target_instrument or "",
+                    ok=True,
+                    content_sha256=evidence.content_sha256,
+                )
+
+        coordinator = self._coordinator(payload)
+        policy = AccessPolicy(allow_network=False, allow_metadata_writes=False)
+        with mock.patch(
+            "core.catalogue_stem_cache.lookup_stems",
+            side_effect=lambda url: hits_by_url.get(url),
+        ) as lookup:
+            snapshot = coordinator.snapshot(mode=RefreshMode.OFFLINE, policy=policy)
+        self.addCleanup(coordinator.close)
+
+        compact_lookups = tuple(
+            call.args[0]
+            for call in lookup.call_args_list
+            if call.args and call.args[0] in hits_by_url
+        )
+        self.assertEqual(len(compact_lookups), 8)
+        for checkpoint, config in rows:
+            label = f"Compact: {checkpoint}"
+            model_id = f"mdx:{os.path.splitext(checkpoint)[0]}"
+            evidence = contracts.contracts[model_id].config_evidence[config]
+            with self.subTest(model_id=model_id):
+                self.assertEqual(snapshot.mdx[label], {checkpoint: config})
+                meta = snapshot.meta[label]
+                self.assertEqual(
+                    meta.files,
+                    {checkpoint: config, config: expected_ref[label]},
+                )
+                self.assertEqual(meta.stems, list(evidence.training_instruments))
+                self.assertEqual(
+                    str(meta.target_instrument or ""),
+                    str(evidence.target_instrument or ""),
+                )
+                self.assertEqual(meta.config_sha256, evidence.content_sha256)
+                self.assertEqual(meta.stem_semantics.status, "reviewed")
+
     def test_close_is_idempotent(self) -> None:
         coordinator = self._coordinator()
         coordinator.close()

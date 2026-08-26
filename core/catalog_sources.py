@@ -38,7 +38,10 @@ from .catalog_dedupe import (
 from .catalogue_types import StemSemanticProjection
 from .debug_log import debug
 from .extra_catalog import apollo_download_list, merge_extra_catalogues
-from .mdx_runtime_contract import reconcile_catalogue_mdx_runtime_signature
+from .mdx_runtime_contract import (
+    local_catalogue_mdx_config_evidence,
+    reconcile_catalogue_mdx_runtime_signature,
+)
 from .model_identity import ModelId
 from .model_naming import canonical_display_name
 from .model_stem_semantics import (
@@ -227,6 +230,11 @@ def _yaml_config_url(files: Mapping[str, str]) -> Optional[str]:
     return None
 
 
+def _needs_catalogue_config_evidence(meta: EntryMeta) -> bool:
+    """Whether one raw YAML-backed row still lacks parsed config bytes."""
+    return meta.stem_semantics.status != "reviewed" and not meta.config_sha256
+
+
 def _catalogue_model_id(arch: str, checkpoint: str | None) -> str:
     """Return an exact canonical ID for a listed artifact, if it has one."""
     family = {
@@ -262,22 +270,7 @@ def _build_meta(
         source_meta = (
             extra_meta.get(label) or alias_meta.get(normalize_catalogue_label(label)) or {}
         )
-        stems_raw = source_meta.get("stems")
-        stems = list(stems_raw) if isinstance(stems_raw, list) else []
-        target = source_meta.get("target_instrument") or None
-        config_sha256 = ""
-        if not stems:
-            yaml_url = _yaml_config_url(files)
-            if yaml_url:
-                hit = lookup_stems(yaml_url)
-                if hit is not None and hit.ok and hit.stems:
-                    stems = list(hit.stems)
-                    config_sha256 = hit.content_sha256
-                    if not target:
-                        target = hit.target_instrument
         checkpoint = _primary_checkpoint(files)
-        backend_primary = str(source_meta.get("primary_stem") or "")
-        backend_target = str(target or "")
         model_id = _catalogue_model_id(arch, checkpoint)
         config_yaml = next(
             (
@@ -287,6 +280,28 @@ def _build_meta(
             ),
             "",
         )
+        stems_raw = source_meta.get("stems")
+        stems = list(stems_raw) if isinstance(stems_raw, list) else []
+        target = source_meta.get("target_instrument") or None
+        config_sha256 = ""
+        local_evidence = local_catalogue_mdx_config_evidence(model_id, config_yaml)
+        if local_evidence is not None:
+            if not stems:
+                stems = list(local_evidence.training_instruments)
+            if not target:
+                target = local_evidence.target_instrument
+            config_sha256 = local_evidence.content_sha256
+        yaml_url = _yaml_config_url(files)
+        if yaml_url:
+            hit = lookup_stems(yaml_url)
+            if hit is not None and hit.ok and hit.stems:
+                if not stems:
+                    stems = list(hit.stems)
+                config_sha256 = hit.content_sha256 or config_sha256
+                if not target:
+                    target = hit.target_instrument
+        backend_primary = str(source_meta.get("primary_stem") or "")
+        backend_target = str(target or "")
         reconciled = reconcile_catalogue_mdx_runtime_signature(
             model_id,
             stems,

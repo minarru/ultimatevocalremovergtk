@@ -578,7 +578,7 @@ class RunExportRoutesTests(unittest.TestCase):
         self.assertTrue(exports_named_stem(model, "vocals"))
         self.assertTrue(exports_named_stem(model, "bass"))
 
-    def test_stem_mode_focus_resolves_exactly_from_available_routes(self) -> None:
+    def test_stem_mode_member_focus_never_narrows_default_inventory(self) -> None:
         available = (
             StemRoute(
                 StemId("drums"),
@@ -616,27 +616,13 @@ class RunExportRoutesTests(unittest.TestCase):
             ),
         )
         cases = (
-            (
-                "mode.four_stem",
-                "instrument.bass",
-                available,
-                StemRoleId("instrument.bass"),
-            ),
-            (
-                "mode.multi_stem",
-                persisted_stem_focus(available[4]),
-                tuple(route for route in available if route.selected_by_default),
-                StemLiteral("mystery"),
-            ),
-            ("mode.four_stem", FOCUS_PRIMARY, available, StemRoleId("vocal.vocals")),
-            (
-                "mode.multi_stem",
-                "secondary",
-                tuple(route for route in available if route.selected_by_default),
-                StemRoleId("residual.other"),
-            ),
+            ("mode.four_stem", "instrument.bass", available[1:2]),
+            ("mode.multi_stem", persisted_stem_focus(available[4]), available[4:]),
+            ("mode.four_stem", FOCUS_PRIMARY, available[3:4]),
+            ("mode.multi_stem", "secondary", available[2:3]),
         )
-        for mode, focus, preselected, expected_role in cases:
+        expected = tuple(route for route in available if route.selected_by_default)
+        for mode, focus, preselected in cases:
             with self.subTest(mode=mode, focus=focus):
                 settings = Settings.defaults()
                 settings.ensemble.main_stem = mode
@@ -650,8 +636,7 @@ class RunExportRoutesTests(unittest.TestCase):
 
                 exported = run_export_routes(model)
 
-                self.assertEqual(len(exported), 1)
-                self.assertEqual(exported[0].role, expected_role)
+                self.assertEqual(exported, expected)
 
     def test_model_config_records_default_focus_and_sidecar_provenance(self) -> None:
         routes = (
@@ -695,7 +680,7 @@ class RunExportRoutesTests(unittest.TestCase):
 
         self.assertIs(model.stem_routing.selected_routes_explicit, True)
 
-    def test_giant_default_false_route_materializes_when_explicitly_focused(self) -> None:
+    def test_giant_default_false_route_is_not_materialized_by_final_mode_focus(self) -> None:
         from core.model_stem_manifest import resolve_model_stem_semantics
 
         semantics = resolve_model_stem_semantics(
@@ -715,14 +700,16 @@ class RunExportRoutesTests(unittest.TestCase):
         )
 
         exported = run_export_routes(model)
-        self.assertEqual(len(exported), 1)
         self.assertEqual(
-            exported[0].role,
-            StemRoleId("mix.instrumental_with_backing_vocals"),
+            tuple(route.role for route in exported),
+            (
+                StemRoleId("vocal.lead"),
+                StemRoleId("vocal.backing"),
+                StemRoleId("mix.instrumental"),
+            ),
         )
-        self.assertFalse(exported[0].selected_by_default)
 
-    def test_explicit_raw_route_focus_survives_multi_stem_execution(self) -> None:
+    def test_explicit_raw_final_focus_does_not_narrow_multi_stem_member(self) -> None:
         raw_routes = (
             StemRoute(
                 StemId("mystery-a"),
@@ -745,7 +732,7 @@ class RunExportRoutesTests(unittest.TestCase):
             focus=persisted_stem_focus(raw_routes[1]),
         )
 
-        self.assertEqual(run_export_routes(model), raw_routes[1:])
+        self.assertEqual(run_export_routes(model), raw_routes)
 
     def test_unfiltered_no_default_inventory_falls_back_to_every_route(self) -> None:
         settings = Settings.defaults()
@@ -775,7 +762,7 @@ class RunExportRoutesTests(unittest.TestCase):
 
         self.assertEqual(run_export_routes(model), available)
 
-    def test_explicit_focus_fails_on_zero_ambiguous_or_explicit_mismatch(self) -> None:
+    def test_invalid_or_conflicting_final_focus_does_not_block_mode_members(self) -> None:
         bass = StemRoute(
             StemId("bass"),
             StemRoleId("instrument.bass"),
@@ -795,12 +782,12 @@ class RunExportRoutesTests(unittest.TestCase):
             filename_tag="Drums",
         )
         cases = (
-            ("raw:missing", (bass,), (bass,), False, "resolved 0"),
-            ("instrument.bass", (bass, duplicate_bass), (bass,), False, "resolved 2"),
-            ("instrument.bass", (bass, drums), (drums,), True, "conflicts"),
+            ("raw:missing", (bass,), (bass,), False),
+            ("instrument.bass", (bass, duplicate_bass), (bass,), False),
+            ("instrument.bass", (bass, drums), (drums,), True),
         )
-        for focus, available, selected, explicit, error in cases:
-            with self.subTest(focus=focus, error=error):
+        for focus, available, selected, explicit in cases:
+            with self.subTest(focus=focus):
                 settings = Settings.defaults()
                 settings.ensemble.main_stem = "mode.multi_stem"
                 settings.process.stem_focus = focus
@@ -812,10 +799,9 @@ class RunExportRoutesTests(unittest.TestCase):
                     settings=settings,
                 )
 
-                with self.assertRaisesRegex(RuntimeError, error):
-                    run_export_routes(model)
+                self.assertEqual(run_export_routes(model), available)
 
-    def test_no_focus_honors_explicit_selection_provenance(self) -> None:
+    def test_explicit_final_selection_does_not_narrow_mode_members(self) -> None:
         default = _route("vocals", StemBucket.VOCALS.value)
         optional = StemRoute(
             native=None,
@@ -828,8 +814,8 @@ class RunExportRoutesTests(unittest.TestCase):
         available = (default, optional)
         cases = (
             (False, available, (default,)),
-            (True, available, available),
-            (True, (optional,), (optional,)),
+            (True, available, (default,)),
+            (True, (optional,), (default,)),
         )
         for explicit, selected, expected in cases:
             with self.subTest(explicit=explicit, selected=len(selected)):

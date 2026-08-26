@@ -79,16 +79,49 @@ class ApplyCatalogueStemCacheTests(unittest.TestCase):
         self.assertEqual(patched.stem_semantics.status, "reviewed")
         self.assertEqual(patched.config_sha256, hit.content_sha256)
 
-    def test_skips_when_stems_already_set(self) -> None:
+    def test_patches_raw_exact_config_evidence_when_stems_already_set(self) -> None:
         meta = EntryMeta(
-            label="M",
-            display="M",
+            label="Reviewed after cache",
+            display="Reviewed after cache",
+            arch=MDX_ARCH_TYPE,
+            files={
+                "melband_roformer_inst_v1.ckpt": "https://example.test/model.ckpt",
+                "config_melbandroformer_inst.yaml": _YAML_URL,
+            },
+            checkpoint="melband_roformer_inst_v1.ckpt",
+            stems=["Instrumental", "Vocals"],
+            target_instrument="Instrumental",
+        )
+        self.manager.catalogue_meta = {meta.label: meta}
+        hit = StemCacheHit(
+            stems=("Instrumental", "Vocals"),
+            target_instrument="Instrumental",
+            ok=True,
+            content_sha256="723af6755b5624be0a58351a13c930c472b51ef677cf2c7943394fefed7c3d4d",
+        )
+        with mock.patch("core.catalogue_stem_cache.lookup_stems", return_value=hit):
+            updated = self.manager.apply_catalogue_stem_cache()
+
+        self.assertEqual(updated, {meta.label})
+        patched = self.manager.catalogue_meta[meta.label]
+        self.assertEqual(patched.stem_semantics.status, "reviewed")
+        self.assertEqual(patched.config_sha256, hit.content_sha256)
+
+    def test_skips_entry_with_already_reviewed_semantics(self) -> None:
+        semantics = resolve_model_stem_semantics(
+            "mdx:UVR_MDXNET_KARA_2",
+            native_stems=("Instrumental", "Vocals"),
+            backend_primary="Instrumental",
+        )
+        meta = EntryMeta(
+            label="Reviewed",
+            display="Reviewed",
             arch=MDX_ARCH_TYPE,
             files={"m.yaml": _YAML_URL},
-            stems=["Drums"],
-            target_instrument="Drums",
+            stems=["Instrumental", "Vocals"],
+            stem_semantics=stem_semantics_projection(semantics),
         )
-        self.manager.catalogue_meta = {"M": meta}
+        self.manager.catalogue_meta = {meta.label: meta}
         with mock.patch("core.catalogue_stem_cache.lookup_stems") as lookup:
             updated = self.manager.apply_catalogue_stem_cache()
         self.assertEqual(updated, set())
@@ -408,26 +441,48 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
         import core.catalogue_stem_cache as csc
         from ui.download_center import PURPOSE_ALL, DownloadCenterWindow
 
-        def meta_for(label: str, yaml_url: str | None, stems: list[str]) -> EntryMeta:
+        def meta_for(
+            label: str,
+            yaml_url: str | None,
+            stems: list[str],
+            *,
+            reviewed: bool = False,
+        ) -> EntryMeta:
             files = {"m.ckpt": f"https://example.test/{label}.ckpt"}
             if yaml_url:
                 files["m.yaml"] = yaml_url
+            projection = EntryMeta(label="", display="", arch="").stem_semantics
+            if reviewed:
+                semantics = resolve_model_stem_semantics(
+                    "mdx:UVR_MDXNET_KARA_2",
+                    native_stems=("Instrumental", "Vocals"),
+                    backend_primary="Instrumental",
+                )
+                projection = stem_semantics_projection(semantics)
             return EntryMeta(
                 label=label,
                 display=label,
                 arch=MDX_ARCH_TYPE,
                 files=files,
                 stems=stems,
+                stem_semantics=projection,
             )
 
         cached_url = "https://example.test/cached.yaml"
         catalogue_meta = {
             # Matches the "kim" query; needs a fetch.
             "Kim Vocal 1": meta_for("Kim Vocal 1", "https://example.test/kim.yaml", []),
-            # Matches, but its stems are already known — must be skipped.
+            # Matches and has source stems, but still lacks exact config evidence.
             "Kim Inst 2": meta_for("Kim Inst 2", "https://example.test/inst.yaml", ["Vocals"]),
             # Matches, but the stem cache already answers for it — must be skipped.
             "Kim Cached 3": meta_for("Kim Cached 3", cached_url, []),
+            # Reviewed rows do not need another config fetch.
+            "Kim Reviewed 4": meta_for(
+                "Kim Reviewed 4",
+                "https://example.test/reviewed.yaml",
+                ["Instrumental", "Vocals"],
+                reviewed=True,
+            ),
             # Does not match the query, so it belongs in the bulk half.
             "Other Model": meta_for("Other Model", "https://example.test/other.yaml", []),
             # No YAML config at all — must never be enqueued.
@@ -468,7 +523,13 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
         self.assertEqual(
             enqueue.call_args_list,
             [
-                mock.call(["https://example.test/kim.yaml"], priority=True),
+                mock.call(
+                    [
+                        "https://example.test/kim.yaml",
+                        "https://example.test/inst.yaml",
+                    ],
+                    priority=True,
+                ),
                 mock.call(["https://example.test/other.yaml"], priority=False),
             ],
         )

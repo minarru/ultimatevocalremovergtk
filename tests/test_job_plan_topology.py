@@ -14,7 +14,7 @@ from core.job_plan import JobResolver, JobSpec, ModelDescriptor, planned_output_
 from core.model_identity import ModelArtifacts
 from core.settings import Settings
 from core.stem_roles import StemId, StemRoleId
-from core.stems import FOCUS_SECONDARY, StemLiteral, StemRoute
+from core.stems import FOCUS_PRIMARY, FOCUS_SECONDARY, StemLiteral, StemRoute
 from core.types import ProcessMethod
 
 
@@ -419,6 +419,28 @@ class PlannedOutputStemTests(unittest.TestCase):
             settings, (_four_desc("mdx:one"), _four_desc("mdx:two")), command="ensemble"
         )
         self.assertEqual(stems, ((BASS_STEM, False),))
+
+    def test_stem_mode_planner_keeps_positional_members_and_filters_semantic_final(self) -> None:
+        settings = Settings.defaults()
+        settings.ensemble.main_stem = "mode.four_stem"
+        descriptors = (_four_desc("mdx:one"), _four_desc("mdx:two"))
+
+        settings.process.stem_focus = "instrument.bass"
+        self.assertEqual(
+            planned_output_stems(settings, descriptors, command="ensemble"),
+            ((BASS_STEM, False),),
+        )
+
+        for focus in (FOCUS_PRIMARY, FOCUS_SECONDARY):
+            with self.subTest(focus=focus):
+                settings.process.stem_focus = focus
+                labels = tuple(
+                    label
+                    for label, _conditional in planned_output_stems(
+                        settings, descriptors, command="ensemble"
+                    )
+                )
+                self.assertEqual(labels, (BASS_STEM, DRUM_STEM, "Residual", VOCAL_STEM))
 
     def test_multi_stem_keeps_only_routes_with_two_contributors(self) -> None:
         settings = Settings.defaults()

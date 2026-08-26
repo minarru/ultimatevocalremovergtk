@@ -236,6 +236,28 @@ class StemAuditResult:
         return not any(diagnostic.structural for diagnostic in self.diagnostics)
 
     @property
+    def reviewed_context_count(self) -> int:
+        """Distinct reviewed ``(model, context)`` pairs owned by audit rows."""
+        return len(
+            {
+                (row.model_id, row.processing_context)
+                for row in self.reference_rows
+                if row.review_status == "reviewed"
+            }
+        )
+
+    @property
+    def reviewed_karaoke_declaration_count(self) -> int:
+        """Distinct reviewed karaoke model declarations owned by audit rows."""
+        return len(
+            {
+                row.model_id
+                for row in self.reference_rows
+                if row.review_status == "reviewed" and row.intent == "karaoke"
+            }
+        )
+
+    @property
     def reference_matches(self) -> bool:
         return not any(
             diagnostic.code == "reference-candidate-mismatch" for diagnostic in self.diagnostics

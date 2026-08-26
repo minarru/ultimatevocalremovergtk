@@ -678,12 +678,16 @@ class DownloadManager:
 
     def apply_catalogue_stem_cache(self) -> set[str]:
         """Patch catalogue_meta stems from the YAML stem cache. Return updated labels."""
-        from .catalog_sources import _yaml_config_url, with_catalogue_config_evidence
+        from .catalog_sources import (
+            _needs_catalogue_config_evidence,
+            _yaml_config_url,
+            with_catalogue_config_evidence,
+        )
         from .catalogue_stem_cache import lookup_stems
 
         updated: set[str] = set()
         for label, meta in list(self.catalogue_meta.items()):
-            if meta.stems:
+            if not _needs_catalogue_config_evidence(meta):
                 continue
             url = _yaml_config_url(meta.files)
             if not url:

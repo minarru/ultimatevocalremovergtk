@@ -806,6 +806,32 @@ def reconcile_catalogue_mdx_runtime_signature(
     )
 
 
+def local_catalogue_mdx_config_evidence(
+    model_id: str,
+    config_yaml: str,
+    *,
+    contracts: MdxRuntimeContractRegistry | None = None,
+) -> MdxConfigEvidence | None:
+    """Return validated checked-in config evidence for one exact association.
+
+    Remote-only contract rows still require live/cache bytes.  A local source
+    is safe here because strict registry loading already verified its digest,
+    parsed instruments, and target against the checked-in file.
+    """
+    selected = contracts if contracts is not None else load_bundled_mdx_runtime_contracts()
+    if selected.warning:
+        return None
+    contract = selected.contracts.get(model_id)
+    if contract is None:
+        return None
+    evidence = _config_evidence_for_name(contract, config_yaml)
+    if evidence is None or not any(
+        source.startswith(("bundled/", "models/")) for source in evidence.sources
+    ):
+        return None
+    return evidence
+
+
 def is_catalogue_mdx_target_runtime(
     model_id: str,
     *,

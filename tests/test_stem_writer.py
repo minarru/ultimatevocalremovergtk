@@ -377,7 +377,7 @@ class ExportSourceMapTests(unittest.TestCase):
             ),
         )
 
-    def test_engine_copy_preserves_explicit_stem_mode_selection_behavior(self) -> None:
+    def test_engine_copy_preserves_complete_stem_mode_member_inventory(self) -> None:
         from core.stem_roles import StemRoleId
         from core.stems import StemId, StemRoute
 
@@ -396,44 +396,36 @@ class ExportSourceMapTests(unittest.TestCase):
         )
         cases = (
             (
-                "full inventory includes optional route",
+                "explicit full inventory still excludes optional route",
                 inventory,
                 inventory,
                 True,
                 "",
-                ("routes", ("vocal.vocals", "mix.instrumental")),
+                ("routes", ("vocal.vocals",)),
             ),
             (
-                "explicit empty selection is actionable",
+                "explicit empty final selection does not narrow member",
                 inventory,
                 (),
                 True,
                 "",
-                (
-                    "error",
-                    "explicit stem-mode selection resolved no export routes: "
-                    "mode='mode.multi_stem'",
-                ),
+                ("routes", ("vocal.vocals",)),
             ),
             (
-                "explicit selection conflicts with focus",
+                "explicit selection and focus do not narrow member",
                 (bass, drums),
                 (drums,),
                 True,
                 "instrument.bass",
-                (
-                    "error",
-                    "explicit selected stem routes conflicts with stem-mode focus: "
-                    "mode='mode.multi_stem' focus='instrument.bass'",
-                ),
+                ("routes", ("instrument.bass", "instrument.drums")),
             ),
             (
-                "legacy unannotated subset keeps provenance inference",
+                "legacy unannotated subset does not narrow member",
                 inventory,
                 inventory[1:],
                 None,
                 "",
-                ("routes", ("mix.instrumental",)),
+                ("routes", ("vocal.vocals",)),
             ),
             (
                 "known unfiltered selection keeps default filtering",
@@ -478,7 +470,7 @@ class ExportSourceMapTests(unittest.TestCase):
         self.assertEqual(_route_result(model), ("routes", ("vocal.vocals",)))
         self.assertEqual(_route_result(copied), _route_result(model))
 
-    def test_writer_preserves_explicit_engine_selection_provenance(self) -> None:
+    def test_writer_uses_complete_default_stem_mode_member_inventory(self) -> None:
         from core.stem_roles import StemRoleId
         from core.stems import StemId, StemRoute
         from engines.stem_writer import export_source_map
@@ -497,25 +489,23 @@ class ExportSourceMapTests(unittest.TestCase):
             filename_tag="Drums",
         )
         cases = (
-            ("full inventory", inventory, inventory, "", list(inventory), None),
+            ("full inventory", inventory, inventory, "", [inventory[0]]),
             (
                 "explicit empty",
                 inventory,
                 (),
                 "",
-                [],
-                "explicit stem-mode selection resolved no export routes",
+                [inventory[0]],
             ),
             (
                 "focus conflict",
                 (bass, drums),
                 (drums,),
                 "instrument.bass",
-                [],
-                "explicit selected stem routes conflicts with stem-mode focus",
+                [bass, drums],
             ),
         )
-        for label, routes, selected, focus, expected_writes, error in cases:
+        for label, routes, selected, focus, expected_writes in cases:
             with self.subTest(label=label):
                 model = _EngineModelFixture(
                     routes=routes,
@@ -541,11 +531,7 @@ class ExportSourceMapTests(unittest.TestCase):
                     "drums": object(),
                 }
 
-                if error is None:
-                    export_source_map(sep, sources, samplerate=44100)
-                else:
-                    with self.assertRaisesRegex(RuntimeError, error):
-                        export_source_map(sep, sources, samplerate=44100)
+                export_source_map(sep, sources, samplerate=44100)
 
                 self.assertEqual(writes, expected_writes)
 

@@ -127,7 +127,14 @@ class CatalogStemMergeTests(unittest.TestCase):
         enqueue.assert_not_called()
         ensure.assert_not_called()
 
-    def test_existing_stems_skip_cache_and_enqueue(self) -> None:
+    def test_existing_stems_still_acquire_missing_config_evidence(self) -> None:
+        digest = "a" * 64
+        hit = StemCacheHit(
+            stems=("Different", "Inventory"),
+            target_instrument="Different",
+            ok=True,
+            content_sha256=digest,
+        )
         supplements = (
             {},
             {"M": {"m.ckpt": "https://example.test/m.ckpt", "m.yaml": _YAML_URL}},
@@ -141,14 +148,15 @@ class CatalogStemMergeTests(unittest.TestCase):
             },
         )
         with _with_supplements(supplements):
-            with mock.patch("core.catalogue_stem_cache.lookup_stems") as lookup:
+            with mock.patch("core.catalogue_stem_cache.lookup_stems", return_value=hit) as lookup:
                 with mock.patch("core.catalogue_stem_cache.enqueue_missing") as enqueue:
                     with mock.patch("core.catalogue_stem_cache.ensure_worker_started") as ensure:
                         merged = catalog_sources.merged_catalogues(vr={}, mdx={}, demucs={})
         meta = merged.meta["M"]
         self.assertEqual(meta.stems, ["Drums", "Bass"])
         self.assertEqual(meta.target_instrument, "Drums")
-        lookup.assert_not_called()
+        self.assertEqual(meta.config_sha256, digest)
+        lookup.assert_called_once_with(_YAML_URL)
         enqueue.assert_not_called()
         ensure.assert_not_called()
 

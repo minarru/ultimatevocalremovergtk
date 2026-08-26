@@ -274,6 +274,9 @@ def render_summary_report(
         lines.extend(
             (
                 f"- Reviewed catalogue models: **{len(stem_audit.reviewed_model_ids)}**",
+                f"- Reviewed contexts: **{stem_audit.reviewed_context_count}**",
+                "- Reviewed karaoke declarations: "
+                f"**{stem_audit.reviewed_karaoke_declaration_count}**",
                 f"- Waived catalogue models: **{len(stem_audit.waived_model_ids)}**",
                 f"- Raw catalogue models: **{len(stem_audit.raw_model_ids)}**",
                 "- Structural stem findings: "

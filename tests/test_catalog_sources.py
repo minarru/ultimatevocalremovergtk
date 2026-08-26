@@ -350,7 +350,8 @@ class CatalogueIntentOverlayTests(unittest.TestCase):
             "runtime-contract-unavailable error=test",
         )
 
-    def test_all_28_promoted_ids_fail_closed_without_live_config_bytes(self) -> None:
+    def test_all_28_promoted_ids_transition_to_reviewed_from_exact_config_cache(self) -> None:
+        from core.catalogue_stem_cache import StemCacheHit
         from core.mdx_runtime_contract import load_bundled_mdx_runtime_contracts
 
         contracts = {
@@ -362,24 +363,61 @@ class CatalogueIntentOverlayTests(unittest.TestCase):
         catalogue = {}
         metadata = {}
         model_id_by_label = {}
+        hits_by_url = {}
         for index, (model_id, contract) in enumerate(contracts.items()):
             basename = model_id.removeprefix("mdx:")
             label = f"runtime-contract-{index:02d}"
             extension = ".onnx" if contract.backend == "classic_onnx" else ".ckpt"
             files = {f"{basename}{extension}": f"https://example.test/{basename}{extension}"}
             if contract.config_yamls:
-                files[contract.config_yamls[0]] = "https://example.test/config.yaml"
+                config_name = contract.config_yamls[0]
+                config_url = f"https://example.test/config/{index}/{config_name}"
+                files[config_name] = config_url
+                evidence = contract.config_evidence[config_name]
+                source_stems = list(evidence.training_instruments)
+                source_target = evidence.target_instrument or ""
+                hits_by_url[config_url] = StemCacheHit(
+                    stems=evidence.training_instruments,
+                    target_instrument=source_target,
+                    ok=True,
+                    content_sha256=evidence.content_sha256,
+                )
+            else:
+                source_stems = list(contract.native_signature)
+                source_target = ""
             catalogue[label] = files
             metadata[label] = {
-                "stems": list(contract.native_signature),
+                "stems": source_stems,
                 "primary_stem": contract.primary_native,
-                "target_instrument": (
-                    contract.primary_native if contract.backend == "mdx_c_target" else ""
-                ),
+                "target_instrument": source_target,
             }
             model_id_by_label[label] = model_id
 
-        with _with_supplements(({}, catalogue, {}, metadata)):
+        with (
+            _with_supplements(({}, catalogue, {}, metadata)),
+            unittest.mock.patch("core.catalogue_stem_cache.lookup_stems", return_value=None),
+        ):
+            uncached = catalog_sources.merged_catalogues(vr={}, mdx={}, demucs={})
+
+        self.assertEqual(
+            {
+                status: sum(
+                    uncached.meta[label].stem_semantics.status == status
+                    for label in model_id_by_label
+                )
+                for status in ("reviewed", "raw")
+            },
+            {"reviewed": 20, "raw": 8},
+        )
+
+        catalog_sources.invalidate_catalogue_merge()
+        with (
+            _with_supplements(({}, catalogue, {}, metadata)),
+            unittest.mock.patch(
+                "core.catalogue_stem_cache.lookup_stems",
+                side_effect=lambda url: hits_by_url.get(url),
+            ),
+        ):
             merged = catalog_sources.merged_catalogues(vr={}, mdx={}, demucs={})
 
         self.assertEqual(
@@ -393,16 +431,11 @@ class CatalogueIntentOverlayTests(unittest.TestCase):
         for label, model_id in model_id_by_label.items():
             with self.subTest(model_id=model_id):
                 projection = merged.meta[label].stem_semantics
-                contract = contracts[model_id]
-                expected_status = "reviewed" if contract.backend == "classic_onnx" else "raw"
-                self.assertEqual(projection.status, expected_status)
-                if contract.backend == "classic_onnx":
-                    self.assertIn(
-                        "runtime_contract=model_runtime_stem_contracts.json",
-                        projection.evidence,
-                    )
-                else:
-                    self.assertIn("config content SHA-256", projection.warning)
+                self.assertEqual(projection.status, "reviewed")
+                self.assertIn(
+                    "runtime_contract=model_runtime_stem_contracts.json",
+                    projection.evidence,
+                )
         self.assertEqual(
             {
                 status: sum(
@@ -411,7 +444,7 @@ class CatalogueIntentOverlayTests(unittest.TestCase):
                 )
                 for status in ("reviewed", "raw")
             },
-            {"reviewed": 18, "raw": 10},
+            {"reviewed": 28, "raw": 0},
         )
 
 

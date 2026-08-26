@@ -908,7 +908,7 @@ class DownloadCenterWindow:
 
     def _pending_stem_yaml_urls(self, labels: list[str] | None = None) -> list[str]:
         """YAML URLs still missing from the stem cache for ``labels`` (or all)."""
-        from core.catalog_sources import _yaml_config_url
+        from core.catalog_sources import _needs_catalogue_config_evidence, _yaml_config_url
         from core.catalogue_stem_cache import catalogue_stems_enabled, lookup_stems
 
         if not catalogue_stems_enabled():
@@ -924,7 +924,7 @@ class DownloadCenterWindow:
         urls: list[str] = []
         seen: set[str] = set()
         for meta in metas:
-            if meta.stems:
+            if not _needs_catalogue_config_evidence(meta):
                 continue
             url = _yaml_config_url(meta.files)
             if not url or url in seen:
