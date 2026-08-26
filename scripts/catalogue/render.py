@@ -9,8 +9,7 @@ import time
 import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from types import SimpleNamespace
-from typing import Any, Dict, List, Mapping, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Sequence, Tuple
 
 from catalogue.collect import (
     COMMUNITY_CACHE_DIR,
@@ -19,15 +18,12 @@ from catalogue.collect import (
     YAML_CACHE_DIR,
     CommunityRef,
     ModelEntry,
-    runtime_stem_reconciliation,
-)
-from core.model_catalogue import (
-    catalogue_presentation_id,
-    project_catalogue_display,
+    catalogue_projection,
 )
 from core.model_naming import load_model_display_manifest
-from core.model_stem_manifest import StemSemanticsRegistry
-from core.model_stem_semantics import resolve_catalogue_stem_semantics
+
+if TYPE_CHECKING:
+    from catalogue.stem_audit import StemSemanticReferenceRow
 
 
 def _reference_tsv_text(refs: Dict[str, CommunityRef]) -> str:
@@ -65,17 +61,6 @@ _DISPLAY_REFERENCE_HEADERS = (
 _VR_GENERATION_RE = re.compile(r"^VR Arch Single Model (v\d+):", re.IGNORECASE)
 _DEMUCS_GENERATION_RE = re.compile(r"^Demucs (v\d+):", re.IGNORECASE)
 _HYPHENATED_STEM_COUNT_RE = re.compile(r"\b\d+-stems?\b", re.IGNORECASE)
-_RUNTIME_FAMILY_BY_CATALOGUE_FAMILY = {
-    "VR Architecture": "vr",
-    "Demucs": "demucs",
-    "Apollo": "apollo",
-    "MDX-Net": "mdx",
-    "MDX-Net ONNX": "mdx",
-    "MDX23C": "mdx",
-    "Roformer": "mdx",
-    "SCNet": "mdx",
-    "Bandit": "mdx",
-}
 
 
 def _tsv_cell(value: Any) -> str:
@@ -140,45 +125,7 @@ class PresentationReferenceAudit:
 
 
 def _catalogue_projection(entry: ModelEntry) -> Tuple[str, str]:
-    try:
-        family = _RUNTIME_FAMILY_BY_CATALOGUE_FAMILY[entry.family]
-    except KeyError as exc:
-        accepted = ", ".join(_RUNTIME_FAMILY_BY_CATALOGUE_FAMILY)
-        raise ValueError(
-            f"unsupported catalogue family {entry.family!r} for "
-            f"{entry.catalogue_label!r}; accepted families: {accepted}"
-        ) from exc
-    if not entry.weight_file:
-        raise ValueError(f"catalogue row has no primary artifact: {entry.catalogue_label!r}")
-    files = {entry.weight_file: ""}
-    if entry.config_yaml:
-        files[entry.config_yaml] = ""
-    meta = SimpleNamespace(
-        label=entry.catalogue_label,
-        display=entry.catalogue_label,
-        files=files,
-        checkpoint=entry.weight_file,
-        stems=(),
-    )
-    model_id = catalogue_presentation_id(
-        family,
-        entry.catalogue_label,
-        files,
-        meta,
-    )
-    if model_id is None:
-        raise ValueError(
-            f"catalogue row has no unambiguous presentation primary: {entry.catalogue_label!r}"
-        )
-    return (
-        model_id,
-        project_catalogue_display(
-            family,
-            entry.catalogue_label,
-            files,
-            meta,
-        ),
-    )
+    return catalogue_projection(entry)
 
 
 def _canonical_model_id(entry: ModelEntry) -> str:
@@ -270,156 +217,18 @@ def presentation_reference_tsv(entries: List[ModelEntry]) -> str:
 
 
 def stem_semantics_reference_tsv(
-    entries: List[ModelEntry],
-    *,
-    registry: StemSemanticsRegistry,
+    rows: Sequence[StemSemanticReferenceRow],
 ) -> str:
-    """Render reviewed runtime semantics; guessed catalogue intent is evidence only."""
-    from core.stem_roles import StemProcessingContext, StemRoleId
-
-    identity_headers = (
-        "runtime_family",
-        "runtime_basename",
-        "catalogue_source",
-        "catalogue_label",
-        "execution_arch",
+    """Serialize immutable audit-owned rows without resolving declarations."""
+    from catalogue.stem_audit import (
+        STEM_SEMANTICS_IDENTITY_HEADERS,
+        STEM_SEMANTICS_REFERENCE_HEADERS,
     )
-    lines = [
-        "\t".join(identity_headers)
-        + "\tmodel_id\tmodel_display\tnative_signature\tprocessing_context\tnative_stem\t"
-        "production\tbackend_primary\tbackend_target\tlogical_primary\tlogical_secondary\t"
-        "role_id\t"
-        "canonical_name\tfilename_tag\tpair_id\tintent\tintent_source\treview_status\t"
-        "evidence_or_waiver\tcomplement_of\tderived_from\tselected_by_default"
-    ]
-    for entry in sorted(entries, key=_canonical_model_id):
-        model_id = _canonical_model_id(entry)
-        reconciled = runtime_stem_reconciliation(
-            model_id,
-            entry.instruments,
-            target_instrument=entry.target_instrument,
-            config_yaml=entry.config_yaml,
-            config_sha256=entry.config_sha256,
-            metadata_source=entry.metadata_source,
-        )
-        native_signature = reconciled.native_signature
-        contexts = [StemProcessingContext.FULL_MIX]
-        declaration = registry.models.get(model_id)
-        if declaration is not None and StemProcessingContext.VOCAL_SPLIT in declaration.contexts:
-            contexts.append(StemProcessingContext.VOCAL_SPLIT)
-        for context in contexts:
-            semantics = resolve_catalogue_stem_semantics(
-                model_id,
-                native_stems=native_signature,
-                backend_primary=entry.primary_stem,
-                backend_target=entry.target_instrument,
-                context=context,
-                registry=registry,
-                runtime_warning=reconciled.warning,
-            )
-            context_roles = {output.role for output in semantics.outputs}
-            for output in semantics.outputs:
-                role = output.role.value if isinstance(output.role, StemRoleId) else output.role.tag
-                definition = (
-                    registry.roles.get(output.role) if isinstance(output.role, StemRoleId) else None
-                )
-                pair_id = next(
-                    (
-                        pair.id
-                        for pair in registry.pairs.values()
-                        if output.role in pair.roles and set(pair.roles).issubset(context_roles)
-                    ),
-                    "",
-                )
-                lines.append(
-                    "\t".join(
-                        _tsv_cell(value)
-                        for value in (
-                            *_stem_semantics_identity(entry, model_id),
-                            model_id,
-                            _display_label(entry),
-                            "|".join(native_signature),
-                            context.value,
-                            output.native.raw if output.native else "",
-                            output.production.value,
-                            entry.primary_stem,
-                            entry.target_instrument,
-                            str(output.logical_primary).lower(),
-                            (
-                                str(output.logical_secondary).lower()
-                                if semantics.logical_secondary_role is not None
-                                else ""
-                            ),
-                            role,
-                            definition.display
-                            if definition
-                            else output.native.raw
-                            if output.native
-                            else role,
-                            definition.filename_tag
-                            if definition
-                            else output.native.raw
-                            if output.native
-                            else role,
-                            pair_id,
-                            semantics.intent,
-                            "reviewed_manifest",
-                            semantics.status.value,
-                            semantics.evidence or semantics.warning,
-                            output.complement_of.value if output.complement_of else "",
-                            "|".join(role.value for role in output.derived_from),
-                            str(output.selected_by_default).lower(),
-                        )
-                    )
-                )
-    entries_by_id = {_canonical_model_id(entry): entry for entry in entries}
-    for model_id, reason in sorted(registry.waivers.items()):
-        entry = entries_by_id.get(model_id)
-        if entry is not None:
-            lines.append(
-                "\t".join(
-                    _tsv_cell(value)
-                    for value in (
-                        *_stem_semantics_identity(entry, model_id),
-                        model_id,
-                        _display_label(entry),
-                        "",
-                        "full_mix",
-                        "",
-                        "",
-                        "",
-                        "",
-                        "",
-                        "",
-                        "",
-                        "",
-                        "",
-                        "",
-                        "",
-                        "reviewed_waiver",
-                        "waived",
-                        reason,
-                        "",
-                        "",
-                        "",
-                    )
-                )
-            )
+
+    headers = (*STEM_SEMANTICS_IDENTITY_HEADERS, *STEM_SEMANTICS_REFERENCE_HEADERS)
+    lines = ["\t".join(headers)]
+    lines.extend("\t".join(_tsv_cell(cell) for cell in row.tsv_cells()) for row in rows)
     return "\n".join(lines) + "\n"
-
-
-def _stem_semantics_identity(entry: ModelEntry, model_id: str) -> Tuple[str, str, str, str, str]:
-    """Identity/provenance prefix shared by reviewed and waived TSV rows."""
-    runtime_family, separator, runtime_basename = model_id.partition(":")
-    if not separator or not runtime_family or not runtime_basename:
-        raise ValueError(f"invalid canonical model ID for stem reference: {model_id!r}")
-    return (
-        runtime_family,
-        runtime_basename,
-        entry.source,
-        entry.catalogue_label,
-        entry.arch or entry.family,
-    )
 
 
 def render_summary_report(
@@ -455,11 +264,22 @@ def render_summary_report(
         f"- Unsupported mvsepless entries (omitted): **{unsupported_count}**",
     ]
     if stem_audit is not None:
+        collision_codes = {
+            "role-display-collision",
+            "role-tag-collision",
+            "route-display-collision",
+            "route-tag-collision",
+            "pair-role-collision",
+        }
         lines.extend(
             (
                 f"- Reviewed catalogue models: **{len(stem_audit.reviewed_model_ids)}**",
                 f"- Waived catalogue models: **{len(stem_audit.waived_model_ids)}**",
                 f"- Raw catalogue models: **{len(stem_audit.raw_model_ids)}**",
+                "- Structural stem findings: "
+                f"**{sum(item.structural for item in stem_audit.diagnostics)}**",
+                "- Accidental semantic collisions: "
+                f"**{sum(item.code in collision_codes for item in stem_audit.diagnostics)}**",
                 "- Native-to-role ambiguity groups: "
                 f"**{len(stem_audit.native_to_role_ambiguities)}**",
                 f"- Role-to-native variant groups: **{len(stem_audit.role_to_native_variants)}**",

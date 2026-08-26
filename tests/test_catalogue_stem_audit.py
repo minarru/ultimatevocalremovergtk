@@ -11,7 +11,7 @@ from unittest.mock import patch
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 
-from catalogue import collect  # noqa: E402
+from catalogue import collect, render  # noqa: E402
 from catalogue import stem_audit as stem_audit_module  # noqa: E402
 from catalogue.render import stem_semantics_reference_tsv  # noqa: E402
 from catalogue.stem_audit import (  # noqa: E402
@@ -27,6 +27,7 @@ from core.stem_roles import (  # noqa: E402
     StemId,
     StemProcessingContext,
     StemProduction,
+    StemReviewStatus,
     StemRoleDefinition,
     StemRoleFamily,
     StemRoleId,
@@ -85,13 +86,14 @@ def _declaration(
     full_mix: SimpleNamespace,
     *,
     vocal_split: SimpleNamespace | None = None,
+    intent: str = "vocals",
 ) -> SimpleNamespace:
     contexts = {StemProcessingContext.FULL_MIX: full_mix}
     if vocal_split is not None:
         contexts[StemProcessingContext.VOCAL_SPLIT] = vocal_split
     return SimpleNamespace(
         native_signature=signature,
-        intent="vocals",
+        intent=intent,
         contexts=contexts,
         evidence="fixture",
     )
@@ -161,6 +163,395 @@ def _diagnostic(result: StemAuditResult, code: str) -> StemAuditDiagnostic:
 
 
 class StructuredCatalogueStemAuditTests(unittest.TestCase):
+    def _audit(
+        self,
+        entries: list[collect.ModelEntry],
+        registry: StemSemanticsRegistry,
+    ) -> StemAuditResult:
+        counts = stem_audit_module.catalogue_evidence_counts(entries, {})
+        pinned = (counts.literal_names, counts.normalized_names, counts.primary_names)
+        with patch.object(stem_audit_module, "_PINNED_EVIDENCE_COUNTS", pinned):
+            return audit_catalogue_stems(
+                entries,
+                collect.CatalogueContext(),
+                expected_reference_text="same",
+                actual_reference_text="same",
+                registry=registry,
+            )
+
+    def test_audit_owns_immutable_rows_and_renderer_only_serializes_them(self) -> None:
+        entry = _entry("fixture")
+        registry = _registry(
+            {
+                "mdx:fixture": _declaration(
+                    ("Vocals", "Instrumental"),
+                    _context(
+                        VOCALS,
+                        _native("Vocals", VOCALS),
+                        _native("Instrumental", INSTRUMENTAL),
+                    ),
+                )
+            }
+        )
+
+        result = self._audit([entry], registry)
+
+        self.assertTrue(hasattr(result, "reference_rows"))
+        rows = getattr(result, "reference_rows", ())
+        self.assertEqual(len(rows), 2)
+        with self.assertRaises((AttributeError, TypeError)):
+            rows[0].intent = "changed"
+        rendered = render.stem_semantics_reference_tsv(rows)
+        self.assertEqual(rendered, stem_audit_module.reference_rows_tsv(rows))
+        self.assertEqual({row.model_id for row in rows}, {"mdx:fixture"})
+        self.assertEqual(
+            {(row.processing_context, row.role_id) for row in rows},
+            {
+                (StemProcessingContext.FULL_MIX, str(VOCALS)),
+                (StemProcessingContext.FULL_MIX, str(INSTRUMENTAL)),
+            },
+        )
+
+    def test_reference_rows_are_bidirectionally_complete_for_declarations_and_waivers(
+        self,
+    ) -> None:
+        lead = StemRoleId("vocal.lead")
+        backing = StemRoleId("vocal.backing")
+        accompaniment = StemRoleId("mix.instrumental_with_backing_vocals")
+        roles = {
+            lead: _role(lead, "Lead Vocals", "Lead_Vocals", StemRoleFamily.VOCAL),
+            backing: _role(backing, "Backing Vocals", "Backing_Vocals", StemRoleFamily.VOCAL),
+            INSTRUMENTAL: _role(
+                INSTRUMENTAL,
+                "Instrumental",
+                "Instrumental",
+                StemRoleFamily.MIX,
+            ),
+            accompaniment: _role(
+                accompaniment,
+                "Instrumental with Backing Vocals",
+                "Instrumental_with_Backing_Vocals",
+                StemRoleFamily.MIX,
+            ),
+        }
+        summed = SemanticStemOutput(
+            native=None,
+            role=accompaniment,
+            production=StemProduction.DERIVED,
+            backend_primary=False,
+            logical_primary=False,
+            derived_from=(backing, INSTRUMENTAL),
+            selected_by_default=False,
+        )
+        registry = _registry(
+            {
+                "mdx:reviewed": _declaration(
+                    ("Lead", "Backing", "Instrumental"),
+                    _context(
+                        accompaniment,
+                        _native("Lead", lead),
+                        _native("Backing", backing),
+                        _native("Instrumental", INSTRUMENTAL),
+                        summed,
+                        logical_secondary=lead,
+                    ),
+                    vocal_split=_context(
+                        backing,
+                        _native("Lead", lead),
+                        _native("Backing", backing),
+                        _native("Instrumental", INSTRUMENTAL),
+                        logical_secondary=lead,
+                    ),
+                    intent="karaoke",
+                )
+            },
+            roles=roles,
+            pairs={},
+            waivers={"mdx:waived": "reviewed exception"},
+        )
+        entries = [
+            _entry(
+                "reviewed",
+                instruments=("Lead", "Backing", "Instrumental"),
+                primary="Lead",
+                karaoke=True,
+            ),
+            _entry("waived"),
+        ]
+
+        result = self._audit(entries, registry)
+        self.assertTrue(hasattr(result, "reference_rows"))
+        rows = getattr(result, "reference_rows", ())
+
+        self.assertEqual({row.model_id for row in rows}, {"mdx:reviewed", "mdx:waived"})
+        reviewed_rows = [row for row in rows if row.model_id == "mdx:reviewed"]
+        waiver_rows = [row for row in rows if row.model_id == "mdx:waived"]
+        expected_routes = {
+            (context, str(output.role))
+            for context, declaration in registry.models["mdx:reviewed"].contexts.items()
+            for output in declaration.outputs
+        }
+        self.assertEqual(
+            {(row.processing_context, row.role_id) for row in reviewed_rows},
+            expected_routes,
+        )
+        self.assertTrue(all(type(row.selected_by_default) is bool for row in reviewed_rows))
+        full_mix = [
+            row for row in reviewed_rows if row.processing_context is StemProcessingContext.FULL_MIX
+        ]
+        self.assertEqual(sum(row.logical_secondary is True for row in full_mix), 1)
+        self.assertTrue(all(type(row.logical_secondary) is bool for row in full_mix))
+        sum_row = next(row for row in full_mix if row.role_id == str(accompaniment))
+        self.assertEqual(sum_row.complement_of, "")
+        self.assertEqual(sum_row.derived_from, (str(backing), str(INSTRUMENTAL)))
+        self.assertFalse(sum_row.selected_by_default)
+        self.assertEqual(len(waiver_rows), 1)
+        self.assertIsNone(waiver_rows[0].logical_secondary)
+        self.assertEqual(waiver_rows[0].complement_of, "")
+        self.assertEqual(waiver_rows[0].derived_from, ())
+        self.assertIsNone(waiver_rows[0].selected_by_default)
+
+    def test_manifest_global_structure_reports_unused_intent_overlap_and_separate_orphans(
+        self,
+    ) -> None:
+        unused = StemRoleId("vocal.unused")
+        roles = {
+            VOCALS: _role(VOCALS, "Vocals", "Vocals", StemRoleFamily.VOCAL),
+            INSTRUMENTAL: _role(
+                INSTRUMENTAL,
+                "Instrumental",
+                "Instrumental",
+                StemRoleFamily.MIX,
+            ),
+            unused: _role(unused, "Unused", "Unused", StemRoleFamily.VOCAL),
+        }
+        registry = _registry(
+            {
+                "mdx:fixture": _declaration(
+                    ("Vocals", "Instrumental"),
+                    _context(
+                        VOCALS,
+                        _native("Vocals", VOCALS),
+                        _native("Instrumental", INSTRUMENTAL),
+                    ),
+                    intent="invented",
+                ),
+                "mdx:orphan-declaration": _declaration(
+                    ("Vocals",), _context(VOCALS, _native("Vocals", VOCALS))
+                ),
+            },
+            roles=roles,
+            waivers={
+                "mdx:fixture": "overlap",
+                "mdx:orphan-waiver": "orphan",
+            },
+        )
+
+        result = self._audit([_entry("fixture")], registry)
+
+        self.assertEqual(
+            {
+                "role-unused",
+                "intent-invalid",
+                "manifest-review-overlap",
+                "manifest-orphan-declaration",
+                "manifest-orphan-waiver",
+            }
+            - _codes(result),
+            set(),
+        )
+        self.assertEqual(_diagnostic(result, "role-unused").actual, (str(unused),))
+        self.assertEqual(
+            _diagnostic(result, "manifest-orphan-declaration").model_ids,
+            ("mdx:orphan-declaration",),
+        )
+        self.assertEqual(
+            _diagnostic(result, "manifest-orphan-waiver").model_ids,
+            ("mdx:orphan-waiver",),
+        )
+
+    def test_context_recipe_and_karaoke_secondary_diagnostics_are_schema_2_exact(self) -> None:
+        accompaniment = StemRoleId("mix.instrumental_with_backing_vocals")
+        lead = StemRoleId("vocal.lead")
+        roles = {
+            lead: _role(lead, "Lead Vocals", "Lead_Vocals", StemRoleFamily.VOCAL),
+            INSTRUMENTAL: _role(
+                INSTRUMENTAL,
+                "Instrumental",
+                "Instrumental",
+                StemRoleFamily.MIX,
+            ),
+            accompaniment: _role(
+                accompaniment,
+                "Instrumental with Backing Vocals",
+                "Instrumental_with_Backing_Vocals",
+                StemRoleFamily.MIX,
+            ),
+        }
+        invalid_sum = SemanticStemOutput(
+            native=None,
+            role=accompaniment,
+            production=StemProduction.DERIVED,
+            backend_primary=False,
+            logical_primary=False,
+            derived_from=(INSTRUMENTAL,),
+        )
+        registry = _registry(
+            {
+                "mdx:karaoke": _declaration(
+                    ("Lead", "Instrumental"),
+                    _context(
+                        accompaniment,
+                        _native("Lead", lead),
+                        _native("Instrumental", INSTRUMENTAL),
+                        invalid_sum,
+                    ),
+                    vocal_split=_context(
+                        INSTRUMENTAL,
+                        _native("Lead", lead),
+                        _native("Instrumental", INSTRUMENTAL),
+                        logical_secondary=accompaniment,
+                    ),
+                    intent="karaoke",
+                )
+            },
+            roles=roles,
+            pairs={},
+        )
+
+        result = self._audit(
+            [_entry("karaoke", instruments=("Lead", "Instrumental"), karaoke=True)],
+            registry,
+        )
+
+        self.assertIn("context-logical-secondary-required", _codes(result))
+        self.assertIn("context-logical-secondary", _codes(result))
+        recipe = _diagnostic(result, "context-recipe-invalid")
+        self.assertEqual(recipe.context, StemProcessingContext.FULL_MIX)
+        self.assertEqual(recipe.expected, ("two-or-more native role dependencies",))
+
+    def test_target_complement_rejects_one_source_derived_from_alias(self) -> None:
+        roles = {
+            BASS: _role(BASS, "Bass", "Bass", StemRoleFamily.INSTRUMENT),
+            NO_BASS: _role(NO_BASS, "No Bass", "No_Bass", StemRoleFamily.RESIDUAL),
+        }
+        invalid_alias = SemanticStemOutput(
+            native=None,
+            role=NO_BASS,
+            production=StemProduction.DERIVED,
+            backend_primary=False,
+            logical_primary=False,
+            derived_from=(BASS,),
+        )
+        registry = _registry(
+            {
+                "mdx:target": _declaration(
+                    ("bass",),
+                    _context(BASS, _native("bass", BASS), invalid_alias),
+                )
+            },
+            roles=roles,
+            pairs={},
+        )
+
+        result = self._audit(
+            [
+                _entry(
+                    "target",
+                    instruments=("bass",),
+                    primary="bass",
+                    target="bass",
+                    metadata_source="bundled_yaml:target.yaml",
+                )
+            ],
+            registry,
+        )
+
+        self.assertIn("target-derived-complement", _codes(result))
+        self.assertIn("context-recipe-invalid", _codes(result))
+
+    def test_rendered_route_collision_is_scoped_to_one_model_context(self) -> None:
+        duplicate = StemRoleId("vocal.duplicate")
+        roles = {
+            VOCALS: _role(VOCALS, "Vocals", "Voice", StemRoleFamily.VOCAL),
+            duplicate: _role(duplicate, "ＶＯＣＡＬＳ", "voice", StemRoleFamily.VOCAL),
+        }
+        registry = _registry(
+            {
+                "mdx:collision": _declaration(
+                    ("One", "Two"),
+                    _context(
+                        VOCALS,
+                        _native("One", VOCALS),
+                        _native("Two", duplicate),
+                    ),
+                )
+            },
+            roles=roles,
+            pairs={},
+        )
+
+        result = self._audit(
+            [_entry("collision", instruments=("One", "Two"), primary="One")], registry
+        )
+
+        for code in ("route-display-collision", "route-tag-collision"):
+            self.assertIn(code, _codes(result))
+            diagnostic = _diagnostic(result, code)
+            self.assertEqual(diagnostic.model_ids, ("mdx:collision",))
+            self.assertEqual(diagnostic.context, StemProcessingContext.FULL_MIX)
+
+    def test_reference_projection_detects_stale_secondary_and_default_flags(self) -> None:
+        entry = _entry("fixture")
+        declaration = _declaration(
+            ("Vocals", "Instrumental"),
+            _context(
+                VOCALS,
+                _native("Vocals", VOCALS),
+                _native("Instrumental", INSTRUMENTAL),
+                logical_secondary=INSTRUMENTAL,
+            ),
+        )
+        registry = _registry({"mdx:fixture": declaration})
+        stale_outputs = (
+            SimpleNamespace(
+                native=StemId("Vocals"),
+                role=VOCALS,
+                production=StemProduction.NATIVE,
+                logical_primary=True,
+                logical_secondary=True,
+                complement_of=None,
+                derived_from=(),
+                selected_by_default=None,
+            ),
+            SimpleNamespace(
+                native=StemId("Instrumental"),
+                role=INSTRUMENTAL,
+                production=StemProduction.NATIVE,
+                logical_primary=False,
+                logical_secondary=False,
+                complement_of=None,
+                derived_from=(),
+                selected_by_default=True,
+            ),
+        )
+        stale = SimpleNamespace(
+            model_id="mdx:fixture",
+            context=StemProcessingContext.FULL_MIX,
+            outputs=stale_outputs,
+            status=StemReviewStatus.REVIEWED,
+            warning="",
+            evidence="fixture",
+            intent="vocals",
+            logical_secondary_role=INSTRUMENTAL,
+        )
+
+        with patch.object(collect, "resolve_catalogue_stem_semantics", return_value=stale):
+            result = self._audit([entry], registry)
+
+        self.assertIn("reference-logical-secondary", _codes(result))
+        self.assertIn("reference-selected-by-default", _codes(result))
+
     def test_uses_supplied_entries_and_context_without_collecting_again(self) -> None:
         entry = _entry("fixture")
         registry = _registry(
@@ -233,7 +624,7 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
             ("mdx:missing",),
         )
         self.assertEqual(
-            _diagnostic(result, "manifest-orphan").model_ids,
+            _diagnostic(result, "manifest-orphan-declaration").model_ids,
             ("mdx:orphan",),
         )
         self.assertEqual(result.raw_model_ids, ("mdx:missing",))
@@ -445,7 +836,7 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
             ),
         )
 
-    def test_evidence_and_reference_drift_are_structured_not_rendered_text(self) -> None:
+    def test_structural_audit_does_not_mix_in_on_disk_reference_drift(self) -> None:
         entry = _entry("fixture")
         registry = _registry(
             {
@@ -472,12 +863,13 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
         self.assertEqual(evidence.model_ids, ("mdx:fixture",))
         self.assertEqual(evidence.expected, ("148", "123", "92"))
         self.assertEqual(evidence.actual, ("6", "6", "1"))
-        drift = _diagnostic(result, "reference-drift")
-        self.assertEqual(drift.model_ids, ("mdx:fixture",))
-        self.assertFalse(drift.structural)
-        self.assertFalse(result.reference_matches)
+        self.assertNotIn("reference-drift", _codes(result))
+        self.assertTrue(result.reference_matches)
         self.assertTrue(result.structurally_valid is False)
-        self.assertNotIn("expected\trow", drift.message)
+        self.assertEqual(
+            stem_semantics_reference_tsv(result.reference_rows),
+            stem_audit_module.reference_rows_tsv(result.reference_rows),
+        )
 
     def test_reference_header_contract_appends_dependency_and_default_columns(self) -> None:
         self.assertEqual(
@@ -814,6 +1206,47 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
                 ("vocal.vocals", ("vocal", "vocals", "voices", "vox")),
             ],
         )
+        evidence = {
+            (item.model_id, StemId(item.native).casefold(), item.role_id)
+            for group in (*ambiguities, *variants)
+            for item in group.evidence
+        }
+        self.assertIn(
+            ("mdx:kuielab_a_bass", "bass", "instrument.bass"),
+            evidence,
+        )
+        self.assertIn(
+            ("mdx:scnet_choirsep_exp", "bass", "vocal.bass"),
+            evidence,
+        )
+        self.assertIn(
+            ("mdx:Reverb_HQ_By_FoxJoy", "reverb", "effect.reverb"),
+            evidence,
+        )
+        self.assertIn(
+            ("vr:UVR-DeEcho-DeReverb", "reverb", "effect.reverb_echo"),
+            evidence,
+        )
+        self.assertIn(
+            ("vr:UVR-De-Reverb-aufr33-jarredou", "no dry", "effect.reverb"),
+            evidence,
+        )
+        self.assertIn(
+            ("vr:UVR-DeEcho-DeReverb", "no reverb", "effect.reverb_echo.removed"),
+            evidence,
+        )
+        # Classic ONNX computed inverses remain addressable native backend
+        # keys and therefore participate in the relationship evidence.
+        self.assertIn(("mdx:Kim_Inst", "vocals", "vocal.vocals"), evidence)
+        # A configured target complement is a derived semantic route, not a
+        # runtime-native spelling, and must never enter either projection.
+        self.assertFalse(
+            any(
+                model_id == "mdx:model_bs_roformer_ep_937_sdr_10.5309"
+                and role_id == "instrument.drum_bass"
+                for model_id, _native, role_id in evidence
+            )
+        )
 
     def test_all_28_promoted_ids_are_present_in_semantic_reference_tsv(self) -> None:
         from core.mdx_runtime_contract import load_bundled_mdx_runtime_contracts
@@ -857,10 +1290,13 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
             for model_id, contract in contracts.items()
         ]
 
-        rendered = stem_semantics_reference_tsv(
+        registry = load_bundled_stem_semantics()
+        result = audit_catalogue_stems(
             entries,
-            registry=load_bundled_stem_semantics(),
+            collect.CatalogueContext(),
+            registry=registry,
         )
+        rendered = stem_semantics_reference_tsv(result.reference_rows)
         rows = [line.split("\t") for line in rendered.splitlines()]
         model_id_column = rows[0].index("model_id")
         status_column = rows[0].index("review_status")
@@ -869,6 +1305,144 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
         self.assertEqual(len(contracts), 28)
         self.assertEqual(rendered_ids, set(contracts))
         self.assertTrue(all(row[status_column] == "reviewed" for row in rows[1:]))
+
+    def test_canonical_snapshot_is_483_2_0_with_bidirectional_row_parity(self) -> None:
+        """Checked identity evidence and reviewed schema-2 routes agree exactly."""
+        from core.mdx_runtime_contract import load_bundled_mdx_runtime_contracts
+        from core.model_stem_manifest import load_bundled_stem_semantics
+
+        registry = load_bundled_stem_semantics()
+        runtime_contracts = load_bundled_mdx_runtime_contracts().contracts
+        reference_path = os.path.join(ROOT, "docs", "model_stem_semantics_reference.tsv")
+        with open(reference_path, encoding="utf-8") as handle:
+            lines = handle.read().splitlines()
+        headers = lines[0].split("\t")
+        identity_by_id = {}
+        for line in lines[1:]:
+            cells = dict(zip(headers, line.split("\t"), strict=True))
+            identity_by_id.setdefault(cells["model_id"], cells)
+
+        family_by_runtime = {
+            "demucs": "Demucs",
+            "vr": "VR Architecture",
+            "apollo": "Apollo",
+            "mdx": "MDX-Net ONNX",
+        }
+        extension_by_runtime = {
+            "demucs": ".th",
+            "vr": ".pth",
+            "apollo": ".onnx",
+            "mdx": ".ckpt",
+        }
+        entries = []
+        for model_id, identity in sorted(identity_by_id.items()):
+            runtime_family, runtime_basename = model_id.split(":", 1)
+            declaration = registry.models.get(model_id)
+            signature = tuple(declaration.native_signature) if declaration else ()
+            contract = runtime_contracts.get(model_id)
+            config_yaml = contract.config_yamls[0] if contract and contract.config_yamls else ""
+            collected_instruments = (
+                contract.config_evidence[config_yaml].training_instruments
+                if contract is not None and config_yaml
+                else signature
+            )
+            entries.append(
+                collect.ModelEntry(
+                    source=identity["catalogue_source"],
+                    family=family_by_runtime[runtime_family],
+                    catalogue_label=identity["catalogue_label"],
+                    weight_file=runtime_basename + extension_by_runtime[runtime_family],
+                    arch=identity["execution_arch"],
+                    config_yaml=config_yaml,
+                    config_sha256=(
+                        contract.config_evidence[config_yaml].content_sha256
+                        if contract is not None and config_yaml
+                        else ""
+                    ),
+                    instruments=list(collected_instruments),
+                    primary_stem=signature[0] if signature else "",
+                    target_instrument=(
+                        contract.primary_native
+                        if contract is not None and contract.backend == "mdx_c_target"
+                        else ""
+                    ),
+                    metadata_source=(
+                        f"bundled_yaml:{config_yaml}"
+                        if config_yaml
+                        else "canonical-reference-identity"
+                    ),
+                    is_karaoke=bool(declaration and declaration.intent == "karaoke"),
+                )
+            )
+
+        counts = stem_audit_module.catalogue_evidence_counts(entries, {})
+        pinned = (counts.literal_names, counts.normalized_names, counts.primary_names)
+        with patch.object(stem_audit_module, "_PINNED_EVIDENCE_COUNTS", pinned):
+            result = audit_catalogue_stems(
+                entries,
+                collect.CatalogueContext(),
+                registry=registry,
+            )
+
+        self.assertEqual(len(identity_by_id), 485)
+        self.assertEqual(
+            len(result.reviewed_model_ids),
+            483,
+            (result.raw_model_ids, result.diagnostics),
+        )
+        self.assertEqual(len(result.waived_model_ids), 2)
+        self.assertEqual(result.raw_model_ids, ())
+        self.assertEqual(result.diagnostics, ())
+        self.assertEqual(
+            {row.model_id for row in result.reference_rows},
+            set(identity_by_id),
+        )
+
+        rows_by_route = {
+            (row.model_id, row.processing_context, row.role_id): row
+            for row in result.reference_rows
+            if row.review_status == StemReviewStatus.REVIEWED.value
+        }
+        expected_routes = {
+            (model_id, context, str(output.role)): output
+            for model_id, declaration in registry.models.items()
+            for context, declared_context in declaration.contexts.items()
+            for output in declared_context.outputs
+        }
+        self.assertEqual(set(rows_by_route), set(expected_routes))
+        for key, output in expected_routes.items():
+            row = rows_by_route[key]
+            self.assertIs(type(row.selected_by_default), bool)
+            self.assertEqual(row.complement_of, str(output.complement_of or ""))
+            self.assertEqual(
+                row.derived_from,
+                tuple(str(role) for role in output.derived_from),
+            )
+            declared_context = registry.models[key[0]].contexts[key[1]]
+            if declared_context.logical_secondary is None:
+                self.assertIsNone(row.logical_secondary)
+            else:
+                self.assertIs(type(row.logical_secondary), bool)
+
+        waiver_rows = [
+            row
+            for row in result.reference_rows
+            if row.review_status == StemReviewStatus.WAIVED.value
+        ]
+        self.assertEqual({row.model_id for row in waiver_rows}, set(registry.waivers))
+        self.assertEqual(len(waiver_rows), 2)
+        self.assertTrue(
+            all(
+                row.complement_of == ""
+                and row.derived_from == ()
+                and row.selected_by_default is None
+                for row in waiver_rows
+            )
+        )
+        self.assertEqual(
+            render.stem_semantics_reference_tsv(result.reference_rows),
+            stem_audit_module.reference_rows_tsv(result.reference_rows),
+        )
 
 
 if __name__ == "__main__":

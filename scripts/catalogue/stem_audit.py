@@ -10,7 +10,6 @@ generated-reference drift without parsing human-readable audit output.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import sys
@@ -18,16 +17,17 @@ import time
 import unicodedata
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field
-from typing import Any, Iterable, Iterator, Mapping, Sequence
+from typing import AbstractSet, Any, Iterable, Iterator, Mapping, Sequence
 
 from catalogue.collect import (
     CatalogueContext,
     ModelEntry,
+    catalogue_projection,
     is_runtime_target_instrument,
-    runtime_stem_reconciliation,
+    reconcile_stem_semantics,
 )
 from core.model_stem_manifest import StemSemanticsRegistry
-from core.model_stem_semantics import resolve_catalogue_stem_semantics
+from core.model_stem_semantics import MODEL_STEM_INTENTS
 from core.stem_roles import (
     StemId,
     StemProcessingContext,
@@ -58,6 +58,13 @@ STEM_SEMANTICS_REFERENCE_HEADERS = (
     "complement_of",
     "derived_from",
     "selected_by_default",
+)
+STEM_SEMANTICS_IDENTITY_HEADERS = (
+    "runtime_family",
+    "runtime_basename",
+    "catalogue_source",
+    "catalogue_label",
+    "execution_arch",
 )
 
 _COMPLEMENT_ONLY_NAMES = frozenset({"drum-bass", "no bass", "no drums", "no other"})
@@ -97,6 +104,85 @@ class StemAuditDiagnostic:
     expected: tuple[str, ...] = ()
     actual: tuple[str, ...] = ()
     structural: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class StemSemanticReferenceRow:
+    """One immutable audit-owned reviewed route or exact waiver row."""
+
+    runtime_family: str
+    runtime_basename: str
+    catalogue_source: str
+    catalogue_label: str
+    execution_arch: str
+    model_id: str
+    model_display: str
+    native_signature: tuple[str, ...]
+    processing_context: StemProcessingContext
+    native_stem: str
+    production: str
+    backend_primary: str
+    backend_target: str
+    logical_primary: bool | None
+    logical_secondary: bool | None
+    role_id: str
+    canonical_name: str
+    filename_tag: str
+    pair_id: str
+    intent: str
+    intent_source: str
+    review_status: str
+    evidence_or_waiver: str
+    complement_of: str = ""
+    derived_from: tuple[str, ...] = ()
+    selected_by_default: bool | None = None
+
+    def tsv_cells(self) -> tuple[str, ...]:
+        """Return the fixed Task 2 TSV schema without presentation inference."""
+
+        def boolean(value: bool | None) -> str:
+            return "" if value is None else str(value).lower()
+
+        return (
+            self.runtime_family,
+            self.runtime_basename,
+            self.catalogue_source,
+            self.catalogue_label,
+            self.execution_arch,
+            self.model_id,
+            self.model_display,
+            "|".join(self.native_signature),
+            self.processing_context.value,
+            self.native_stem,
+            self.production,
+            self.backend_primary,
+            self.backend_target,
+            boolean(self.logical_primary),
+            boolean(self.logical_secondary),
+            self.role_id,
+            self.canonical_name,
+            self.filename_tag,
+            self.pair_id,
+            self.intent,
+            self.intent_source,
+            self.review_status,
+            self.evidence_or_waiver,
+            self.complement_of,
+            "|".join(self.derived_from),
+            boolean(self.selected_by_default),
+        )
+
+
+def _tsv_cell(value: object) -> str:
+    return str(value or "").replace("\t", " ").replace("\r", " ").replace("\n", " ")
+
+
+def reference_rows_tsv(rows: Sequence[StemSemanticReferenceRow]) -> str:
+    """Canonical candidate bytes used to verify the separate renderer."""
+    headers = (*STEM_SEMANTICS_IDENTITY_HEADERS, *STEM_SEMANTICS_REFERENCE_HEADERS)
+    lines = ["\t".join(headers)]
+    lines.extend("\t".join(_tsv_cell(cell) for cell in row.tsv_cells()) for row in rows)
+    return "\n".join(lines) + "\n"
 
 
 @dataclass(frozen=True, slots=True)
@@ -141,6 +227,7 @@ class StemAuditResult:
     raw_model_ids: tuple[str, ...]
     evidence_counts: CatalogueEvidenceCounts
     diagnostics: tuple[StemAuditDiagnostic, ...]
+    reference_rows: tuple[StemSemanticReferenceRow, ...] = ()
     native_to_role_ambiguities: tuple[NativeToRoleAmbiguity, ...] = ()
     role_to_native_variants: tuple[RoleToNativeVariant, ...] = ()
 
@@ -150,7 +237,9 @@ class StemAuditResult:
 
     @property
     def reference_matches(self) -> bool:
-        return not any(diagnostic.code == "reference-drift" for diagnostic in self.diagnostics)
+        return not any(
+            diagnostic.code == "reference-candidate-mismatch" for diagnostic in self.diagnostics
+        )
 
     @property
     def ok(self) -> bool:
@@ -175,6 +264,7 @@ class _ContextRoleProjection:
     context: StemProcessingContext
     declared_roles: frozenset[str]
     resolved_roles: frozenset[str]
+    semantics: Any | None = None
 
 
 def _audit_key(value: object) -> str:
@@ -184,7 +274,7 @@ def _audit_key(value: object) -> str:
 def _signature_matches(expected: Sequence[str], actual: Sequence[str]) -> bool:
     expected_keys = tuple(_audit_key(value) for value in expected)
     actual_keys = tuple(_audit_key(value) for value in actual)
-    return len(expected_keys) == len(actual_keys) and set(expected_keys) == set(actual_keys)
+    return expected_keys == actual_keys
 
 
 def _sorted_model_ids(model_ids: Iterable[str]) -> tuple[str, ...]:
@@ -284,12 +374,7 @@ def catalogue_stem_relationships(
 
 
 def _catalogue_model_id(entry: ModelEntry) -> str:
-    # Keep the audit importable by the renderer that will consume its result in
-    # Task 2.  The local import avoids a module cycle while still sharing the
-    # exact UI/catalogue identity projection rather than minting a second one.
-    from catalogue.render import _canonical_model_id
-
-    return _canonical_model_id(entry)
+    return catalogue_projection(entry)[0]
 
 
 def _community_stem_tokens(stems_text: str) -> tuple[str, ...]:
@@ -409,6 +494,69 @@ def _role_collision_diagnostics(
     return diagnostics
 
 
+def _unused_role_diagnostics(
+    registry: StemSemanticsRegistry,
+    catalogue_model_ids: tuple[str, ...],
+) -> list[StemAuditDiagnostic]:
+    used = {
+        output.role
+        for declaration in registry.models.values()
+        for context in declaration.contexts.values()
+        for output in context.outputs
+        if isinstance(output.role, StemRoleId)
+    }
+    used.update(role for pair in registry.pairs.values() for role in pair.roles)
+    unused = tuple(sorted((str(role) for role in set(registry.roles) - used), key=str.casefold))
+    if not unused:
+        return []
+    return [
+        StemAuditDiagnostic(
+            code="role-unused",
+            model_ids=catalogue_model_ids,
+            message="role definitions must be used by a context output or pair",
+            actual=unused,
+        )
+    ]
+
+
+def _route_collision_diagnostics(
+    model_id: str,
+    context: StemProcessingContext,
+    outputs: Sequence[Any],
+    registry: StemSemanticsRegistry,
+) -> list[StemAuditDiagnostic]:
+    diagnostics = []
+    for field_name, code in (
+        ("display", "route-display-collision"),
+        ("filename_tag", "route-tag-collision"),
+    ):
+        grouped: dict[str, list[str]] = defaultdict(list)
+        for output in outputs:
+            if not isinstance(output.role, StemRoleId):
+                continue
+            definition = registry.roles.get(output.role)
+            if definition is None:
+                continue
+            grouped[_audit_key(getattr(definition, field_name))].append(str(output.role))
+        for normalized, roles in grouped.items():
+            role_ids = tuple(sorted(set(roles), key=str.casefold))
+            if len(role_ids) < 2:
+                continue
+            diagnostics.append(
+                StemAuditDiagnostic(
+                    code=code,
+                    model_ids=(model_id,),
+                    context=context,
+                    message=(
+                        f"routes {', '.join(role_ids)} share normalized {field_name} "
+                        f"{normalized!r} in one rendered context"
+                    ),
+                    actual=role_ids,
+                )
+            )
+    return diagnostics
+
+
 def _pair_diagnostics(
     registry: StemSemanticsRegistry,
     catalogue_model_ids: tuple[str, ...],
@@ -507,9 +655,10 @@ def _target_projection_diagnostics(
             )
         derived = _derived_outputs(declared_context)
         native_role = _output_role(native[0]) if len(native) == 1 else ""
-        dependency_is_valid = len(derived) == 1 and (
-            str(derived[0].complement_of or "") == native_role
-            or tuple(str(role) for role in derived[0].derived_from) == (native_role,)
+        dependency_is_valid = (
+            len(derived) == 1
+            and str(derived[0].complement_of or "") == native_role
+            and not derived[0].derived_from
         )
         if (
             len(derived) != 1
@@ -543,10 +692,9 @@ def _target_projection_diagnostics(
 
 def _context_diagnostics(
     model_id: str,
-    entry: ModelEntry,
     declaration: Any,
     runtime_signature: tuple[str, ...],
-    runtime_warning: str,
+    semantics_by_context: Mapping[StemProcessingContext, Any],
     registry: StemSemanticsRegistry,
 ) -> tuple[list[StemAuditDiagnostic], bool, list[_ContextRoleProjection]]:
     diagnostics = []
@@ -615,6 +763,17 @@ def _context_diagnostics(
                         actual=secondary_matches,
                     )
                 )
+        if declaration.intent == "karaoke" and str(logical_secondary_value or "") != "vocal.lead":
+            diagnostics.append(
+                StemAuditDiagnostic(
+                    code="context-logical-secondary-required",
+                    model_ids=(model_id,),
+                    context=context,
+                    message="karaoke contexts must declare vocal.lead as logical secondary",
+                    expected=("vocal.lead",),
+                    actual=(str(logical_secondary_value),) if logical_secondary_value else (),
+                )
+            )
         native_names = tuple(output.native.raw for output in _native_outputs(declared_context))
         if not _signature_matches(declaration.native_signature, native_names):
             diagnostics.append(
@@ -627,23 +786,15 @@ def _context_diagnostics(
                     actual=native_names,
                 )
             )
-        try:
-            resolved = resolve_catalogue_stem_semantics(
-                model_id,
-                native_stems=runtime_signature,
-                backend_primary=entry.primary_stem,
-                backend_target=entry.target_instrument,
-                context=context,
-                registry=registry,
-                runtime_warning=runtime_warning,
-            )
-        except (AttributeError, KeyError, TypeError, ValueError) as error:
+        resolved = semantics_by_context.get(context)
+        if resolved is None:
             projections.append(
                 _ContextRoleProjection(
                     model_id,
                     context,
                     frozenset(roles),
                     frozenset(),
+                    None,
                 )
             )
             diagnostics.append(
@@ -651,7 +802,7 @@ def _context_diagnostics(
                     code="context-resolution-error",
                     model_ids=(model_id,),
                     context=context,
-                    message=f"semantic resolver rejected the declaration: {error}",
+                    message="reconciled snapshot has no projection for the declared context",
                 )
             )
             continue
@@ -665,8 +816,158 @@ def _context_diagnostics(
                     for output in resolved.outputs
                     if isinstance(output.role, StemRoleId)
                 ),
+                resolved,
             )
         )
+        declared_by_role = {_output_role(output): output for output in declared_context.outputs}
+        resolved_by_role = {_output_role(output): output for output in resolved.outputs}
+        if tuple(declared_by_role) != tuple(resolved_by_role):
+            diagnostics.append(
+                StemAuditDiagnostic(
+                    code="reference-route-set",
+                    model_ids=(model_id,),
+                    context=context,
+                    message="resolved reference routes differ from declared routes or order",
+                    expected=tuple(declared_by_role),
+                    actual=tuple(resolved_by_role),
+                )
+            )
+        expected_secondary_role = str(logical_secondary_value or "")
+        actual_secondary_role = str(resolved.logical_secondary_role or "")
+        if expected_secondary_role != actual_secondary_role:
+            diagnostics.append(
+                StemAuditDiagnostic(
+                    code="reference-logical-secondary",
+                    model_ids=(model_id,),
+                    context=context,
+                    message="resolved context has stale logical-secondary role evidence",
+                    expected=(expected_secondary_role,) if expected_secondary_role else (),
+                    actual=(actual_secondary_role,) if actual_secondary_role else (),
+                )
+            )
+        for output in resolved.outputs:
+            role_id = _output_role(output)
+            declared_output = declared_by_role.get(role_id)
+            if declared_output is None:
+                continue
+            expected_native = declared_output.native.raw if declared_output.native else ""
+            actual_native = output.native.raw if output.native else ""
+            expected_route = (
+                expected_native,
+                declared_output.production.value,
+                str(declared_output.complement_of or ""),
+                *(str(role) for role in declared_output.derived_from),
+            )
+            actual_route = (
+                actual_native,
+                output.production.value,
+                str(output.complement_of or ""),
+                *(str(role) for role in output.derived_from),
+            )
+            if expected_route != actual_route:
+                diagnostics.append(
+                    StemAuditDiagnostic(
+                        code="reference-route-data",
+                        model_ids=(model_id,),
+                        context=context,
+                        message="resolved reference route differs from its declaration",
+                        expected=expected_route,
+                        actual=actual_route,
+                    )
+                )
+            expected_primary = role_id == logical_primary
+            if type(output.logical_primary) is not bool or (
+                output.logical_primary is not expected_primary
+            ):
+                diagnostics.append(
+                    StemAuditDiagnostic(
+                        code="reference-logical-primary",
+                        model_ids=(model_id,),
+                        context=context,
+                        message="resolved route has stale logical-primary evidence",
+                        expected=(str(expected_primary).lower(),),
+                        actual=(str(output.logical_primary).lower(),),
+                    )
+                )
+            expected_secondary = logical_secondary_value is not None and role_id == str(
+                logical_secondary_value
+            )
+            if type(output.logical_secondary) is not bool or (
+                output.logical_secondary is not expected_secondary
+            ):
+                diagnostics.append(
+                    StemAuditDiagnostic(
+                        code="reference-logical-secondary",
+                        model_ids=(model_id,),
+                        context=context,
+                        message="resolved route has stale logical-secondary evidence",
+                        expected=(str(expected_secondary).lower(),),
+                        actual=(str(output.logical_secondary).lower(),),
+                    )
+                )
+            expected_default = declared_output.selected_by_default
+            if (
+                type(expected_default) is not bool
+                or type(output.selected_by_default) is not bool
+                or (output.selected_by_default is not expected_default)
+            ):
+                diagnostics.append(
+                    StemAuditDiagnostic(
+                        code="reference-selected-by-default",
+                        model_ids=(model_id,),
+                        context=context,
+                        message="resolved route has stale default-selection evidence",
+                        expected=(str(expected_default).lower(),),
+                        actual=(str(output.selected_by_default).lower(),),
+                    )
+                )
+        native_role_ids = {
+            _output_role(output) for output in declared_context.outputs if output.native is not None
+        }
+        for output in declared_context.outputs:
+            complement = str(output.complement_of or "")
+            dependencies = tuple(str(role) for role in output.derived_from)
+            native_recipe_valid = (
+                output.production is StemProduction.NATIVE and not complement and not dependencies
+            )
+            complement_recipe_valid = (
+                output.production is StemProduction.DERIVED
+                and bool(complement)
+                and not dependencies
+                and complement in native_role_ids
+            )
+            derived_recipe_valid = (
+                output.production is StemProduction.DERIVED
+                and not complement
+                and len(dependencies) >= 2
+                and len(set(dependencies)) == len(dependencies)
+                and set(dependencies).issubset(native_role_ids)
+            )
+            recipe_valid = (
+                native_recipe_valid
+                if output.native is not None
+                else complement_recipe_valid or derived_recipe_valid
+            )
+            if recipe_valid:
+                continue
+            diagnostics.append(
+                StemAuditDiagnostic(
+                    code="context-recipe-invalid",
+                    model_ids=(model_id,),
+                    context=context,
+                    message="route does not satisfy the schema-2 production recipe",
+                    expected=(
+                        (
+                            "native route without recipe"
+                            if output.native is not None
+                            else "two-or-more native role dependencies"
+                            if dependencies
+                            else "complement_of one native role"
+                        ),
+                    ),
+                    actual=tuple(filter(None, (complement, *dependencies))),
+                )
+            )
         if resolved.status is not StemReviewStatus.REVIEWED:
             diagnostics.append(
                 StemAuditDiagnostic(
@@ -678,31 +979,139 @@ def _context_diagnostics(
             )
         elif context is StemProcessingContext.FULL_MIX:
             full_mix_reviewed = True
-    return diagnostics, full_mix_reviewed, projections
+    fully_reviewed = (
+        full_mix_reviewed
+        and len(projections) == len(declaration.contexts)
+        and all(
+            projection.semantics is not None
+            and projection.semantics.status is StemReviewStatus.REVIEWED
+            for projection in projections
+        )
+    )
+    return diagnostics, fully_reviewed, projections
 
 
-def _reference_digest(text: str | None) -> str:
-    if text is None:
-        return "missing"
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+def _reference_identity(entry: ModelEntry, model_id: str) -> tuple[str, ...]:
+    runtime_family, separator, runtime_basename = model_id.partition(":")
+    if not separator or not runtime_family or not runtime_basename:
+        raise ValueError(f"invalid canonical model ID for stem reference: {model_id!r}")
+    return (
+        runtime_family,
+        runtime_basename,
+        entry.source,
+        entry.catalogue_label,
+        entry.arch or entry.family,
+    )
+
+
+def _pair_id_for_role(
+    role: object,
+    context_roles: AbstractSet[object],
+    registry: StemSemanticsRegistry,
+) -> str:
+    return next(
+        (
+            pair.id
+            for pair in registry.pairs.values()
+            if role in pair.roles and set(pair.roles).issubset(context_roles)
+        ),
+        "",
+    )
+
+
+def _reference_rows_for_entry(
+    entry: ModelEntry,
+    registry: StemSemanticsRegistry,
+) -> tuple[StemSemanticReferenceRow, ...]:
+    evidence = entry.stem_semantics
+    if evidence is None:
+        raise ValueError(f"entry has no reconciled stem evidence: {entry.catalogue_label!r}")
+    identity = _reference_identity(entry, evidence.model_id)
+    if evidence.model_id in registry.waivers:
+        return (
+            StemSemanticReferenceRow(
+                *identity,
+                model_id=evidence.model_id,
+                model_display=evidence.model_display,
+                native_signature=(),
+                processing_context=StemProcessingContext.FULL_MIX,
+                native_stem="",
+                production="",
+                backend_primary="",
+                backend_target="",
+                logical_primary=None,
+                logical_secondary=None,
+                role_id="",
+                canonical_name="",
+                filename_tag="",
+                pair_id="",
+                intent="",
+                intent_source="reviewed_waiver",
+                review_status=StemReviewStatus.WAIVED.value,
+                evidence_or_waiver=registry.waivers[evidence.model_id],
+            ),
+        )
+    rows = []
+    for semantics in sorted(evidence.contexts, key=lambda item: item.context.value):
+        context_roles = {output.role for output in semantics.outputs}
+        secondary_present = semantics.logical_secondary_role is not None
+        for output in semantics.outputs:
+            role_id = _output_role(output)
+            definition = (
+                registry.roles.get(output.role) if isinstance(output.role, StemRoleId) else None
+            )
+            fallback = output.native.raw if output.native is not None else role_id
+            rows.append(
+                StemSemanticReferenceRow(
+                    *identity,
+                    model_id=evidence.model_id,
+                    model_display=evidence.model_display,
+                    native_signature=evidence.native_signature,
+                    processing_context=semantics.context,
+                    native_stem=output.native.raw if output.native is not None else "",
+                    production=output.production.value,
+                    backend_primary=entry.primary_stem,
+                    backend_target=entry.target_instrument,
+                    logical_primary=output.logical_primary,
+                    logical_secondary=(output.logical_secondary if secondary_present else None),
+                    role_id=role_id,
+                    canonical_name=definition.display if definition is not None else fallback,
+                    filename_tag=(definition.filename_tag if definition is not None else fallback),
+                    pair_id=_pair_id_for_role(output.role, context_roles, registry),
+                    intent=semantics.intent,
+                    intent_source="reviewed_manifest",
+                    review_status=semantics.status.value,
+                    evidence_or_waiver=semantics.evidence or semantics.warning,
+                    complement_of=str(output.complement_of or ""),
+                    derived_from=tuple(str(role) for role in output.derived_from),
+                    selected_by_default=output.selected_by_default,
+                )
+            )
+    return tuple(rows)
 
 
 def audit_catalogue_stems(
     entries: Sequence[ModelEntry],
     context: CatalogueContext,
     *,
-    expected_reference_text: str,
-    actual_reference_text: str | None,
+    expected_reference_text: str = "",
+    actual_reference_text: str | None = None,
     registry: StemSemanticsRegistry,
 ) -> StemAuditResult:
-    """Audit supplied catalogue data without collecting or parsing rendered TSV.
+    """Audit one supplied catalogue snapshot and own its reference rows.
 
-    ``expected_reference_text`` is the candidate already rendered from
-    ``entries``.  The audit compares it byte-for-byte with the supplied current
-    reference; it never reconstructs semantics by reading TSV cells.
+    The legacy text arguments remain accepted for callers being migrated, but
+    on-disk drift is deliberately outside this structural phase.
     """
     selected_registry = registry
-    model_ids_by_entry = tuple((_catalogue_model_id(entry), entry) for entry in entries)
+    if any(entry.stem_semantics is None for entry in entries):
+        reconcile_stem_semantics(list(entries), registry=selected_registry)
+    model_ids_by_entry = tuple(
+        sorted(
+            ((_catalogue_model_id(entry), entry) for entry in entries),
+            key=lambda item: (item[0].casefold(), item[0]),
+        )
+    )
     catalogue_model_ids = _sorted_model_ids(model_id for model_id, _entry in model_ids_by_entry)
     diagnostics: list[StemAuditDiagnostic] = []
 
@@ -741,34 +1150,53 @@ def audit_catalogue_stems(
                 message="catalogue model IDs have neither reviewed declarations nor waivers",
             )
         )
-    orphaned = _sorted_model_ids((declaration_ids | waiver_ids) - catalogue_id_set)
-    if orphaned:
+    orphaned_declarations = _sorted_model_ids(declaration_ids - catalogue_id_set)
+    if orphaned_declarations:
         diagnostics.append(
             StemAuditDiagnostic(
-                code="manifest-orphan",
-                model_ids=orphaned,
-                message="manifest model IDs are absent from the supplied catalogue snapshot",
+                code="manifest-orphan-declaration",
+                model_ids=orphaned_declarations,
+                message="manifest declarations are absent from the supplied catalogue snapshot",
+            )
+        )
+    orphaned_waivers = _sorted_model_ids(waiver_ids - catalogue_id_set)
+    if orphaned_waivers:
+        diagnostics.append(
+            StemAuditDiagnostic(
+                code="manifest-orphan-waiver",
+                model_ids=orphaned_waivers,
+                message="manifest waivers are absent from the supplied catalogue snapshot",
+            )
+        )
+
+    for model_id, declaration in selected_registry.models.items():
+        if declaration.intent in MODEL_STEM_INTENTS:
+            continue
+        diagnostics.append(
+            StemAuditDiagnostic(
+                code="intent-invalid",
+                model_ids=(model_id,),
+                message="reviewed declaration intent is outside the closed vocabulary",
+                expected=tuple(sorted(MODEL_STEM_INTENTS)),
+                actual=(str(declaration.intent),),
             )
         )
 
     reviewed_ids = set()
     raw_ids = set(missing)
     context_role_projections: list[_ContextRoleProjection] = []
+    reference_rows: list[StemSemanticReferenceRow] = []
     for model_id, entry in model_ids_by_entry:
         if model_id in waiver_ids:
+            reference_rows.extend(_reference_rows_for_entry(entry, selected_registry))
             continue
         declaration = selected_registry.models.get(model_id)
         if declaration is None:
             raw_ids.add(model_id)
             continue
-        reconciled = runtime_stem_reconciliation(
-            model_id,
-            entry.instruments,
-            target_instrument=entry.target_instrument,
-            config_yaml=entry.config_yaml,
-            config_sha256=entry.config_sha256,
-            metadata_source=entry.metadata_source,
-        )
+        reconciled = entry.stem_semantics
+        if reconciled is None:
+            raise AssertionError("stem reconciliation did not attach evidence")
         runtime_signature = reconciled.native_signature
         if not _signature_matches(declaration.native_signature, runtime_signature):
             diagnostics.append(
@@ -780,17 +1208,27 @@ def audit_catalogue_stems(
                     actual=runtime_signature,
                 )
             )
-        context_findings, full_mix_reviewed, model_context_projections = _context_diagnostics(
+        context_findings, model_reviewed, model_context_projections = _context_diagnostics(
             model_id,
-            entry,
             declaration,
             runtime_signature,
-            reconciled.warning,
+            {semantics.context: semantics for semantics in reconciled.contexts},
             selected_registry,
         )
         diagnostics.extend(context_findings)
         context_role_projections.extend(model_context_projections)
-        if full_mix_reviewed:
+        for projection in model_context_projections:
+            if projection.semantics is not None:
+                diagnostics.extend(
+                    _route_collision_diagnostics(
+                        model_id,
+                        projection.context,
+                        projection.semantics.outputs,
+                        selected_registry,
+                    )
+                )
+        reference_rows.extend(_reference_rows_for_entry(entry, selected_registry))
+        if model_reviewed:
             reviewed_ids.add(model_id)
         else:
             raw_ids.add(model_id)
@@ -825,6 +1263,7 @@ def audit_catalogue_stems(
             )
 
     diagnostics.extend(_role_collision_diagnostics(selected_registry, catalogue_model_ids))
+    diagnostics.extend(_unused_role_diagnostics(selected_registry, catalogue_model_ids))
     diagnostics.extend(
         _pair_diagnostics(selected_registry, catalogue_model_ids, context_role_projections)
     )
@@ -846,23 +1285,11 @@ def audit_catalogue_stems(
             )
         )
 
-    if actual_reference_text != expected_reference_text:
-        diagnostics.append(
-            StemAuditDiagnostic(
-                code="reference-drift",
-                model_ids=catalogue_model_ids,
-                message="checked-in stem-semantics reference differs from the rendered candidate",
-                expected=(_reference_digest(expected_reference_text),),
-                actual=(_reference_digest(actual_reference_text),),
-                structural=False,
-            )
-        )
-
     waived_catalogue_ids = catalogue_id_set & waiver_ids
     raw_ids.update(catalogue_id_set - reviewed_ids - waived_catalogue_ids)
     native_to_role_ambiguities, role_to_native_variants = catalogue_stem_relationships(
         selected_registry,
-        catalogue_model_ids,
+        _sorted_model_ids(reviewed_ids),
     )
     return StemAuditResult(
         catalogue_model_ids=catalogue_model_ids,
@@ -871,6 +1298,7 @@ def audit_catalogue_stems(
         raw_model_ids=_sorted_model_ids(raw_ids),
         evidence_counts=evidence_counts,
         diagnostics=tuple(sorted(diagnostics, key=_diagnostic_sort_key)),
+        reference_rows=tuple(reference_rows),
         native_to_role_ambiguities=native_to_role_ambiguities,
         role_to_native_variants=role_to_native_variants,
     )

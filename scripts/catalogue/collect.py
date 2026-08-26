@@ -16,6 +16,7 @@ import time
 import urllib.error
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, Tuple
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -41,11 +42,16 @@ from core.mdx_runtime_contract import (  # noqa: E402
     load_mdx_runtime_contracts,
     reconcile_catalogue_mdx_runtime_signature,
 )
+from core.model_catalogue import (  # noqa: E402
+    catalogue_presentation_id,
+    project_catalogue_display,
+)
 from core.model_data import (  # noqa: E402
     _mdx_c_training,
     load_mdx_c_config_data,
 )
 from core.model_naming import canonical_display_name  # noqa: E402
+from core.model_stem_manifest import StemSemanticsRegistry  # noqa: E402
 from core.model_stem_semantics import (  # noqa: E402
     INTENT_MULTI_STEM,
     INTENT_SPECIALTY_STEM,
@@ -60,9 +66,15 @@ from core.model_stem_semantics import (  # noqa: E402
     is_special_fx_stem,
     is_vocal_target,
     normalize_stem_label,
+    resolve_catalogue_stem_semantics,
     resolve_is_karaoke,
     special_fx_ui_note,
     specialty_ui_note,
+)
+from core.stem_roles import (  # noqa: E402
+    ModelStemSemantics,
+    StemProcessingContext,
+    StemReviewStatus,
 )
 
 OUTPUT_PATH = os.path.join(ROOT, "docs", "models-catalogue.md")
@@ -216,6 +228,121 @@ class ModelEntry:
     # Family-specific prose that should win over the generic derivation in
     # _best_result. Set by a family overlay *before* _finalize_entry runs.
     best_result_override: str = ""
+    # Attached once, after collection, from exact canonical identity plus the
+    # reconciled runtime signature. Renderers and audit consume this frozen
+    # evidence instead of independently resolving the same entry again.
+    stem_semantics: ReconciledStemEvidence | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ReconciledStemEvidence:
+    """Exact semantic evidence attached to one collected catalogue row."""
+
+    model_id: str
+    model_display: str
+    native_signature: tuple[str, ...]
+    runtime_warning: str
+    reviewed: bool
+    contexts: tuple[ModelStemSemantics, ...]
+    guessed_intent: str = ""
+    guessed_flags: tuple[str, ...] = ()
+
+
+_RUNTIME_FAMILY_BY_CATALOGUE_FAMILY = {
+    "VR Architecture": "vr",
+    "Demucs": "demucs",
+    "Apollo": "apollo",
+    "MDX-Net": "mdx",
+    "MDX-Net ONNX": "mdx",
+    "MDX23C": "mdx",
+    "Roformer": "mdx",
+    "SCNet": "mdx",
+    "Bandit": "mdx",
+}
+
+
+def catalogue_projection(entry: ModelEntry) -> tuple[str, str]:
+    """Return the exact canonical ID and display for a collected row."""
+    try:
+        family = _RUNTIME_FAMILY_BY_CATALOGUE_FAMILY[entry.family]
+    except KeyError as exc:
+        accepted = ", ".join(_RUNTIME_FAMILY_BY_CATALOGUE_FAMILY)
+        raise ValueError(
+            f"unsupported catalogue family {entry.family!r} for "
+            f"{entry.catalogue_label!r}; accepted families: {accepted}"
+        ) from exc
+    if not entry.weight_file:
+        raise ValueError(f"catalogue row has no primary artifact: {entry.catalogue_label!r}")
+    files = {entry.weight_file: ""}
+    if entry.config_yaml:
+        files[entry.config_yaml] = ""
+    meta = SimpleNamespace(
+        label=entry.catalogue_label,
+        display=entry.catalogue_label,
+        files=files,
+        checkpoint=entry.weight_file,
+        stems=(),
+    )
+    model_id = catalogue_presentation_id(family, entry.catalogue_label, files, meta)
+    if model_id is None:
+        raise ValueError(
+            f"catalogue row has no unambiguous presentation primary: {entry.catalogue_label!r}"
+        )
+    return model_id, project_catalogue_display(family, entry.catalogue_label, files, meta)
+
+
+def reconcile_stem_semantics(
+    entries: List[ModelEntry],
+    *,
+    registry: StemSemanticsRegistry,
+) -> None:
+    """Attach exact reviewed semantics to one already-collected snapshot."""
+    for entry in entries:
+        model_id, model_display = catalogue_projection(entry)
+        runtime = runtime_stem_reconciliation(
+            model_id,
+            entry.instruments,
+            target_instrument=entry.target_instrument,
+            config_yaml=entry.config_yaml,
+            config_sha256=entry.config_sha256,
+            metadata_source=entry.metadata_source,
+        )
+        declaration = registry.models.get(model_id)
+        contexts = (
+            tuple(declaration.contexts)
+            if declaration is not None
+            else (StemProcessingContext.FULL_MIX,)
+        )
+        projections = tuple(
+            resolve_catalogue_stem_semantics(
+                model_id,
+                native_stems=runtime.native_signature,
+                backend_primary=entry.primary_stem,
+                backend_target=entry.target_instrument,
+                context=context,
+                registry=registry,
+                runtime_warning=runtime.warning,
+            )
+            for context in contexts
+        )
+        reviewed = bool(projections) and all(
+            projection.status is StemReviewStatus.REVIEWED for projection in projections
+        )
+        guessed_intent = "" if reviewed else entry.name_intent
+        guessed_flags = () if reviewed else tuple(entry.flags)
+        if reviewed:
+            entry.name_intent = projections[0].intent
+            entry.flags.clear()
+        entry.stem_semantics = ReconciledStemEvidence(
+            model_id=model_id,
+            model_display=model_display,
+            native_signature=runtime.native_signature,
+            runtime_warning=runtime.warning,
+            reviewed=reviewed,
+            contexts=projections,
+            guessed_intent=guessed_intent,
+            guessed_flags=guessed_flags,
+        )
 
 
 def _source_payload(coordinator: CatalogueCoordinator, source_id: SourceId) -> dict:
@@ -1309,6 +1436,7 @@ def collect_entries(
     policy: Optional[FetchPolicy] = None,
     allow_network: Optional[bool] = None,
     coordinator: Optional[CatalogueCoordinator] = None,
+    registry: Optional[StemSemanticsRegistry] = None,
 ) -> Tuple[Any, List[ModelEntry]]:
     """Acquire a snapshot and turn it into entries. The one collection path.
 
@@ -1331,7 +1459,10 @@ def collect_entries(
         coordinator=coordinator,
         policy=policy,
     )
-    return snapshot, _entries_from_snapshot(snapshot, payloads, ctx, policy=policy)
+    entries = _entries_from_snapshot(snapshot, payloads, ctx, policy=policy)
+    if registry is not None:
+        reconcile_stem_semantics(entries, registry=registry)
+    return snapshot, entries
 
 
 #: Bumped when the IR's shape changes in a way a consumer would notice.
@@ -1365,6 +1496,13 @@ def build_ir(
     know how many entries the last good run produced, rather than recovering
     that by re-parsing a summary line.
     """
+    serialized_entries = []
+    for entry in entries:
+        serialized = asdict(entry)
+        # Reconciled evidence is an in-process publication contract.  It is
+        # deliberately absent from schema-1 IR and checked-in generated data.
+        serialized.pop("stem_semantics", None)
+        serialized_entries.append(serialized)
     return {
         "schema_version": IR_SCHEMA_VERSION,
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -1375,5 +1513,5 @@ def build_ir(
         # a sidecar left behind by a degraded run silently lowers the
         # publication guard's floor for a document it does not describe.
         "document_sha256": document_sha256,
-        "entries": [asdict(entry) for entry in entries],
+        "entries": serialized_entries,
     }

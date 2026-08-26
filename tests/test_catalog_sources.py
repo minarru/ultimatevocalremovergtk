@@ -228,6 +228,38 @@ class CatalogueIntentOverlayTests(unittest.TestCase):
         self.assertTrue(meta.stem_semantics.routes[1].logical_primary)
         self.assertIn("catalogue_id=mdx:bs_neo_inst_beta", meta.stem_semantics.evidence)
 
+    def test_exact_reviewed_vocal_models_do_not_depend_on_two_stem_guessing(self) -> None:
+        labels = {
+            "VR Arch Single Model v5: 3_HP-Vocal-UVR": "3_HP-Vocal-UVR.pth",
+            "VR Arch Single Model v5: 4_HP-Vocal-UVR": "4_HP-Vocal-UVR.pth",
+        }
+        mdx_label = "MDX23 Model: MDX23C_D1581"
+        metadata = {
+            label: {
+                "stems": ["Instrumental", "Vocals"],
+                "primary_stem": "Vocals",
+                "intent": "vocals",
+            }
+            for label in (*labels, mdx_label)
+        }
+        with _with_supplements(({}, {}, {}, metadata)):
+            merged = catalog_sources.merged_catalogues(
+                vr=labels,
+                mdx={mdx_label: {"MDX23C_D1581.ckpt": "https://example.test/model.ckpt"}},
+                demucs={},
+            )
+
+        for label in (*labels, mdx_label):
+            with self.subTest(label=label):
+                projection = merged.meta[label].stem_semantics
+                self.assertEqual(projection.status, "reviewed")
+                self.assertEqual(merged.meta[label].intent, "vocals")
+                self.assertEqual(projection.logical_primary_role, "vocal.vocals")
+                self.assertEqual(
+                    projection.canonical_roles,
+                    ("mix.instrumental", "vocal.vocals"),
+                )
+
     def test_classic_karaoke_2_uses_exact_runtime_sources_for_semantics(self) -> None:
         label = "MDX-Net Model: UVR-MDX-NET Karaoke 2"
         with _with_supplements(

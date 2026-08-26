@@ -89,6 +89,59 @@ class DemucsBagArtifactTests(unittest.TestCase):
 
 
 class RuntimeStemSignatureTests(unittest.TestCase):
+    def test_reviewed_collection_evidence_removes_exact_three_guess_false_positives(self) -> None:
+        from core.model_stem_manifest import load_bundled_stem_semantics
+
+        entries = [
+            catalogue.ModelEntry(
+                source="fixture",
+                family=family,
+                catalogue_label=model_id,
+                weight_file=f"{model_id.partition(':')[2]}{extension}",
+                instruments=["Instrumental", "Vocals"],
+                primary_stem="Vocals",
+                stem_count=2,
+                name_intent="vocals",
+                backend_focus="two_stem",
+                metadata_source="community_models.txt",
+                flags=["NAME says vocals but backend is not vocal-focused"],
+            )
+            for model_id, family, extension in (
+                ("vr:3_HP-Vocal-UVR", "VR Architecture", ".pth"),
+                ("vr:4_HP-Vocal-UVR", "VR Architecture", ".pth"),
+                ("mdx:MDX23C_D1581", "MDX23C", ".ckpt"),
+            )
+        ]
+        reconcile = getattr(catalogue, "reconcile_stem_semantics", None)
+        self.assertIsNotNone(reconcile)
+        unreviewed = catalogue.ModelEntry(
+            source="fixture",
+            family="VR Architecture",
+            catalogue_label="vr:private_HP-Vocal-UVR",
+            weight_file="private_HP-Vocal-UVR.pth",
+            instruments=["Instrumental", "Vocals"],
+            primary_stem="Vocals",
+            name_intent="vocals",
+            metadata_source="community_models.txt",
+            flags=["NAME says vocals but backend is not vocal-focused"],
+        )
+
+        reconcile([*entries, unreviewed], registry=load_bundled_stem_semantics())
+
+        self.assertEqual([entry.flags for entry in entries], [[], [], []])
+        self.assertEqual(
+            [entry.stem_semantics.model_id for entry in entries],
+            ["vr:3_HP-Vocal-UVR", "vr:4_HP-Vocal-UVR", "mdx:MDX23C_D1581"],
+        )
+        self.assertTrue(all(entry.stem_semantics.reviewed for entry in entries))
+        self.assertTrue(all(entry.stem_semantics.guessed_intent == "" for entry in entries))
+        self.assertFalse(unreviewed.stem_semantics.reviewed)
+        self.assertEqual(
+            unreviewed.flags,
+            ["NAME says vocals but backend is not vocal-focused"],
+        )
+        self.assertEqual(unreviewed.stem_semantics.guessed_intent, "vocals")
+
     def test_exact_mdx_c_catalogue_evidence_requires_config_digest(self) -> None:
         digest = "451765e869b78dcb9ca9188a74da31f581b7254ff0e8b532aa76b974148de947"
         exact = catalogue.runtime_stem_reconciliation(
@@ -1265,6 +1318,12 @@ class StrictCatalogueInputIsolationTests(unittest.TestCase):
                 ctx,
                 policy=catalogue.OFFLINE_FETCH_POLICY,
             )
+            catalogue.reconcile_stem_semantics(entries, registry=registry)
+            audit = cli.stem_audit.audit_catalogue_stems(
+                entries,
+                ctx,
+                registry=registry,
+            )
             catalogue_text = render._render(entries, unsupported_count=0, report=None)
             bundle = cli._render_publication_bundle(
                 entries,
@@ -1273,7 +1332,7 @@ class StrictCatalogueInputIsolationTests(unittest.TestCase):
                 report=None,
                 catalogue_text=catalogue_text,
                 document_sha256=cli._text_digest(catalogue_text),
-                registry=registry,
+                audit=audit,
             )
         return {
             "entries": [asdict(entry) for entry in entries],
@@ -1282,7 +1341,7 @@ class StrictCatalogueInputIsolationTests(unittest.TestCase):
             "display_reference": asdict(bundle.display_reference),
             "stem_reference": bundle.stem_reference,
             "ir": cli._canonical_ir_for_diff(bundle.ir),
-            "diagnostics": [asdict(diagnostic) for diagnostic in bundle.stem_audit.diagnostics],
+            "diagnostics": [asdict(diagnostic) for diagnostic in audit.diagnostics],
         }
 
     def test_warm_cache_is_identical_across_conflicting_runtime_data_dirs(self) -> None:
@@ -2006,7 +2065,7 @@ class DisplayReferenceCliTests(unittest.TestCase):
         import io
 
         with contextlib.redirect_stdout(io.StringIO()):
-            self.assertEqual(self._run(["--summary", "--write-display-reference"]), 0)
+            self.assertEqual(self._run(["--summary", "--write-display-reference"]), 1)
         self.assertFalse(os.path.exists(self.reference))
 
     def test_refused_run_does_not_write_the_reference(self) -> None:
@@ -2491,7 +2550,7 @@ class CheckContractTests(unittest.TestCase):
             stack.enter_context(contextlib.redirect_stderr(stderr))
             rc = cli.main(argv)
 
-        self.assertEqual(rc, 1 if "--check" in argv else 0, stderr.getvalue())
+        self.assertEqual(rc, 1, stderr.getvalue())
         latest = coordinator._latest
         self.assertIsNotNone(latest)
         assert latest is not None
@@ -2991,7 +3050,12 @@ class StemSemanticsReferenceRenderTests(unittest.TestCase):
             waivers={"apollo:restoration": "no stem inventory"},
         )
 
-        rendered = render.stem_semantics_reference_tsv([entry], registry=registry)
+        audit = cli.stem_audit.audit_catalogue_stems(
+            [entry],
+            catalogue.CatalogueContext(),
+            registry=registry,
+        )
+        rendered = render.stem_semantics_reference_tsv(audit.reference_rows)
 
         header, row = rendered.splitlines()
         columns = row.split("\t")
@@ -3123,7 +3187,12 @@ class StemSemanticsReferenceRenderTests(unittest.TestCase):
             ),
         ]
 
-        lines = render.stem_semantics_reference_tsv(entries, registry=registry).splitlines()
+        audit = cli.stem_audit.audit_catalogue_stems(
+            entries,
+            catalogue.CatalogueContext(),
+            registry=registry,
+        )
+        lines = render.stem_semantics_reference_tsv(audit.reference_rows).splitlines()
         headers = lines[0].split("\t")
         by_context_role = {
             (
@@ -3308,6 +3377,8 @@ class SummaryModeTests(unittest.TestCase):
         self.assertIn("Reviewed catalogue models: **1**", text)
         self.assertIn("Waived catalogue models: **1**", text)
         self.assertIn("Raw catalogue models: **1**", text)
+        self.assertIn("Structural stem findings: **5**", text)
+        self.assertIn("Accidental semantic collisions: **1**", text)
         self.assertIn("Native-to-role ambiguity groups: **1**", text)
         self.assertIn("Role-to-native variant groups: **1**", text)
         for heading in (
@@ -3364,7 +3435,7 @@ class SummaryModeTests(unittest.TestCase):
             ):
                 rc = cli.main(["--summary"])
 
-            self.assertEqual(rc, 0)
+            self.assertEqual(rc, 2)
             with open(out, encoding="utf-8") as handle:
                 self.assertIn("THE REAL CATALOGUE", handle.read())
             self.assertFalse(os.path.exists(catalogue._ir_path_for(out)))
@@ -3602,10 +3673,57 @@ class UnifiedPublicationCliTests(unittest.TestCase):
         stdout = io.StringIO()
 
         with contextlib.redirect_stdout(stdout):
-            self.assertEqual(self._run(["--summary"], audit=finding), 0)
+            self.assertEqual(self._run(["--summary"], audit=finding), 1)
 
         self.assertIn("## Reference drift", stdout.getvalue())
         self.assertFalse(os.path.exists(self.output))
+
+    def test_summary_reports_disk_drift_separately_and_changes_no_bytes(self) -> None:
+        self.assertEqual(self._run([]), 0)
+        with open(self.stem, "a", encoding="utf-8") as handle:
+            handle.write("stale row\n")
+        paths = (self.output, self.ir, self.intent, self.display, self.stem)
+        before = {}
+        for path in paths:
+            with open(path, "rb") as handle:
+                before[path] = handle.read()
+
+        self.assertEqual(self._run(["--summary"]), 1)
+
+        for path in paths:
+            with self.subTest(path=path), open(path, "rb") as handle:
+                self.assertEqual(handle.read(), before[path])
+
+    def test_candidate_row_parity_failure_blocks_write_check_and_summary(self) -> None:
+        from unittest import mock
+
+        for argv in ([], ["--check"], ["--summary"]):
+            with (
+                self.subTest(argv=argv),
+                mock.patch.object(
+                    render,
+                    "stem_semantics_reference_tsv",
+                    return_value="not the structured rows\n",
+                ),
+            ):
+                self.assertEqual(self._run(argv), 1)
+            self.assertFalse(os.path.exists(self.output))
+
+    def test_help_pins_all_four_exit_codes_and_summary_semantics(self) -> None:
+        import contextlib
+        import io
+
+        stdout = io.StringIO()
+        with contextlib.redirect_stdout(stdout), self.assertRaises(SystemExit) as raised:
+            cli._parse_args(["--help"])
+
+        self.assertEqual(raised.exception.code, 0)
+        help_text = stdout.getvalue()
+        self.assertIn("0  clean snapshot", help_text)
+        self.assertIn("1  generated drift or semantic findings", help_text)
+        self.assertIn("2  degraded or unusable evidence", help_text)
+        self.assertIn("130  interrupted opt-in remote confidence audit", help_text)
+        self.assertNotIn("--summary completed", help_text)
 
     def test_legacy_reference_flags_are_deprecated_no_ops(self) -> None:
         """Compatibility flags must not split the generated artifact bundle."""
@@ -3627,18 +3745,19 @@ class UnifiedPublicationCliTests(unittest.TestCase):
         self.assertEqual(stderr.getvalue().lower().count("deprecated"), 3)
         self.assertTrue(os.path.isfile(self.stem))
 
-    def test_validated_registry_is_loaded_once_and_reused_by_render_and_audit(self) -> None:
-        """A hidden renderer/audit reload can observe a different manifest snapshot."""
+    def test_validated_registry_is_loaded_once_and_renderer_consumes_audit_rows(self) -> None:
+        """The renderer cannot reload or independently resolve manifest semantics."""
         from unittest import mock
 
         from core.model_stem_manifest import BUNDLED_MANIFEST_PATH, load_stem_manifest
 
         registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)
         seen: list[object] = []
+        rendered_rows: list[object] = []
 
-        def render_stems(*_args: object, **kwargs: object) -> str:
-            seen.append(kwargs.get("registry"))
-            return "stem reference\n"
+        def render_stems(rows: object) -> str:
+            rendered_rows.append(rows)
+            return cli.stem_audit.reference_rows_tsv(rows)  # type: ignore[arg-type]
 
         def audit_stems(*_args: object, **kwargs: object) -> StemAuditResult:
             seen.append(kwargs.get("registry"))
@@ -3660,7 +3779,8 @@ class UnifiedPublicationCliTests(unittest.TestCase):
             self.assertEqual(self._run([], audit=audit_stems), 0)
 
         loader.assert_called_once_with(BUNDLED_MANIFEST_PATH)
-        self.assertEqual(seen, [registry, registry])
+        self.assertEqual(seen, [registry])
+        self.assertEqual(rendered_rows, [()])
 
     def test_missing_politrees_hash_files_do_not_degrade_a_complete_offline_bundle(self) -> None:
         """Unused hash supplements cannot turn five matching artifacts into exit 2."""

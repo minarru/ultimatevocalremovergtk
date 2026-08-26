@@ -43,7 +43,6 @@ from catalogue.collect import (  # noqa: E402
 from core.model_stem_manifest import (  # noqa: E402
     BUNDLED_MANIFEST_PATH,
     StemManifestError,
-    StemSemanticsRegistry,
     load_stem_manifest,
 )
 
@@ -66,9 +65,10 @@ def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
             "  document with that (exit 2) unless you pass --allow-degraded.\n"
             "\n"
             "Exit status:\n"
-            "  0  wrote, or --check found no drift, or --summary completed\n"
-            "  1  --check found drift (canonical text changed; header dates ignored)\n"
-            "  2  this run's data is too degraded to publish or to judge drift\n"
+            "  0  clean snapshot; write completed or no findings/drift\n"
+            "  1  generated drift or semantic findings\n"
+            "  2  degraded or unusable evidence\n"
+            "  130  interrupted opt-in remote confidence audit\n"
             "\n"
             "Examples:\n"
             "  python scripts/generate_models_catalogue.py\n"
@@ -154,7 +154,8 @@ def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         help=(
             "Print entry counts, semantic findings, flagged mismatches and unknown intent to "
             "stdout. Writes nothing: no document, sidecar, TSV, or yaml "
-            "download into the tree. Prints before reporting degraded evidence."
+            "download into the tree. Exit 1 on findings or generated drift, "
+            "and 2 on degraded evidence."
         ),
     )
     mode.add_argument(
@@ -254,7 +255,6 @@ class PublicationBundle:
     display_reference: render.PresentationReferenceAudit
     stem_reference: str
     ir: dict[str, Any]
-    stem_audit: stem_audit.StemAuditResult
 
 
 def _previous_entry_count(path: str) -> Optional[int]:
@@ -344,15 +344,6 @@ def _policy_for(args: argparse.Namespace) -> FetchPolicy:
     )
 
 
-def _read_text_or_none(path: str) -> Optional[str]:
-    """Read an existing generated text artifact without creating it."""
-    try:
-        with open(path, encoding="utf-8") as handle:
-            return handle.read()
-    except OSError:
-        return None
-
-
 def _text_digest(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
@@ -379,19 +370,12 @@ def _render_publication_bundle(
     report: Any,
     catalogue_text: str,
     document_sha256: str,
-    registry: StemSemanticsRegistry,
+    audit: stem_audit.StemAuditResult,
 ) -> PublicationBundle:
-    """Render and validate the complete output set before publication starts."""
+    """Render the complete in-memory candidate set from validated evidence."""
     intent_reference = render._reference_tsv_text(ctx.community_by_file)
     display_reference = render.presentation_reference_audit(entries)
-    stem_reference = render.stem_semantics_reference_tsv(entries, registry=registry)
-    audit = stem_audit.audit_catalogue_stems(
-        entries,
-        ctx,
-        expected_reference_text=stem_reference,
-        actual_reference_text=_read_text_or_none(STEM_SEMANTICS_REFERENCE_TSV_PATH),
-        registry=registry,
-    )
+    stem_reference = render.stem_semantics_reference_tsv(audit.reference_rows)
     ir = build_ir(
         entries,
         report=report,
@@ -404,7 +388,6 @@ def _render_publication_bundle(
         display_reference=display_reference,
         stem_reference=stem_reference,
         ir=ir,
-        stem_audit=audit,
     )
 
 
@@ -425,6 +408,54 @@ def _ir_matches(path: str, payload: dict[str, Any]) -> bool:
     except (OSError, ValueError):
         return False
     return _canonical_ir_for_diff(existing) == _canonical_ir_for_diff(payload)
+
+
+def _candidate_parity_diagnostic(
+    audit: stem_audit.StemAuditResult,
+    stem_reference: str,
+) -> stem_audit.StemAuditDiagnostic | None:
+    expected = stem_audit.reference_rows_tsv(audit.reference_rows)
+    if stem_reference == expected:
+        return None
+    return stem_audit.StemAuditDiagnostic(
+        code="reference-candidate-mismatch",
+        model_ids=audit.catalogue_model_ids,
+        message="rendered semantic reference differs from immutable audit rows",
+        expected=(_text_digest(expected),),
+        actual=(_text_digest(stem_reference),),
+    )
+
+
+def _artifact_drift(
+    bundle: PublicationBundle,
+    *,
+    include_ir: bool,
+) -> list[str]:
+    drift = []
+    if not render._text_matches(OUTPUT_PATH, bundle.catalogue):
+        drift.append(OUTPUT_PATH)
+    if include_ir and not _ir_matches(_ir_path_for(OUTPUT_PATH), bundle.ir):
+        drift.append(_ir_path_for(OUTPUT_PATH))
+    if not render._text_matches(REFERENCE_TSV_PATH, bundle.intent_reference):
+        drift.append(REFERENCE_TSV_PATH)
+    if not render._text_matches(DISPLAY_REFERENCE_TSV_PATH, bundle.display_reference.text):
+        drift.append(DISPLAY_REFERENCE_TSV_PATH)
+    if not render._text_matches(STEM_SEMANTICS_REFERENCE_TSV_PATH, bundle.stem_reference):
+        drift.append(STEM_SEMANTICS_REFERENCE_TSV_PATH)
+    return drift
+
+
+def _print_presentation_findings(audit: render.PresentationReferenceAudit) -> None:
+    for model_id, flags in audit.unreviewed:
+        print(
+            f"Unreviewed presentation flag(s): {model_id}: {', '.join(flags)}",
+            file=sys.stderr,
+        )
+    for display, model_ids in audit.collisions:
+        print(
+            f"Accidental case-insensitive display collision: {display!r}: {', '.join(model_ids)}",
+            file=sys.stderr,
+        )
 
 
 def _print_deprecated_reference_flags(args: argparse.Namespace) -> None:
@@ -473,7 +504,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 1
     _print_deprecated_reference_flags(args)
     ctx = collect._build_catalogue_context(policy=policy)
-    snapshot, entries = collect.collect_entries(ctx, policy=policy)
+    snapshot, entries = collect.collect_entries(ctx, policy=policy, registry=registry)
     unsupported = _unsupported_count(getattr(snapshot, "unsupported", None))
     report = getattr(snapshot, "report", None)
     missing_evidence = _required_supplemental_evidence(ctx)
@@ -503,43 +534,28 @@ def main(argv: Optional[List[str]] = None) -> int:
         )
         return 2
 
-    # A check candidate must retain the current document's exact sidecar link
-    # when Markdown differs only in volatile provenance/header lines. A write
-    # instead binds the new IR to the new document bytes before either file is
-    # replaced.
-    rendered_catalogue = render._render(entries, unsupported_count=unsupported, report=report)
-    document_sha256 = _text_digest(rendered_catalogue)
-    if args.check and render._text_matches(OUTPUT_PATH, rendered_catalogue):
-        document_sha256 = _document_digest(OUTPUT_PATH) or document_sha256
-    bundle = _render_publication_bundle(
-        entries,
-        ctx=ctx,
-        unsupported=unsupported,
-        report=report,
-        catalogue_text=rendered_catalogue,
-        document_sha256=document_sha256,
-        registry=registry,
-    )
-
-    if args.summary:
-        print(
-            render.render_summary_report(
-                entries,
-                unsupported_count=unsupported,
-                report=report,
-                stem_audit=bundle.stem_audit,
-            )
-        )
-        return 0
-
+    # A broken acquisition cannot supply meaningful manifest-coverage
+    # diagnostics; preserve the degraded-evidence exit before phase 1.
     verdict = _publication_verdict(
         entries=list(entries),
         report=report,
         previous_count=_previous_entry_count(OUTPUT_PATH),
-        allow_degraded=args.allow_degraded,
+        allow_degraded=args.allow_degraded and not args.summary,
     )
     if not verdict.ok:
-        if args.check:
+        if args.summary:
+            print(
+                render.render_summary_report(
+                    entries,
+                    unsupported_count=unsupported,
+                    report=report,
+                )
+            )
+            print(
+                f"Cannot judge {OUTPUT_PATH}: {verdict.reason}.",
+                file=sys.stderr,
+            )
+        elif args.check:
             print(
                 f"Cannot judge {OUTPUT_PATH}: {verdict.reason}.\n"
                 "This run's data is too degraded to tell drift from a bad fetch.",
@@ -553,33 +569,70 @@ def main(argv: Optional[List[str]] = None) -> int:
             )
         return 2
 
-    if not bundle.stem_audit.structurally_valid:
-        _print_structural_stem_diagnostics(bundle.stem_audit)
+    # Phase 1: validate the exact reconciled source/manifest snapshot before
+    # any publication candidate is rendered.
+    audit = stem_audit.audit_catalogue_stems(entries, ctx, registry=registry)
+    if not audit.structurally_valid:
+        if args.summary:
+            print(
+                render.render_summary_report(
+                    entries,
+                    unsupported_count=unsupported,
+                    report=report,
+                    stem_audit=audit,
+                )
+            )
+        _print_structural_stem_diagnostics(audit)
         return 1
 
+    # Phase 2: render all candidates in memory and verify that the renderer is
+    # byte-identical to the audit-owned structured reference rows.
+    rendered_catalogue = render._render(entries, unsupported_count=unsupported, report=report)
+    document_sha256 = _text_digest(rendered_catalogue)
+    if (args.check or args.summary) and render._text_matches(OUTPUT_PATH, rendered_catalogue):
+        document_sha256 = _document_digest(OUTPUT_PATH) or document_sha256
+    bundle = _render_publication_bundle(
+        entries,
+        ctx=ctx,
+        unsupported=unsupported,
+        report=report,
+        catalogue_text=rendered_catalogue,
+        document_sha256=document_sha256,
+        audit=audit,
+    )
+    candidate_diagnostic = _candidate_parity_diagnostic(audit, bundle.stem_reference)
+    if candidate_diagnostic is not None:
+        print(
+            f"Stem audit {candidate_diagnostic.code}: {candidate_diagnostic.message}",
+            file=sys.stderr,
+        )
+        return 1
+
+    drift = _artifact_drift(bundle, include_ir=not args.no_ir)
+
+    if args.summary:
+        print(
+            render.render_summary_report(
+                entries,
+                unsupported_count=unsupported,
+                report=report,
+                stem_audit=audit,
+            )
+        )
+        _print_presentation_findings(bundle.display_reference)
+        for path in drift:
+            print(f"Out of date: {path}", file=sys.stderr)
+        if (
+            audit.diagnostics
+            or drift
+            or bundle.display_reference.unreviewed
+            or (bundle.display_reference.collisions)
+        ):
+            return 1
+        return 0
+
     if args.check:
-        drift = []
-        if not render._text_matches(OUTPUT_PATH, bundle.catalogue):
-            drift.append(OUTPUT_PATH)
-        if not args.no_ir and not _ir_matches(_ir_path_for(OUTPUT_PATH), bundle.ir):
-            drift.append(_ir_path_for(OUTPUT_PATH))
-        if not render._text_matches(REFERENCE_TSV_PATH, bundle.intent_reference):
-            drift.append(REFERENCE_TSV_PATH)
-        if not render._text_matches(DISPLAY_REFERENCE_TSV_PATH, bundle.display_reference.text):
-            drift.append(DISPLAY_REFERENCE_TSV_PATH)
-        if not render._text_matches(STEM_SEMANTICS_REFERENCE_TSV_PATH, bundle.stem_reference):
-            drift.append(STEM_SEMANTICS_REFERENCE_TSV_PATH)
-        for model_id, flags in bundle.display_reference.unreviewed:
-            print(
-                f"Unreviewed presentation flag(s): {model_id}: {', '.join(flags)}",
-                file=sys.stderr,
-            )
-        for display, model_ids in bundle.display_reference.collisions:
-            print(
-                "Accidental case-insensitive display collision: "
-                f"{display!r}: {', '.join(model_ids)}",
-                file=sys.stderr,
-            )
+        _print_presentation_findings(bundle.display_reference)
         if drift:
             for path in drift:
                 print(f"Out of date: {path}", file=sys.stderr)
