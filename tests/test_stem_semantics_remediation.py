@@ -220,7 +220,7 @@ class ClassicMdxReviewedRoutingTests(unittest.TestCase):
     CASES = (
         (
             "default",
-            "mdx:MDX23C_D1581",
+            "mdx:UVR_MDXNET_Main",
             ("Instrumental", "Vocals"),
             "Vocals",
             "",
@@ -228,7 +228,7 @@ class ClassicMdxReviewedRoutingTests(unittest.TestCase):
         ),
         (
             "primary-only",
-            "mdx:MDX23C_D1581",
+            "mdx:UVR_MDXNET_Main",
             ("Instrumental", "Vocals"),
             "Vocals",
             FOCUS_PRIMARY,
@@ -236,7 +236,7 @@ class ClassicMdxReviewedRoutingTests(unittest.TestCase):
         ),
         (
             "inverse-only",
-            "mdx:MDX23C_D1581",
+            "mdx:UVR_MDXNET_Main",
             ("Instrumental", "Vocals"),
             "Vocals",
             FOCUS_SECONDARY,
@@ -338,7 +338,7 @@ class ClassicMdxReviewedRoutingTests(unittest.TestCase):
 
     def test_classic_focus_resolves_reviewed_routes_to_exact_engine_keys(self) -> None:
         bundled = load_bundled_stem_semantics()
-        bundled_ids = {"mdx:MDX23C_D1581", "mdx:UVR_MDXNET_KARA_2"}
+        bundled_ids = {"mdx:UVR_MDXNET_Main", "mdx:UVR_MDXNET_KARA_2"}
 
         def _resolver_for(registry: StemSemanticsRegistry):
             def _resolve_exact(model_id: str, **kwargs: object):
@@ -369,17 +369,27 @@ class ClassicMdxReviewedRoutingTests(unittest.TestCase):
                 self.assertEqual(fake.stem_semantics.status, StemReviewStatus.REVIEWED)
                 selected = tuple(fake.selected_stem_routes)
                 self.assertEqual(
-                    tuple(route.native.raw for route in selected if route.native is not None),
-                    selected_natives,
+                    {route.native.raw for route in selected if route.native is not None},
+                    set(selected_natives),
                 )
-                if name == "karaoke":
-                    logical = tuple(
-                        route for route in fake.available_stem_routes if route.logical_primary
+                if name in {"default", "primary-only", "inverse-only"}:
+                    self.assertEqual(fake.stem_semantics.model_id, "mdx:UVR_MDXNET_Main")
+                    self.assertEqual(
+                        fake.stem_semantics.evidence,
+                        "catalogue_id=mdx:UVR_MDXNET_Main; source=TRvlvr+Politrees; "
+                        "metadata_source=community_models.txt; "
+                        "native_signature=instrumental|vocals; backend_primary=Vocals; "
+                        "backend_target=vocals; reviewed_contexts=full_mix",
                     )
-                    self.assertEqual(len(logical), 1)
-                    self.assertEqual(logical[0].concept, "vocal.lead")
-                    self.assertEqual(logical[0].native.raw, "Vocals")
-                    self.assertEqual(fake.primary_stem, "Instrumental")
+                    self.assertEqual(fake.primary_stem, "Vocals")
+                    self.assertEqual(
+                        {
+                            output.native.raw: output.backend_primary
+                            for output in fake.stem_semantics.outputs
+                            if output.native is not None
+                        },
+                        {"Instrumental": False, "Vocals": True},
+                    )
 
                 plan = SeperateMDX.seperate(fake)  # type: ignore[arg-type]
 
