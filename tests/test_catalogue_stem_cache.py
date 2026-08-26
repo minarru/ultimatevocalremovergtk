@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import tempfile
@@ -77,12 +78,20 @@ training:
 
     def test_remember_and_lookup_round_trip(self) -> None:
         url = "https://example.test/config.yaml?v=1"
-        csc.remember_stems(url, ["Vocals", "other"], "Vocals", ok=True)
+        digest = "a" * 64
+        csc.remember_stems(
+            url,
+            ["Vocals", "other"],
+            "Vocals",
+            content_sha256=digest,
+            ok=True,
+        )
         hit = csc.lookup_stems(url)
         self.assertIsNotNone(hit)
         assert hit is not None
         self.assertEqual(hit.stems, ("Vocals", "other"))
         self.assertEqual(hit.target_instrument, "Vocals")
+        self.assertEqual(hit.content_sha256, digest)
         self.assertTrue(hit.ok)
         # Query string stripped for cache key.
         hit2 = csc.lookup_stems("https://example.test/config.yaml")
@@ -104,6 +113,22 @@ training:
         self.assertFalse(hit.ok)
         self.assertEqual(hit.stems, ())
         self.assertIsNone(hit.target_instrument)
+
+    def test_invalid_cached_content_digest_is_not_evidence(self) -> None:
+        url = "https://example.test/invalid-digest.yaml"
+        csc.remember_stems(
+            url,
+            ["Vocals", "other"],
+            "Vocals",
+            content_sha256="A" * 64,
+            ok=True,
+        )
+
+        hit = csc.lookup_stems(url)
+
+        self.assertIsNotNone(hit)
+        assert hit is not None
+        self.assertEqual(hit.content_sha256, "")
 
     def test_catalogue_stems_disabled_by_env(self) -> None:
         url = "https://example.test/config.yaml"
@@ -180,6 +205,7 @@ training:
         assert hit is not None
         self.assertEqual(hit.stems, ("Vocals", "other"))
         self.assertEqual(hit.target_instrument, "Vocals")
+        self.assertEqual(hit.content_sha256, hashlib.sha256(yaml_bytes).hexdigest())
         self.assertTrue(hit.ok)
         self.assertEqual(len(opens), 1)
         self.assertEqual(opens[0], csc.normalize_config_url(url))
@@ -212,8 +238,7 @@ training:
             self.assertTrue(
                 _wait_until(
                     lambda: (
-                        csc.lookup_stems(url_a) is not None
-                        and csc.lookup_stems(url_b) is not None
+                        csc.lookup_stems(url_a) is not None and csc.lookup_stems(url_b) is not None
                     )
                 ),
                 "worker did not finish both URLs",
@@ -290,9 +315,7 @@ training:
             except BaseException as exc:  # noqa: BLE001 - recorded for assertion
                 errors.append(exc)
 
-        threads = [
-            threading.Thread(target=writer, args=(n,)) for n in range(threads_count)
-        ]
+        threads = [threading.Thread(target=writer, args=(n,)) for n in range(threads_count)]
         for thread in threads:
             thread.start()
         for thread in threads:

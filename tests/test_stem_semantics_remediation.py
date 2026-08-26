@@ -308,6 +308,9 @@ def _classic_fake(
     backend_primary: str,
     focus: str,
 ) -> SimpleNamespace:
+    from core.mdx_runtime_contract import load_bundled_mdx_runtime_contracts
+
+    contract = load_bundled_mdx_runtime_contracts().contracts.get(canonical_id)
     mix = np.array(
         [[20.0, 21.0, 22.0, 23.0], [30.0, 31.0, 32.0, 33.0]],
         dtype=np.float32,
@@ -322,6 +325,10 @@ def _classic_fake(
     return SimpleNamespace(
         settings=settings,
         canonical_id=canonical_id,
+        model_hash=(contract.artifact_evidence[0].uvr_md5 if contract is not None else ""),
+        mdx_hash_record_source=(
+            contract.artifact_evidence[0].hash_record_source if contract is not None else ""
+        ),
         stem_semantics=None,
         mdx_model_stems=list(signature),
         mdxnet_stems_selected=[],

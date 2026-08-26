@@ -299,6 +299,7 @@ def stem_semantics_reference_tsv(
             entry.instruments,
             target_instrument=entry.target_instrument,
             config_yaml=entry.config_yaml,
+            config_sha256=entry.config_sha256,
             metadata_source=entry.metadata_source,
         )
         native_signature = reconciled.native_signature

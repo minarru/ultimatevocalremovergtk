@@ -34,6 +34,7 @@ class ApplyCatalogueStemCacheTests(unittest.TestCase):
             stems=("Vocals", "other"),
             target_instrument="Vocals",
             ok=True,
+            content_sha256="a" * 64,
         )
         with mock.patch("core.catalogue_stem_cache.lookup_stems", return_value=hit):
             updated = self.manager.apply_catalogue_stem_cache()
@@ -42,6 +43,35 @@ class ApplyCatalogueStemCacheTests(unittest.TestCase):
         patched = self.manager.catalogue_meta["M"]
         self.assertEqual(patched.stems, ["Vocals", "other"])
         self.assertEqual(patched.target_instrument, "Vocals")
+        self.assertEqual(patched.config_sha256, "a" * 64)
+
+    def test_patches_exact_config_evidence_through_shared_reconciliation(self) -> None:
+        meta = EntryMeta(
+            label="Reviewed",
+            display="Reviewed",
+            arch=MDX_ARCH_TYPE,
+            files={
+                "melband_roformer_inst_v1.ckpt": "https://example.test/model.ckpt",
+                "config_melbandroformer_inst.yaml": _YAML_URL,
+            },
+            checkpoint="melband_roformer_inst_v1.ckpt",
+            stems=[],
+        )
+        self.manager.catalogue_meta = {"Reviewed": meta}
+        hit = StemCacheHit(
+            stems=("Instrumental", "Vocals"),
+            target_instrument="Instrumental",
+            ok=True,
+            content_sha256=("723af6755b5624be0a58351a13c930c472b51ef677cf2c7943394fefed7c3d4d"),
+        )
+
+        with mock.patch("core.catalogue_stem_cache.lookup_stems", return_value=hit):
+            updated = self.manager.apply_catalogue_stem_cache()
+
+        self.assertEqual(updated, {"Reviewed"})
+        patched = self.manager.catalogue_meta["Reviewed"]
+        self.assertEqual(patched.stem_semantics.status, "reviewed")
+        self.assertEqual(patched.config_sha256, hit.content_sha256)
 
     def test_skips_when_stems_already_set(self) -> None:
         meta = EntryMeta(

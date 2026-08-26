@@ -933,13 +933,28 @@ def _installed_mdx_reconciliation(
         cached.native_signature == tuple(observed)
     ):
         return cached
+    config = getattr(model, "mdx_c_configs", None)
+    training = getattr(config, "training", None)
+    if training is None and isinstance(config, Mapping):
+        training = config.get("training")
+    instruments = getattr(training, "instruments", None)
+    if instruments is None and isinstance(training, Mapping):
+        instruments = training.get("instruments")
+    target = getattr(training, "target_instrument", None)
+    if target is None and isinstance(training, Mapping):
+        target = training.get("target_instrument")
     reconciled = reconcile_mdx_runtime_signature(
         str(getattr(model, "canonical_id", "") or ""),
         observed_native_stems=observed,
         config_yaml=os.path.basename(str(getattr(model, "mdx_config_yaml", "") or "")),
+        config_sha256=str(getattr(model, "mdx_config_sha256", "") or ""),
+        training_instruments=tuple(instruments or ()),
+        target_instrument=str(target or ""),
         observed_primary_native=str(
             getattr(model, "primary_stem_native", None) or getattr(model, "primary_stem", "") or ""
         ),
+        artifact_digest=str(getattr(model, "model_hash", "") or ""),
+        hash_record_source=str(getattr(model, "mdx_hash_record_source", "") or ""),
         source="installed",
     )
     try:

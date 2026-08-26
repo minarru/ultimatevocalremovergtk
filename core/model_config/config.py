@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import typing
@@ -109,6 +110,8 @@ class ModelConfig:
         self.is_mdx_include_stem_complement = mdx.is_mdx_include_stem_complement
         self.mdx_c_configs: Any = None
         self.mdx_config_yaml = ""
+        self.mdx_config_sha256 = ""
+        self.mdx_hash_record_source = ""
         self.mdx_runtime_reconciliation: Any = None
         self.mdx_model_stems: list[str] = []
         self.mdx_dim_f_set: int | None = None
@@ -298,6 +301,10 @@ class ModelConfig:
                             try:
                                 from ml_collections import ConfigDict
 
+                                with open(config_path, "rb") as config_file:
+                                    self.mdx_config_sha256 = hashlib.sha256(
+                                        config_file.read()
+                                    ).hexdigest()
                                 config = ConfigDict(load_mdx_c_config(config_path))
                             except ImportError:
                                 # yaml / ml_collections are part of the (lazy) ML
@@ -813,11 +820,26 @@ class ModelConfig:
                 for stem in (self.primary_stem_native or self.primary_stem, self.secondary_stem)
                 if stem
             )
+        config = getattr(self, "mdx_c_configs", None)
+        training = getattr(config, "training", None)
+        if training is None and isinstance(config, Mapping):
+            training = config.get("training")
+        training_instruments = getattr(training, "instruments", None)
+        if training_instruments is None and isinstance(training, Mapping):
+            training_instruments = training.get("instruments")
+        target_instrument = getattr(training, "target_instrument", None)
+        if target_instrument is None and isinstance(training, Mapping):
+            target_instrument = training.get("target_instrument")
         self.mdx_runtime_reconciliation = reconcile_mdx_runtime_signature(
             self.canonical_id,
             observed_native_stems=observed,
-            config_yaml=self.mdx_config_yaml,
+            config_yaml=getattr(self, "mdx_config_yaml", ""),
+            config_sha256=getattr(self, "mdx_config_sha256", ""),
+            training_instruments=tuple(training_instruments or ()),
+            target_instrument=str(target_instrument or ""),
             observed_primary_native=str(self.primary_stem_native or self.primary_stem or ""),
+            artifact_digest=str(getattr(self, "model_hash", "") or ""),
+            hash_record_source=str(getattr(self, "mdx_hash_record_source", "") or ""),
             source="installed",
         )
 
@@ -940,10 +962,18 @@ class ModelConfig:
 
     def get_model_data(self, model_hash_dir: typing.Any, hash_mapper: dict):
         mapped = None
-        for model_hash, model_settings in hash_mapper.items():
-            if self.model_hash in model_hash:
-                mapped = dict(model_settings)
-                break
+        self.mdx_hash_record_source = ""
+        if self.model_hash in hash_mapper:
+            mapped = dict(hash_mapper[self.model_hash])
+            if self.process_method == MDX_ARCH_TYPE:
+                from ..mdx_runtime_contract import reviewed_mdx_hash_record_source
+
+                self.mdx_hash_record_source = reviewed_mdx_hash_record_source(str(self.model_hash))
+        else:
+            for model_hash, model_settings in hash_mapper.items():
+                if self.model_hash in model_hash:
+                    mapped = dict(model_settings)
+                    break
 
         model_settings_json = os.path.join(model_hash_dir, f"{self.model_hash}.json")
         if os.path.isfile(model_settings_json):

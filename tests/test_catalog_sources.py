@@ -318,7 +318,7 @@ class CatalogueIntentOverlayTests(unittest.TestCase):
             "runtime-contract-unavailable error=test",
         )
 
-    def test_all_28_promoted_ids_use_the_shared_contract_in_live_projection(self) -> None:
+    def test_all_28_promoted_ids_fail_closed_without_live_config_bytes(self) -> None:
         from core.mdx_runtime_contract import load_bundled_mdx_runtime_contracts
 
         contracts = {
@@ -361,11 +361,26 @@ class CatalogueIntentOverlayTests(unittest.TestCase):
         for label, model_id in model_id_by_label.items():
             with self.subTest(model_id=model_id):
                 projection = merged.meta[label].stem_semantics
-                self.assertEqual(projection.status, "reviewed")
-                self.assertIn(
-                    "runtime_contract=model_runtime_stem_contracts.json",
-                    projection.evidence,
+                contract = contracts[model_id]
+                expected_status = "reviewed" if contract.backend == "classic_onnx" else "raw"
+                self.assertEqual(projection.status, expected_status)
+                if contract.backend == "classic_onnx":
+                    self.assertIn(
+                        "runtime_contract=model_runtime_stem_contracts.json",
+                        projection.evidence,
+                    )
+                else:
+                    self.assertIn("config content SHA-256", projection.warning)
+        self.assertEqual(
+            {
+                status: sum(
+                    merged.meta[label].stem_semantics.status == status
+                    for label in model_id_by_label
                 )
+                for status in ("reviewed", "raw")
+            },
+            {"reviewed": 18, "raw": 10},
+        )
 
 
 @_STEM_CACHE_OFF

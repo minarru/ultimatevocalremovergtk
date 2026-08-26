@@ -31,6 +31,102 @@ class OverlapMdxDefaultTests(unittest.TestCase):
 
 
 class InstalledMdxRuntimeContractTests(unittest.TestCase):
+    def test_exact_id_and_stems_do_not_review_without_digest_provenance(self) -> None:
+        stub = SimpleNamespace(
+            canonical_id="mdx:Kim_Inst",
+            mdx_model_stems=["Instrumental", "Vocals"],
+            mdx_config_yaml="",
+            primary_stem_native="Instrumental",
+            primary_stem="Instrumental",
+            secondary_stem="Vocals",
+            model_hash="b6bccda408a436db8500083ef3491e8b",
+            mdx_hash_record_source="",
+            mdx_runtime_reconciliation=None,
+        )
+
+        ModelConfig._reconcile_mdx_runtime_contract(stub)  # type: ignore[arg-type]
+
+        self.assertFalse(stub.mdx_runtime_reconciliation.reviewed)
+        self.assertEqual(
+            stub.mdx_runtime_reconciliation.native_signature,
+            ("Instrumental", "Vocals"),
+        )
+        self.assertIn("hash-record-source", stub.mdx_runtime_reconciliation.warning)
+
+    def test_exact_checked_in_mapper_provenance_reviews_classic(self) -> None:
+        stub = SimpleNamespace(
+            canonical_id="mdx:Kim_Inst",
+            mdx_model_stems=["Instrumental", "Vocals"],
+            mdx_config_yaml="",
+            primary_stem_native="Instrumental",
+            primary_stem="Instrumental",
+            secondary_stem="Vocals",
+            model_hash="b6bccda408a436db8500083ef3491e8b",
+            mdx_hash_record_source=("models/MDX_Net_Models/model_data/model_data.json"),
+            mdx_runtime_reconciliation=None,
+        )
+
+        ModelConfig._reconcile_mdx_runtime_contract(stub)  # type: ignore[arg-type]
+
+        self.assertTrue(stub.mdx_runtime_reconciliation.reviewed)
+        self.assertTrue(stub.mdx_runtime_reconciliation.artifact_digest_verified)
+
+    def test_model_data_records_only_exact_checked_in_hash_mapper_provenance(self) -> None:
+        digest = "b6bccda408a436db8500083ef3491e8b"
+        settings = {"primary_stem": "Instrumental"}
+        with tempfile.TemporaryDirectory() as directory:
+            exact = SimpleNamespace(
+                model_hash=digest,
+                process_method=MDX_ARCH_TYPE,
+                is_mdx_ckpt=False,
+                model_path="",
+                mdx_hash_record_source="",
+                get_model_data_from_popup=lambda: None,
+            )
+            self.assertEqual(
+                ModelConfig.get_model_data(exact, directory, {digest: settings}), settings
+            )
+            self.assertEqual(
+                exact.mdx_hash_record_source,
+                "models/MDX_Net_Models/model_data/model_data.json",
+            )
+
+            substring = SimpleNamespace(
+                model_hash=digest,
+                process_method=MDX_ARCH_TYPE,
+                is_mdx_ckpt=False,
+                model_path="",
+                mdx_hash_record_source="",
+                get_model_data_from_popup=lambda: None,
+            )
+            self.assertEqual(
+                ModelConfig.get_model_data(
+                    substring,
+                    directory,
+                    {f"legacy-prefix-{digest}": settings},
+                ),
+                settings,
+            )
+            self.assertEqual(substring.mdx_hash_record_source, "")
+
+            unreviewed = SimpleNamespace(
+                model_hash="f" * 32,
+                process_method=MDX_ARCH_TYPE,
+                is_mdx_ckpt=False,
+                model_path="",
+                mdx_hash_record_source="",
+                get_model_data_from_popup=lambda: None,
+            )
+            self.assertEqual(
+                ModelConfig.get_model_data(
+                    unreviewed,
+                    directory,
+                    {"f" * 32: settings},
+                ),
+                settings,
+            )
+            self.assertEqual(unreviewed.mdx_hash_record_source, "")
+
     def test_model_config_reconciles_without_overwriting_observed_engine_keys(self) -> None:
         stub = SimpleNamespace(
             canonical_id="mdx:Kim_Inst",
@@ -89,6 +185,29 @@ class InstalledMdxRuntimeContractTests(unittest.TestCase):
                     secondary_stem=secondary,
                     target_instrument=(
                         contract.primary_native if contract.backend == "mdx_c_target" else ""
+                    ),
+                    model_hash=contract.artifact_evidence[0].uvr_md5,
+                    mdx_hash_record_source=contract.artifact_evidence[0].hash_record_source,
+                    mdx_config_sha256=(
+                        contract.config_evidence[contract.config_yamls[0]].content_sha256
+                        if contract.config_yamls
+                        else ""
+                    ),
+                    mdx_c_configs=(
+                        SimpleNamespace(
+                            training=SimpleNamespace(
+                                instruments=list(
+                                    contract.config_evidence[
+                                        contract.config_yamls[0]
+                                    ].training_instruments
+                                ),
+                                target_instrument=contract.config_evidence[
+                                    contract.config_yamls[0]
+                                ].target_instrument,
+                            )
+                        )
+                        if contract.config_yamls
+                        else None
                     ),
                     is_vocal_split_model=False,
                 )

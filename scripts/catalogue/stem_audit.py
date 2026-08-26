@@ -766,6 +766,7 @@ def audit_catalogue_stems(
             entry.instruments,
             target_instrument=entry.target_instrument,
             config_yaml=entry.config_yaml,
+            config_sha256=entry.config_sha256,
             metadata_source=entry.metadata_source,
         )
         runtime_signature = reconciled.native_signature

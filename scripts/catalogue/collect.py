@@ -43,7 +43,6 @@ from core.mdx_runtime_contract import (  # noqa: E402
 )
 from core.model_data import (  # noqa: E402
     _mdx_c_training,
-    load_mdx_c_config,
     load_mdx_c_config_data,
 )
 from core.model_naming import canonical_display_name  # noqa: E402
@@ -123,6 +122,7 @@ def runtime_stem_signature(
     *,
     target_instrument: str = "",
     config_yaml: str = "",
+    config_sha256: str = "",
     metadata_source: str = "",
 ) -> tuple[str, ...]:
     """Project collected training evidence to actual engine-native source keys."""
@@ -131,6 +131,7 @@ def runtime_stem_signature(
         instruments,
         target_instrument=target_instrument,
         config_yaml=config_yaml,
+        config_sha256=config_sha256,
         metadata_source=metadata_source,
     ).native_signature
 
@@ -141,6 +142,7 @@ def runtime_stem_reconciliation(
     *,
     target_instrument: str = "",
     config_yaml: str = "",
+    config_sha256: str = "",
     metadata_source: str = "",
 ) -> ReconciledMdxRuntimeSignature:
     """Return the one shared exact runtime-signature reconciliation result."""
@@ -149,6 +151,7 @@ def runtime_stem_reconciliation(
         tuple(str(native) for native in instruments),
         target_instrument=target_instrument,
         config_yaml=config_yaml,
+        config_sha256=config_sha256,
         metadata_source=metadata_source,
     )
     if reconciled.native_signature:
@@ -195,6 +198,7 @@ class ModelEntry:
     weight_file: str
     config_yaml: str = ""
     config_url: str = ""
+    config_sha256: str = ""
     arch: str = ""
     primary_stem: str = ""
     secondary_stem: str = ""
@@ -820,7 +824,7 @@ def _load_yaml_meta(
     *,
     policy: FetchPolicy = DEFAULT_FETCH_POLICY,
     allow_network: Optional[bool] = None,
-) -> Tuple[List[str], str, str, str]:
+) -> Tuple[List[str], str, str, str, str]:
     if allow_network is not None:
         policy = FetchPolicy(
             allow_network=allow_network,
@@ -830,7 +834,7 @@ def _load_yaml_meta(
             allow_cache_writes=policy.allow_cache_writes,
         )
     if not yaml_name:
-        return [], "", "", ""
+        return [], "", "", "", ""
     bundled_path = _yaml_paths(yaml_name, yaml_url)[0]
     config_path = bundled_path if os.path.isfile(bundled_path) else ""
 
@@ -850,21 +854,27 @@ def _load_yaml_meta(
     if not config_path and config_data is None:
         inferred = _infer_from_yaml_name(yaml_name)
         if inferred[0] or inferred[1]:
-            return inferred[0], inferred[1], inferred[2], f"yaml_name_heuristic:{yaml_name}"
-        return [], "", "", ""
+            return (
+                inferred[0],
+                inferred[1],
+                inferred[2],
+                f"yaml_name_heuristic:{yaml_name}",
+                "",
+            )
+        return [], "", "", "", ""
     try:
-        config = (
-            load_mdx_c_config(config_path)
-            if config_data is None
-            else load_mdx_c_config_data(config_data)
-        )
+        if config_data is None:
+            with open(config_path, "rb") as config_file:
+                config_data = config_file.read()
+        config = load_mdx_c_config_data(config_data)
         training = _mdx_c_training(config)
         instruments, target = _training_fields(training)
         arch = _architecture_from_config(yaml_name, config)
-        return instruments, target, arch, source
+        digest = hashlib.sha256(config_data).hexdigest()
+        return instruments, target, arch, source, digest
     except Exception:
         inferred = _infer_from_yaml_name(yaml_name)
-        return inferred[0], inferred[1], inferred[2], f"yaml_parse_failed:{yaml_name}"
+        return inferred[0], inferred[1], inferred[2], f"yaml_parse_failed:{yaml_name}", ""
 
 
 def _infer_from_yaml_name(yaml_name: str) -> Tuple[List[str], str, str]:
@@ -1078,11 +1088,16 @@ def _parse_catalogue_entry(
         # not the MDX-C training inventory used by this strict stem projection.
         # Their family overlays supply the publication semantics, so those
         # sidecars are not required supplemental evidence here.
-        instruments, target, arch, yaml_source = _load_yaml_meta(yaml_name, yaml_url, policy=policy)
+        instruments, target, arch, yaml_source, config_sha256 = _load_yaml_meta(
+            yaml_name,
+            yaml_url,
+            policy=policy,
+        )
         meta.arch = arch
         if yaml_source.startswith(("bundled_yaml:", "remote_yaml:")):
             meta.instruments = instruments
             meta.target_instrument = target
+            meta.config_sha256 = config_sha256
             meta.stem_count = len(instruments) or (1 if target else 0)
             if target:
                 meta.primary_stem = target

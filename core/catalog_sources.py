@@ -20,7 +20,7 @@ Merge priority (earlier wins on label and every dedupe key):
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 from bundled.constants import (
@@ -74,6 +74,7 @@ class EntryMeta:
     checkpoint: Optional[str] = None
     stems: List[str] = field(default_factory=list)
     target_instrument: Optional[str] = None
+    config_sha256: str = ""
     intent: str = INTENT_UNKNOWN
     #: Name/category inference retained strictly as inspectable audit evidence.
     guessed_intent: str = INTENT_UNKNOWN
@@ -87,6 +88,55 @@ class EntryMeta:
             context="full_mix",
             routes=(),
         )
+    )
+
+
+def with_catalogue_config_evidence(
+    meta: EntryMeta,
+    *,
+    stems: List[str],
+    target_instrument: Optional[str],
+    config_sha256: str,
+) -> EntryMeta:
+    """Reconcile newly parsed live YAML evidence through the shared boundary."""
+    target = meta.target_instrument or target_instrument
+    backend_target = str(target or "")
+    backend_primary = str(meta.stem_semantics.backend_primary_stem or "")
+    config_yaml = next(
+        (
+            os.path.basename(str(name))
+            for name in meta.files
+            if str(name).casefold().endswith((".yaml", ".yml"))
+        ),
+        "",
+    )
+    model_id = _catalogue_model_id(meta.arch, meta.checkpoint)
+    reconciled = reconcile_catalogue_mdx_runtime_signature(
+        model_id,
+        stems,
+        target_instrument=backend_target,
+        config_yaml=config_yaml,
+        config_sha256=config_sha256,
+    )
+    semantics = resolve_catalogue_stem_semantics(
+        model_id,
+        native_stems=reconciled.native_signature,
+        backend_primary=backend_primary,
+        backend_target=backend_target,
+        runtime_warning=reconciled.warning,
+    )
+    projection = stem_semantics_projection(
+        semantics,
+        backend_primary=backend_primary,
+        backend_target=backend_target,
+    )
+    return replace(
+        meta,
+        stems=stems,
+        target_instrument=target,
+        config_sha256=config_sha256,
+        intent=(semantics.intent if semantics.status.value == "reviewed" else meta.guessed_intent),
+        stem_semantics=projection,
     )
 
 
@@ -215,12 +265,14 @@ def _build_meta(
         stems_raw = source_meta.get("stems")
         stems = list(stems_raw) if isinstance(stems_raw, list) else []
         target = source_meta.get("target_instrument") or None
+        config_sha256 = ""
         if not stems:
             yaml_url = _yaml_config_url(files)
             if yaml_url:
                 hit = lookup_stems(yaml_url)
                 if hit is not None and hit.ok and hit.stems:
                     stems = list(hit.stems)
+                    config_sha256 = hit.content_sha256
                     if not target:
                         target = hit.target_instrument
         checkpoint = _primary_checkpoint(files)
@@ -240,6 +292,7 @@ def _build_meta(
             stems,
             target_instrument=backend_target,
             config_yaml=config_yaml,
+            config_sha256=config_sha256,
         )
         semantics = resolve_catalogue_stem_semantics(
             model_id,
@@ -269,6 +322,7 @@ def _build_meta(
             checkpoint=checkpoint,
             stems=stems,
             target_instrument=target,
+            config_sha256=config_sha256,
             intent=(semantics.intent if semantics.status.value == "reviewed" else guessed_intent),
             guessed_intent=guessed_intent,
             stem_semantics=projection,

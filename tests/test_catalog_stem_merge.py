@@ -80,6 +80,37 @@ class CatalogStemMergeTests(unittest.TestCase):
         enqueue.assert_not_called()
         ensure.assert_not_called()
 
+    def test_exact_mdx_c_cache_evidence_projects_reviewed_semantics(self) -> None:
+        digest = "723af6755b5624be0a58351a13c930c472b51ef677cf2c7943394fefed7c3d4d"
+        hit = StemCacheHit(
+            stems=("Instrumental", "Vocals"),
+            target_instrument="Instrumental",
+            ok=True,
+            content_sha256=digest,
+        )
+        supplements = (
+            {},
+            {
+                "Reviewed": {
+                    "melband_roformer_inst_v1.ckpt": "https://example.test/model.ckpt",
+                    "config_melbandroformer_inst.yaml": _YAML_URL,
+                }
+            },
+            {},
+            {},
+        )
+
+        with _with_supplements(supplements):
+            with mock.patch("core.catalogue_stem_cache.lookup_stems", return_value=hit):
+                merged = catalog_sources.merged_catalogues(vr={}, mdx={}, demucs={})
+
+        projection = merged.meta["Reviewed"].stem_semantics
+        self.assertEqual(projection.status, "reviewed")
+        self.assertEqual(
+            tuple(route.native for route in projection.routes if route.native is not None),
+            ("Instrumental",),
+        )
+
     def test_stem_cache_miss_does_not_start_worker(self) -> None:
         supplements = (
             {},

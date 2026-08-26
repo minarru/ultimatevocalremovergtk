@@ -10,16 +10,16 @@ Everything here is import-safe without ``torch`` and uses only the standard
 library. Network and disk work happens on caller-supplied worker threads; this module
 never touches any UI toolkit and reports progress through plain callbacks.
 """
-import typing
 
 import dataclasses
 import errno
 import json
 import os
-import tempfile
 import ssl
+import tempfile
 import threading
 import time
+import typing
 import urllib.request
 import warnings
 from contextlib import ExitStack
@@ -33,8 +33,8 @@ from bundled.constants import (
     DEMUCS_ARCH_TYPE,
     DEMUCS_MODEL_NAME_DATA_LINK,
     DEMUCS_NEWER_ARCH_TYPES,
-    DOWNLOAD_CHECKS,
     INFO_UNAVAILABLE_TEXT,
+    LEGACY_ADDITIONAL_REPO_SELECTION,
     MDX_ARCH_TYPE,
     MDX_MODEL_DATA_LINK,
     MDX_MODEL_NAME_DATA_LINK,
@@ -42,14 +42,13 @@ from bundled.constants import (
     NO_NEW_MODELS,
     NORMAL_REPO,
     OPERATING_SYSTEM,
-    LEGACY_ADDITIONAL_REPO_SELECTION,
     VR_ARCH_TYPE,
     VR_MODEL_DATA_LINK,
 )
 
 from . import paths
-from .debug_log import debug
 from .catalog_dedupe import normalize_catalogue_label
+from .debug_log import debug
 from .download_sizes import (
     content_ids_from_cache,
     describe_download_size,
@@ -421,7 +420,6 @@ class DownloadManager:
         if self._has_any_catalogue():
             return True
         from .access_policy import AccessPolicy, current_access_policy
-        from .catalogue_types import RefreshMode
 
         policy = current_access_policy()
         if not allow_network:
@@ -431,9 +429,7 @@ class DownloadManager:
                 allow_cache_writes=policy.allow_cache_writes,
             )
         coordinator = self._ensure_coordinator()
-        snapshot = coordinator.ensure(
-            allow_network=policy.allow_network, policy=policy
-        )
+        snapshot = coordinator.ensure(allow_network=policy.allow_network, policy=policy)
         self._apply_snapshot(snapshot)
         if self._has_any_catalogue():
             return True
@@ -556,8 +552,8 @@ class DownloadManager:
                 from .download_sizes import trusted_content_ids_from_cache
 
                 coordinator.apply_trusted_identities(trusted_content_ids_from_cache(urls))
-                from .catalogue_types import RefreshMode
                 from .access_policy import current_access_policy
+                from .catalogue_types import RefreshMode
 
                 snapshot = coordinator.snapshot(
                     mode=RefreshMode.OFFLINE,
@@ -682,7 +678,7 @@ class DownloadManager:
 
     def apply_catalogue_stem_cache(self) -> set[str]:
         """Patch catalogue_meta stems from the YAML stem cache. Return updated labels."""
-        from .catalog_sources import _yaml_config_url
+        from .catalog_sources import _yaml_config_url, with_catalogue_config_evidence
         from .catalogue_stem_cache import lookup_stems
 
         updated: set[str] = set()
@@ -695,10 +691,11 @@ class DownloadManager:
             hit = lookup_stems(url)
             if hit is None or not hit.ok or not hit.stems:
                 continue
-            self.catalogue_meta[label] = dataclasses.replace(
+            self.catalogue_meta[label] = with_catalogue_config_evidence(
                 meta,
                 stems=list(hit.stems),
                 target_instrument=meta.target_instrument or hit.target_instrument,
+                config_sha256=hit.content_sha256,
             )
             updated.add(label)
         if updated:
@@ -762,9 +759,10 @@ class DownloadManager:
                 else:
                     model_name = str(model)
                 alias_key = normalize_catalogue_label(selectable)
-                if not os.path.isfile(
-                    os.path.join(paths.MDX_MODELS_DIR, model_name)
-                ) and alias_key not in installed_alias_keys:
+                if (
+                    not os.path.isfile(os.path.join(paths.MDX_MODELS_DIR, model_name))
+                    and alias_key not in installed_alias_keys
+                ):
                     mdx_list.append(selectable)
             result[MDX_ARCH_TYPE] = mdx_list or [NO_NEW_MODELS]
 
@@ -800,9 +798,7 @@ class DownloadManager:
         """Return ``{arch_type: [(label, reason), ...]}`` for non-runnable catalogue rows."""
         if model_type == ALL_TYPES:
             return {
-                arch: list(rows)
-                for arch, rows in self.unsupported_download_list.items()
-                if rows
+                arch: list(rows) for arch, rows in self.unsupported_download_list.items() if rows
             }
         rows = self.unsupported_download_list.get(model_type) or []
         return {model_type: list(rows)} if rows else {}
@@ -830,9 +826,7 @@ class DownloadManager:
             return []
 
         model_repo = (
-            ADDITIONAL_MODEL_REPO
-            if LEGACY_ADDITIONAL_REPO_SELECTION in selection
-            else NORMAL_REPO
+            ADDITIONAL_MODEL_REPO if LEGACY_ADDITIONAL_REPO_SELECTION in selection else NORMAL_REPO
         )
 
         if arch_type == VR_ARCH_TYPE:
@@ -888,7 +882,7 @@ class DownloadManager:
         jobs: List[Tuple[str, str]],
         on_progress: Optional[Callable[[float], None]] = None,
         on_info: Optional[Callable[[str], None]] = None,
-        stop_event: typing.Any=None,
+        stop_event: typing.Any = None,
     ) -> str:
         """Download every ``(url, save_path)`` job sequentially.
 
@@ -989,7 +983,14 @@ class DownloadManager:
             )
         os.replace(tmp_path, save_path)
 
-    def _download_file(self, url: typing.Any, save_path: typing.Any, report: typing.Any, stop_event: typing.Any, on_info: typing.Any=None) -> None:
+    def _download_file(
+        self,
+        url: typing.Any,
+        save_path: typing.Any,
+        report: typing.Any,
+        stop_event: typing.Any,
+        on_info: typing.Any = None,
+    ) -> None:
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         tmp_path = f"{save_path}.part"
         try:
@@ -1008,9 +1009,7 @@ class DownloadManager:
                         os.remove(tmp_path)
                 except OSError:
                     pass
-                self._download_file_url(
-                    fallback, tmp_path, report, stop_event, on_info
-                )
+                self._download_file_url(fallback, tmp_path, report, stop_event, on_info)
                 if self._download_stopped(stop_event):
                     return
                 self._finalize_part_file(tmp_path, save_path, stop_event)
@@ -1022,7 +1021,14 @@ class DownloadManager:
                     pass
             raise
 
-    def _download_file_url(self, url: typing.Any, tmp_path: typing.Any, report: typing.Any, stop_event: typing.Any, on_info: typing.Any=None) -> None:
+    def _download_file_url(
+        self,
+        url: typing.Any,
+        tmp_path: typing.Any,
+        report: typing.Any,
+        stop_event: typing.Any,
+        on_info: typing.Any = None,
+    ) -> None:
         try:
             with _urlopen(url) as response:
                 length_header = response.getheader("Content-Length")
@@ -1066,8 +1072,7 @@ class DownloadManager:
                                 on_info(info_text)
                 if file_total and downloaded != file_total:
                     raise OSError(
-                        f"Incomplete download: received {downloaded} bytes, "
-                        f"expected {file_total}"
+                        f"Incomplete download: received {downloaded} bytes, expected {file_total}"
                     )
         except Exception:
             if os.path.isfile(tmp_path):
@@ -1079,7 +1084,7 @@ class DownloadManager:
 
     # -- Model-data mapper refresh ----------------------------------------------
 
-    def update_model_settings(self, repo: typing.Any=None) -> bool:
+    def update_model_settings(self, repo: typing.Any = None) -> bool:
         """Download and persist the four model-data mapper JSON files.
 
         Port of ``download_model_settings``; on any failure existing local files
@@ -1115,7 +1120,7 @@ class DownloadManager:
         # without staling resolved plans or rehashing every checkpoint.
         hash_changed = False
         name_changed = False
-        for (_url, dest), data in zip(_MODEL_DATA_URLS, fetched):
+        for (_url, dest), data in zip(_MODEL_DATA_URLS, fetched, strict=True):
             if not isinstance(data, dict):
                 debug("download", f"update_model_settings invalid payload path={dest}")
                 return False
@@ -1161,9 +1166,7 @@ class DownloadManager:
                 repo.invalidate_model_presentation(reload_mappers=True)
             coordinator = getattr(repo, "catalogue", None)
             snapshot = getattr(coordinator, "_latest", None)
-            _attempt_presentation_backfill(
-                repo, snapshot, operation="online model-metadata update"
-            )
+            _attempt_presentation_backfill(repo, snapshot, operation="online model-metadata update")
         debug(
             "download",
             f"update_model_settings ok changed={changed} "
@@ -1284,9 +1287,7 @@ class DownloadManager:
     ) -> List[Tuple[str, str]]:
         """Return ``[(label, url), ...]`` direct links for a manual-download entry."""
         model_repo = (
-            ADDITIONAL_MODEL_REPO
-            if LEGACY_ADDITIONAL_REPO_SELECTION in selection
-            else NORMAL_REPO
+            ADDITIONAL_MODEL_REPO if LEGACY_ADDITIONAL_REPO_SELECTION in selection else NORMAL_REPO
         )
         return manual_links_for_model(arch_type, model, model_repo)
 

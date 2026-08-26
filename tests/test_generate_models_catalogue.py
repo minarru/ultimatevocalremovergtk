@@ -89,6 +89,41 @@ class DemucsBagArtifactTests(unittest.TestCase):
 
 
 class RuntimeStemSignatureTests(unittest.TestCase):
+    def test_exact_mdx_c_catalogue_evidence_requires_config_digest(self) -> None:
+        digest = "451765e869b78dcb9ca9188a74da31f581b7254ff0e8b532aa76b974148de947"
+        exact = catalogue.runtime_stem_reconciliation(
+            "mdx:MDX23C-8KFFT-InstVoc_HQ",
+            ("Vocals", "Instrumental"),
+            config_yaml="model_2_stem_full_band_8k.yaml",
+            config_sha256=digest,
+            metadata_source="bundled_yaml:model_2_stem_full_band_8k.yaml",
+        )
+        missing = catalogue.runtime_stem_reconciliation(
+            "mdx:MDX23C-8KFFT-InstVoc_HQ",
+            ("Vocals", "Instrumental"),
+            config_yaml="model_2_stem_full_band_8k.yaml",
+            metadata_source="bundled_yaml:model_2_stem_full_band_8k.yaml",
+        )
+
+        self.assertTrue(exact.reviewed)
+        self.assertFalse(exact.artifact_digest_verified)
+        self.assertFalse(missing.reviewed)
+        self.assertIn("config content SHA-256", missing.warning)
+
+    def test_bundled_yaml_metadata_returns_exact_content_digest(self) -> None:
+        instruments, target, _arch, source, digest = catalogue._load_yaml_meta(
+            "model_2_stem_full_band_8k.yaml",
+            allow_network=False,
+        )
+
+        self.assertEqual(instruments, ["Vocals", "Instrumental"])
+        self.assertEqual(target, "")
+        self.assertEqual(source, "bundled_yaml:model_2_stem_full_band_8k.yaml")
+        self.assertEqual(
+            digest,
+            "451765e869b78dcb9ca9188a74da31f581b7254ff0e8b532aa76b974148de947",
+        )
+
     def test_classic_karaoke_2_projects_exact_mdx_runtime_keys(self) -> None:
         self.assertEqual(
             catalogue.runtime_stem_signature(
@@ -1076,7 +1111,7 @@ class OfflineYamlCacheTests(unittest.TestCase):
                 stack.enter_context(patch)
             cached = self._seed_cache()
             self.assertTrue(os.path.isfile(cached))
-            instruments, target, _arch, source = catalogue._load_yaml_meta(
+            instruments, target, _arch, source, _digest = catalogue._load_yaml_meta(
                 "model_test.yaml", self._URL, policy=catalogue.OFFLINE_FETCH_POLICY
             )
 
@@ -1413,7 +1448,7 @@ class StrictCatalogueInputIsolationTests(unittest.TestCase):
             ),
             mock.patch("core.mdx_config_fetch._urlopen", side_effect=urlopen),
         ):
-            instruments, target, _arch, source = catalogue._load_yaml_meta(
+            instruments, target, _arch, source, _digest = catalogue._load_yaml_meta(
                 self._YAML_NAME,
                 self._YAML_URL,
                 policy=policy,
@@ -2736,7 +2771,7 @@ class CheckContractTests(unittest.TestCase):
             ),
             mock.patch("core.mdx_config_fetch._urlopen", return_value=_Response()),
         ):
-            instruments, target, arch, source = catalogue._load_yaml_meta(
+            instruments, target, arch, source, _digest = catalogue._load_yaml_meta(
                 "fresh.yaml",
                 "https://example.invalid/fresh.yaml",
                 policy=policy,
@@ -4116,7 +4151,7 @@ class FetchHelperTests(unittest.TestCase):
                 ),
                 patch("core.mdx_config_fetch._urlopen", return_value=_Response()),
             ):
-                instruments, target, _arch, source = catalogue._load_yaml_meta(
+                instruments, target, _arch, source, _digest = catalogue._load_yaml_meta(
                     yaml_name, "https://example.invalid/x.yaml"
                 )
 

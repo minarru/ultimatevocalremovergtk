@@ -834,8 +834,17 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
                     + (".onnx" if contract.backend == "classic_onnx" else ".ckpt")
                 ),
                 config_yaml=(contract.config_yamls[0] if contract.config_yamls else ""),
+                config_sha256=(
+                    contract.config_evidence[contract.config_yamls[0]].content_sha256
+                    if contract.config_yamls
+                    else ""
+                ),
                 primary_stem=contract.primary_native,
-                instruments=list(contract.native_signature),
+                instruments=(
+                    list(contract.config_evidence[contract.config_yamls[0]].training_instruments)
+                    if contract.config_yamls
+                    else list(contract.native_signature)
+                ),
                 target_instrument=(
                     contract.primary_native if contract.backend == "mdx_c_target" else ""
                 ),
