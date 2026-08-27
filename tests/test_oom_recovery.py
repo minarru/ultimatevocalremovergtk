@@ -11,7 +11,6 @@ from unittest.mock import MagicMock, patch
 
 from core.job_callbacks import JobCallbacks
 from core.job_runner import JobRunner
-from core.separator_run import run_separator
 from core.oom_choice import (
     OOM_CHOICE_AUTO,
     OOM_CHOICE_EXPORT,
@@ -20,7 +19,9 @@ from core.oom_choice import (
     OomChoiceRequest,
 )
 from core.run_control import ProcessStopped
+from core.separator_run import export_ensemble_salvage, run_separator
 from core.settings import Settings
+from core.types import SaveFormat
 
 
 class _OomError(RuntimeError):
@@ -295,6 +296,43 @@ class JobRunnerOomRecoveryTests(unittest.TestCase):
             )
         write_stems.assert_called_once()
         self.assertTrue(self.runner._last_oom_exported)
+
+    def test_disk_salvage_is_published_in_the_requested_format(self) -> None:
+        import numpy as np
+        import soundfile as sf
+
+        with tempfile.TemporaryDirectory() as member_folder:
+            member_path = os.path.join(member_folder, "song Model (Side).wav")
+            sf.write(member_path, np.zeros((32, 2), dtype=np.float32), 44100)
+            self.settings.process.save_format = SaveFormat.FLAC
+            self.runner._ensemble_salvage_members = [
+                {
+                    "arrays": {},
+                    "paths": {"Side": member_path},
+                    "audio_file_base": "song Model",
+                    "model_label": "Model",
+                }
+            ]
+
+            export_ensemble_salvage(self.runner, JobCallbacks())
+
+        self.assertTrue(os.path.isfile(os.path.join(self._tmp.name, "song Model (Side).flac")))
+        self.assertFalse(os.path.isfile(os.path.join(self._tmp.name, "song Model (Side).wav")))
+
+    def test_empty_salvage_member_does_not_report_a_successful_export(self) -> None:
+        self.runner._ensemble_salvage_members = [
+            {
+                "arrays": {},
+                "paths": {},
+                "audio_file_base": "song Model",
+                "model_label": "Model",
+            }
+        ]
+
+        with self.assertRaisesRegex(RuntimeError, "no usable"):
+            export_ensemble_salvage(self.runner, JobCallbacks())
+
+        self.assertFalse(self.runner._last_oom_exported)
 
 
 class DispatchOomCallbackTests(unittest.TestCase):

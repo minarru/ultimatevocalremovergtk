@@ -5,8 +5,8 @@ from typing import Any
 from unittest.mock import Mock, patch
 
 from core.export_naming import OutputNamingContext
-from core.job_plan import PlannedInput
 from core.job_callbacks import JobCallbacks
+from core.job_plan import PlannedInput, PlannedOutput
 from core.job_runner import JobRunner
 from core.settings import Settings
 from core.types import ProcessMethod
@@ -30,6 +30,53 @@ def _planned(path: str, track_base: str, export_directory: str = "/out") -> Plan
 
 
 class JobRunnerPlannedTests(unittest.TestCase):
+    def test_required_planned_output_must_exist_before_success(self) -> None:
+        runner = JobRunner(Settings.defaults())
+        planned = PlannedInput(
+            path="/in/song.wav",
+            naming=OutputNamingContext(
+                input_path="/in/song.wav",
+                track="song",
+                track_base="song",
+                export_directory="/out",
+                extension="wav",
+            ),
+            outputs=(PlannedOutput("/out/song (Vocals).wav", "Vocals"),),
+        )
+
+        with patch.object(runner, "_run_separation"):
+            outcome = runner._run_one_planned(planned, JobCallbacks())
+
+        self.assertEqual(outcome.status, "failed")
+        self.assertEqual(outcome.outputs, ())
+        self.assertIn("required output", outcome.error or "")
+
+    def test_missing_conditional_planned_output_does_not_fail_success(self) -> None:
+        runner = JobRunner(Settings.defaults())
+        planned = PlannedInput(
+            path="/in/song.wav",
+            naming=OutputNamingContext(
+                input_path="/in/song.wav",
+                track="song",
+                track_base="song",
+                export_directory="/out",
+                extension="wav",
+            ),
+            outputs=(
+                PlannedOutput(
+                    "/out/song (Optional).wav",
+                    "Optional",
+                    conditional=True,
+                ),
+            ),
+        )
+
+        with patch.object(runner, "_run_separation"):
+            outcome = runner._run_one_planned(planned, JobCallbacks())
+
+        self.assertEqual(outcome.status, "success")
+        self.assertEqual(outcome.outputs, ())
+
     def test_start_skips_assemble_when_models_supplied(self) -> None:
         runner = JobRunner(Settings.defaults())
         models = [Mock(name="already-assembled")]
@@ -281,15 +328,9 @@ class JobRunnerPlannedTests(unittest.TestCase):
                     with patch.object(runner, "_build_all_models"):
                         with patch.object(runner, "_set_run_protect_identities"):
                             with patch.object(runner, "_ensure_vram_for_job"):
-                                with patch.object(
-                                    runner, "_count_true_models", return_value=1
-                                ):
-                                    with patch(
-                                        "core.run_loop._release_inference_resources"
-                                    ):
-                                        runner._run_separation(
-                                            [], JobCallbacks(), "single"
-                                        )
+                                with patch.object(runner, "_count_true_models", return_value=1):
+                                    with patch("core.run_loop._release_inference_resources"):
+                                        runner._run_separation([], JobCallbacks(), "single")
         resolve.assert_not_called()
 
     def test_single_missing_export_path_fails_before_model_resolution(self) -> None:
@@ -327,15 +368,9 @@ class JobRunnerPlannedTests(unittest.TestCase):
                         with patch.object(runner, "_build_all_models"):
                             with patch.object(runner, "_set_run_protect_identities"):
                                 with patch.object(runner, "_ensure_vram_for_job"):
-                                    with patch.object(
-                                        runner, "_count_true_models", return_value=2
-                                    ):
-                                        with patch(
-                                            "core.run_loop._release_inference_resources"
-                                        ):
-                                            runner._run_separation(
-                                                [], JobCallbacks(), "ensemble"
-                                            )
+                                    with patch.object(runner, "_count_true_models", return_value=2):
+                                        with patch("core.run_loop._release_inference_resources"):
+                                            runner._run_separation([], JobCallbacks(), "ensemble")
         assemble.assert_not_called()
 
     def test_run_separation_modes_pass_distinct_hooks(self) -> None:
@@ -357,26 +392,18 @@ class JobRunnerPlannedTests(unittest.TestCase):
                 with patch.object(runner, "_build_all_models"):
                     with patch.object(runner, "_set_run_protect_identities"):
                         with patch.object(runner, "_ensure_vram_for_job"):
-                            with patch.object(
-                                runner, "_count_true_models", return_value=2
-                            ):
+                            with patch.object(runner, "_count_true_models", return_value=2):
                                 with patch(
                                     "core.job_runner.run_models_on_files",
                                     side_effect=capture_run,
                                 ):
-                                    with patch(
-                                        "core.run_loop._release_inference_resources"
-                                    ):
-                                        runner._run_separation(
-                                            [], JobCallbacks(), "single"
-                                        )
+                                    with patch("core.run_loop._release_inference_resources"):
+                                        runner._run_separation([], JobCallbacks(), "single")
                                         with patch(
                                             "core.job_runner.Ensembler",
                                             return_value=fake_ensemble,
                                         ):
-                                            runner._run_separation(
-                                                [], JobCallbacks(), "ensemble"
-                                            )
+                                            runner._run_separation([], JobCallbacks(), "ensemble")
         self.assertEqual(captured, ["separation", "ensemble"])
         self.assertEqual(received_engines, [False, False])
 

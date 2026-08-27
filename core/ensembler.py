@@ -219,7 +219,8 @@ class Ensembler:
         *,
         is_multi_stem: bool = False,
         stem_arrays: typing.Mapping[tuple[object, ...], list[typing.Any]] | None = None,
-    ):
+        stem_paths: typing.Mapping[tuple[object, ...], list[str]] | None = None,
+    ) -> str:
         """Combine one already-planned semantic stem across ensemble members.
 
         Prefer in-memory member waveforms from ``stem_arrays`` when present
@@ -246,21 +247,27 @@ class Ensembler:
 
         stem_tag = stem.filename_tag
         array_inputs = list((stem_arrays or {}).get(stem.group_key, []))
-        stem_suffix = f" ({sanitize_filename_component(stem_tag)}).wav"
-        # Member files are ``{final_base} {model} ({stem}).wav``; match by track prefix.
-        match_prefix = audio_file_base
-        if self.append_ensemble_label and match_prefix.endswith(f" {self.append_ensemble_label}"):
-            match_prefix = match_prefix[: -(len(self.append_ensemble_label) + 1)]
-        stem_outputs = self.get_files_to_ensemble(
-            folder=export_path, prefix=match_prefix, suffix=stem_suffix
-        )
-        if len(stem_outputs) <= 1:
-            # Compatibility reader for files written by this same planned run.
-            # The exact registry tag is supplied above; this never derives a
-            # trusted role from a filename spelling.
-            stem_outputs = self.get_files_to_ensemble_for_stem(
-                folder=export_path, prefix=match_prefix, stem_tag=stem_tag
+        if stem_paths is not None:
+            stem_outputs = list(
+                dict.fromkeys(
+                    path for path in stem_paths.get(stem.group_key, []) if os.path.isfile(path)
+                )
             )
+        else:
+            stem_suffix = f" ({sanitize_filename_component(stem_tag)}).wav"
+            # Compatibility for older callers that do not provide exact paths.
+            match_prefix = audio_file_base
+            if self.append_ensemble_label and match_prefix.endswith(
+                f" {self.append_ensemble_label}"
+            ):
+                match_prefix = match_prefix[: -(len(self.append_ensemble_label) + 1)]
+            stem_outputs = self.get_files_to_ensemble(
+                folder=export_path, prefix=match_prefix, suffix=stem_suffix
+            )
+            if len(stem_outputs) <= 1:
+                stem_outputs = self.get_files_to_ensemble_for_stem(
+                    folder=export_path, prefix=match_prefix, stem_tag=stem_tag
+                )
         audio_file_output = format_stem_basename(audio_file_base, stem_tag)
         stem_save_path = os.path.join(f"{self.main_export_path}", f"{audio_file_output}.wav")
 
@@ -275,7 +282,12 @@ class Ensembler:
                 is_array=True,
                 min_peak=self.amplification_threshold,
             )
-            _save_format(stem_save_path, self.save_format, self.mp3_bit_set, self.flac_bit_set)
+            final_path = _save_format(
+                stem_save_path,
+                self.save_format,
+                self.mp3_bit_set,
+                self.flac_bit_set,
+            )
         elif len(stem_outputs) > 1:
             spec_utils.ensemble_inputs(
                 stem_outputs,
@@ -286,7 +298,17 @@ class Ensembler:
                 is_wave=self.is_wav_ensemble,
                 min_peak=self.amplification_threshold,
             )
-            _save_format(stem_save_path, self.save_format, self.mp3_bit_set, self.flac_bit_set)
+            final_path = _save_format(
+                stem_save_path,
+                self.save_format,
+                self.mp3_bit_set,
+                self.flac_bit_set,
+            )
+        else:
+            raise RuntimeError(
+                f"Ensemble stem {stem_tag!r} requires at least two usable contributors; "
+                f"captured_arrays={len(array_inputs)}, retained_files={len(stem_outputs)}"
+            )
 
         if self.is_save_all_outputs_ensemble:
             for stem_output in stem_outputs:
@@ -297,6 +319,7 @@ class Ensembler:
                     os.remove(stem_output)
                 except OSError:
                     pass
+        return final_path
 
     def get_files_to_ensemble(
         self, folder: typing.Any = "", prefix: typing.Any = "", suffix: typing.Any = ""

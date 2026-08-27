@@ -59,9 +59,7 @@ def build_output_naming_context(
     track_base = format_track_base(
         track=track,
         model=model_label if settings.process.add_model_name or force_model_label else None,
-        ensemble=(
-            ensemble_label if settings.process.add_model_name or force_ensemble_label else None
-        ),
+        ensemble=ensemble_label if force_ensemble_label else None,
         file_index=file_index,
         file_total=file_total,
         timestamp=timestamp,

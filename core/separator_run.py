@@ -9,17 +9,20 @@ Import is torch-free (``torch`` is loaded only inside :func:`is_oom_exc`).
 The runner is duck-typed — this module must not import :mod:`core.job_runner`
 at load time.
 """
+
 from __future__ import annotations
 
 import os
 import typing
 from typing import Any, Callable
 
-from .audio_io import resolve_wav_type_set
+from .audio_io import resolve_wav_type_set, save_format
 from .debug_log import debug
 from .ensembler import _capture_separator_stem_arrays, _capture_separator_stem_paths
 from .inference_cleanup import (
     release_inference_memory as _release_inference_resources,
+)
+from .inference_cleanup import (
     release_separator,
 )
 from .model_display import display_name_for_model
@@ -116,9 +119,7 @@ def run_separate_pass(seperator: typing.Any, *, runner: Any = None) -> dict:
             sources = finish_export(seperator, ExportPlan(sources=dict(plan)))
         if runner is not None:
             stems = _capture_separator_stem_arrays(seperator)
-            runner._last_captured_stem_paths = _capture_separator_stem_paths(
-                seperator
-            )
+            runner._last_captured_stem_paths = _capture_separator_stem_paths(seperator)
             return stems
         return sources
     finally:
@@ -166,22 +167,16 @@ def run_separator(
             current = effective_segment(model)
             default = default_segment(model)
             candidates = (
-                backoff_candidates(current, default)
-                if supports_segment_backoff(model)
-                else []
+                backoff_candidates(current, default) if supports_segment_backoff(model) else []
             )
             can_retry = bool(candidates)
-            can_export = (
-                process_kind == "ensemble" and bool(runner._ensemble_salvage_members)
-            )
+            can_export = process_kind == "ensemble" and bool(runner._ensemble_salvage_members)
             first_retry = candidates[0] if candidates else None
             try:
                 model_label = (
                     str(getattr(model, "model_display_label", "") or "")
                     or (
-                        display_name_for_model(
-                            model.process_method, model.model_name, model.repo
-                        )
+                        display_name_for_model(model.process_method, model.model_name, model.repo)
                         if model is not None
                         else ""
                     )
@@ -190,9 +185,7 @@ def run_separator(
                 )
             except Exception:  # noqa: BLE001 - best-effort label for the dialog
                 model_label = str(
-                    getattr(model, "model_name", None)
-                    or getattr(model, "model_basename", "")
-                    or ""
+                    getattr(model, "model_name", None) or getattr(model, "model_basename", "") or ""
                 )
 
             while True:
@@ -212,10 +205,10 @@ def run_separator(
                 if choice == OOM_CHOICE_EXPORT:
                     if can_export:
                         export_ensemble_salvage(runner, callbacks)
-                    raise ProcessStopped()
+                    raise ProcessStopped() from exc
 
                 if choice == OOM_CHOICE_STOP:
-                    raise ProcessStopped()
+                    raise ProcessStopped() from exc
 
                 if choice in (OOM_CHOICE_RETRY, OOM_CHOICE_AUTO):
                     if not candidates:
@@ -230,9 +223,7 @@ def run_separator(
                         check_stopped(runner)
                         runner._mdx_segment_override = int(segment)
                         apply_segment_override(runner, model)
-                        callbacks.console(
-                            f"CUDA OOM — retrying with segment size {segment}\n"
-                        )
+                        callbacks.console(f"CUDA OOM — retrying with segment size {segment}\n")
                         try:
                             active = build()
                             apply_segment_override(runner, model, active)
@@ -250,7 +241,7 @@ def run_separator(
                             park_after_oom(runner, active)
                             active = None
                     if choice == OOM_CHOICE_AUTO:
-                        raise last_oom
+                        raise last_oom from exc
                     # Both candidates failed — re-ask (retry may now be empty).
                     current = effective_segment(model)
                     candidates = (
@@ -260,14 +251,13 @@ def run_separator(
                     )
                     can_retry = bool(candidates)
                     first_retry = candidates[0] if candidates else None
-                    can_export = (
-                        process_kind == "ensemble"
-                        and bool(runner._ensemble_salvage_members)
+                    can_export = process_kind == "ensemble" and bool(
+                        runner._ensemble_salvage_members
                     )
                     continue
 
                 # Unknown choice — treat as stop.
-                raise ProcessStopped()
+                raise ProcessStopped() from exc
 
 
 def export_ensemble_salvage(runner: Any, callbacks: Any) -> None:
@@ -289,13 +279,10 @@ def export_ensemble_salvage(runner: Any, callbacks: Any) -> None:
     mp3_bit_set = runner.settings.process.mp3_bitrate
     flac_bit_set = runner.settings.process.flac_bit_depth
     try:
-        amplification_threshold = float(
-            runner.settings.process.amplification_threshold or 0.0
-        )
+        amplification_threshold = float(runner.settings.process.amplification_threshold or 0.0)
     except (TypeError, ValueError):
         amplification_threshold = 0.0
     written = 0
-    save_all = bool(runner.settings.ensemble.save_all_outputs)
     for member in members:
         arrays = member.get("arrays") or {}
         paths = member.get("paths") or {}
@@ -306,9 +293,7 @@ def export_ensemble_salvage(runner: Any, callbacks: Any) -> None:
         if not remapped and arrays:
             base = member.get("audio_file_base") or "ensemble_member"
             for stem_tag in arrays:
-                remapped[stem_tag] = os.path.join(
-                    export_root, f"{base} ({stem_tag}).wav"
-                )
+                remapped[stem_tag] = os.path.join(export_root, f"{base} ({stem_tag}).wav")
         if not arrays:
             # Save-all (or disk) path: copy any known member files into export root.
             for stem_tag, path in paths.items():
@@ -320,6 +305,7 @@ def export_ensemble_salvage(runner: Any, callbacks: Any) -> None:
                         import shutil
 
                         shutil.copy2(path, dest)
+                    save_format(dest, save_format_name, mp3_bit_set, flac_bit_set)
                     written += 1
             continue
         _write_captured_stems(
@@ -333,15 +319,10 @@ def export_ensemble_salvage(runner: Any, callbacks: Any) -> None:
             flac_bit_set=flac_bit_set,
         )
         written += len(arrays)
+    if written == 0:
+        raise RuntimeError("OOM salvage found no usable completed ensemble outputs")
     runner._last_oom_exported = True
-    if written == 0 and save_all:
-        callbacks.console(
-            "Completed ensemble member outputs were already saved under the export folder\n"
-        )
-    else:
-        callbacks.console(
-            f"Exported {written} completed ensemble stem(s) to {export_root}\n"
-        )
+    callbacks.console(f"Exported {written} completed ensemble stem(s) to {export_root}\n")
 
 
 __all__ = ["run_separator", "run_separate_pass"]

@@ -96,6 +96,12 @@ def _save_audio_file(
         and not sep.is_vocal_split_model
         and not getattr(sep, "is_save_all_outputs_ensemble", False)
     )
+    if buffer_stem_name and (capture_only or sep.is_ensemble_mode):
+        paths = getattr(sep, "_ensemble_stem_paths", None)
+        if paths is None:
+            paths = {}
+            sep._ensemble_stem_paths = paths
+        paths[buffer_stem_name] = path
     if capture_only or ensemble_buffer:
         if buffer_stem_name:
             # Route callers pass the stable filename tag. Legacy/non-route
@@ -118,11 +124,6 @@ def _save_audio_file(
                         min_peak=sep.amplification_threshold,
                     )
                 )
-            paths = getattr(sep, "_ensemble_stem_paths", None)
-            if paths is None:
-                paths = {}
-                sep._ensemble_stem_paths = paths
-            paths[buffer_key] = path
         return
 
     from core.stem_levels import export_format_can_clip, scale_to_peak_limit

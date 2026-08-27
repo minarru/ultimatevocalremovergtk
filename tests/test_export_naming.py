@@ -59,6 +59,34 @@ class FormatTrackBaseTests(unittest.TestCase):
         self.assertEqual(base, "1-song Ensembled")
         self.assertNotIn("UVR", base)
 
+    def test_add_model_name_does_not_enable_an_unrequested_ensemble_label(self):
+        settings = Settings.defaults()
+        settings.process.add_model_name = True
+
+        naming = build_output_naming_context(
+            settings,
+            "/in/song.wav",
+            export_path="/out",
+            ensemble_label="Ensembled",
+            force_ensemble_label=False,
+        )
+
+        self.assertEqual(naming.track_base, "song")
+
+    def test_requested_ensemble_label_is_kept_when_model_names_are_disabled(self):
+        settings = Settings.defaults()
+        settings.process.add_model_name = False
+
+        naming = build_output_naming_context(
+            settings,
+            "/in/song.wav",
+            export_path="/out",
+            ensemble_label="Ensembled",
+            force_ensemble_label=True,
+        )
+
+        self.assertEqual(naming.track_base, "song Ensembled")
+
 
 class FormatStemBasenameTests(unittest.TestCase):
     def test_model_test_and_normal_export_share_the_route_filename_label(self):

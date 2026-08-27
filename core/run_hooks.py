@@ -12,6 +12,8 @@ import os
 import time
 from typing import Any, List
 
+from bundled.constants import WAV
+
 from .audio_io import resolve_wav_type_set
 from .debug_log import debug_elapsed
 from .ensembler import (
@@ -148,6 +150,7 @@ class _EnsembleRunHooks:
 
     def before_file(self, runner: Any, state: FileState) -> None:
         state.scratch["ensemble_stem_arrays"] = {}
+        state.scratch["ensemble_stem_paths"] = {}
         state.scratch["ensemble_stems"] = {}
         state.scratch["ensemble_contributors"] = {}
         runner._ensemble_salvage_members = []
@@ -215,7 +218,10 @@ class _EnsembleRunHooks:
                 return
             scratch["ensemble_stem_arrays"].setdefault(collected.group_key, []).append(value)
             if tag in paths:
-                scratch["member_paths"][collected.group_key] = paths[tag]
+                path = paths[tag]
+                scratch["member_paths"][collected.group_key] = path
+                if os.path.isfile(path):
+                    scratch["ensemble_stem_paths"].setdefault(collected.group_key, []).append(path)
 
         if chunked:
             for stem_tag, arr in stems.items():
@@ -238,6 +244,22 @@ class _EnsembleRunHooks:
                 concat = concat_stems(parts, overlap_samples=state.ov_samples)
                 scratch["ensemble_stem_arrays"].setdefault(collected.group_key, []).append(concat)
                 salvage_arrays[collected.group_key] = concat
+            if runner.settings.ensemble.save_all_outputs and salvage_arrays:
+                _write_captured_stems(
+                    salvage_arrays,
+                    scratch["member_paths"],
+                    is_normalization=bool(runner.settings.process.normalization),
+                    amplification_threshold=float(
+                        runner.settings.process.amplification_threshold or 0.0
+                    ),
+                    wav_type_set=resolve_wav_type_set(runner.settings),
+                    save_format_name=WAV,
+                    mp3_bit_set=runner.settings.process.mp3_bitrate,
+                    flac_bit_set=runner.settings.process.flac_bit_depth,
+                )
+                for key, path in scratch["member_paths"].items():
+                    if os.path.isfile(path):
+                        scratch["ensemble_stem_paths"].setdefault(key, []).append(path)
         else:
             for tag, arr in scratch["last_member_stems"].items():
                 collected = planned_ensemble_stems(model).get(tag)
@@ -258,6 +280,7 @@ class _EnsembleRunHooks:
         callbacks.console(state.base_text + "Ensembling outputs...\n")
         combine_started = time.perf_counter()
         ensemble_stem_arrays = state.scratch["ensemble_stem_arrays"]
+        ensemble_stem_paths = state.scratch.get("ensemble_stem_paths", {})
         ensemble_final_base = state.scratch["ensemble_final_base"]
         export_path = self.export_path
         combine_steps: List[tuple] = []
@@ -269,6 +292,8 @@ class _EnsembleRunHooks:
                 for key, collected in collected_stems.items()
                 if len(contributors.get(key, ())) >= 2
             ]
+            if not output_stems:
+                raise RuntimeError("Ensemble has no viable stems with at least two contributors")
             focus = str(runner.settings.process.stem_focus or "")
             output_stems = _filter_final_collected_stems(output_stems, focus)
             combine_steps = [(collected, {}) for collected in output_stems]
@@ -287,6 +312,7 @@ class _EnsembleRunHooks:
                 export_path,
                 stem_name,
                 stem_arrays=ensemble_stem_arrays,
+                stem_paths=ensemble_stem_paths,
                 is_multi_stem=self.is_multi_stem,
                 **kwargs,
             )
