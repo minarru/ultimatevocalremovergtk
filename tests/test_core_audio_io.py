@@ -1,3 +1,5 @@
+import os
+import tempfile
 import typing
 import unittest
 from pathlib import Path
@@ -46,34 +48,59 @@ class FlacExportParametersTests(unittest.TestCase):
 
 
 class SaveFormatFlacTests(unittest.TestCase):
+    def test_missing_wav_is_an_export_failure(self):
+        with tempfile.TemporaryDirectory() as folder:
+            missing = os.path.join(folder, "missing.wav")
+            with self.assertRaisesRegex(RuntimeError, "missing"):
+                save_format(missing, WAV, "320k")
+
     @patch("soundfile.write")
     @patch("soundfile.read", return_value=(MagicMock(), 44100))
     @patch("os.remove")
+    @patch("os.path.isfile", return_value=True)
     def test_direct_flac_rewrite_skips_pydub(
-        self, remove: typing.Any, _read: typing.Any, write: typing.Any
+        self,
+        _isfile: typing.Any,
+        remove: typing.Any,
+        _read: typing.Any,
+        write: typing.Any,
     ):
-        save_format("/tmp/stem.wav", "FLAC", "320k", "24-bit")
+        output = save_format("/tmp/stem.wav", "FLAC", "320k", "24-bit")
         write.assert_called_once()
         self.assertEqual(write.call_args[0][0], "/tmp/stem.flac")
         self.assertEqual(write.call_args.kwargs["subtype"], "PCM_24")
         remove.assert_called_once_with("/tmp/stem.wav")
+        self.assertEqual(output, "/tmp/stem.flac")
 
     @patch("pydub.AudioSegment")
     @patch("soundfile.read", side_effect=RuntimeError("boom"))
+    @patch("os.path.isfile", return_value=True)
     def test_flac_export_falls_back_to_pydub_parameters(
-        self, _read: typing.Any, audio_segment_cls: typing.Any
+        self,
+        _isfile: typing.Any,
+        _read: typing.Any,
+        audio_segment_cls: typing.Any,
     ):
         segment = MagicMock()
         audio_segment_cls.from_wav.return_value = segment
 
         with patch("os.remove"):
-            save_format("/tmp/stem.wav", "FLAC", "320k", "24-bit")
+            output = save_format("/tmp/stem.wav", "FLAC", "320k", "24-bit")
 
         segment.export.assert_called_once_with(
             "/tmp/stem.flac",
             format="flac",
             parameters=["-sample_fmt", "s24"],
         )
+        self.assertEqual(output, "/tmp/stem.flac")
+
+    @patch("core.external_tools.configure_pydub_ffmpeg", return_value=None)
+    @patch("os.path.isfile", return_value=True)
+    def test_missing_mp3_encoder_is_an_export_failure(
+        self, _isfile: typing.Any, _configure: typing.Any
+    ):
+        with self.assertRaisesRegex(RuntimeError, "ffmpeg"):
+            save_format("/tmp/stem.wav", "MP3", "320k")
 
 
 class ResolveWavTypeSetTests(unittest.TestCase):

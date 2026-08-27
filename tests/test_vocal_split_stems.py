@@ -685,6 +685,7 @@ class WriteAudioGuardTests(unittest.TestCase):
                 "engines.stem_writer.vr_denoiser", return_value=(_arr(0.5).T, _arr(0.5).T)
             ) as deverb,
             patch("engines.stem_writer.sf.write"),
+            patch("engines.stem_writer.save_format"),
         ):
             sep.write_audio("/tmp/x.wav", _arr(1.0).T, 44100, stem_name="vocals")
         deverb.assert_called_once()
