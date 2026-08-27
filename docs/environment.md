@@ -19,10 +19,27 @@ see also `core/debug_log.py`.
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `UVR_DATA_DIR` | Writable checkout root, else OS user data dir | Models, settings (`settings.json`), profiles, ensembles, sample/ensemble temps |
+| `UVR_DATA_DIR` | Writable checkout root, else OS user data dir | Models, settings (`settings.json`), profiles, ensembles, sample/ensemble temps, and—when explicitly set—the model registry |
 | `UVR_CACHE_DIR` | OS cache dir (`~/.cache/uvr` on Linux) | Download size cache, Politrees catalogue JSON, mvsepless `models.json` cache, catalogue YAML stem cache |
 
 On first use, legacy copies of `download_size_cache.json` / `politrees_model_links.json` in the checkout root or `UVR_DATA_DIR` are moved into `UVR_CACHE_DIR`.
+
+The model registry contains machine-specific checkpoint hashes, catalogue-label
+evidence, and trusted local display overrides. It is never seeded from or
+tracked by the repository. In a writable portable checkout it lives at
+`.uvr-runtime/registered_models.json`; an explicit `UVR_DATA_DIR` places it at
+`$UVR_DATA_DIR/registered_models.json`; a read-only installation uses the
+platform user-data directory. A fresh installation therefore starts with an
+empty in-memory schema-2 registry and creates the file only on mutation.
+
+For compatibility, reads merge a legacy checkout-root
+`registered_models.json` with the runtime file without modifying either one.
+Runtime hash mappings and per-model presentation fields win conflicts. The next
+registry mutation writes the merged schema-2 state atomically, then moves the
+legacy file beside it as `registered_models.legacy.json` (or the next numbered
+name when an archive already exists). A corrupt legacy file is left untouched
+and blocks mutation until repaired; an archive failure leaves the published
+runtime registry usable and emits a warning.
 
 Standard XDG / platform paths (`XDG_DATA_HOME`, `XDG_CACHE_HOME`, `LOCALAPPDATA`) apply when UVR-specific vars are unset. See `core/paths.py` and `core/platform.py`.
 

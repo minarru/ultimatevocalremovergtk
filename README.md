@@ -200,7 +200,7 @@ Everything else must be downloaded or placed manually:
 4. **Roformer**, **SCNet**, and **Bandit** checkpoints download like other MDX models; enable the *Roformer Model* flag in MDX-C model parameters when using them. See [docs/models.md](docs/models.md) for stem layouts.
 5. **Download Center** merges the official TRvlvr catalogue, [Politrees UVR_resources](https://github.com/Politrees/UVR_resources), bundled fork extras, and [mvsepless_resources](https://huggingface.co/noblebarkrr/mvsepless_resources). Weights download from Hugging Face; YAML configs are fetched automatically. Models this build cannot run yet show as **Unsupported** (grayed). Set `UVR_DISABLE_POLITREES=1`, `UVR_DISABLE_EXTRA_MODELS=1`, and/or `UVR_DISABLE_MVSEPLESS=1` to disable individual supplements (see [docs/environment.md](docs/environment.md)); disabling Politrees alone does not leave only TRvlvr. TRvlvr download URLs that fail fall back to the Politrees Hugging Face mirror when available.
 
-Downloaded weights are ignored by git (see `.gitignore`). Runtime data (settings, temp files) lives under the project directory in portable mode, or under `~/.local/share/ultimatevocalremover` when the install directory is read-only.
+Downloaded weights are ignored by git (see `.gitignore`). Runtime data (settings, temp files) lives under the project directory in portable mode, or under `~/.local/share/ultimatevocalremover` when the install directory is read-only. The machine-specific model registry is also untracked: portable checkouts use `.uvr-runtime/registered_models.json`, while explicit `UVR_DATA_DIR` and read-only installs store it in their resolved data directory.
 
 ## Project layout
 
@@ -220,7 +220,7 @@ Source code is grouped by layer at the repository root:
 
 **Bundled (shipped with the repo):** `bundled/`, model metadata under `models/`, `ml/` VR parameter JSON, `vendor/`.
 
-**Runtime (your machine, not in git):** `settings.json`, `profiles/*.json`, `ensembles/*.json`, `ensemble_temps/`, downloaded model weights. In a writable checkout these live at the repo root; otherwise they resolve under `DATA_DIR` (see `core/paths.py`). Legacy `data.pkl` is imported once when present.
+**Runtime (your machine, not in git):** `settings.json`, `profiles/*.json`, `ensembles/*.json`, `ensemble_temps/`, downloaded model weights, and model registry state. In a writable checkout most of these live at the repo root, while the registry uses `.uvr-runtime/`; otherwise they resolve under the configured or platform data directory (see `core/paths.py`). Legacy `data.pkl` is imported once when present. A legacy root `registered_models.json` is merged on reads and migrated to runtime storage on the next registry mutation.
 
 The GUI and CLI share canonical model IDs (`vr:…`, `mdx:…`, `demucs:…`, and `apollo:…`)
 and the same frontend-neutral job resolver. Stored model references are not

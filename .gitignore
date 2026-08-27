@@ -73,6 +73,8 @@ models/VR_Models/model_data/*
 !models/VR_Models/UVR-DeNoise-Lite.pth
 
 # Runtime / portable-mode artifacts (see core/paths.py)
+/.uvr-runtime/
+/registered_models.json
 data.pkl
 data.pkl.bak
 settings.json
