@@ -341,24 +341,36 @@ class DiscoveryTests(unittest.TestCase):
 
     def test_models_show_configures_installed_demucs_canonical_id(self) -> None:
         out, err = io.StringIO(), io.StringIO()
-        with (
-            patch.dict(
-                os.environ,
-                {"UVR_DISABLE_POLITREES": "1", "UVR_DISABLE_MVSEPLESS": "1"},
-                clear=False,
-            ),
-            redirect_stdout(out),
-            redirect_stderr(err),
-        ):
-            code = main(
-                [
-                    "models",
-                    "show",
-                    "demucs:hdemucs_mmi",
-                    "--report",
-                    "json",
-                ]
+        with tempfile.TemporaryDirectory() as root:
+            demucs_root = Path(root) / "Demucs_Models"
+            newer_repo = demucs_root / "v3_v4_repo"
+            newer_repo.mkdir(parents=True)
+            (newer_repo / "hdemucs_mmi.yaml").write_text(
+                "models: ['75fc33f5']\nsegment: 44\n",
+                encoding="utf-8",
             )
+            (newer_repo / "75fc33f5-fixture.th").touch()
+
+            with (
+                patch("core.paths.DEMUCS_MODELS_DIR", str(demucs_root)),
+                patch("core.paths.DEMUCS_NEWER_REPO_DIR", str(newer_repo)),
+                patch.dict(
+                    os.environ,
+                    {"UVR_DISABLE_POLITREES": "1", "UVR_DISABLE_MVSEPLESS": "1"},
+                    clear=False,
+                ),
+                redirect_stdout(out),
+                redirect_stderr(err),
+            ):
+                code = main(
+                    [
+                        "models",
+                        "show",
+                        "demucs:hdemucs_mmi",
+                        "--report",
+                        "json",
+                    ]
+                )
 
         self.assertEqual(code, 0, err.getvalue())
         item = json.loads(out.getvalue())["items"][0]
