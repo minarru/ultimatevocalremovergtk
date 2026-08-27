@@ -323,6 +323,7 @@ class UpdateModelSettingsTests(unittest.TestCase):
         self.addCleanup(self._presentation_tmp.cleanup)
         for target, filename in (
             ("REGISTERED_MODEL_INDEX", "registered_models.json"),
+            ("LEGACY_REGISTERED_MODEL_INDEX", "legacy-registered_models.json"),
             ("MDX_MODEL_NAME_SELECT", "mdx_name_mapper.json"),
             ("DEMUCS_MODEL_NAME_SELECT", "demucs_name_mapper.json"),
         ):
@@ -711,6 +712,10 @@ class UpdateModelSettingsTests(unittest.TestCase):
                 paths,
                 "REGISTERED_MODEL_INDEX",
                 os.path.join(tmp, "registered_models.json"),
+            ), mock.patch.object(
+                paths,
+                "LEGACY_REGISTERED_MODEL_INDEX",
+                os.path.join(tmp, "legacy-registered_models.json"),
             ):
                 repo = ModelRepository()
                 self.assertNotIn("fresh-md5", repo.mdx_hash_MAPPER)

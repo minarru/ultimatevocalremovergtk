@@ -95,6 +95,12 @@ class _Base(unittest.TestCase):
         )
         index_patch.start()
         self.addCleanup(index_patch.stop)
+        legacy_index_patch = mock.patch(
+            "core.model_registry.paths.LEGACY_REGISTERED_MODEL_INDEX",
+            os.path.join(self.root, "legacy-registered_models.json"),
+        )
+        legacy_index_patch.start()
+        self.addCleanup(legacy_index_patch.stop)
 
     def _file(self, name: str) -> str:
         path = os.path.join(self.root, name)

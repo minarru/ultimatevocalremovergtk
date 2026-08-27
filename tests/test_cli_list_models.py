@@ -234,6 +234,10 @@ class AdministrationCoreTests(unittest.TestCase):
                 "core.model_registry.paths.REGISTERED_MODEL_INDEX",
                 os.path.join(root, "registered.json"),
             ),
+            patch(
+                "core.model_registry.paths.LEGACY_REGISTERED_MODEL_INDEX",
+                os.path.join(root, "legacy-registered.json"),
+            ),
         ):
             ModelRegistryService.remember_registered("abc", "mdx:model")
             self.assertEqual(ModelRegistryService.registered_id("abc"), "mdx:model")
@@ -246,6 +250,10 @@ class AdministrationCoreTests(unittest.TestCase):
             patch(
                 "core.model_registry.paths.REGISTERED_MODEL_INDEX",
                 os.path.join(root, "registered.json"),
+            ),
+            patch(
+                "core.model_registry.paths.LEGACY_REGISTERED_MODEL_INDEX",
+                os.path.join(root, "legacy-registered.json"),
             ),
         ):
             barrier = threading.Barrier(8)

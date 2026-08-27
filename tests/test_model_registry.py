@@ -25,6 +25,11 @@ def _read_json(path: str) -> dict:
         return json.load(handle)
 
 
+def _read_bytes(path: str) -> bytes:
+    with open(path, "rb") as handle:
+        return handle.read()
+
+
 def _legacy_overlay_archive_path(mapper_path: str) -> str:
     overlay = local_overlay_path(mapper_path)
     return f"{os.path.splitext(overlay)[0]}.legacy.json"
@@ -35,7 +40,9 @@ class ModelRegistryTests(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         self.root = self._tmp.name
-        self.registry_path = os.path.join(self.root, "registered_models.json")
+        self.runtime_dir = os.path.join(self.root, ".uvr-runtime")
+        self.registry_path = os.path.join(self.runtime_dir, "registered_models.json")
+        self.legacy_path = os.path.join(self.root, "registered_models.json")
         self.mdx_mapper = os.path.join(self.root, "mdx", "model_data", "model_name_mapper.json")
         self.demucs_mapper = os.path.join(
             self.root, "demucs", "model_data", "model_name_mapper.json"
@@ -44,6 +51,10 @@ class ModelRegistryTests(unittest.TestCase):
             mock.patch(
                 "core.model_registry.paths.REGISTERED_MODEL_INDEX",
                 self.registry_path,
+            ),
+            mock.patch(
+                "core.model_registry.paths.LEGACY_REGISTERED_MODEL_INDEX",
+                self.legacy_path,
             ),
             mock.patch(
                 "core.model_registry.paths.MDX_MODEL_NAME_SELECT",
@@ -57,6 +68,172 @@ class ModelRegistryTests(unittest.TestCase):
         for patcher in patches:
             patcher.start()
             self.addCleanup(patcher.stop)
+
+    def test_reads_merge_legacy_and_runtime_without_mutating_either_file(self) -> None:
+        legacy = {
+            "schema_version": 2,
+            "hashes": {"shared": "mdx:legacy", "legacy-only": "vr:legacy"},
+            "models": {
+                "mdx:model": {
+                    "catalogue_label": "Legacy label",
+                    "catalogue_source": "legacy-source",
+                    "display_override": "Legacy override",
+                }
+            },
+        }
+        runtime = {
+            "schema_version": 2,
+            "hashes": {"shared": "mdx:runtime", "runtime-only": "vr:runtime"},
+            "models": {
+                "mdx:model": {
+                    "catalogue_label": "Runtime label",
+                    "display_override": "Runtime override",
+                }
+            },
+        }
+        _write_json(self.legacy_path, legacy)
+        _write_json(self.registry_path, runtime)
+        legacy_bytes = _read_bytes(self.legacy_path)
+        runtime_bytes = _read_bytes(self.registry_path)
+
+        self.assertEqual(ModelRegistryService.registered_id("shared"), "mdx:runtime")
+        self.assertEqual(ModelRegistryService.registered_id("legacy-only"), "vr:legacy")
+        self.assertEqual(
+            ModelRegistryService.presentation("mdx:model"),
+            {
+                "catalogue_label": "Runtime label",
+                "catalogue_source": "legacy-source",
+                "display_override": "Runtime override",
+            },
+        )
+        self.assertEqual(_read_bytes(self.legacy_path), legacy_bytes)
+        self.assertEqual(_read_bytes(self.registry_path), runtime_bytes)
+
+    def test_first_mutation_migrates_and_archives_legacy_registry(self) -> None:
+        _write_json(self.legacy_path, {"legacy-hash": "mdx:legacy"})
+        legacy_bytes = _read_bytes(self.legacy_path)
+
+        self.assertTrue(ModelRegistryService.remember_registered("new-hash", "vr:new"))
+
+        self.assertEqual(
+            _read_json(self.registry_path),
+            {
+                "schema_version": 2,
+                "hashes": {"legacy-hash": "mdx:legacy", "new-hash": "vr:new"},
+                "models": {},
+            },
+        )
+        self.assertFalse(os.path.exists(self.legacy_path))
+        archive = os.path.join(self.runtime_dir, "registered_models.legacy.json")
+        self.assertEqual(_read_bytes(archive), legacy_bytes)
+
+    def test_existing_archive_uses_next_available_number(self) -> None:
+        _write_json(self.legacy_path, {"legacy-hash": "mdx:legacy"})
+        first_archive = os.path.join(self.runtime_dir, "registered_models.legacy.json")
+        _write_json(first_archive, {"older": "mdx:older"})
+
+        ModelRegistryService.remember_registered("new-hash", "vr:new")
+
+        self.assertTrue(os.path.isfile(first_archive))
+        numbered = os.path.join(self.runtime_dir, "registered_models.legacy.1.json")
+        self.assertEqual(_read_json(numbered), {"legacy-hash": "mdx:legacy"})
+
+    def test_corrupt_legacy_read_warns_and_uses_valid_runtime_registry(self) -> None:
+        os.makedirs(os.path.dirname(self.legacy_path), exist_ok=True)
+        with open(self.legacy_path, "wb") as handle:
+            handle.write(b'{"schema_version": 2, "hashes": ')
+        _write_json(
+            self.registry_path,
+            {
+                "schema_version": 2,
+                "hashes": {"runtime-hash": "mdx:runtime"},
+                "models": {},
+            },
+        )
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            resolved = ModelRegistryService.registered_id("runtime-hash")
+
+        self.assertEqual(resolved, "mdx:runtime")
+        self.assertTrue(any("legacy model registry" in str(item.message) for item in caught))
+
+    def test_corrupt_legacy_blocks_mutation_without_touching_runtime(self) -> None:
+        os.makedirs(os.path.dirname(self.legacy_path), exist_ok=True)
+        with open(self.legacy_path, "wb") as handle:
+            handle.write(b'{"schema_version": 2, "hashes": ')
+        _write_json(
+            self.registry_path,
+            {
+                "schema_version": 2,
+                "hashes": {"runtime-hash": "mdx:runtime"},
+                "models": {},
+            },
+        )
+        runtime_bytes = _read_bytes(self.registry_path)
+        legacy_bytes = _read_bytes(self.legacy_path)
+
+        with self.assertRaisesRegex(ValueError, "legacy model registry"):
+            ModelRegistryService.remember_registered("new-hash", "vr:new")
+
+        self.assertEqual(_read_bytes(self.registry_path), runtime_bytes)
+        self.assertEqual(_read_bytes(self.legacy_path), legacy_bytes)
+
+    def test_failed_runtime_write_keeps_legacy_and_runtime_unarchived(self) -> None:
+        _write_json(self.legacy_path, {"legacy-hash": "mdx:legacy"})
+        _write_json(
+            self.registry_path,
+            {"schema_version": 2, "hashes": {"runtime-hash": "mdx:runtime"}, "models": {}},
+        )
+        runtime_bytes = _read_bytes(self.registry_path)
+        legacy_bytes = _read_bytes(self.legacy_path)
+
+        with (
+            mock.patch("core.model_registry.write_json_atomic", side_effect=OSError("disk full")),
+            self.assertRaisesRegex(OSError, "disk full"),
+        ):
+            ModelRegistryService.remember_registered("new-hash", "vr:new")
+
+        self.assertEqual(_read_bytes(self.registry_path), runtime_bytes)
+        self.assertEqual(_read_bytes(self.legacy_path), legacy_bytes)
+        self.assertFalse(
+            os.path.exists(os.path.join(self.runtime_dir, "registered_models.legacy.json"))
+        )
+
+    def test_archive_failure_warns_and_keeps_published_runtime_registry(self) -> None:
+        _write_json(self.legacy_path, {"legacy-hash": "mdx:legacy"})
+
+        with (
+            mock.patch("core.model_registry.shutil.move", side_effect=OSError("read only")),
+            warnings.catch_warnings(record=True) as caught,
+        ):
+            warnings.simplefilter("always")
+            changed = ModelRegistryService.remember_registered("new-hash", "vr:new")
+
+        self.assertTrue(changed)
+        self.assertEqual(
+            _read_json(self.registry_path)["hashes"],
+            {"legacy-hash": "mdx:legacy", "new-hash": "vr:new"},
+        )
+        self.assertTrue(os.path.isfile(self.legacy_path))
+        self.assertTrue(any("archive failed" in str(item.message) for item in caught))
+
+    def test_noop_retry_finishes_archive_after_previous_archive_failure(self) -> None:
+        _write_json(self.legacy_path, {"legacy-hash": "mdx:legacy"})
+        with (
+            mock.patch("core.model_registry.shutil.move", side_effect=OSError("read only")),
+            warnings.catch_warnings(),
+        ):
+            warnings.simplefilter("ignore")
+            ModelRegistryService.remember_registered("new-hash", "vr:new")
+
+        changed = ModelRegistryService.remember_registered("new-hash", "vr:new")
+
+        self.assertFalse(changed)
+        self.assertFalse(os.path.exists(self.legacy_path))
+        self.assertTrue(
+            os.path.isfile(os.path.join(self.runtime_dir, "registered_models.legacy.json"))
+        )
 
     def test_flat_schema_reads_without_rewriting(self) -> None:
         _write_json(self.registry_path, {"hash-a": "mdx:alpha"})

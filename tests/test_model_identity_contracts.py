@@ -1360,6 +1360,9 @@ class PresentationBackfillTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, patch(
             "core.model_registry.paths.REGISTERED_MODEL_INDEX",
             os.path.join(directory, "registered.json"),
+        ), patch(
+            "core.model_registry.paths.LEGACY_REGISTERED_MODEL_INDEX",
+            os.path.join(directory, "legacy-registered.json"),
         ):
             ModelRegistryService.remember_presentation(
                 "mdx:model", display_override="Trusted title"
@@ -1385,6 +1388,9 @@ class PresentationBackfillTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, patch(
             "core.model_registry.paths.REGISTERED_MODEL_INDEX",
             os.path.join(directory, "registered.json"),
+        ), patch(
+            "core.model_registry.paths.LEGACY_REGISTERED_MODEL_INDEX",
+            os.path.join(directory, "legacy-registered.json"),
         ):
             changed = backfill_installed_presentations(repo, None)
             evidence = ModelRegistryService.presentation("mdx:mirror")
@@ -1441,6 +1447,10 @@ class PresentationBackfillTests(unittest.TestCase):
             patch(
                 "core.model_registry.paths.REGISTERED_MODEL_INDEX",
                 os.path.join(directory, "registered.json"),
+            ),
+            patch(
+                "core.model_registry.paths.LEGACY_REGISTERED_MODEL_INDEX",
+                os.path.join(directory, "legacy-registered.json"),
             ),
             patch("core.debug_log.log_event") as log_event,
         ):
@@ -1502,6 +1512,10 @@ class PresentationBackfillTests(unittest.TestCase):
                 "core.model_registry.paths.REGISTERED_MODEL_INDEX",
                 os.path.join(directory, "registered.json"),
             ),
+            patch(
+                "core.model_registry.paths.LEGACY_REGISTERED_MODEL_INDEX",
+                os.path.join(directory, "legacy-registered.json"),
+            ),
             patch.object(
                 model_inventory,
                 "_catalogue_records",
@@ -1559,6 +1573,10 @@ class PresentationBackfillTests(unittest.TestCase):
             patch(
                 "core.model_registry.paths.REGISTERED_MODEL_INDEX",
                 os.path.join(directory, "registered.json"),
+            ),
+            patch(
+                "core.model_registry.paths.LEGACY_REGISTERED_MODEL_INDEX",
+                os.path.join(directory, "legacy-registered.json"),
             ),
         ):
             ModelRegistryService.remember_presentation(

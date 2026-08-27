@@ -79,6 +79,9 @@ class RealModelPoolTests(unittest.TestCase):
             ),
             "DEMUCS_MODEL_SPECS": os.path.join(demucs_dir, "model_data", "model_specs.json"),
             "REGISTERED_MODEL_INDEX": os.path.join(self.root, "registered_models.json"),
+            "LEGACY_REGISTERED_MODEL_INDEX": os.path.join(
+                self.root, "legacy-registered_models.json"
+            ),
             "DENOISER_MODEL_PATH": os.path.join(vr_dir, "UVR-DeNoise-Lite.pth"),
             "DEVERBER_MODEL_PATH": os.path.join(vr_dir, "UVR-DeEcho-DeReverb.pth"),
         }

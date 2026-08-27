@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import shutil
+import warnings
 from typing import Any, Mapping
 
 from bundled.constants import APOLLO_ARCH_TYPE, MDX_ARCH_TYPE, VR_ARCH_TYPE
@@ -91,11 +93,113 @@ def _normalize_registry(payload: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def _read_registry_for_mutation(path: str) -> dict[str, Any]:
+def _same_path(first: str, second: str) -> bool:
+    return os.path.normcase(os.path.abspath(first)) == os.path.normcase(
+        os.path.abspath(second)
+    )
+
+
+def _merge_registries(
+    base: Mapping[str, Any], overlay: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Merge two normalized registries with field-level overlay precedence."""
+    merged = _empty_registry()
+    merged["hashes"] = {**base["hashes"], **overlay["hashes"]}
+    model_ids = set(base["models"]) | set(overlay["models"])
+    merged["models"] = {
+        model_id: {
+            **base["models"].get(model_id, {}),
+            **overlay["models"].get(model_id, {}),
+        }
+        for model_id in model_ids
+    }
+    return merged
+
+
+def _read_optional_registry(path: str) -> dict[str, Any] | None:
+    if not os.path.isfile(path):
+        return None
+    return _normalize_registry(read_json_object(path))
+
+
+def _read_effective_registry(*, for_mutation: bool) -> dict[str, Any]:
+    runtime_path = paths.REGISTERED_MODEL_INDEX
+    legacy_path = paths.LEGACY_REGISTERED_MODEL_INDEX
     try:
-        return _normalize_registry(read_json_object(path))
-    except FileNotFoundError:
-        return _empty_registry()
+        runtime = _read_optional_registry(runtime_path)
+    except (OSError, ValueError) as exc:
+        if for_mutation:
+            raise
+        warnings.warn(
+            f"Could not read runtime model registry {runtime_path!r}: {exc}",
+            RuntimeWarning,
+            stacklevel=3,
+        )
+        runtime = None
+
+    legacy = None
+    if not _same_path(runtime_path, legacy_path):
+        try:
+            legacy = _read_optional_registry(legacy_path)
+        except (OSError, ValueError) as exc:
+            if for_mutation:
+                raise ValueError(
+                    f"legacy model registry {legacy_path!r} is invalid: {exc}"
+                ) from exc
+            warnings.warn(
+                f"Could not read legacy model registry {legacy_path!r}: {exc}",
+                RuntimeWarning,
+                stacklevel=3,
+            )
+
+    return _merge_registries(legacy or _empty_registry(), runtime or _empty_registry())
+
+
+def _write_runtime_registry(registry: dict[str, Any]) -> None:
+    path = paths.REGISTERED_MODEL_INDEX
+    write_json_atomic(path, registry)
+    persisted = _normalize_registry(read_json_object(path))
+    if persisted != registry:
+        raise OSError(f"model registry verification failed after writing {path!r}")
+
+
+def _next_legacy_archive_path() -> str:
+    directory = os.path.dirname(os.path.abspath(paths.REGISTERED_MODEL_INDEX))
+    candidate = os.path.join(directory, "registered_models.legacy.json")
+    index = 0
+    while os.path.exists(candidate):
+        index += 1
+        candidate = os.path.join(directory, f"registered_models.legacy.{index}.json")
+    return candidate
+
+
+def _archive_legacy_registry() -> None:
+    legacy_path = paths.LEGACY_REGISTERED_MODEL_INDEX
+    if _same_path(legacy_path, paths.REGISTERED_MODEL_INDEX) or not os.path.isfile(
+        legacy_path
+    ):
+        return
+    archive = _next_legacy_archive_path()
+    try:
+        os.makedirs(os.path.dirname(archive), exist_ok=True)
+        shutil.move(legacy_path, archive)
+    except OSError as exc:
+        warnings.warn(
+            f"Model registry migrated but legacy archive failed for {legacy_path!r}: {exc}",
+            RuntimeWarning,
+            stacklevel=3,
+        )
+
+
+def _persist_mutation(registry: dict[str, Any], *, changed: bool) -> bool:
+    legacy_path = paths.LEGACY_REGISTERED_MODEL_INDEX
+    migration_pending = not _same_path(
+        legacy_path, paths.REGISTERED_MODEL_INDEX
+    ) and os.path.isfile(legacy_path)
+    if changed or migration_pending:
+        _write_runtime_registry(registry)
+        _archive_legacy_registry()
+    return changed
 
 
 def _archive_legacy_presentation_mappers() -> None:
@@ -134,13 +238,11 @@ class ModelRegistryService:
 
     @staticmethod
     def registered_id(model_hash: str) -> str | None:
-        if not model_hash or not os.path.isfile(paths.REGISTERED_MODEL_INDEX):
+        if not model_hash:
             return None
-        try:
-            registry = _normalize_registry(read_json_object(paths.REGISTERED_MODEL_INDEX))
-        except (OSError, ValueError):
-            return None
-        value = registry["hashes"].get(model_hash)
+        with locked_json_path(paths.REGISTERED_MODEL_INDEX):
+            registry = _read_effective_registry(for_mutation=False)
+            value = registry["hashes"].get(model_hash)
         return str(value) if value else None
 
     @staticmethod
@@ -149,13 +251,9 @@ class ModelRegistryService:
         from .model_identity import parse_stored_model_id
 
         exact_id = str(parse_stored_model_id(canonical_id))
-        if not os.path.isfile(paths.REGISTERED_MODEL_INDEX):
-            return {}
-        try:
-            registry = _normalize_registry(read_json_object(paths.REGISTERED_MODEL_INDEX))
-        except (OSError, ValueError):
-            return {}
-        return dict(registry["models"].get(exact_id, {}))
+        with locked_json_path(paths.REGISTERED_MODEL_INDEX):
+            registry = _read_effective_registry(for_mutation=False)
+            return dict(registry["models"].get(exact_id, {}))
 
     @staticmethod
     def remember_registered(model_hash: str, canonical_id: str) -> bool:
@@ -169,25 +267,23 @@ class ModelRegistryService:
         if not model_hash or not canonical_id:
             raise ValueError("registered models require a hash and canonical ID")
         with locked_json_path(paths.REGISTERED_MODEL_INDEX):
-            registry = _read_registry_for_mutation(paths.REGISTERED_MODEL_INDEX)
+            registry = _read_effective_registry(for_mutation=True)
             hashes = registry["hashes"]
             if hashes.get(model_hash) == canonical_id:
-                return False
+                return _persist_mutation(registry, changed=False)
             hashes[model_hash] = canonical_id
-            write_json_atomic(paths.REGISTERED_MODEL_INDEX, registry)
-            return True
+            return _persist_mutation(registry, changed=True)
 
     @staticmethod
     def forget_registered(model_hash: str) -> None:
         with locked_json_path(paths.REGISTERED_MODEL_INDEX):
-            try:
-                registry = _read_registry_for_mutation(paths.REGISTERED_MODEL_INDEX)
-            except FileNotFoundError:
-                return
+            registry = _read_effective_registry(for_mutation=True)
             hashes = registry["hashes"]
             if model_hash in hashes:
                 del hashes[model_hash]
-                write_json_atomic(paths.REGISTERED_MODEL_INDEX, registry)
+                _persist_mutation(registry, changed=True)
+            else:
+                _persist_mutation(registry, changed=False)
 
     @staticmethod
     def remember_presentation(
@@ -225,16 +321,16 @@ class ModelRegistryService:
         if not updates:
             return False
         with locked_json_path(paths.REGISTERED_MODEL_INDEX):
-            registry = _read_registry_for_mutation(paths.REGISTERED_MODEL_INDEX)
+            registry = _read_effective_registry(for_mutation=True)
             models = registry["models"]
             current = dict(models.get(exact_id, {}))
             updated = {**current, **updates}
             if updated == current:
-                return False
+                return _persist_mutation(registry, changed=False)
             models[exact_id] = updated
-            write_json_atomic(paths.REGISTERED_MODEL_INDEX, registry)
+            changed = _persist_mutation(registry, changed=True)
             _archive_legacy_presentation_mappers()
-            return True
+            return changed
 
     @classmethod
     def index_downloaded(
