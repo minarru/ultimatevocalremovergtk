@@ -32,6 +32,7 @@
   <url type="homepage">https://codeberg.org/jawlet/ultimatevocalremovergtk</url>
 
   <releases>
+    <release version="v1.1.0" date="2026-08-28"/>
     <release version="v1.0.0" date="2026-07-05"/>
     <release version="v5.6.0" date="2023-09-29"/>
   </releases>

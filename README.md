@@ -2,56 +2,73 @@
 
 <img src="packaging/org.uvr.UltimateVocalRemover.png" alt="Ultimate Vocal Remover" width="128" />
 
-Linux port of [Ultimate Vocal Remover](https://github.com/Anjok07/ultimatevocalremovergui) with a **GTK4 / libadwaita** interface (PyGObject). **GTK release v1.0.0**, based on upstream **v5.6**, including **Apollo** restoration and **BS-Roformer / Mel-Band Roformer** support.
+Ultimate Vocal Remover for Linux is a local GTK4/libadwaita application for
+splitting audio into vocals, instrumental, drums, bass, and other stems. It is
+based on [Ultimate Vocal Remover v5.6](https://github.com/Anjok07/ultimatevocalremovergui)
+and also provides a headless `uvr` command-line interface.
 
-**Source:** [github.com/minarru/ultimatevocalremovergtk](https://github.com/minarru/ultimatevocalremovergtk) · **Releases:** [github.com/minarru/ultimatevocalremovergtk/releases](https://github.com/minarru/ultimatevocalremovergtk/releases)
+**GTK release v1.1.0** · [Source](https://github.com/minarru/ultimatevocalremovergtk) ·
+[Releases](https://github.com/minarru/ultimatevocalremovergtk/releases) ·
+[Report an issue](https://github.com/minarru/ultimatevocalremovergtk/issues)
 
-Report bugs and open pull requests on **GitHub**. The former Codeberg repo is archived — see [docs/mirroring.md](docs/mirroring.md).
+GitHub is the canonical home for this fork. The former Codeberg repository is
+archived; see [docs/mirroring.md](docs/mirroring.md).
 
-## About
+## Highlights
 
-This application uses source-separation models to split audio into stems (vocals, instrumental, drums, bass, and more). A shared catalogue and model-inventory layer keeps downloadable entries, installed models, human-readable names, and executable model identities aligned across the GTK interface and CLI. UVR's core developers trained most of the models in the ecosystem (Demucs v3/v4 weights come from Meta's research release).
+- Separate vocals/instrumental pairs or multi-stem sources such as drums, bass,
+  guitar, speech, music, and effects.
+- Run VR Architecture, MDX-Net, MDX23C, Band-Split/Mel-Band RoFormer, SCNet,
+  BandIt, and Demucs models.
+- Find and install supported models through the built-in **Download Center**.
+- Combine models with curated or custom ensembles.
+- Inspect, stretch, pitch-shift, align, or match audio, and restore it with
+  **Apollo**.
+- Use the GTK application interactively or automate the same core workflows
+  through the `uvr` CLI.
 
-Supported separation backends in this port:
-
-- **VR Architecture** — classic UVR models
-- **MDX-Net** — including MDX23C, Roformer, **SCNet**, and **Bandit** checkpoints
-- **Demucs** — v2/v3/v4 multi-stem separation
-- **Ensemble** — combine multiple models
-- **Audio Tools** — time stretch, pitch shift, and **Apollo** music restoration
-
-- **Original UVR developers**
-  - [Anjok07](https://github.com/anjok07)
-  - [aufr33](https://github.com/aufr33)
-- **Support upstream UVR**
-  - [Donate](https://www.buymeacoffee.com/uvr5)
+Support the original UVR project: [Donate](https://www.buymeacoffee.com/uvr5).
 
 ## Requirements
 
 - 64-bit Linux
 - System Python **3.13+** (developed and tested on Python 3.14)
-- System **PyGObject** with **GTK 4** and **libadwaita** (`gi`)
-- **FFmpeg** — required for non-WAV input/output
-- **Rubber Band CLI** — required for Time Stretch / Change Pitch
-- Optional: [uv](https://docs.astral.sh/uv/) for faster installs or the Python 3.12 fallback path
-- Optional: NVIDIA GPU with a working driver for GPU-accelerated MDX/ONNX inference (`./install_packages.sh --cuda`)
+- System **PyGObject**, **GTK 4**, and **libadwaita** (`gi`)
+- **FFmpeg** for non-WAV input and output
+- **Rubber Band CLI** for Time Stretch and Change Pitch
+- Optional: [uv](https://docs.astral.sh/uv/) for faster installs or the Python
+  3.12 fallback path
+- Optional: an NVIDIA GPU and working driver for accelerated MDX/ONNX inference
 
-## Installation
-
-### 1. Get the source
+## Quick start
 
 ```bash
 git clone https://github.com/minarru/ultimatevocalremovergtk.git
 cd ultimatevocalremovergtk
+./install_packages.sh --system-deps
+./run_uvr.sh
 ```
 
-Or download a source archive from the [GitHub repository](https://github.com/minarru/ultimatevocalremovergtk).
+Run the installer as your normal user. With `--system-deps` it uses `sudo` only
+for distro packages, then creates a user-owned `.venv` on the system Python
+with `--system-site-packages`. This lets GTK come from your distribution while
+the machine-learning stack stays inside the project environment and leaves
+PEP 668-protected system Python packages untouched.
 
-### 2. Install system packages
+`run_uvr.sh` launches the app and installs its desktop entry under
+`~/.local/share/applications/` when needed. After activating the environment,
+you can also launch directly with `python -m ui`.
 
-Pick the command for your distribution (or run `./install_packages.sh --system-deps` to install them automatically):
+## Installation options
 
-**Debian / Ubuntu / Linux Mint**
+### Install system packages manually
+
+If you do not want the installer to invoke your package manager, install the
+system dependencies yourself and then run `./install_packages.sh` without
+`--system-deps`.
+
+<details>
+<summary>Debian, Ubuntu, and Linux Mint</summary>
 
 ```bash
 sudo apt update
@@ -59,270 +76,212 @@ sudo apt install -y ffmpeg python3-venv python3-pip python3-gi gir1.2-gtk-4.0 \
     gir1.2-adw-1 libglib2.0-bin libsndfile1 rubberband-cli
 ```
 
-**Fedora**
+</details>
+
+<details>
+<summary>Fedora</summary>
 
 ```bash
 sudo dnf install -y ffmpeg python3-pip python3-gobject gtk4 libadwaita libsndfile rubberband
 ```
 
-**Arch / CachyOS / EndeavourOS / Manjaro**
+</details>
+
+<details>
+<summary>Arch, CachyOS, EndeavourOS, and Manjaro</summary>
 
 ```bash
 sudo pacman -Syu --needed ffmpeg python-pip python-virtualenv python-gobject gtk4 \
     libadwaita glib2 libsndfile rubberband
 ```
 
-**openSUSE**
+</details>
+
+<details>
+<summary>openSUSE</summary>
 
 ```bash
 sudo zypper install -y ffmpeg python3-pip python3-gobject gtk4 libadwaita libsndfile1 rubberband
 ```
 
-### 3. Install Python dependencies
+</details>
 
-The installer creates a `.venv` on the **system Python** with `--system-site-packages` so GTK4/libadwaita resolve from your distro, while the ML stack is installed via pip on top. This avoids modifying PEP 668–protected system Python packages.
+### NVIDIA GPU
 
-```bash
-./install_packages.sh
-```
-
-**NVIDIA GPU** (installs `requirements-cuda-linux.txt` — ONNX GPU + CUDA wheels):
+Add `--cuda` to replace CPU ONNX Runtime with the CUDA overlay:
 
 ```bash
-./install_packages.sh --cuda
+./install_packages.sh --system-deps --cuda
 ```
 
-Windows optional overlays: `requirements-cuda-windows.txt`, `requirements-directml.txt`.
+If the distro packages are already installed, use
+`./install_packages.sh --cuda` instead.
 
-**Specific Python interpreter:**
+### Choose a system Python
 
 ```bash
 ./install_packages.sh --python /usr/bin/python3.14
 ```
 
-**Fallback** — uv-managed Python 3.12 venv with pip-installed PyGObject (only if the system-Python path is unavailable):
+### Python 3.12 fallback
+
+Use this only when the system-Python/PyGObject path is unavailable. It creates
+an uv-managed Python 3.12 environment and installs PyGObject with pip.
 
 ```bash
 ./install_packages.sh --mode fallback --uv
 ```
 
-Manual equivalent of the default path:
+Keep pip-installed packages inside `.venv`; do not use `sudo pip` or delete
+your distribution's `/usr/lib/python*/EXTERNALLY-MANAGED` marker.
+
+## Your first separation
+
+1. Start the application with `./run_uvr.sh`.
+2. Open **Download Center** from the application menu.
+3. Choose a supported model for the output you want and download it.
+4. Return to Separation, choose the input audio, model, output folder, and
+   stems to save.
+5. Review the resolved plan and start processing.
+
+Model weights are generally not stored in git. Downloaded files stay local and
+are ignored by git. See [Models and stems](docs/models.md) for model families,
+catalogue behavior, stem meanings, canonical IDs, and custom-model handling.
+
+## Command-line quick start
+
+The installer links the checkout's `uvr` launcher into `~/.local/bin` when that
+name is available. Use `./uvr` from the checkout if `uvr` is not on `PATH`.
 
 ```bash
-/usr/bin/python3 -m venv --system-site-packages .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip setuptools wheel
-python -m pip install -r requirements.txt
-```
-
-### 4. Run the application
-
-```bash
-./run_uvr.sh
-```
-
-Or, with the virtual environment activated:
-
-```bash
-source .venv/bin/activate
-python -m ui
-```
-
-`run_uvr.sh` also installs a desktop entry under `~/.local/share/applications/` on first launch. A template is provided at `packaging/org.uvr.UltimateVocalRemover.desktop`.
-
-### Command-line interface
-
-The installer adds the source-tree `uvr` launcher to `~/.local/bin` when that
-name is available. The launcher uses the project virtual environment; `./uvr`
-always works directly from the checkout.
-
-```bash
-uvr models list --family mdx
 uvr models catalog --family mdx --query karaoke
 uvr models download "MelBand Roformer — Karaoke · Gabox"
+uvr models list --family mdx
 uvr separate song.wav -o ~/stems --model mdx:UVR-MDX-NET-Inst_HQ_4
-uvr separate ~/Music -o ~/stems --recursive --include '*.flac' --dry-run
-uvr ensemble song.wav -o ~/stems --ensemble "Curated: Vocal Clean"
-uvr ensemble song.wav -o ~/stems --model mdx:model-a \
-  --model demucs:hdemucs_mmi --main-stem pair.vocals_instrumental
-uvr audio inspect song.wav
-uvr audio stretch song.wav -o ~/processed --rate 1.1 --dry-run
-uvr audio restore song.wav -o ~/processed --model apollo:apollo_edm_by_essid
-uvr ensembles create my-mix --member mdx:model-a --member demucs:model-b \
-  --main-stem pair.vocals_instrumental --algorithm 'Max Spec/Min Spec'
-uvr --trace --log-file /tmp/uvr-trace.log separate song.wav -o ~/stems \
-  --model mdx:UVR-MDX-NET-Inst_HQ_4
-uvr update check
 ```
 
-CLI runs start from clean defaults. Use `--profile gui`, a named sparse profile,
-or a profile JSON path to inherit settings. A profile-supplied model or ensemble
-identity is previewed and confirmed; scripts must add `--accept-inherited`.
-Named flags and `--set section.field=value` are ephemeral and never modify GUI
-settings.
+Use the exact installed ID printed by `uvr models list` in place of the example
+model. Add `--dry-run` to resolve and validate a job without loading weights or
+processing audio. CLI jobs start from clean defaults unless you explicitly
+select `--profile gui`, a named profile, or a profile JSON file.
 
-`--dry-run` verifies inputs, model hashes, and configuration without loading
-weights, creating the output directory, or starting inference. Automation can
-select `--report json` for one result document or `--report jsonl` for progress
-events. Batch directories, collision policies, partial-failure handling,
-manifests, validation levels, model registration, devices, profiles, shell
-completion, and A/B benchmarking are described in
-[docs/environment.md](docs/environment.md#command-line-interface).
-That section also documents migration from the earlier experimental CLI;
-compatibility aliases are intentionally not shipped before release.
-See [docs/cli.md](docs/cli.md) for shared stem-selection behavior and
-[docs/environment.md](docs/environment.md#logging-and-debug) for diagnostic
-levels, privacy, and log locations.
+See the [CLI guide](docs/cli.md) for ensembles, Audio Tools, stem selection,
+profiles, validation, batch safety, manifests, and JSON/JSONL automation.
+
+## Documentation
+
+| Guide | Contents |
+| --- | --- |
+| [Models and stems](docs/models.md) | Download Center, model families, stem behavior, canonical IDs, compatibility, and architecture notes |
+| [CLI](docs/cli.md) | Commands, profiles, dry runs, batches, manifests, reports, and exit codes |
+| [Environment and troubleshooting](docs/environment.md) | Data paths, diagnostics, catalogue switches, external tools, launcher settings, and development controls |
 
 ## Upgrading
 
-This fork is distributed as **source** (no in-app binary update). To upgrade to a newer release:
+This fork is distributed as source; it does not install binary updates in the
+application.
 
 ```bash
 cd ultimatevocalremovergtk
 git pull
-./install_packages.sh   # re-run if requirements.txt changed
+./install_packages.sh   # re-run when requirements change
 ./run_uvr.sh
 ```
 
-Check [Releases](https://github.com/minarru/ultimatevocalremovergtk/releases) for release notes. The app’s **Application Version** dialog (Settings menu) compares your running version against `packaging/release.json` on GitHub.
+Check [Releases](https://github.com/minarru/ultimatevocalremovergtk/releases)
+for release notes. **Application Version** in the Settings menu compares the
+running version with the current GitHub release metadata.
 
-## Models and stems
-
-The **Download Center** presents one public catalogue assembled from the
-official TRvlvr listings, community sources, and bundled compatibility
-metadata. It shows friendly names, intended outputs, download size, support
-status, and installed state. Use its **Refresh** button for a current network
-snapshot; **Preferences → General → Maintenance → Refresh catalogue cache**
-also refreshes installed-model presentation evidence.
-
-Model presentation is separate from execution identity:
-
-- Pickers, Download Center rows, progress labels, Model Test, ensembles, and
-  human CLI output use the same reviewed display names.
-- Saved selections and execution use canonical IDs such as
-  `mdx:UVR-MDX-NET-Inst_HQ_4`; checkpoint basenames, configuration files, and
-  backend-specific names remain unchanged.
-- A manually added model with no exact catalogue or local metadata match keeps
-  its raw basename instead of being assigned a guessed identity or author.
-
-Reviewed catalogue models also carry curated stem semantics. Native names such
-as `other`, `instrument`, `No dry`, or model-specific YAML labels are mapped to
-consistent user-facing concepts before export and ensemble matching. This lets
-models with equivalent outputs participate together even when their backends
-spell those outputs differently. In particular:
-
-- Karaoke models use **Instrumental with Backing Vocals** as the primary output
-  and **Lead Vocals** as its complement. Only reviewed karaoke/BV models appear
-  in the Vocal Splitter picker.
-- Vocals/Instrumental, Center/Side, Four Stem, and Multi Stem ensembles use
-  reviewed semantic pair or mode IDs rather than display-label matching.
-- Multi-output models retain distinct concepts such as Drums, Bass, Guitar,
-  Speech, Music, and Effects instead of collapsing them into a generic
-  `Other` stem.
-
-See [docs/models.md](docs/models.md) for catalogue behavior, canonical model
-identity, supported architectures, and unknown-model handling. See
-[docs/cli.md](docs/cli.md) for exact stem and ensemble-selection syntax.
-
-### Model files
-
-Most model **weights are not stored in git** (they are large binary files). The repository ships only bundled metadata and one small VR model:
-
-| Shipped in git | Purpose |
-|---|---|
-| `models/*/model_data/*.json` | Model hash maps and parameters |
-| `models/MDX_Net_Models/model_data/mdx_c_configs/*.yaml` | MDX-C / Roformer / SCNet / Bandit config templates |
-| `models/Apollo_Models/model_configs/` and `model_data/` | Apollo recognition metadata |
-| `models/VR_Models/UVR-DeNoise-Lite.pth` | Built-in denoiser (~17 MB) |
-
-Everything else must be downloaded or placed manually:
-
-1. Launch the app and open **Download Center** from the menu (or use the banner when no models are installed for the selected method).
-2. Download the models you need for VR, MDX-Net, or Demucs.
-3. For **Apollo** restoration, place checkpoint files (`.ckpt` or `.bin`) in `models/Apollo_Models/`.
-4. **Roformer**, **SCNet**, and **Bandit** checkpoints download like other MDX models; enable the *Roformer Model* flag in MDX-C model parameters when using them. See [docs/models.md](docs/models.md) for stem layouts.
-5. **Download Center** merges the official TRvlvr catalogue, [Politrees UVR_resources](https://github.com/Politrees/UVR_resources), bundled fork extras, and [mvsepless_resources](https://huggingface.co/noblebarkrr/mvsepless_resources). Weights download from Hugging Face; YAML configs are fetched automatically. Models this build cannot run yet show as **Unsupported** (grayed). Set `UVR_DISABLE_POLITREES=1`, `UVR_DISABLE_EXTRA_MODELS=1`, and/or `UVR_DISABLE_MVSEPLESS=1` to disable individual supplements (see [docs/environment.md](docs/environment.md)); disabling Politrees alone does not leave only TRvlvr. TRvlvr download URLs that fail fall back to the Politrees Hugging Face mirror when available.
-
-Downloaded weights are ignored by git (see `.gitignore`). Runtime data (settings, temp files) lives under the project directory in portable mode, or under `~/.local/share/ultimatevocalremover` when the install directory is read-only. The machine-specific model registry is also untracked: portable checkouts use `.uvr-runtime/registered_models.json`, while explicit `UVR_DATA_DIR` and read-only installs store it in their resolved data directory.
-
-## Project layout
-
-Source code is grouped by layer at the repository root:
-
-| Path | Role |
-|---|---|
-| `ui/` | GTK4 / libadwaita interface (`python -m ui`) |
-| `cli/` | Headless command-line interface (`uvr`; internal `python -m cli`) |
-| `core/` | Frontend-neutral identities, discovery, planning, settings, devices, presets, registry, naming, and job execution |
-| `engines/` | Separation orchestration (VR, MDX, Demucs) |
-| `ml/` | Neural networks and audio DSP helpers |
-| `bundled/` | Read-only constants, changelog, download metadata |
-| `vendor/demucs/` | Vendored Demucs fork |
-| `models/` | Model weights and hash maps (mostly downloaded locally) |
-| `resources/` | Icon sources compiled into `ui/data/uvr.gresource` |
-
-**Bundled (shipped with the repo):** `bundled/`, model metadata under `models/`, `ml/` VR parameter JSON, `vendor/`.
-
-**Runtime (your machine, not in git):** `settings.json`, `profiles/*.json`, `ensembles/*.json`, `ensemble_temps/`, downloaded model weights, and model registry state. In a writable checkout most of these live at the repo root, while the registry uses `.uvr-runtime/`; otherwise they resolve under the configured or platform data directory (see `core/paths.py`). Legacy `data.pkl` is imported once when present. A legacy root `registered_models.json` is merged on reads and migrated to runtime storage on the next registry mutation.
-
-The GUI and CLI share canonical model IDs (`vr:…`, `mdx:…`, `demucs:…`, and `apollo:…`)
-and the same frontend-neutral job resolver. Stored model references are not
-silently migrated: a malformed or unavailable ID remains stored until the user
-repicks it in the relevant picker; see [docs/models.md](docs/models.md#model-identity).
-CLI profile operations remain separate and never rewrite GUI storage. The GUI
-performs runtime preflight before Separation, Ensemble, and Audio Tools jobs and, by default,
-asks for confirmation of Separation and Ensemble plans. This confirmation can
-be disabled in Settings without disabling preflight; Audio Tools never adds a
-confirmation dialog.
-
-## Notes
-
-- Optional tuning and debug switches are listed in [docs/environment.md](docs/environment.md).
-- This port uses the **GTK4 / libadwaita** UI. The original Tkinter application is not included.
-- Do **not** delete `/usr/lib/python*/EXTERNALLY-MANAGED`; that file protects your distro Python installation.
-- Keep pip-installed dependencies inside the project `.venv` — avoid `sudo pip install`.
-- If the environment breaks after a system Python or GTK upgrade, re-run `./install_packages.sh`. `run_uvr.sh` detects stale venvs and can rebuild them when launched from a terminal.
-- GPU conversions generally need an NVIDIA GPU with sufficient VRAM (8 GB+ recommended). CPU inference works but is slower.
-- Conversion time depends heavily on your hardware and the models selected.
-
-## Troubleshooting
+## Troubleshooting and support
 
 | Problem | What to try |
-|---|---|
-| FFmpeg errors on non-WAV files | Install `ffmpeg` and ensure it is on your `PATH` |
-| Time Stretch / Pitch Shift unavailable | Install `rubberband-cli` |
-| `gi` / GTK import errors | Install distro GTK4, libadwaita, and `python3-gi`; recreate the venv with `./install_packages.sh` |
-| `cannot import name 'InferenceSession' from 'onnxruntime'` | Leftover CUDA overlay in `.venv`. Rerun `./install_packages.sh --cuda` (it now uninstalls both CPU and GPU wheels and verifies the import). |
-| Out-of-memory during separation | Lower segment or window size in model settings |
-| No models in a dropdown | Open **Download Center**, download a supported model for that process method, then return to the picker |
-| Catalogue entries or installed names look stale | Use **Refresh** in Download Center, or **Preferences → General → Maintenance → Refresh catalogue cache**. Unknown custom models intentionally retain their basenames. |
-| A model is marked Unsupported | Open its Download Center row for the reason; the catalogue can list published models whose architecture is not yet runnable in this build. See [docs/models.md](docs/models.md). |
-| A model is missing from Vocal Splitter | The picker intentionally includes only installed models with reviewed karaoke/BV metadata |
-| Errors during processing | Open **Error Log** from the menu or press `Ctrl+E`. For more detail, select Debug or Trace under **Preferences → General → Diagnostics**, or launch with `uvr --debug gui`. |
+| --- | --- |
+| `gi` or GTK import errors | Install your distro's GTK4, libadwaita, and Python GObject packages, then recreate `.venv` with `./install_packages.sh` |
+| FFmpeg errors on non-WAV files | Install `ffmpeg` and confirm it is on `PATH` |
+| Time Stretch or Change Pitch unavailable | Install `rubberband-cli` |
+| No models in a picker | Open Download Center and install a supported model for that method |
+| Processing fails | Open **Error Log** or press `Ctrl+E`; enable Debug or Trace under **Preferences → General → Diagnostics** when more detail is needed |
 
-For shared dependency questions (FFmpeg, Rubber Band, etc.), upstream [GitHub Issues](https://github.com/Anjok07/ultimatevocalremovergui/issues) may still be useful.
+The full troubleshooting and diagnostic reference is in
+[docs/environment.md](docs/environment.md#troubleshooting). Model-specific
+problems are covered in [docs/models.md](docs/models.md).
 
-Report bugs in **this GTK fork** on [GitHub Issues](https://github.com/minarru/ultimatevocalremovergtk/issues). Use **Report Issue** in the Error Log to pre-fill version and log details.
-
-Known upstream-applicable bugs and roadmap gaps are tracked in [docs/tracked-issues.md](docs/tracked-issues.md), including numbered findings F1–F24 and product gaps.
+Report GTK-fork bugs on [GitHub Issues](https://github.com/minarru/ultimatevocalremovergtk/issues).
+The Error Log's **Report Issue** action pre-fills version and log details.
+Shared upstream dependency discussions may also be relevant in the original
+[UVR issue tracker](https://github.com/Anjok07/ultimatevocalremovergui/issues).
+Known upstream-applicable bugs and roadmap gaps are tracked in
+[docs/tracked-issues.md](docs/tracked-issues.md).
 
 ## License
 
-Ultimate Vocal Remover is **MIT-licensed**. If you use UVR models or code in unrelated projects, please credit the UVR developers.
+The repository's root project licence is the [MIT License](LICENSE).
+Third-party code, model weights, and other material retain their own licences
+and terms. Catalogue links identify external providers; they neither relicense
+those downloads nor imply that this repository rehosts the external weights.
 
 ## Credits
 
-- [ZFTurbo](https://github.com/ZFTurbo) — MDX23C model weights
+### Upstream UVR
+
+- [Anjok07](https://github.com/anjok07) and [aufr33](https://github.com/aufr33) — Ultimate Vocal Remover
 - [DilanBoskan](https://github.com/DilanBoskan) — early project contributions
 - [Bas Curtiz](https://www.youtube.com/user/bascurtiz) — UVR logo and branding
-- [tsurumeso](https://github.com/tsurumeso) — original VR Architecture code
-- [Kuielab & Woosung Choi](https://github.com/kuielab) — original MDX-Net code
-- [Adefossez & Demucs](https://github.com/facebookresearch/demucs) — Demucs code and models
 - [KimberleyJSN](https://github.com/KimberleyJensen) — MDX-Net and Demucs training scripts
-- [Politrees](https://github.com/Politrees/UVR_resources) — community model mirror and extended roformer configs
 - [Hv](https://github.com/NaJeongMo/Colab-for-MDX_B) — MDX-Net chunking implementation
+
+### Architectures and code
+
+- [tsurumeso](https://github.com/tsurumeso) — original VR Architecture
+- [Kuielab](https://github.com/kuielab) and Woosung Choi — original MDX-Net
+- [ZFTurbo/Music-Source-Separation-Training](https://github.com/ZFTurbo/Music-Source-Separation-Training)
+  — MDX23C and the MSST implementations used for the SCNet Masked/Tran
+  variants and related MDX-C support
+- [lucidrains](https://github.com/lucidrains/BS-RoFormer) — Band-Split and
+  Mel-Band RoFormer PyTorch implementations adapted in `ml/`
+- [starrytong/SCNet](https://github.com/starrytong/SCNet) and Tong et al. —
+  the official original SCNet implementation; Masked and Tran variants come
+  through ZFTurbo's training project
+- [Karn Watcharasupat et al.](https://github.com/kwatcharasupat/bandit) —
+  BandIt cinematic separation and its
+  [v2 reimplementation](https://github.com/kwatcharasupat/bandit-v2)
+- [JusperLee/Apollo](https://github.com/JusperLee/Apollo), Kai Li, and Yi Luo
+  — Apollo audio-restoration code and architecture
+- [pcunwa/BS-Roformer-HyperACE](https://huggingface.co/pcunwa/BS-Roformer-HyperACE)
+  / Unwa — HyperACE reference implementation and weights used by the port
+- Gopalakrishnan et al. and
+  [PoPE-pytorch](https://pypi.org/project/PoPE-pytorch/) — Polar Coordinate
+  Positional Embedding used by PolarFormer checkpoints
+- [Alexandre Défossez and Meta](https://github.com/facebookresearch/demucs) —
+  Demucs code and models; vendored Conv-TasNet files retain
+  [Kaituo Xu's](https://github.com/kaituoxu/Conv-TasNet) attribution
+- [Sergree / Matchering](https://github.com/sergree/matchering) — Audio Match
+  processing and the retained `ml/results.py` provenance
+
+### Model and catalogue sources
+
+- [TRvlvr/application_data](https://github.com/TRvlvr/application_data) and
+  [TRvlvr/model_repo](https://github.com/TRvlvr/model_repo) — official UVR
+  catalogue metadata and public model distribution
+- [Politrees/UVR_resources](https://github.com/Politrees/UVR_resources) —
+  community catalogue, configurations, and model mirror
+- [noblebarkrr/mvsepless_resources](https://huggingface.co/noblebarkrr/mvsepless_resources)
+  — additional community catalogue index
+- [Aname](https://huggingface.co/Aname-Tommy/Huge-SCNet-4stems), Unwa, and
+  essid — creators of the fork-curated Huge SCNet, HyperACE, and Apollo EDM
+  weights, respectively, listed in
+  [`bundled/extra_models.json`](bundled/extra_models.json)
+
+Individual downloadable models retain the authors shown in their reviewed
+catalogue labels; this list documents the project's direct sources rather than
+attempting to enumerate every model creator.
 
 ## References
 
-- Takahashi et al., ["Multi-scale Multi-band DenseNets for Audio Source Separation"](https://arxiv.org/pdf/1706.09588.pdf)
+- Takahashi et al., ["Multi-scale Multi-band DenseNets for Audio Source Separation"](https://arxiv.org/abs/1706.09588)
+- Lu et al., ["Music Source Separation with Band-Split RoPE Transformer"](https://arxiv.org/abs/2309.02612)
+- Wang, Lu, and Won, ["Mel-Band RoFormer for Music Source Separation"](https://arxiv.org/abs/2310.01809)
+- Tong et al., ["SCNet: Sparse Compression Network for Music Source Separation"](https://arxiv.org/abs/2401.13276)
+- Watcharasupat et al., ["A Generalized Bandsplit Neural Network for Cinematic Audio Source Separation"](https://arxiv.org/abs/2309.02539)
+- Li and Luo, ["Apollo: Band-sequence Modeling for High-Quality Audio Restoration"](https://arxiv.org/abs/2409.08514)
+- Gopalakrishnan et al., ["Decoupling the What and Where With Polar Coordinate Positional Embeddings"](https://arxiv.org/abs/2509.10534)

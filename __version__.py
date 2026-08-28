@@ -1,2 +1,2 @@
-VERSION = 'v1.0.0'
+VERSION = 'v1.1.0'
 UPSTREAM_BASE = 'v5.6.0'

@@ -1,8 +1,8 @@
 {
-  "latest_version": "v1.0.0",
-  "release_date": "2026-07-05",
+  "latest_version": "v1.1.0",
+  "release_date": "2026-08-28",
   "distribution": "source",
-  "update_url": "https://github.com/minarru/ultimatevocalremovergtk/releases/tag/v1.0.0",
-  "release_notes_url": "https://github.com/minarru/ultimatevocalremovergtk/releases/tag/v1.0.0",
+  "update_url": "https://github.com/minarru/ultimatevocalremovergtk/releases/tag/v1.1.0",
+  "release_notes_url": "https://github.com/minarru/ultimatevocalremovergtk/releases/tag/v1.1.0",
   "upgrade_instructions": "git pull && ./install_packages.sh && ./run_uvr.sh"
 }

@@ -70,7 +70,7 @@ class ReleaseUpdateStatusTests(unittest.TestCase):
 
         self.assertTrue(status["is_current"])
         self.assertFalse(status["is_online"])
-        self.assertEqual(status["latest"], "v1.0.0")
+        self.assertEqual(status["latest"], "v1.1.0")
 
     def test_download_manager_delegates(self) -> None:
         manager = DownloadManager()
@@ -78,7 +78,7 @@ class ReleaseUpdateStatusTests(unittest.TestCase):
         # real release endpoint.
         with patch("core.version_info._urlopen", side_effect=OSError("offline")):
             status = manager.update_status()
-        self.assertEqual(status["version"], "v1.0.0")
+        self.assertEqual(status["version"], "v1.1.0")
         self.assertIn("upstream_base", status)
         self.assertIn("is_current", status)
 

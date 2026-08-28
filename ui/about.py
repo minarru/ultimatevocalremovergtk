@@ -20,7 +20,7 @@ from . import APP_ID
 try:
     from __version__ import UPSTREAM_BASE, VERSION
 except Exception:  # pragma: no cover
-    VERSION = "v1.0.0"
+    VERSION = "v1.1.0"
     UPSTREAM_BASE = "v5.6.0"
 
 CHANGE_LOG = paths.CHANGE_LOG_PATH
@@ -111,7 +111,7 @@ def open_about(parent_window: typing.Any):
     kwargs: dict[str, typing.Any] = dict(
         application_name="Ultimate Vocal Remover",
         application_icon=APP_ID,
-        version=VERSION or "v1.0.0",
+        version=VERSION or "v1.1.0",
         comments="A GUI for vocal/instrumental separation using state-of-the-art AI models.",
         website="https://github.com/minarru/ultimatevocalremovergtk",
         issue_url=FORK_ISSUE_URL,

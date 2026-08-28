@@ -19,7 +19,7 @@ class ForkIssueUrlTests(unittest.TestCase):
         parsed = urllib.parse.urlparse(url)
         params = urllib.parse.parse_qs(parsed.query)
         body = params["body"][0]
-        self.assertIn("v1.0.0", body)
+        self.assertIn("v1.1.0", body)
         self.assertIn("v5.6.0", body)
         self.assertIn("RuntimeError: boom", body)
 

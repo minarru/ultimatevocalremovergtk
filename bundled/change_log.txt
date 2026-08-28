@@ -1,4 +1,41 @@
-Most Recent Changes (v1.0.0 — Linux GTK4 port):
+Most Recent Changes (v1.1.0 — Linux GTK4 port):
+
+Highlights:
+
+~ Added the public uvr command-line interface for separation, ensembles, Audio Tools, model management, profiles, validation, reports, batch jobs, benchmarking, and shell completion.
+~ Expanded the Download Center and model catalogue with official UVR metadata, Politrees resources, fork-curated extras, and the mvsepless community index.
+~ Added exact canonical model IDs across the GTK application, CLI, saved jobs, dependencies, and custom-model workflows.
+~ Introduced reviewed stem semantics so model selection, output names, karaoke/backing-vocal behavior, and ensembles agree on the stems a model produces.
+~ Reworked the Linux documentation around practical GTK and CLI workflows, with expanded model/code provenance, credits, and research references.
+
+Models and Download Center:
+
+~ Added compatibility for MSST SCNet Masked and SCNet Tran checkpoints, HyperACE variants, PoPE-based PolarFormer checkpoints, and the BS-RoFormer Large Inst v2 architecture.
+~ Added support for Mel-Band and Band-Split RoFormer skip-connection checkpoint variants.
+~ Added canonical display names, per-stem SDR information, catalogue stem/configuration evidence, and clearer unsupported-model diagnostics.
+~ Added registration and validation for custom Demucs models, including explicit version and source-layout metadata.
+~ Improved catalogue caching, stale-while-revalidate behavior, deduplication, source isolation, offline access, and Download Center refresh performance.
+~ Improved download progress accuracy, failure reporting, catalogue matching, and refresh behavior after models change on disk.
+
+Stems, ensembles, and output:
+
+~ Added concept-based stem routing for two-stem, karaoke, four-stem, and multi-stem models, including reviewed derived instrumental outputs.
+~ Preserved explicit stem selections across GTK settings, CLI jobs, profiles, vocal splitters, and retained ensemble-member exports.
+~ Made ensemble eligibility and pairing use stable semantic stem roles, with safer handling of incomplete members and focused outputs.
+~ Improved long-file processing with chunking, overlap handling, progress accounting, and CUDA out-of-memory recovery with segment backoff.
+~ Improved export finalization, collision handling, failure reporting, output promotion, and rollback of interrupted or failed CLI batches.
+~ Added run-aware model caching, classic MDX batching, CUDA autocast controls, and additional CUDA/ONNX performance tuning.
+
+Interface, reliability, and tooling:
+
+~ Added typed JSON settings, validated overrides, and consistent shared settings across Separation, Ensemble, and Audio Tools pages.
+~ Added drag-and-drop across the main window, combined output format/quality controls, live option summaries, and clearer inapplicable-setting states.
+~ Reduced startup and Download Center work with lazy model population, cached checkpoint hashes, deferred refreshes, and lighter console updates.
+~ Added structured diagnostic logging and clearer errors for invalid models, missing configurations, failed exports, and unavailable output folders.
+~ Added model probe, model sweep, catalogue publication, and stem-audit tooling with reproducible offline checks and safer atomic outputs.
+~ Expanded automated type checking and hermetic test coverage for GTK, CLI, catalogue, model identity, stem routing, ensembles, and audio exports.
+
+Previous Release (v1.0.0 — Linux GTK4 port):
 
 ~ First public release of the Linux GTK4 / libadwaita port (PyGObject), built on upstream UVR v5.6.
 ~ GTK4 interface with libadwaita styling, keyboard shortcuts, and light/dark color scheme support.
