@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import time
 import unittest
 
 
@@ -120,16 +121,23 @@ class SheetLayoutTests(unittest.TestCase):
     # gets a real GTK size allocation, rather than asserting on the frozen
     # requested size the way the old (dead) coverage did.
 
-    def _pump(self, iterations: int = 200) -> None:
+    def _wait_until(self, predicate, description: str, timeout: float = 2.0) -> None:
         from gi.repository import GLib
 
+        deadline = time.monotonic() + timeout
         context = GLib.MainContext.default()
-        for _ in range(iterations):
+        while time.monotonic() < deadline:
             while context.pending():
                 context.iteration(False)
+            if predicate():
+                return
+            time.sleep(0.01)
+        self.fail(f"timed out waiting for {description}")
 
     def _presented_sheet(self, parent_width: int):
-        from gi.repository import Adw
+        from gi.repository import Adw, Gtk
+
+        from ui.model_options import sheet as sheet_module
 
         sheet, _window = self._sheet()
         # MainWindow's minimum width varies with the runner's font metrics and
@@ -139,10 +147,27 @@ class SheetLayoutTests(unittest.TestCase):
         host.set_default_size(parent_width, 480)
         host.set_size_request(parent_width, 480)
         host.present()
-        self._pump()
+        self._wait_until(
+            lambda: host.get_width() > 1,
+            f"{parent_width}px host allocation",
+        )
         sheet._parent = host
         sheet.present(context="separation", active_method_key="MDX-Net", selected_models=[])
-        self._pump()
+        expected_orientation = (
+            Gtk.Orientation.VERTICAL
+            if parent_width < sheet_module._STACK_BREAKPOINT
+            else Gtk.Orientation.HORIZONTAL
+        )
+        self._wait_until(
+            lambda: (
+                sheet.dialog.get_width() > 1
+                and all(
+                    columns_box.get_orientation() == expected_orientation
+                    for columns_box in sheet._tab_columns.values()
+                )
+            ),
+            f"{parent_width}px dialog allocation and breakpoint state",
+        )
         return sheet, host
 
     def test_narrow_parent_stacks_the_columns(self):
