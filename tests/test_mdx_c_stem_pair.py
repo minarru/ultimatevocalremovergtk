@@ -72,7 +72,10 @@ class MDXCInstalledModelStemTests(unittest.TestCase):
         cls.repo = ModelRepository()
 
     def test_mid_side_model_complement_is_the_wide_stem(self) -> None:
-        record = ModelIdentityService(self.repo).lookup(_MID_SIDE_ID)
+        try:
+            record = ModelIdentityService(self.repo).lookup(_MID_SIDE_ID)
+        except ValueError:
+            self.skipTest("mid-side MDX23C model not installed")
         if not record.installed:
             self.skipTest("mid-side MDX23C model not installed")
 

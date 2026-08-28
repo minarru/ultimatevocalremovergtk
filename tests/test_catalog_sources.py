@@ -13,6 +13,7 @@ from bundled.constants import DEMUCS_ARCH_TYPE, MDX_ARCH_TYPE, VR_ARCH_TYPE
 from core import catalog_sources
 from core.catalogue_identity import catalogue_model_id
 from core.catalogue_types import CatalogueEvidenceState
+from core.mdx_runtime_contract import MdxConfigEvidence
 from core.stem_roles import StemReviewStatus
 
 #: ``_supplemental_sources`` takes no arguments and returns supplements only,
@@ -266,23 +267,49 @@ class ExactEvidencePrecedenceTests(unittest.TestCase):
             expected_routes,
         ) in fixtures:
             with self.subTest(model_id=model_id):
-                meta = catalog_sources._build_meta(
-                    {
-                        label: {
-                            checkpoint: f"https://example.test/{checkpoint}",
-                            config: f"https://example.test/{config}",
-                        }
-                    },
-                    MDX_ARCH_TYPE,
-                    {
-                        label: {
-                            "stems": summary_stems,
-                            "target_instrument": summary_target,
-                            "intent": "instrumental",
-                        }
-                    },
-                    {},
-                )[label]
+                evidence = MdxConfigEvidence(
+                    training_instruments=tuple(expected_stems),
+                    target_instrument=expected_target,
+                    content_sha256="a" * 64,
+                    sources=(f"fixture:{config}",),
+                )
+
+                def exact_evidence(
+                    requested_model_id: str,
+                    requested_config: str,
+                    *,
+                    expected_model_id: str = model_id,
+                    expected_config: str = config,
+                    expected_evidence: MdxConfigEvidence = evidence,
+                ) -> MdxConfigEvidence | None:
+                    if (
+                        requested_model_id == expected_model_id
+                        and requested_config.casefold() == expected_config.casefold()
+                    ):
+                        return expected_evidence
+                    return None
+
+                with unittest.mock.patch(
+                    "core.model_manifest.runtime.bundled_catalogue_config_evidence",
+                    side_effect=exact_evidence,
+                ):
+                    meta = catalog_sources._build_meta(
+                        {
+                            label: {
+                                checkpoint: f"https://example.test/{checkpoint}",
+                                config: f"https://example.test/{config}",
+                            }
+                        },
+                        MDX_ARCH_TYPE,
+                        {
+                            label: {
+                                "stems": summary_stems,
+                                "target_instrument": summary_target,
+                                "intent": "instrumental",
+                            }
+                        },
+                        {},
+                    )[label]
 
                 self.assertEqual(meta.stems, expected_stems)
                 self.assertEqual(meta.target_instrument, expected_target)

@@ -12,6 +12,7 @@ from core import catalog_sources
 from core import catalogue_stem_cache as csc
 from core.catalogue_stem_cache import StemCacheError, StemCacheHit
 from core.catalogue_types import CatalogueEvidenceState
+from core.mdx_runtime_contract import MdxConfigEvidence
 from core.model_display import clear_display_cache
 
 _CATALOGUE_OFF = {
@@ -50,10 +51,33 @@ class CatalogStemMergeTests(unittest.TestCase):
         # Curated Apollo extras ship http YAML URLs; keep merges under test only.
         self._apollo = mock.patch.object(catalog_sources, "apollo_download_list", return_value={})
         self._apollo.start()
+        from core.model_manifest.runtime import bundled_catalogue_config_evidence
+
+        def exact_fixture(model_id: str, config_yaml: str) -> MdxConfigEvidence | None:
+            if (
+                model_id == "mdx:mbr_guitar_becruily"
+                and config_yaml.casefold() == "mbr_guitar_becruily_config.yaml"
+            ):
+                return MdxConfigEvidence(
+                    training_instruments=("Guitar", "Other"),
+                    target_instrument="Guitar",
+                    content_sha256=(
+                        "3438f5eef8881dfadd26f7c1b9481b9fcfa99de9e8be24b90e50ca63de7b7581"
+                    ),
+                    sources=(f"fixture:{config_yaml}",),
+                )
+            return bundled_catalogue_config_evidence(model_id, config_yaml)
+
+        self._bundled_evidence = mock.patch(
+            "core.model_manifest.runtime.bundled_catalogue_config_evidence",
+            side_effect=exact_fixture,
+        )
+        self._bundled_evidence.start()
         clear_display_cache()
 
     def tearDown(self) -> None:
         clear_display_cache()
+        self._bundled_evidence.stop()
         self._apollo.stop()
         self._env.stop()
 

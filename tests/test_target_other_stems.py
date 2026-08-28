@@ -34,7 +34,10 @@ class TargetOtherStemTests(unittest.TestCase):
         cls.repo = ModelRepository()
 
     def _dry_installed(self, model_id: str) -> ModelConfig | None:
-        record = ModelIdentityService(self.repo).lookup(model_id)
+        try:
+            record = ModelIdentityService(self.repo).lookup(model_id)
+        except ValueError:
+            return None
         if not record.installed:
             return None
 

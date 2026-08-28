@@ -129,17 +129,21 @@ class SheetLayoutTests(unittest.TestCase):
                 context.iteration(False)
 
     def _presented_sheet(self, parent_width: int):
-        sheet, window = self._sheet()
-        window.set_application(self._app)
-        # Xvfb intentionally runs without a window manager, so a toplevel's
-        # default size is only advisory and GTK may allocate the application's
-        # 640px minimum instead.  A size request makes this synthetic parent
-        # deterministic while still exercising the dialog's real allocation.
-        window.set_size_request(parent_width, 480)
-        window.present()
+        from gi.repository import Adw
+
+        sheet, _window = self._sheet()
+        # MainWindow's minimum width varies with the runner's font metrics and
+        # can exceed the requested narrow size. Present the real sheet against
+        # an otherwise empty host so the test controls the available width.
+        host = Adw.ApplicationWindow(application=self._app)
+        host.set_default_size(parent_width, 480)
+        host.set_size_request(parent_width, 480)
+        host.present()
+        self._pump()
+        sheet._parent = host
         sheet.present(context="separation", active_method_key="MDX-Net", selected_models=[])
         self._pump()
-        return sheet, window
+        return sheet, host
 
     def test_narrow_parent_stacks_the_columns(self):
         from gi.repository import Gtk
