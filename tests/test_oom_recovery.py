@@ -11,7 +11,6 @@ from unittest.mock import MagicMock, patch
 
 from core.job_callbacks import JobCallbacks
 from core.job_runner import JobRunner
-from core.separator_run import run_separator
 from core.oom_choice import (
     OOM_CHOICE_AUTO,
     OOM_CHOICE_EXPORT,
@@ -20,7 +19,9 @@ from core.oom_choice import (
     OomChoiceRequest,
 )
 from core.run_control import ProcessStopped
+from core.separator_run import export_ensemble_salvage, run_separator
 from core.settings import Settings
+from core.types import SaveFormat
 
 
 class _OomError(RuntimeError):
@@ -206,6 +207,33 @@ class JobRunnerOomRecoveryTests(unittest.TestCase):
     @patch("core.separator_run.prepare_separator_vram")
     @patch("core.separator_run._release_inference_resources")
     @patch("core.separator_run.release_separator")
+    def test_oom_dialog_prefers_the_carried_identity_display(
+        self, _release_sep: Any, _release_inf: Any, _prep_vram: Any
+    ) -> None:
+        model = self._model(2208)
+        model.model_display_label = "SCNet Transient"
+
+        def rebuild() -> FakeSeparator:
+            return FakeSeparator(model, always_fail=True)
+
+        def on_choice(request: OomChoiceRequest) -> None:
+            self.assertEqual(request.model_label, "SCNet Transient")
+            request.respond(OOM_CHOICE_STOP)
+
+        callbacks = JobCallbacks(on_oom_choice=on_choice, on_console=lambda _t: None)
+        with self.assertRaises(ProcessStopped):
+            run_separator(
+                self.runner,
+                rebuild(),
+                callbacks=callbacks,
+                model=model,
+                process_kind="separation",
+                rebuild=rebuild,
+            )
+
+    @patch("core.separator_run.prepare_separator_vram")
+    @patch("core.separator_run._release_inference_resources")
+    @patch("core.separator_run.release_separator")
     def test_auto_retries_then_reraises(
         self, _release_sep: Any, _release_inf: Any, _prep_vram: Any
     ) -> None:
@@ -268,6 +296,43 @@ class JobRunnerOomRecoveryTests(unittest.TestCase):
             )
         write_stems.assert_called_once()
         self.assertTrue(self.runner._last_oom_exported)
+
+    def test_disk_salvage_is_published_in_the_requested_format(self) -> None:
+        import numpy as np
+        import soundfile as sf
+
+        with tempfile.TemporaryDirectory() as member_folder:
+            member_path = os.path.join(member_folder, "song Model (Side).wav")
+            sf.write(member_path, np.zeros((32, 2), dtype=np.float32), 44100)
+            self.settings.process.save_format = SaveFormat.FLAC
+            self.runner._ensemble_salvage_members = [
+                {
+                    "arrays": {},
+                    "paths": {"Side": member_path},
+                    "audio_file_base": "song Model",
+                    "model_label": "Model",
+                }
+            ]
+
+            export_ensemble_salvage(self.runner, JobCallbacks())
+
+        self.assertTrue(os.path.isfile(os.path.join(self._tmp.name, "song Model (Side).flac")))
+        self.assertFalse(os.path.isfile(os.path.join(self._tmp.name, "song Model (Side).wav")))
+
+    def test_empty_salvage_member_does_not_report_a_successful_export(self) -> None:
+        self.runner._ensemble_salvage_members = [
+            {
+                "arrays": {},
+                "paths": {},
+                "audio_file_base": "song Model",
+                "model_label": "Model",
+            }
+        ]
+
+        with self.assertRaisesRegex(RuntimeError, "no usable"):
+            export_ensemble_salvage(self.runner, JobCallbacks())
+
+        self.assertFalse(self.runner._last_oom_exported)
 
 
 class DispatchOomCallbackTests(unittest.TestCase):

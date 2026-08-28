@@ -9,6 +9,7 @@ on hooks supplied by the caller.
 Import is torch-free. The runner is duck-typed — this module must not import
 :mod:`core.job_runner` at load time.
 """
+
 from __future__ import annotations
 
 import os
@@ -29,6 +30,7 @@ from .debug_log import debug
 from .error_context import snapshot_worker_file
 from .inference_cleanup import release_inference_memory as _release_inference_resources
 from .model_display import display_name_for_model
+from .model_stem_semantics import stem_semantics_projection
 from .process_data import ProcessData
 from .run_control import ProcessStopped, check_stopped, pausable_callback
 from .separator_run import run_separator
@@ -60,9 +62,8 @@ def _progress_detail(
         parts.append(f"Chunk {chunk_num}/{chunk_total}")
     if model is not None:
         label = (
-            display_name_for_model(
-                model.process_method, model.model_name, model.repo
-            )
+            str(getattr(model, "model_display_label", "") or "")
+            or display_name_for_model(model.process_method, model.model_name, model.repo)
             or getattr(model, "model_basename", "")
             or ""
         )
@@ -70,6 +71,18 @@ def _progress_detail(
             parts.append(f"Model {model_num}/{model_count}" + (f" · {label}" if label else ""))
         elif label:
             parts.append(label)
+        semantics = stem_semantics_projection(
+            getattr(model, "stem_semantics", None),
+            backend_primary=getattr(model, "primary_stem", None),
+            backend_target=getattr(model, "target_instrument", None),
+        )
+        primary_route = next((route for route in semantics.routes if route.logical_primary), None)
+        if primary_route is not None:
+            parts.append(
+                f"{primary_route.display} [{primary_route.role}; "
+                f"native={primary_route.native}; context={semantics.context}; "
+                f"status={semantics.status}]"
+            )
     return " · ".join(parts) if parts else None
 
 
@@ -98,9 +111,7 @@ def _bind_set_progress_bar(
 ) -> Callable[..., None]:
     """Map engine ``set_progress_bar(step, iterations)`` onto ``callbacks.progress``."""
 
-    def set_progress_bar(
-        step: typing.Any, inference_iterations: typing.Any = 0
-    ) -> None:
+    def set_progress_bar(step: typing.Any, inference_iterations: typing.Any = 0) -> None:
         total_count = max(1, runner.true_model_count * units.total)
         base = 1.0 / total_count
         local_step = step + inference_iterations
@@ -132,17 +143,13 @@ def _long_file_chunk_settings(settings: Settings) -> tuple:
     except (TypeError, ValueError):
         chunk_seconds = 0.0
     try:
-        overlap_seconds = float(
-            settings.process.long_file_chunk_overlap_seconds or 0.0
-        )
+        overlap_seconds = float(settings.process.long_file_chunk_overlap_seconds or 0.0)
     except (TypeError, ValueError):
         overlap_seconds = 0.0
     return chunk_seconds, overlap_seconds
 
 
-def _estimated_chunk_count(
-    audio_file: str, chunk_seconds: float, overlap_seconds: float
-) -> int:
+def _estimated_chunk_count(audio_file: str, chunk_seconds: float, overlap_seconds: float) -> int:
     """Chunk units for progress before PCM is decoded. ``1`` when chunking is off."""
     if chunk_seconds <= 0:
         return 1
@@ -176,9 +183,10 @@ def _write_captured_stems(
 ) -> None:
     """Write deferred stem arrays to their original export paths."""
     import soundfile as sf
-    from ml import spec_utils
+
     from bundled.constants import FLAC
-    from core.audio_io import save_format, flac_subtype, replace_audio_suffix
+    from core.audio_io import flac_subtype, replace_audio_suffix, save_format
+    from ml import spec_utils
 
     for stem_name, source in stem_arrays.items():
         path = stem_paths.get(stem_name)
@@ -234,13 +242,9 @@ class FilePassHooks(Protocol):
 
     def before_file(self, runner: Any, state: FileState) -> None: ...
 
-    def export_and_base(
-        self, runner: Any, state: FileState, model: Any
-    ) -> tuple[str, str]: ...
+    def export_and_base(self, runner: Any, state: FileState, model: Any) -> tuple[str, str]: ...
 
-    def extra_process_data(
-        self, runner: Any, state: FileState, model: Any
-    ) -> dict: ...
+    def extra_process_data(self, runner: Any, state: FileState, model: Any) -> dict: ...
 
     def after_chunk(
         self,
@@ -265,9 +269,13 @@ def with_worker_lifecycle(
 ) -> None:
     """Run ``body`` and map stop/error/success onto job callbacks."""
     stime = time.perf_counter()
-    time_elapsed = lambda: (
-        f'Time Elapsed: {time.strftime("%H:%M:%S", time.gmtime(int(time.perf_counter() - stime)))}'
-    )
+
+    def time_elapsed() -> str:
+        return (
+            "Time Elapsed: "
+            f"{time.strftime('%H:%M:%S', time.gmtime(int(time.perf_counter() - stime)))}"
+        )
+
     try:
         body()
         callbacks.progress(1.0)
@@ -314,9 +322,7 @@ def run_models_on_files(
         if not os.path.isfile(audio_file):
             file_plans.append(None)
             continue
-        estimated = _estimated_chunk_count(
-            audio_file, chunk_seconds, overlap_seconds
-        )
+        estimated = _estimated_chunk_count(audio_file, chunk_seconds, overlap_seconds)
         file_plans.append((audio_file, estimated))
         units.total += estimated
     if units.total <= 0:
@@ -341,9 +347,7 @@ def run_models_on_files(
 
         if plan is None:
             audio_file = input_paths[file_num - 1]
-            callbacks.console(
-                f'\n{base_text}"{os.path.basename(audio_file)}" was not found.\n'
-            )
+            callbacks.console(f'\n{base_text}"{os.path.basename(audio_file)}" was not found.\n')
             runner.iteration += runner.true_model_count
             continue
 
@@ -403,9 +407,7 @@ def run_models_on_files(
                 runner,
                 lambda text, base_text=base_text: callbacks.console(base_text + text),
             )
-            audio_file_base, export_path = hooks.export_and_base(
-                runner, state, current_model
-            )
+            audio_file_base, export_path = hooks.export_and_base(runner, state, current_model)
             extra = hooks.extra_process_data(runner, state, current_model)
 
             for chunk_num, (_start, _end, mix_slice) in enumerate(chunks, start=1):
@@ -423,12 +425,8 @@ def run_models_on_files(
                     audio_file=mix_slice if chunked else decoded_mix,
                     set_progress_bar=set_progress_bar,
                     write_to_console=write_to_console,
-                    process_iteration=pausable_callback(
-                        runner, runner._process_iteration
-                    ),
-                    check_run_control=pausable_callback(
-                        runner, lambda: check_stopped(runner)
-                    ),
+                    process_iteration=pausable_callback(runner, runner._process_iteration),
+                    check_run_control=pausable_callback(runner, lambda: check_stopped(runner)),
                     cached_source_callback=runner._cached_source_callback,
                     cached_model_source_holder=runner._cached_model_source_holder,
                     list_all_models=runner.all_models,
@@ -436,9 +434,7 @@ def run_models_on_files(
                     **extra,
                 )
 
-                def _rebuild(
-                    model: Any = current_model, pdata: ProcessData = process_data
-                ) -> Any:
+                def _rebuild(model: Any = current_model, pdata: ProcessData = process_data) -> Any:
                     return runner._build_separator(model, pdata)
 
                 seperator = _rebuild()
@@ -449,18 +445,19 @@ def run_models_on_files(
                     f"model={current_model.model_basename!r} "
                     f"chunk={chunk_num}/{n_chunks}",
                 )
-                member_stems = run_separator(
-                    runner,
-                    seperator,
-                    callbacks=callbacks,
-                    model=current_model,
-                    process_kind=hooks.process_kind,
-                    rebuild=_rebuild,
-                ) or {}
-                paths = getattr(runner, "_last_captured_stem_paths", None) or {}
-                hooks.after_chunk(
-                    runner, state, current_model, member_stems, paths, chunked
+                member_stems = (
+                    run_separator(
+                        runner,
+                        seperator,
+                        callbacks=callbacks,
+                        model=current_model,
+                        process_kind=hooks.process_kind,
+                        rebuild=_rebuild,
+                    )
+                    or {}
                 )
+                paths = getattr(runner, "_last_captured_stem_paths", None) or {}
+                hooks.after_chunk(runner, state, current_model, member_stems, paths, chunked)
                 debug("worker", f"{debug_prefix} done engine={engine}")
 
             hooks.after_model(runner, state, current_model)

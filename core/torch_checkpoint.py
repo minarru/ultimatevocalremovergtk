@@ -64,8 +64,6 @@ def ensure_demucs_import_aliases() -> None:
     legacy module names to resolve before ``torch.load`` runs.
     """
     global _DEMUCS_ALIASES_INSTALLED
-    if _DEMUCS_ALIASES_INSTALLED:
-        return
 
     root = importlib.import_module("vendor.demucs")
     sys.modules.setdefault("demucs", root)

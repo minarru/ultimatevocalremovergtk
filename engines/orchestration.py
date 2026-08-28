@@ -34,7 +34,11 @@ def process_secondary_model(
     with trace_phase(
         "separate",
         "secondary_model",
-        model=secondary_model.model_basename,
+        model=(
+            getattr(secondary_model, "model_display_label", None)
+            or getattr(secondary_model, "model_name", None)
+            or secondary_model.model_basename
+        ),
         method=secondary_model.process_method,
     ):
         if not is_pre_proc_model:

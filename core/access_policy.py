@@ -12,6 +12,16 @@ from dataclasses import dataclass
 class AccessPolicy:
     allow_network: bool = True
     allow_metadata_writes: bool = True
+    # ``None`` preserves the legacy contract: callers that only deny metadata
+    # writes also deny cache writes. Callers with distinct requirements can
+    # now permit one capability without silently permitting the other.
+    allow_cache_writes: bool | None = None
+
+    def __post_init__(self) -> None:
+        if self.allow_cache_writes is None:
+            object.__setattr__(
+                self, "allow_cache_writes", self.allow_metadata_writes
+            )
 
 
 _CURRENT = contextvars.ContextVar(
@@ -26,13 +36,17 @@ def current_access_policy() -> AccessPolicy:
 
 @contextlib.contextmanager
 def access_policy(
-    *, allow_network: bool, allow_metadata_writes: bool
+    *,
+    allow_network: bool,
+    allow_metadata_writes: bool,
+    allow_cache_writes: bool | None = None,
 ) -> Iterator[None]:
     """Temporarily set the process-wide access policy for this context."""
     token = _CURRENT.set(
         AccessPolicy(
             allow_network=allow_network,
             allow_metadata_writes=allow_metadata_writes,
+            allow_cache_writes=allow_cache_writes,
         )
     )
     try:

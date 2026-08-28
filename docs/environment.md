@@ -10,7 +10,8 @@ UVR_DEV_CSS=1 ./run_uvr.sh
 env UVR_DEV_CSS=1 ./run_uvr.sh
 ```
 
-For GLib debug logging details and component names, see also `core/debug_log.py`.
+For the structured diagnostic implementation and GLib compatibility domains,
+see also `core/debug_log.py`.
 
 ---
 
@@ -18,10 +19,27 @@ For GLib debug logging details and component names, see also `core/debug_log.py`
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `UVR_DATA_DIR` | Writable checkout root, else OS user data dir | Models, settings (`settings.json`), profiles, ensembles, sample/ensemble temps |
+| `UVR_DATA_DIR` | Writable checkout root, else OS user data dir | Models, settings (`settings.json`), profiles, ensembles, sample/ensemble temps, and—when explicitly set—the model registry |
 | `UVR_CACHE_DIR` | OS cache dir (`~/.cache/uvr` on Linux) | Download size cache, Politrees catalogue JSON, mvsepless `models.json` cache, catalogue YAML stem cache |
 
 On first use, legacy copies of `download_size_cache.json` / `politrees_model_links.json` in the checkout root or `UVR_DATA_DIR` are moved into `UVR_CACHE_DIR`.
+
+The model registry contains machine-specific checkpoint hashes, catalogue-label
+evidence, and trusted local display overrides. It is never seeded from or
+tracked by the repository. In a writable portable checkout it lives at
+`.uvr-runtime/registered_models.json`; an explicit `UVR_DATA_DIR` places it at
+`$UVR_DATA_DIR/registered_models.json`; a read-only installation uses the
+platform user-data directory. A fresh installation therefore starts with an
+empty in-memory schema-2 registry and creates the file only on mutation.
+
+For compatibility, reads merge a legacy checkout-root
+`registered_models.json` with the runtime file without modifying either one.
+Runtime hash mappings and per-model presentation fields win conflicts. The next
+registry mutation writes the merged schema-2 state atomically, then moves the
+legacy file beside it as `registered_models.legacy.json` (or the next numbered
+name when an archive already exists). A corrupt legacy file is left untouched
+and blocks mutation until repaired; an archive failure leaves the published
+runtime registry usable and emits a warning.
 
 Standard XDG / platform paths (`XDG_DATA_HOME`, `XDG_CACHE_HOME`, `LOCALAPPDATA`) apply when UVR-specific vars are unset. See `core/paths.py` and `core/platform.py`.
 
@@ -29,28 +47,69 @@ Standard XDG / platform paths (`XDG_DATA_HOME`, `XDG_CACHE_HOME`, `LOCALAPPDATA`
 
 ## Logging and debug
 
-| Variable | Example | Purpose |
-|----------|---------|---------|
-| `G_MESSAGES_DEBUG` | `uvr` · `uvr-ui,uvr-download` · `all` | GLib debug domains (`uvr-*` shorthands expanded at launch) |
-| `UVR_LOG_FILE` | `/tmp/uvr.log` | Mirror debug output to a plain-text file |
-| `UVR_VERBOSE` | `1` | High-frequency trace (`uvr-trace`; progress ticks, worker polls) |
+The GUI and CLI share one structured diagnostic pipeline. It defaults to
+**Errors**, writing a rotating log at `UVR_CACHE_DIR/logs/uvr.log` (five files,
+2 MiB each). In the GUI, change the live and persisted level under
+**Preferences → General → Diagnostics**. The levels are:
 
-**Components:** `ui`, `dispatch`, `trace`, `worker`, `separate`, `cleanup`, `model`, `audio`, `download`, `error`, `settings`.
+- **Errors:** unrecovered failures, corrupt settings, uncaught exceptions, and
+  export paths that produced no writes.
+- **Debug:** lifecycle boundaries and compact decisions for startup, settings,
+  planning, model inventory, execution, exports, catalogue refresh (including
+  recoverable source warnings), and model downloads.
+- **Trace:** Debug plus high-frequency progress, console-chunk, GTK-dispatch,
+  and polling events.
 
-**Suggested profiles:**
+Each line carries a UTC timestamp, level, component, process-session ID, event
+name, and—where applicable—an operation ID shared by CLI commands, UI runs,
+workers, exports, and downloads. Python warnings are captured at Debug/Trace;
+uncaught main-thread and worker-thread exceptions are always captured.
+
+Local paths and URL paths are redacted by default. **Include sensitive details**
+reveals those paths for troubleshooting. Credentials, authorization values,
+cookies, URL user-info/query strings, raw audio/sample arrays, tensors, and
+model weights are never written. Structured values are escaped to one physical
+line, and log files are forced to owner-only permissions. CLI JSON/JSONL
+stdout remains reserved for the report document/events; diagnostics go to the
+log and GLib/stderr.
+
+The CLI accepts `--debug` or `--trace`, plus `--debug-sensitive` and
+`--log-file PATH`. Put these before the command to apply them globally, or on a
+processing/reporting command that exposes the same flags. `--verbose` remains
+independent: it prints the effective plan and does not enable diagnostic logs.
+Without a flag or environment override, the CLI uses the persisted diagnostic
+policy from Preferences; functional job settings still follow the CLI profile
+rules described below.
+
+| Variable | Values / example | Purpose |
+|----------|------------------|---------|
+| `UVR_LOG_LEVEL` | `errors`, `debug`, `trace` | Override the persisted diagnostic level |
+| `UVR_LOG_FILE` | `/tmp/uvr.log` | Override the rotating cache-log destination |
+| `UVR_DEBUG_SENSITIVE` | `1`, `true`, `yes` | Include local and URL paths (never secrets or URL queries) |
+| `UVR_VERBOSE` | `1` | Legacy alias for Trace |
+| `G_MESSAGES_DEBUG` | `uvr` · `uvr-ui,uvr-download` · `all` | Legacy GLib debug-domain filter (`uvr-*` shorthands expanded at launch) |
+
+**Components:** `ui`, `cli`, `dispatch`, `trace`, `worker`, `separate`,
+`cleanup`, `model`, `audio`, `download`, `ensemble`, `cache`, `error`, and
+`settings`.
+
+**Examples:**
 
 ```bash
-# UI and settings (Save Stems persist + plan output resolution)
+# Persistent structured debug log at the normal cache location
+uvr --debug gui
+
+# Trace one CLI job into an explicit file
+uvr separate song.wav -o /tmp/stems --model mdx:model \
+  --trace --log-file /tmp/uvr-trace.log
+
+# Legacy component-focused GLib output
 G_MESSAGES_DEBUG=uvr-ui,uvr-settings,uvr-error python -m ui
-
-# Separation run
-G_MESSAGES_DEBUG=uvr-ui,uvr-worker,uvr-dispatch,uvr-separate,uvr-model,uvr-error python -m ui
-
-# File + domains
-G_MESSAGES_DEBUG=uvr-download UVR_LOG_FILE=/tmp/uvr.log python -m ui
 ```
 
-`run_uvr.sh` normalizes `G_MESSAGES_DEBUG` and prints a hint when debug vars are set. A second instance exits immediately (single-instance app) — use `journalctl --user -f` or `UVR_LOG_FILE` + `tail -f` on a running session.
+`run_uvr.sh` normalizes `G_MESSAGES_DEBUG` and prints a hint when debug variables
+are set. A second GUI instance exits immediately (single-instance app); inspect
+the rotating cache log or use `journalctl --user -f` for the active process.
 
 ---
 
@@ -58,14 +117,15 @@ G_MESSAGES_DEBUG=uvr-download UVR_LOG_FILE=/tmp/uvr.log python -m ui
 
 | Variable | Values | Purpose |
 |----------|--------|---------|
-| `UVR_DISABLE_POLITREES` | `1`, `true`, `yes` | Use only the official TRvlvr catalogue (skip Politrees community models) |
+| `UVR_DISABLE_POLITREES` | `1`, `true`, `yes` | Skip the remote Politrees community supplement; bundled extras and mvsepless membership remain enabled unless separately disabled |
+| `UVR_DISABLE_EXTRA_MODELS` | `1`, `true`, `yes` | Skip bundled fork-extra catalogue membership (a local source) |
 | `UVR_DISABLE_MVSEPLESS` | `1`, `true`, `yes` | Skip the [mvsepless_resources](https://huggingface.co/noblebarkrr/mvsepless_resources) catalogue supplement |
 | `UVR_DISABLE_CATALOGUE_STEMS` | `1`, `true`, `yes` | Skip background fetch of catalogue YAML configs for Download Center stem subtitles (mvsepless stems unchanged; use for offline/CI) |
 | `UVR_DISABLE_MODEL_SCORES` | `1`, `true`, `yes` | Skip the benchmarked SDR catalogue (network fetch + seven-day cache); rows fall back to stems and size |
 | `UVR_SIZE_HEAD_WORKERS` | positive int (default `8`) | Parallelism for Download Center size/identity HEAD warmup, and the size of each submitted wave. Non-numeric or `0` falls back to the default |
 | `UVR_INSECURE_DOWNLOADS` | `1` | Disable TLS certificate verification (**dev only**) |
 
-Download size-cache warmup (`size_cache_warmup start` in logs) is scheduled when the Download Center opens, not at main-window map. HEADs are submitted a wave at a time so quitting mid-warmup only waits on the wave in flight, not the whole backlog. When the warmup's identity pass drops rehosted duplicates, the open Download Center removes those rows in place (`catalogue refresh removed N row(s)` in logs) instead of rebuilding the list. Catalogue YAML stem fetches are rate-limited (≤2 concurrent), notify per completed chunk, and prioritize visible Download Center rows — a row already queued in the bulk backlog is promoted when it becomes visible. Name-mapper refresh merges local-only keys; see [models.md](models.md).
+`CatalogueCoordinator` merges membership in this order: upstream/TRvlvr, Politrees, bundled fork extras, then mvsepless. Upstream/TRvlvr, Politrees, and mvsepless are remote membership sources; extras is bundled and local. For a TRvlvr-only membership view, disable all three supplements (`UVR_DISABLE_POLITREES=1`, `UVR_DISABLE_EXTRA_MODELS=1`, and `UVR_DISABLE_MVSEPLESS=1`). Download size-cache warmup (`size_cache_warmup start` in logs) is scheduled when the Download Center opens, not at main-window map. HEADs are submitted a wave at a time so quitting mid-warmup only waits on the wave in flight, not the whole backlog. When the warmup's identity pass drops rehosted duplicates, the open Download Center removes those rows in place (`catalogue refresh removed N row(s)` in logs) instead of rebuilding the list. Catalogue YAML stem fetches are rate-limited (≤2 concurrent), notify per completed chunk, and prioritize visible Download Center rows — a row already queued in the bulk backlog is promoted when it becomes visible. Name-mapper refresh merges local-only keys; see [models.md](models.md).
 
 ---
 
@@ -125,12 +185,16 @@ uvr separate song.wav -o /tmp/stems \
 
 uvr ensemble song.wav -o /tmp/stems \
   --model mdx:model-a --model demucs:hdemucs_mmi \
-  --main-stem vocals_instrumental
+  --main-stem pair.vocals_instrumental
 ```
 
-Canonical model IDs are `vr:<basename>`, `mdx:<basename>`, and
-`demucs:<basename>`. An unqualified display name, basename, or substring is
-accepted only when it resolves uniquely across every installed family. Unknown
+Canonical model IDs are `vr:<basename>`, `mdx:<basename>`, `demucs:<basename>`,
+and `apollo:<basename>`. `separate`, `ensemble`, `models show`, and `models
+configure` require the exact canonical ID for `--model` — there is no
+display-name, bare-basename, or substring fallback; `uvr models list` (and
+`--all-known`) prints the exact IDs to use. `uvr audio restore --model` is the
+one exception: it also accepts a bare basename or display value that resolves
+uniquely within the `apollo` family (still no substring match). Unknown
 checkpoints must be registered before use:
 
 ```bash
@@ -139,6 +203,10 @@ uvr models register model.ckpt --family mdx --config model.json
 
 Registration copies the checkpoint into the managed model tree and stores its
 validated per-hash configuration. Local metadata overrides catalogue metadata.
+`--family demucs --config <json>` instead writes an entry (version, source
+layout, artifacts) to the versioned Demucs registry, keyed by canonical ID
+rather than checkpoint hash; `uvr models configure demucs:<basename> --reset`
+removes it.
 
 ### Defaults and profiles
 
@@ -230,10 +298,13 @@ by a per-output-dir `threading.Lock`. `--on-exists` accepts `fail`
 (default), `overwrite`, `rename`, or `skip`. Overwrite copies existing
 destinations to `.{name}.uvr-overwrite.bak` until the whole unit succeeds;
 failure restores backups and returns files to staging. Batches continue
-after an input failure by default; `--fail-fast` reverses this. Manifests
-record effective settings, provenance, model hashes, inputs, outputs,
-backend, and outcomes. Replay rejects changed model hashes unless
-`--allow-model-change` is supplied.
+after an input failure by default; `--fail-fast` reverses this. Manifests are
+schema 3 and record effective settings, provenance, a flat `model_dependencies`
+map of canonical IDs, the active `model_identity_digest` (`sha256:` prefix),
+model hashes, inputs, outputs, backend, and outcomes. Replay always rejects a
+changed model dependency (a different canonical ID); a changed checkpoint
+hash or identity digest for the same dependency set requires
+`--allow-model-change`.
 
 ### Reports and exit codes
 
@@ -241,7 +312,8 @@ backend, and outcomes. Replay rejects changed model hashes unless
 versioned result document. JSONL emits versioned planning, progress,
 per-input, and terminal events. Engine logs never enter machine-readable
 stdout. `--quiet` suppresses progress and engine chatter; `--verbose`
-prints the effective plan for a real job.
+prints the effective plan for a real job. `--debug` and `--trace` control the
+separate structured diagnostic stream described above.
 
 JSON documents have the stable outer shape below. Success results add the
 effective `plan`, per-input outcomes, timings, and output paths; failures use
@@ -269,7 +341,7 @@ success, and `130` interruption.
 
 | | |
 | --- | --- |
-| Manifest `schema_version` | `1` for `separate` / `ensemble`; `2` for `audio` |
+| Manifest `schema_version` | `3` for `separate`, `ensemble`, and `audio` — requires `model_dependencies` and `model_identity_digest`. Bench manifests stay at schema `1`. |
 | Interrupt document | `ok: false`, `status: "failed"`, `stopped: true`, exit `130` |
 | Planning / validate / dry-run | Installed + cached metadata only. Missing MDX-C YAML is an error; use `uvr models download` |
 | Access policy | Planning/validate/identity: `access_policy(allow_network=False, allow_metadata_writes=False)`. Downloads default online. |
@@ -278,7 +350,11 @@ success, and `130` interruption.
 
 Planning / validate / identity use
 `access_policy(allow_network=False, allow_metadata_writes=False)` /
-`mdx_c_network(False)`, not `catalogue_offline()`.
+`mdx_c_network(False)`, not `catalogue_offline()`. `--offline` opts an
+otherwise-online command out of live network access: `models validate` and
+`run` skip fetching a missing MDX-C YAML config, and `models catalog` /
+`models download` serve the last cached catalogue snapshot instead of forcing
+a refresh.
 
 ### Benchmarking and completion
 

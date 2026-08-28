@@ -5,8 +5,8 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any, Optional, TypeVar, Union
 
-from bundled.constants import AUTO_SELECT, DEFAULT, DEF_OPT, MAX_MIN
-from core.stems import EnsemblePair, coerce_ensemble_pair
+from bundled.constants import AUTO_SELECT, DEF_OPT, DEFAULT, MAX_MIN
+from core.stem_pairs import normalize_stem_pair_id
 from core.types import ProcessMethod, SaveFormat
 from core.types.settings_enums import (
     AlignPhaseOption,
@@ -14,6 +14,7 @@ from core.types.settings_enums import (
     ColorScheme,
     DbAnalysis,
     DeverbVocalOpt,
+    DiagnosticLevel,
     FlacBitDepth,
     IntroAnalysis,
     ManualEnsembleOption,
@@ -231,7 +232,6 @@ _BOOL_FIELDS: frozenset[tuple[str, str]] = frozenset(
         ("mdx", "is_invert_spec"),
         ("mdx", "is_mixer_mode"),
         ("mdx", "is_secondary_model_activate"),
-        ("demucs", "is_chunk_demucs"),
         ("demucs", "is_split_mode"),
         ("demucs", "is_demucs_combine_stems"),
         ("demucs", "is_secondary_model_activate"),
@@ -247,6 +247,7 @@ _BOOL_FIELDS: frozenset[tuple[str, str]] = frozenset(
         ("ui", "notify_process_failed"),
         ("ui", "notify_download_complete"),
         ("ui", "notify_download_failed"),
+        ("diagnostics", "include_sensitive"),
     }
 )
 
@@ -259,7 +260,6 @@ _INT_FIELDS: frozenset[tuple[str, str]] = frozenset(
         ("mdx", "segment_size"),
         ("mdx", "margin"),
         ("mdx", "overlap_mdx23"),
-        ("demucs", "margin_demucs"),
         ("demucs", "shifts"),
         ("audio_tools", "apollo_overlap"),
         ("audio_tools", "apollo_chunk_size"),
@@ -311,7 +311,6 @@ _OPTIONAL_FLOAT_FIELDS = frozenset(
 _CHUNKS_FIELDS = frozenset(
     {
         ("mdx", "chunks"),
-        ("demucs", "chunks_demucs"),
     }
 )
 
@@ -338,6 +337,7 @@ _ENUM_FIELDS: dict[tuple[str, str], tuple[type[Enum], Enum]] = {
     ("mdx", "phase_option"): (AlignPhaseOption, AlignPhaseOption.AUTOMATIC),
     ("mdx", "phase_shifts"): (PhaseShiftsOpt, PhaseShiftsOpt.NONE),
     ("ui", "color_scheme"): (ColorScheme, ColorScheme.AUTO),
+    ("diagnostics", "level"): (DiagnosticLevel, DiagnosticLevel.ERRORS),
     ("audio_tools", "chosen_audio_tool"): (
         AudioTool,
         AudioTool.MANUAL_ENSEMBLE,
@@ -370,7 +370,7 @@ def coerce_field(section_name: str, field: str, value: Any) -> Any:
     if path in _DEVICE_FIELDS:
         return as_optional_device(value)
     if path in _ENSEMBLE_PAIR_FIELDS:
-        return coerce_ensemble_pair(value)
+        return normalize_stem_pair_id(value)
     if path in _ENSEMBLE_TYPE_FIELDS:
         return coerce_ensemble_type(value)
     if path in _STEM_FOCUS_FIELDS:
@@ -438,6 +438,7 @@ def coerce_json_dict(data: Any) -> dict[str, Any]:
         "ensemble",
         "audio_tools",
         "ui",
+        "diagnostics",
     ):
         if section in result:
             result[section] = _coerce_section(section, result[section])
@@ -455,7 +456,6 @@ FLAT_SENTINEL_LABELS: dict[str, str] = {
     "overlap_mdx": DEF_OPT,
     "compensate": AUTO_SELECT,
     "chunks": AUTO_SELECT,
-    "chunks_demucs": AUTO_SELECT,
     "segment": DEF_OPT,
 }
 
@@ -464,6 +464,6 @@ def setting_for_combo(flat_key: str, value: Any) -> Any:
     """Map a stored setting to a combo/scale display value."""
     if value is None:
         return FLAT_SENTINEL_LABELS.get(flat_key)
-    if value == "full" and flat_key in ("chunks", "chunks_demucs"):
+    if value == "full" and flat_key == "chunks":
         return "Full"
     return enum_value(value)

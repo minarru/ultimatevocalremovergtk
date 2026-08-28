@@ -11,6 +11,8 @@ from unittest import mock
 
 from bundled.constants import DEMUCS_ARCH_TYPE, MDX_ARCH_TYPE, VR_ARCH_TYPE
 from core import mvsepless_catalog
+from core.catalog_dedupe import dedupe_download_catalogue, primary_checkpoint_name
+from core.catalog_sources import _build_meta, _metadata_alias_index
 from core.downloads import DownloadManager
 from core.mvsepless_catalog import (
     classify_entry,
@@ -49,9 +51,7 @@ def _entry(
 class UrlBasenameTests(unittest.TestCase):
     def test_strips_query(self) -> None:
         self.assertEqual(
-            url_basename(
-                "https://example.com/path/mbr_vocals_kim.ckpt?download=true"
-            ),
+            url_basename("https://example.com/path/mbr_vocals_kim.ckpt?download=true"),
             "mbr_vocals_kim.ckpt",
         )
 
@@ -66,9 +66,7 @@ class ClassifyTests(unittest.TestCase):
         self.assertEqual(reason, "")
 
     def test_medley_vox_denied(self) -> None:
-        ok, reason = classify_entry(
-            "multi_singing", {"model_type": "medley_vox", "full_name": "X"}
-        )
+        ok, reason = classify_entry("multi_singing", {"model_type": "medley_vox", "full_name": "X"})
         self.assertFalse(ok)
         self.assertIn("Medley-Vox", reason)
 
@@ -105,6 +103,102 @@ class ClassifyTests(unittest.TestCase):
 
 
 class ConvertTests(unittest.TestCase):
+    def test_duplicate_full_names_are_exact_id_suffixed_independent_of_raw_order(self) -> None:
+        entries = {
+            "mbr_inst_becruily": next(
+                iter(
+                    _entry(
+                        model_type="mel_band_roformer",
+                        full_name="Same Name",
+                        ckpt="mel/mbr_inst_becruily.ckpt",
+                        cfg="mel/mbr_inst_becruily.yaml",
+                        entry_id="mbr_inst_becruily",
+                    ).values()
+                )
+            ),
+            "mbr_guitar_becruily": next(
+                iter(
+                    _entry(
+                        model_type="mel_band_roformer",
+                        full_name="Same Name",
+                        ckpt="mel/mbr_guitar_becruily.ckpt",
+                        cfg="mel/mbr_guitar_becruily.yaml",
+                        entry_id="mbr_guitar_becruily",
+                    ).values()
+                )
+            ),
+        }
+
+        first = convert_mvsepless_catalog(entries)["mdx_download_list"]
+        second = convert_mvsepless_catalog(dict(reversed(tuple(entries.items()))))[
+            "mdx_download_list"
+        ]
+
+        expected = {
+            "Same Name [mbr_guitar_becruily]": "mbr_guitar_becruily.ckpt",
+            "Same Name [mbr_inst_becruily]": "mbr_inst_becruily.ckpt",
+        }
+        for converted in (first, second):
+            self.assertEqual(
+                {label: primary_checkpoint_name(files) for label, files in converted.items()},
+                expected,
+            )
+
+    def test_dedupe_keeps_politrees_and_both_exact_duplicate_name_artifacts(self) -> None:
+        entries = {
+            "mbr_inst_becruily": next(
+                iter(
+                    _entry(
+                        model_type="mel_band_roformer",
+                        full_name="Same Name",
+                        ckpt="mel/mbr_inst_becruily.ckpt",
+                        cfg="mel/mbr_inst_becruily.yaml",
+                        entry_id="mbr_inst_becruily",
+                    ).values()
+                )
+            ),
+            "mbr_guitar_becruily": next(
+                iter(
+                    _entry(
+                        model_type="mel_band_roformer",
+                        full_name="Same Name",
+                        ckpt="mel/mbr_guitar_becruily.ckpt",
+                        cfg="mel/mbr_guitar_becruily.yaml",
+                        entry_id="mbr_guitar_becruily",
+                    ).values()
+                )
+            ),
+        }
+        politrees = {"Roformer Model: Same Name": {"politrees.ckpt": "https://p/politrees.ckpt"}}
+
+        for raw in (entries, dict(reversed(tuple(entries.items())))):
+            converted = convert_mvsepless_catalog(raw)
+            _vr, merged, _demucs = merge_mvsepless_catalogues(
+                {}, politrees, {}, converted=converted
+            )
+            kept = dedupe_download_catalogue(merged)
+            self.assertEqual(
+                {primary_checkpoint_name(files) for files in kept.values()},
+                {"politrees.ckpt", "mbr_inst_becruily.ckpt", "mbr_guitar_becruily.ckpt"},
+            )
+
+    def test_ambiguous_normalized_metadata_alias_is_not_selected_by_order(self) -> None:
+        metadata = {
+            "Roformer Model: Same Name": {"entry_id": "politrees", "stems": ["Vocals"]},
+            "Same Name": {"entry_id": "mvsepless", "stems": ["Guitar"]},
+        }
+
+        aliases = _metadata_alias_index(metadata)
+        built = _build_meta(
+            {"Same Name": {"exact.ckpt": "https://x/exact.ckpt"}},
+            MDX_ARCH_TYPE,
+            metadata,
+            aliases,
+        )
+
+        self.assertNotIn("same name", aliases)
+        self.assertEqual(built["Same Name"].stems, ["Guitar"])
+
     def test_supported_types_land_in_mdx_list(self) -> None:
         for model_type, ckpt, cfg in (
             ("mel_band_roformer", "a.ckpt", "a_config.yaml"),
@@ -163,12 +257,8 @@ class ConvertTests(unittest.TestCase):
         self.assertEqual(converted["mdx_download_list"], {})
         unsupported = converted["unsupported"]
         self.assertTrue(any(label == "VR Sample" for label, _ in unsupported[VR_ARCH_TYPE]))
-        self.assertTrue(
-            any(label == "Demucs Sample" for label, _ in unsupported[DEMUCS_ARCH_TYPE])
-        )
-        self.assertTrue(
-            any(label == "Medley Sample" for label, _ in unsupported[MDX_ARCH_TYPE])
-        )
+        self.assertTrue(any(label == "Demucs Sample" for label, _ in unsupported[DEMUCS_ARCH_TYPE]))
+        self.assertTrue(any(label == "Medley Sample" for label, _ in unsupported[MDX_ARCH_TYPE]))
 
     def test_entry_files_rejects_path_traversal(self) -> None:
         self.assertIsNone(
@@ -205,7 +295,10 @@ class ConvertTests(unittest.TestCase):
 
         self.assertEqual(
             list(converted["mdx_download_list"]),
-            ["Duplicate Friendly Name", "Duplicate Friendly Name [second_id]"],
+            [
+                "Duplicate Friendly Name [first_id]",
+                "Duplicate Friendly Name [second_id]",
+            ],
         )
         self.assertEqual(
             converted["metadata"]["Duplicate Friendly Name [second_id]"]["entry_id"],
@@ -288,9 +381,7 @@ class MergeTests(unittest.TestCase):
                 "Already Upstream": "reason",
             },
         }
-        rows = unsupported_mvsepless_downloads(
-            converted, existing_labels={"Already Upstream": {}}
-        )
+        rows = unsupported_mvsepless_downloads(converted, existing_labels={"Already Upstream": {}})
         labels = [label for label, _ in rows.get(MDX_ARCH_TYPE, [])]
         self.assertEqual(labels, ["Keep Me"])
 
@@ -333,9 +424,7 @@ class DownloadManagerMergeTests(unittest.TestCase):
             {**mdx, "Mvsepless Mel": {"a.ckpt": "https://x/a.ckpt"}},
             dict(demucs),
         )
-        mock_unsupported.return_value = {
-            MDX_ARCH_TYPE: [("Broken", "not ported")]
-        }
+        mock_unsupported.return_value = {MDX_ARCH_TYPE: [("Broken", "not ported")]}
         from core.catalog_sources import invalidate_catalogue_merge
 
         invalidate_catalogue_merge()
@@ -343,9 +432,7 @@ class DownloadManagerMergeTests(unittest.TestCase):
         self.manager._merge_politrees_supplement(allow_network=False)
         mock_merge.assert_called_once()
         self.assertIn("Mvsepless Mel", self.manager.mdx_download_list)
-        self.assertEqual(
-            self.manager.unsupported_downloads()[MDX_ARCH_TYPE][0][0], "Broken"
-        )
+        self.assertEqual(self.manager.unsupported_downloads()[MDX_ARCH_TYPE][0][0], "Broken")
 
     def test_resolve_blocks_unsupported_only(self) -> None:
         self.manager.mdx_download_list = {}
@@ -362,9 +449,10 @@ class DownloadManagerMergeTests(unittest.TestCase):
         self.manager.unsupported_download_list = {
             MDX_ARCH_TYPE: [("Medley Sample", "Medley-Vox engine not ported")]
         }
-        with mock.patch(
-            "core.mvsepless_catalog._urlopen"
-        ) as opener, self.assertRaises(ValueError) as ctx:
+        with (
+            mock.patch("core.mvsepless_catalog._urlopen") as opener,
+            self.assertRaises(ValueError) as ctx,
+        ):
             self.manager.resolve("Medley Sample", MDX_ARCH_TYPE)
         self.assertIn("not downloadable", str(ctx.exception))
         opener.assert_not_called()
@@ -404,9 +492,7 @@ class DiskCacheTests(unittest.TestCase):
             with open(cache_path, "w", encoding="utf-8") as handle:
                 json.dump({"fetched_at": 1.0, "data": payload}, handle)
             with mock.patch.dict(os.environ, {"UVR_DISABLE_MVSEPLESS": "0"}, clear=False):
-                with mock.patch(
-                    "core.mvsepless_catalog._cache_path", return_value=cache_path
-                ):
+                with mock.patch("core.mvsepless_catalog._cache_path", return_value=cache_path):
                     with mock.patch(
                         "core.mvsepless_catalog._urlopen",
                         side_effect=OSError("offline"),
@@ -427,9 +513,12 @@ class CategoryTranslationTests(unittest.TestCase):
         )
         from core.mvsepless_catalog import translate_category
 
-        self.assertEqual(translate_category("\u0412\u043e\u043a\u0430\u043b"), ("Vocals", INTENT_VOCALS))
         self.assertEqual(
-            translate_category("\u041a\u0430\u0440\u0430\u043e\u043a\u0435"), ("Karaoke", INTENT_KARAOKE)
+            translate_category("\u0412\u043e\u043a\u0430\u043b"), ("Vocals", INTENT_VOCALS)
+        )
+        self.assertEqual(
+            translate_category("\u041a\u0430\u0440\u0430\u043e\u043a\u0435"),
+            ("Karaoke", INTENT_KARAOKE),
         )
         self.assertEqual(
             translate_category("4 \u0441\u0442\u0435\u043c\u0430"), ("4 stems", INTENT_MULTI_STEM)
@@ -439,31 +528,29 @@ class CategoryTranslationTests(unittest.TestCase):
         from core.model_stem_semantics import INTENT_DRUM_BASS_SEP, INTENT_SPECIALTY_STEM
         from core.mvsepless_catalog import translate_category
 
-        self.assertEqual(
-            translate_category("Ударные"), ("Drums", INTENT_SPECIALTY_STEM)
-        )
+        self.assertEqual(translate_category("Ударные"), ("Drums", INTENT_SPECIALTY_STEM))
         self.assertEqual(translate_category("Бас"), ("Bass", INTENT_SPECIALTY_STEM))
         self.assertEqual(translate_category("Басс"), ("Bass", INTENT_SPECIALTY_STEM))
-        self.assertEqual(
-            translate_category("DrumSep"), ("DrumSep", INTENT_DRUM_BASS_SEP)
-        )
+        self.assertEqual(translate_category("DrumSep"), ("DrumSep", INTENT_DRUM_BASS_SEP))
 
 
 class MetadataSidecarTests(unittest.TestCase):
     def test_supported_entry_keeps_stems_and_target(self) -> None:
         from core.model_stem_semantics import INTENT_VOCALS
 
-        converted = convert_mvsepless_catalog({
-            "mbr_x": {
-                "model_type": "mel_band_roformer",
-                "category": "\u0412\u043e\u043a\u0430\u043b",
-                "full_name": "Mel-Band Roformer X by Someone",
-                "stems": ["Vocals", "other"],
-                "target_instrument": "Vocals",
-                "checkpoint_url": "https://example.invalid/a/mbr_x.ckpt",
-                "config_url": "https://example.invalid/a/mbr_x.yaml",
+        converted = convert_mvsepless_catalog(
+            {
+                "mbr_x": {
+                    "model_type": "mel_band_roformer",
+                    "category": "\u0412\u043e\u043a\u0430\u043b",
+                    "full_name": "Mel-Band Roformer X by Someone",
+                    "stems": ["Vocals", "other"],
+                    "target_instrument": "Vocals",
+                    "checkpoint_url": "https://example.invalid/a/mbr_x.ckpt",
+                    "config_url": "https://example.invalid/a/mbr_x.yaml",
+                }
             }
-        })
+        )
         meta = converted["metadata"]["Mel-Band Roformer X by Someone"]
         self.assertEqual(meta["stems"], ["Vocals", "other"])
         self.assertEqual(meta["target_instrument"], "Vocals")
@@ -472,17 +559,19 @@ class MetadataSidecarTests(unittest.TestCase):
         self.assertEqual(meta["entry_id"], "mbr_x")
 
     def test_unsupported_entry_also_gets_metadata(self) -> None:
-        converted = convert_mvsepless_catalog({
-            "mbr_wsa": {
-                "model_type": "mel_band_roformer",
-                "category": "\u0412\u043e\u043a\u0430\u043b",
-                "full_name": "WSA Mel-Band Roformer",
-                "stems": ["other", "vocals"],
-                "target_instrument": "vocals",
-                "checkpoint_url": "https://example.invalid/a/mbr_wsa.ckpt",
-                "config_url": "https://example.invalid/a/mbr_wsa.yaml",
+        converted = convert_mvsepless_catalog(
+            {
+                "mbr_wsa": {
+                    "model_type": "mel_band_roformer",
+                    "category": "\u0412\u043e\u043a\u0430\u043b",
+                    "full_name": "WSA Mel-Band Roformer",
+                    "stems": ["other", "vocals"],
+                    "target_instrument": "vocals",
+                    "checkpoint_url": "https://example.invalid/a/mbr_wsa.ckpt",
+                    "config_url": "https://example.invalid/a/mbr_wsa.yaml",
+                }
             }
-        })
+        )
         self.assertIn("WSA Mel-Band Roformer", converted["metadata"])
 
 

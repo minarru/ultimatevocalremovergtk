@@ -2,55 +2,53 @@
 
 This is the framework-agnostic port of ``UVR.py``'s "Download Center Methods"
 (``online_data_refresh`` / ``download_list_fill`` / ``download_model_select`` /
-``download_item`` / ``download_model_settings`` / ``download_validate_code``) and
-the VIP-code decryption (``vip_downloads``). It reuses the exact remote URLs and
-model-list JSON schema UVR uses (see :mod:`data.constants`), so the GTK
-front end downloads the same files into the same model directories.
+``download_item`` / ``download_model_settings``). It reuses the upstream
+model-list JSON schema and routes public artifacts from both model repositories
+into the same model directories.
 
-Everything here is import-safe without ``torch``: only the standard library plus
-``cryptography`` (lazy-imported, and only for VIP-code validation) are used.
-Network and disk work happens on caller-supplied worker threads; this module
+Everything here is import-safe without ``torch`` and uses only the standard
+library. Network and disk work happens on caller-supplied worker threads; this module
 never touches any UI toolkit and reports progress through plain callbacks.
 """
-import typing
 
 import dataclasses
 import errno
 import json
 import os
-import tempfile
 import ssl
+import tempfile
 import threading
 import time
+import typing
 import urllib.request
+import warnings
+from contextlib import ExitStack
 from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
 
 from bundled.constants import (
+    ADDITIONAL_MODEL_REPO,
     ALL_TYPES,
     APOLLO_ARCH_TYPE,
     BULLETIN_CHECK,
     DEMUCS_ARCH_TYPE,
     DEMUCS_MODEL_NAME_DATA_LINK,
     DEMUCS_NEWER_ARCH_TYPES,
-    DOWNLOAD_CHECKS,
     INFO_UNAVAILABLE_TEXT,
+    LEGACY_ADDITIONAL_REPO_SELECTION,
     MDX_ARCH_TYPE,
     MDX_MODEL_DATA_LINK,
     MDX_MODEL_NAME_DATA_LINK,
-    NO_CODE,
     NO_MODEL,
     NO_NEW_MODELS,
     NORMAL_REPO,
     OPERATING_SYSTEM,
-    VIP_REPO,
-    VIP_SELECTION,
     VR_ARCH_TYPE,
     VR_MODEL_DATA_LINK,
 )
 
 from . import paths
-from .debug_log import debug
 from .catalog_dedupe import normalize_catalogue_label
+from .debug_log import debug
 from .download_sizes import (
     content_ids_from_cache,
     describe_download_size,
@@ -59,6 +57,7 @@ from .download_sizes import (
     prefetch_remote_sizes,
     prefetch_same_size_identity,
 )
+from .json_store import locked_json_path
 from .mdx_config_fetch import ensure_mdx_c_config
 from .mvsepless_catalog import (
     unsupported_mvsepless_downloads,
@@ -98,6 +97,59 @@ _NAME_MAPPER_DESTS = frozenset(
 )
 
 
+@dataclasses.dataclass(frozen=True)
+class ManualDownloadRow:
+    """One projected Manual Downloads row with its raw selection intact."""
+
+    arch_type: str
+    selection: str
+    display: str
+    model: Any
+
+    def resolve_links(self) -> List[Tuple[str, str]]:
+        return DownloadManager.manual_links(
+            self.arch_type,
+            self.model,
+            selection=self.selection,
+        )
+
+
+def _attempt_presentation_backfill(
+    repo: Any | None,
+    snapshot: Any | None,
+    *,
+    operation: str,
+) -> None:
+    if repo is None:
+        return
+    if snapshot is not None and not all(
+        isinstance(getattr(snapshot, family, None), Mapping)
+        for family in ("vr", "mdx", "demucs", "apollo")
+    ):
+        return
+    try:
+        from .model_inventory import backfill_installed_presentations
+
+        backfill_installed_presentations(repo, snapshot)
+    except (OSError, ValueError) as exc:
+        message = (
+            f"model presentation backfill failed after successful {operation}; "
+            "the live catalogue remains active and the next successful refresh "
+            f"will retry: {type(exc).__name__}: {exc}"
+        )
+        from .debug_log import log_event
+
+        log_event(
+            "download",
+            "presentation_backfill_failed",
+            level="warning",
+            operation=operation,
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
+        warnings.warn(message, RuntimeWarning, stacklevel=2)
+
+
 def _latest_version_key() -> str:
     if OPERATING_SYSTEM == "Darwin":
         return "current_version_mac"
@@ -132,8 +184,27 @@ def _json_file_matches(path: str, payload: Mapping[str, Any]) -> bool:
     return existing == payload
 
 
-def _transactional_json_refresh(writes: Mapping[str, Mapping[str, Any]]) -> tuple[bool, bool]:
+def _transactional_json_refresh(
+    writes: Mapping[str, Mapping[str, Any]],
+    *,
+    locked_paths: typing.Iterable[str] = (),
+    prepare_locked: Callable[[], Mapping[str, Mapping[str, Any]]] | None = None,
+) -> tuple[bool, bool]:
     """Stage and commit a set of JSON files, rolling back on commit failure."""
+    transaction_paths = set(writes)
+    transaction_paths.update(locked_paths)
+    with ExitStack() as locks:
+        for path in sorted(transaction_paths, key=os.path.abspath):
+            locks.enter_context(locked_json_path(path))
+        prepared = prepare_locked() if prepare_locked is not None else {}
+        if not set(prepared).issubset(transaction_paths):
+            raise ValueError("prepared JSON write does not hold its destination lock")
+        return _transactional_json_refresh_locked({**writes, **prepared})
+
+
+def _transactional_json_refresh_locked(
+    writes: Mapping[str, Mapping[str, Any]],
+) -> tuple[bool, bool]:
     staged: Dict[str, str] = {}
     backups: Dict[str, Optional[str]] = {}
     committed: List[str] = []
@@ -186,7 +257,15 @@ def _transactional_json_refresh(writes: Mapping[str, Mapping[str, Any]]) -> tupl
             os.replace(tmp_path, path)
             committed.append(path)
     except Exception as exc:
-        debug("download", f"model-data commit failed error={type(exc).__name__}: {exc}")
+        from .debug_log import log_event
+
+        log_event(
+            "download",
+            "model_data_commit_failed",
+            level="error",
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
         for path in reversed(committed):
             backup_path = backups.get(path)
             try:
@@ -208,31 +287,6 @@ def _transactional_json_refresh(writes: Mapping[str, Mapping[str, Any]]) -> tupl
     return True, True
 
 
-def vip_downloads(password: str, link_type: Tuple[bytes, bytes] = VIP_REPO) -> str:
-    """Decrypt the VIP model repo link with ``password`` (port of UVR's helper).
-
-    Returns the decrypted repo URL on success, or :data:`NO_CODE` when the code
-    is wrong or ``cryptography`` is unavailable.
-    """
-    try:
-        from cryptography.fernet import Fernet
-        from cryptography.hazmat.primitives import hashes
-        from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-        import base64
-
-        kdf = PBKDF2HMAC(
-            algorithm=hashes.SHA256(),
-            length=32,
-            salt=link_type[0],
-            iterations=390000,
-        )
-        key = base64.urlsafe_b64encode(kdf.derive(bytes(password, "utf-8")))
-        f = Fernet(key)
-        return str(f.decrypt(link_type[1]), "UTF-8")
-    except Exception:
-        return NO_CODE
-
-
 class DownloadManager:
     """Holds the online model catalogue and performs downloads / update checks.
 
@@ -241,14 +295,13 @@ class DownloadManager:
     callers marshal the supplied callbacks onto the GTK main loop.
     """
 
-    def __init__(self, coordinator: Any = None):
+    def __init__(self, coordinator: Any = None, *, repo: Any = None):
         self.online_data: Dict = {}
         self.bulletin_data: str = INFO_UNAVAILABLE_TEXT
         self.is_online: bool = False
-        self.decoded_vip_link: str = NO_CODE
         self.latest_version: str = ""
 
-        # VIP-merged, on-disk-aware catalogues (populated by ``refresh``).
+        # Public, on-disk-aware catalogues (populated by ``refresh``).
         self.vr_download_list: Dict[str, Any] = {}
         self.mdx_download_list: Dict[str, Any] = {}
         self.demucs_download_list: Dict[str, Any] = {}
@@ -264,6 +317,7 @@ class DownloadManager:
         self._catalogue_changed_subscribers: List[Callable[[], None]] = []
         self._catalogue_changed_lock = threading.Lock()
         self._coordinator = None
+        self._repo = repo
         self._last_refresh_report: Any = None
         if coordinator is not None:
             self._bind_coordinator(coordinator)
@@ -281,11 +335,7 @@ class DownloadManager:
         coordinator = getattr(self, "_coordinator", None)
         if coordinator is None:
             return
-        snapshot = getattr(
-            coordinator,
-            "_latest_unlocked" if self.decoded_vip_link != NO_CODE else "_latest",
-            None,
-        )
+        snapshot = getattr(coordinator, "_latest", None)
         if snapshot is not None:
             self._apply_snapshot(snapshot)
 
@@ -370,17 +420,16 @@ class DownloadManager:
         if self._has_any_catalogue():
             return True
         from .access_policy import AccessPolicy, current_access_policy
-        from .catalogue_types import RefreshMode
 
         policy = current_access_policy()
         if not allow_network:
             policy = AccessPolicy(
                 allow_network=False,
                 allow_metadata_writes=policy.allow_metadata_writes,
+                allow_cache_writes=policy.allow_cache_writes,
             )
         coordinator = self._ensure_coordinator()
-        vip = self.decoded_vip_link != NO_CODE
-        snapshot = coordinator.ensure(vip=vip, allow_network=policy.allow_network, policy=policy)
+        snapshot = coordinator.ensure(allow_network=policy.allow_network, policy=policy)
         self._apply_snapshot(snapshot)
         if self._has_any_catalogue():
             return True
@@ -503,11 +552,10 @@ class DownloadManager:
                 from .download_sizes import trusted_content_ids_from_cache
 
                 coordinator.apply_trusted_identities(trusted_content_ids_from_cache(urls))
-                from .catalogue_types import RefreshMode
                 from .access_policy import current_access_policy
+                from .catalogue_types import RefreshMode
 
                 snapshot = coordinator.snapshot(
-                    vip=self.decoded_vip_link != NO_CODE,
                     mode=RefreshMode.OFFLINE,
                     policy=current_access_policy(),
                 )
@@ -538,6 +586,11 @@ class DownloadManager:
         """Kick off a background size-cache refresh (idempotent per URL set)."""
         threading.Thread(target=self.warm_size_cache, daemon=True).start()
 
+    @property
+    def last_refresh_report(self) -> Any:
+        """Most recent catalogue refresh report for user-facing diagnostics."""
+        return self._last_refresh_report
+
     # -- Online refresh ---------------------------------------------------------
 
     def refresh(self) -> bool:
@@ -554,9 +607,12 @@ class DownloadManager:
         coordinator = self._ensure_coordinator()
         report = coordinator.refresh(mode=RefreshMode.FORCE, policy=policy)
         self._last_refresh_report = report
-        vip = self.decoded_vip_link != NO_CODE
-        snapshot = coordinator.snapshot(vip=vip, mode=RefreshMode.OFFLINE, policy=policy)
+        snapshot = coordinator.snapshot(mode=RefreshMode.OFFLINE, policy=policy)
         self._apply_snapshot(snapshot)
+        if report.upstream_live:
+            _attempt_presentation_backfill(
+                self._repo, snapshot, operation="online catalogue refresh"
+            )
         self.is_online = bool(report.upstream_live)
         try:
             with _urlopen(BULLETIN_CHECK) as response:
@@ -580,39 +636,13 @@ class DownloadManager:
         return bool(report.upstream_live)
 
     def _rebuild_catalogues(self) -> None:
-        """Build the VIP-merged catalogues from ``online_data`` (no disk filter)."""
+        """Build public catalogues from ``online_data`` (no disk filter)."""
         from .catalogue_coordinator import flatten_upstream_lists
 
-        vr, mdx, demucs = flatten_upstream_lists(
-            self.online_data, vip=self.decoded_vip_link != NO_CODE
-        )
+        vr, mdx, demucs = flatten_upstream_lists(self.online_data)
         self.vr_download_list = vr
         self.mdx_download_list = mdx
         self.demucs_download_list = demucs
-
-    # -- VIP code ---------------------------------------------------------------
-
-    def validate_vip_code(self, code: str) -> bool:
-        """Validate a VIP code; on success unlock the VIP models. Port of
-        ``download_validate_code``."""
-        self.decoded_vip_link = vip_downloads(code or "")
-        unlocked = self.decoded_vip_link != NO_CODE
-        if unlocked:
-            from .access_policy import current_access_policy
-
-            coordinator = getattr(self, "_coordinator", None)
-            if coordinator is not None:
-                from .catalogue_types import RefreshMode
-
-                snapshot = coordinator.snapshot(
-                    vip=True, mode=RefreshMode.OFFLINE, policy=current_access_policy()
-                )
-                self._apply_snapshot(snapshot)
-            elif self.online_data:
-                self._rebuild_catalogues()
-                self._merge_politrees_supplement()
-        debug("download", f"vip_validate unlocked={unlocked}")
-        return unlocked
 
     def _merge_politrees_supplement(self, *, allow_network: bool = True) -> None:
         """Merge every supplemental catalogue source over the upstream lists.
@@ -648,23 +678,28 @@ class DownloadManager:
 
     def apply_catalogue_stem_cache(self) -> set[str]:
         """Patch catalogue_meta stems from the YAML stem cache. Return updated labels."""
-        from .catalog_sources import _yaml_config_url
+        from .catalog_sources import (
+            _needs_catalogue_config_evidence,
+            _yaml_config_url,
+            with_catalogue_config_evidence,
+        )
         from .catalogue_stem_cache import lookup_stems
 
         updated: set[str] = set()
         for label, meta in list(self.catalogue_meta.items()):
-            if meta.stems:
+            if not _needs_catalogue_config_evidence(meta):
                 continue
             url = _yaml_config_url(meta.files)
             if not url:
                 continue
             hit = lookup_stems(url)
-            if hit is None or not hit.ok or not hit.stems:
+            if hit is None or not hit.ok or not hit.stems or not hit.content_sha256:
                 continue
-            self.catalogue_meta[label] = dataclasses.replace(
+            self.catalogue_meta[label] = with_catalogue_config_evidence(
                 meta,
                 stems=list(hit.stems),
                 target_instrument=meta.target_instrument or hit.target_instrument,
+                config_sha256=hit.content_sha256,
             )
             updated.add(label)
         if updated:
@@ -728,9 +763,10 @@ class DownloadManager:
                 else:
                     model_name = str(model)
                 alias_key = normalize_catalogue_label(selectable)
-                if not os.path.isfile(
-                    os.path.join(paths.MDX_MODELS_DIR, model_name)
-                ) and alias_key not in installed_alias_keys:
+                if (
+                    not os.path.isfile(os.path.join(paths.MDX_MODELS_DIR, model_name))
+                    and alias_key not in installed_alias_keys
+                ):
                     mdx_list.append(selectable)
             result[MDX_ARCH_TYPE] = mdx_list or [NO_NEW_MODELS]
 
@@ -766,9 +802,7 @@ class DownloadManager:
         """Return ``{arch_type: [(label, reason), ...]}`` for non-runnable catalogue rows."""
         if model_type == ALL_TYPES:
             return {
-                arch: list(rows)
-                for arch, rows in self.unsupported_download_list.items()
-                if rows
+                arch: list(rows) for arch, rows in self.unsupported_download_list.items() if rows
             }
         rows = self.unsupported_download_list.get(model_type) or []
         return {model_type: list(rows)} if rows else {}
@@ -795,7 +829,9 @@ class DownloadManager:
         if not selection or selection in (NO_MODEL, NO_NEW_MODELS):
             return []
 
-        model_repo = self.decoded_vip_link if VIP_SELECTION in selection else NORMAL_REPO
+        model_repo = (
+            ADDITIONAL_MODEL_REPO if LEGACY_ADDITIONAL_REPO_SELECTION in selection else NORMAL_REPO
+        )
 
         if arch_type == VR_ARCH_TYPE:
             model = (catalogue or self.vr_download_list).get(selection)
@@ -850,10 +886,14 @@ class DownloadManager:
         jobs: List[Tuple[str, str]],
         on_progress: Optional[Callable[[float], None]] = None,
         on_info: Optional[Callable[[str], None]] = None,
-        stop_event: typing.Any=None,
-        repo: typing.Any=None,
+        stop_event: typing.Any = None,
     ) -> str:
         """Download every ``(url, save_path)`` job sequentially.
+
+        Transfer only. Registration, usability verification and repository
+        publication belong to ``core.model_install.finalize_downloaded_model``,
+        which both frontends call once per logical model -- doing any of it here
+        published models before all of their artifacts had landed.
 
         Reports overall progress in ``[0, 1]`` via ``on_progress`` and a short
         status string via ``on_info``. Honours a ``threading.Event``-style
@@ -928,16 +968,6 @@ class DownloadManager:
         if on_progress:
             on_progress(1.0)
         result = "complete" if any_downloaded else "exists"
-        if result in ("complete", "exists"):
-            from .apollo_registry import register_apollo_from_download_jobs
-            from .mdx_c_registry import register_mdx_c_from_download_jobs
-
-            if register_mdx_c_from_download_jobs(jobs) and repo is not None:
-                repo.invalidate_models()
-            # Apollo models are recognised by an md5 -> config_yaml mapping;
-            # write it now so the Audio Tools picker does not prompt for a
-            # config the catalogue already specified.
-            register_apollo_from_download_jobs(jobs)
         debug_elapsed("download", f"download done status={result}", started)
         return result
 
@@ -957,7 +987,14 @@ class DownloadManager:
             )
         os.replace(tmp_path, save_path)
 
-    def _download_file(self, url: typing.Any, save_path: typing.Any, report: typing.Any, stop_event: typing.Any, on_info: typing.Any=None) -> None:
+    def _download_file(
+        self,
+        url: typing.Any,
+        save_path: typing.Any,
+        report: typing.Any,
+        stop_event: typing.Any,
+        on_info: typing.Any = None,
+    ) -> None:
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         tmp_path = f"{save_path}.part"
         try:
@@ -976,9 +1013,7 @@ class DownloadManager:
                         os.remove(tmp_path)
                 except OSError:
                     pass
-                self._download_file_url(
-                    fallback, tmp_path, report, stop_event, on_info
-                )
+                self._download_file_url(fallback, tmp_path, report, stop_event, on_info)
                 if self._download_stopped(stop_event):
                     return
                 self._finalize_part_file(tmp_path, save_path, stop_event)
@@ -990,7 +1025,14 @@ class DownloadManager:
                     pass
             raise
 
-    def _download_file_url(self, url: typing.Any, tmp_path: typing.Any, report: typing.Any, stop_event: typing.Any, on_info: typing.Any=None) -> None:
+    def _download_file_url(
+        self,
+        url: typing.Any,
+        tmp_path: typing.Any,
+        report: typing.Any,
+        stop_event: typing.Any,
+        on_info: typing.Any = None,
+    ) -> None:
         try:
             with _urlopen(url) as response:
                 length_header = response.getheader("Content-Length")
@@ -1034,8 +1076,7 @@ class DownloadManager:
                                 on_info(info_text)
                 if file_total and downloaded != file_total:
                     raise OSError(
-                        f"Incomplete download: received {downloaded} bytes, "
-                        f"expected {file_total}"
+                        f"Incomplete download: received {downloaded} bytes, expected {file_total}"
                     )
         except Exception:
             if os.path.isfile(tmp_path):
@@ -1047,7 +1088,7 @@ class DownloadManager:
 
     # -- Model-data mapper refresh ----------------------------------------------
 
-    def update_model_settings(self, repo: typing.Any=None) -> bool:
+    def update_model_settings(self, repo: typing.Any = None) -> bool:
         """Download and persist the four model-data mapper JSON files.
 
         Port of ``download_model_settings``; on any failure existing local files
@@ -1075,37 +1116,65 @@ class DownloadManager:
             )
             return False
 
+        from .name_mapper import local_overlay_path, plan_local_overlay_migration
+
         writes: Dict[str, Mapping[str, Any]] = {}
-        semantic_changed = False
-        for (_url, dest), data in zip(_MODEL_DATA_URLS, fetched):
+        name_mapper_payloads: Dict[str, Mapping[str, Any]] = {}
+        # Tracked apart so a pure relabelling refresh repaints the pickers
+        # without staling resolved plans or rehashing every checkpoint.
+        hash_changed = False
+        name_changed = False
+        for (_url, dest), data in zip(_MODEL_DATA_URLS, fetched, strict=True):
             if not isinstance(data, dict):
                 debug("download", f"update_model_settings invalid payload path={dest}")
                 return False
             payload: Mapping[str, Any] = data
-            if dest in _NAME_MAPPER_DESTS:
-                # Plan the first-run overlay migration without writing it yet;
-                # the overlay marker participates in the same transaction.
-                from .name_mapper import local_overlay_path, plan_local_overlay_migration
-
-                local_only = plan_local_overlay_migration(dest, data)
-                if local_only is not None:
-                    writes[local_overlay_path(dest)] = local_only
-                    semantic_changed = semantic_changed or bool(local_only)
-            if not _json_file_matches(dest, payload):
-                semantic_changed = True
+            is_name_mapper = dest in _NAME_MAPPER_DESTS
+            if is_name_mapper:
+                name_mapper_payloads[dest] = payload
             writes[dest] = payload
 
-        ok, _wrote_files = _transactional_json_refresh(writes)
+        def prepare_locked() -> Mapping[str, Mapping[str, Any]]:
+            nonlocal hash_changed, name_changed
+            overlay_writes: Dict[str, Mapping[str, Any]] = {}
+            for dest, payload in writes.items():
+                if not _json_file_matches(dest, payload):
+                    if dest in name_mapper_payloads:
+                        name_changed = True
+                    else:
+                        hash_changed = True
+            for dest, payload in name_mapper_payloads.items():
+                local_only = plan_local_overlay_migration(dest, payload)
+                if local_only is not None:
+                    overlay_writes[local_overlay_path(dest)] = local_only
+                    name_changed = name_changed or bool(local_only)
+            return overlay_writes
+
+        overlay_paths = tuple(local_overlay_path(dest) for dest in name_mapper_payloads)
+        ok, _wrote_files = _transactional_json_refresh(
+            writes,
+            locked_paths=overlay_paths,
+            prepare_locked=prepare_locked,
+        )
         if not ok:
             return False
-        changed = semantic_changed
-        if changed and repo is not None:
-            # Not invalidate_stem_check: the hash maps and name mappers were
-            # just rewritten on disk, and only reload_mappers picks those up.
-            repo.invalidate_models()
+        changed = hash_changed or name_changed
+        if repo is not None:
+            if hash_changed:
+                # Not invalidate_stem_check: the hash maps and name mappers were
+                # just rewritten on disk, and only reload_mappers picks those up.
+                # Full invalidation subsumes any name change in the same
+                # transaction, so never emit both events.
+                repo.invalidate_models()
+            elif name_changed:
+                repo.invalidate_model_presentation(reload_mappers=True)
+            coordinator = getattr(repo, "catalogue", None)
+            snapshot = getattr(coordinator, "_latest", None)
+            _attempt_presentation_backfill(repo, snapshot, operation="online model-metadata update")
         debug(
             "download",
             f"update_model_settings ok changed={changed} "
+            f"hash_changed={hash_changed} name_changed={name_changed} "
             f"invalidated={changed and repo is not None}",
         )
         return True
@@ -1131,14 +1200,17 @@ class DownloadManager:
         Center listed 459, missing every extras and mvsepless entry and showing
         duplicate VR rows that dedupe removes.
 
-        VIP entries are folded into the base first, because the shared merge
-        deliberately omits the ``*_vip_list`` keys: unlocking them stays gated
-        on a code here exactly as before.
+        Legacy ``*_vip_list`` entries are folded into the same public base before
+        supplements and deduplication.
 
         Keys stay raw catalogue labels — ``manual_links`` resolves against them.
-        The dialog renders :func:`canonical_display_name` for the row title.
+        Ordering uses the same exact family-scoped projector as every other
+        catalogue surface.
         """
-        from .model_naming import canonical_display_name
+        from .model_catalogue import (
+            catalogue_entry_meta,
+            project_catalogue_display,
+        )
 
         if self.online_data:
             # Compatibility overlay: tests and callers may assign ``online_data``
@@ -1154,18 +1226,52 @@ class DownloadManager:
             dict(self.demucs_download_list),
         )
 
-        def by_display(catalogue: Dict[str, Any]) -> Dict[str, Any]:
+        def by_display(family: str, catalogue: Dict[str, Any]) -> Dict[str, Any]:
+            def display(label: str) -> str:
+                raw = catalogue[label]
+                meta = catalogue_entry_meta(self, family, label)
+                return project_catalogue_display(family, label, raw, meta)
+
             return {
                 label: catalogue[label]
-                for label in sorted(
-                    catalogue, key=lambda name: canonical_display_name(name).casefold()
-                )
+                for label in sorted(catalogue, key=lambda name: display(name).casefold())
             }
 
         return {
-            "vr": by_display(vr),
-            "mdx": by_display(mdx),
-            "demucs": by_display(demucs),
+            "vr": by_display("vr", vr),
+            "mdx": by_display("mdx", mdx),
+            "demucs": by_display("demucs", demucs),
+        }
+
+    def manual_download_rows(self) -> Dict[str, tuple[ManualDownloadRow, ...]]:
+        """Return exact projected rows while retaining native link inputs."""
+        from .model_catalogue import (
+            catalogue_entry_meta,
+            project_catalogue_display,
+        )
+
+        data = self.manual_download_data()
+        arch_types = {
+            "vr": VR_ARCH_TYPE,
+            "mdx": MDX_ARCH_TYPE,
+            "demucs": DEMUCS_ARCH_TYPE,
+        }
+        return {
+            family: tuple(
+                ManualDownloadRow(
+                    arch_types[family],
+                    selection,
+                    project_catalogue_display(
+                        family,
+                        selection,
+                        model,
+                        catalogue_entry_meta(self, family, selection),
+                    ),
+                    model,
+                )
+                for selection, model in catalogue.items()
+            )
+            for family, catalogue in data.items()
         }
 
     @staticmethod
@@ -1177,9 +1283,17 @@ class DownloadManager:
             return {}
 
     @staticmethod
-    def manual_links(arch_type: str, model: typing.Any) -> List[Tuple[str, str]]:
+    def manual_links(
+        arch_type: str,
+        model: typing.Any,
+        *,
+        selection: str = "",
+    ) -> List[Tuple[str, str]]:
         """Return ``[(label, url), ...]`` direct links for a manual-download entry."""
-        return manual_links_for_model(arch_type, model, NORMAL_REPO)
+        model_repo = (
+            ADDITIONAL_MODEL_REPO if LEGACY_ADDITIONAL_REPO_SELECTION in selection else NORMAL_REPO
+        )
+        return manual_links_for_model(arch_type, model, model_repo)
 
     @staticmethod
     def model_directory(arch_type: str, selection: str = "") -> str:

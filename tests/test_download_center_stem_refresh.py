@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+import json
+import os
+import tempfile
+import time
 import typing
 import unittest
+from types import SimpleNamespace
 from typing import Any
 from unittest import mock
 
@@ -11,9 +16,35 @@ from bundled.constants import MDX_ARCH_TYPE
 from core.catalog_sources import EntryMeta
 from core.catalogue_stem_cache import StemCacheHit
 from core.downloads import DownloadManager
-
+from core.model_stem_manifest import resolve_model_stem_semantics
+from core.model_stem_semantics import stem_semantics_projection
+from tests.private_gtk import require_private_gtk
 
 _YAML_URL = "https://example.test/model.yaml"
+
+
+def _write_legacy_success_cache(path: str, url: str) -> None:
+    """Write the pre-digest cache shape shipped by older UVR builds."""
+    fetched_at = time.time()
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump(
+            {
+                "fetched_at": fetched_at,
+                "entries": {
+                    url: {
+                        "stems": ["Vocals", "other"],
+                        "target_instrument": "Vocals",
+                        "fetched_at": fetched_at,
+                        "ok": True,
+                    }
+                },
+            },
+            handle,
+        )
+
+
+def setUpModule() -> None:
+    require_private_gtk()
 
 
 class ApplyCatalogueStemCacheTests(unittest.TestCase):
@@ -34,6 +65,7 @@ class ApplyCatalogueStemCacheTests(unittest.TestCase):
             stems=("Vocals", "other"),
             target_instrument="Vocals",
             ok=True,
+            content_sha256="a" * 64,
         )
         with mock.patch("core.catalogue_stem_cache.lookup_stems", return_value=hit):
             updated = self.manager.apply_catalogue_stem_cache()
@@ -42,17 +74,112 @@ class ApplyCatalogueStemCacheTests(unittest.TestCase):
         patched = self.manager.catalogue_meta["M"]
         self.assertEqual(patched.stems, ["Vocals", "other"])
         self.assertEqual(patched.target_instrument, "Vocals")
+        self.assertEqual(patched.config_sha256, "a" * 64)
 
-    def test_skips_when_stems_already_set(self) -> None:
+    def test_patches_exact_config_evidence_through_shared_reconciliation(self) -> None:
         meta = EntryMeta(
-            label="M",
-            display="M",
+            label="Reviewed",
+            display="Reviewed",
+            arch=MDX_ARCH_TYPE,
+            files={
+                "melband_roformer_inst_v1.ckpt": "https://example.test/model.ckpt",
+                "config_melbandroformer_inst.yaml": _YAML_URL,
+            },
+            checkpoint="melband_roformer_inst_v1.ckpt",
+            stems=[],
+        )
+        self.manager.catalogue_meta = {"Reviewed": meta}
+        hit = StemCacheHit(
+            stems=("Instrumental", "Vocals"),
+            target_instrument="Instrumental",
+            ok=True,
+            content_sha256=("723af6755b5624be0a58351a13c930c472b51ef677cf2c7943394fefed7c3d4d"),
+        )
+
+        with mock.patch("core.catalogue_stem_cache.lookup_stems", return_value=hit):
+            updated = self.manager.apply_catalogue_stem_cache()
+
+        self.assertEqual(updated, {"Reviewed"})
+        patched = self.manager.catalogue_meta["Reviewed"]
+        self.assertEqual(patched.stem_semantics.status, "reviewed")
+        self.assertEqual(patched.config_sha256, hit.content_sha256)
+
+    def test_patches_raw_exact_config_evidence_when_stems_already_set(self) -> None:
+        meta = EntryMeta(
+            label="Reviewed after cache",
+            display="Reviewed after cache",
+            arch=MDX_ARCH_TYPE,
+            files={
+                "melband_roformer_inst_v1.ckpt": "https://example.test/model.ckpt",
+                "config_melbandroformer_inst.yaml": _YAML_URL,
+            },
+            checkpoint="melband_roformer_inst_v1.ckpt",
+            stems=["Instrumental", "Vocals"],
+            target_instrument="Instrumental",
+        )
+        self.manager.catalogue_meta = {meta.label: meta}
+        hit = StemCacheHit(
+            stems=("Instrumental", "Vocals"),
+            target_instrument="Instrumental",
+            ok=True,
+            content_sha256="723af6755b5624be0a58351a13c930c472b51ef677cf2c7943394fefed7c3d4d",
+        )
+        with mock.patch("core.catalogue_stem_cache.lookup_stems", return_value=hit):
+            updated = self.manager.apply_catalogue_stem_cache()
+
+        self.assertEqual(updated, {meta.label})
+        patched = self.manager.catalogue_meta[meta.label]
+        self.assertEqual(patched.stem_semantics.status, "reviewed")
+        self.assertEqual(patched.config_sha256, hit.content_sha256)
+
+    def test_legacy_success_without_digest_is_not_applied_as_exact_evidence(self) -> None:
+        import core.catalogue_stem_cache as csc
+
+        meta = EntryMeta(
+            label="Legacy",
+            display="Legacy",
+            arch=MDX_ARCH_TYPE,
+            files={"m.ckpt": "https://example.test/m.ckpt", "m.yaml": _YAML_URL},
+            stems=[],
+        )
+        self.manager.catalogue_meta = {meta.label: meta}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_path = os.path.join(tmp, "catalogue_stem_cache.json")
+            with (
+                mock.patch.object(csc, "_cache_path", return_value=cache_path),
+                mock.patch("core.model_display.clear_display_cache"),
+            ):
+                csc.clear_catalogue_stem_cache()
+                try:
+                    _write_legacy_success_cache(cache_path, _YAML_URL)
+                    hit = csc.lookup_stems(_YAML_URL)
+                    self.assertIsNotNone(hit)
+                    assert hit is not None
+                    self.assertTrue(hit.ok)
+                    self.assertEqual(hit.content_sha256, "")
+                    updated = self.manager.apply_catalogue_stem_cache()
+                finally:
+                    csc.clear_catalogue_stem_cache()
+
+        self.assertEqual(updated, set())
+        self.assertIs(self.manager.catalogue_meta[meta.label], meta)
+
+    def test_skips_entry_with_already_reviewed_semantics(self) -> None:
+        semantics = resolve_model_stem_semantics(
+            "mdx:UVR_MDXNET_KARA_2",
+            native_stems=("Instrumental", "Vocals"),
+            backend_primary="Instrumental",
+        )
+        meta = EntryMeta(
+            label="Reviewed",
+            display="Reviewed",
             arch=MDX_ARCH_TYPE,
             files={"m.yaml": _YAML_URL},
-            stems=["Drums"],
-            target_instrument="Drums",
+            stems=["Instrumental", "Vocals"],
+            stem_semantics=stem_semantics_projection(semantics),
         )
-        self.manager.catalogue_meta = {"M": meta}
+        self.manager.catalogue_meta = {meta.label: meta}
         with mock.patch("core.catalogue_stem_cache.lookup_stems") as lookup:
             updated = self.manager.apply_catalogue_stem_cache()
         self.assertEqual(updated, set())
@@ -82,15 +209,90 @@ class ApplyCatalogueStemCacheTests(unittest.TestCase):
             target_instrument="Bass",
         )
         self.manager.catalogue_meta = {"M": meta}
-        hit = StemCacheHit(stems=("Vocals", "other"), target_instrument="Vocals", ok=True)
+        hit = StemCacheHit(
+            stems=("Vocals", "other"),
+            target_instrument="Vocals",
+            ok=True,
+            content_sha256="b" * 64,
+        )
         with mock.patch("core.catalogue_stem_cache.lookup_stems", return_value=hit):
-            self.manager.apply_catalogue_stem_cache()
+            updated = self.manager.apply_catalogue_stem_cache()
+        self.assertEqual(updated, {"M"})
         self.assertEqual(self.manager.catalogue_meta["M"].target_instrument, "Bass")
 
 
 class StemSubtitleDebounceTests(unittest.TestCase):
+    def test_reviewed_subtitle_uses_exact_route_labels_and_reviewed_purpose(self) -> None:
+        from ui.download_center import catalogue_semantics_subtitle
+
+        semantics = resolve_model_stem_semantics(
+            "mdx:UVR_MDXNET_KARA_2",
+            native_stems=("Instrumental", "Vocals"),
+            backend_primary="Instrumental",
+        )
+        projection = stem_semantics_projection(
+            semantics,
+            backend_primary="Instrumental",
+            backend_target="other",
+        )
+        meta = EntryMeta(
+            label="K",
+            display="K",
+            arch=MDX_ARCH_TYPE,
+            files={},
+            stems=["Instrumental", "Vocals"],
+            intent=semantics.intent,
+            stem_semantics=projection,
+        )
+
+        self.assertEqual(
+            (projection.logical_primary_role, projection.logical_secondary_role),
+            ("mix.instrumental_with_backing_vocals", "vocal.lead"),
+        )
+        self.assertEqual(
+            tuple(
+                (
+                    route.native,
+                    route.role,
+                    route.logical_primary,
+                    route.logical_secondary,
+                    route.selected_by_default,
+                )
+                for route in projection.routes
+            ),
+            (
+                (
+                    "Instrumental",
+                    "mix.instrumental_with_backing_vocals",
+                    True,
+                    False,
+                    True,
+                ),
+                ("Vocals", "vocal.lead", False, True, True),
+            ),
+        )
+        self.assertEqual(
+            catalogue_semantics_subtitle(meta),
+            "Karaoke · Instrumental with Backing Vocals, Lead Vocals",
+        )
+
+    def test_raw_subtitle_is_explicit_and_preserves_native_names(self) -> None:
+        from ui.download_center import catalogue_semantics_subtitle
+
+        meta = EntryMeta(
+            label="Private",
+            display="Private",
+            arch=MDX_ARCH_TYPE,
+            files={},
+            stems=["mysteryLead", "mysteryBack"],
+        )
+
+        self.assertEqual(
+            catalogue_semantics_subtitle(meta),
+            "Raw outputs · mysteryLead, mysteryBack",
+        )
+
     def _bare_window(self) -> Any:
-        from core.model_scores import PURPOSE_ALL, SORT_NAME
         from ui.download_center import DownloadCenterWindow
 
         win = object.__new__(DownloadCenterWindow)
@@ -133,9 +335,13 @@ class StemSubtitleDebounceTests(unittest.TestCase):
             )
         }
 
-        with mock.patch("ui.download_center.stash"), mock.patch(
-            "ui.download_center.fetch", side_effect=lambda _row, key, default=None: default
-        ), mock.patch("ui.download_center.set_row_subtitle") as set_subtitle:
+        with (
+            mock.patch("ui.download_center.stash"),
+            mock.patch(
+                "ui.download_center.fetch", side_effect=lambda _row, key, default=None: default
+            ),
+            mock.patch("ui.download_center.set_row_subtitle") as set_subtitle,
+        ):
             result = win._flush_stem_subtitles()
 
         self.assertFalse(result)
@@ -172,7 +378,7 @@ class StemSubtitleDebounceTests(unittest.TestCase):
         subtitle = set_subtitle.call_args[0][1]
         self.assertIn("Vocals, other", subtitle)
         self.assertIn("12 MB", subtitle)
-        self.assertEqual(fetch(action, "_uvr_stems_text"), "Vocals, other")
+        self.assertEqual(fetch(action, "_uvr_stems_text"), "Raw outputs · Vocals, other")
 
     def test_schedule_hops_to_main_via_idle_on_main(self) -> None:
         win = self._bare_window()
@@ -196,11 +402,10 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
         win._stem_refresh_armed = False
         win.manager = mock.MagicMock()
 
-        with mock.patch(
-            "core.catalogue_stem_cache.subscribe"
-        ) as subscribe, mock.patch(
-            "core.catalogue_stem_cache.ensure_worker_started"
-        ) as ensure:
+        with (
+            mock.patch("core.catalogue_stem_cache.subscribe") as subscribe,
+            mock.patch("core.catalogue_stem_cache.ensure_worker_started") as ensure,
+        ):
             DownloadCenterWindow._ensure_background_listeners(win)
 
         subscribe.assert_called_once_with(win._schedule_stem_subtitle_refresh)
@@ -249,8 +454,9 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
         callback = timeout_add.call_args[0][1]
 
         # Once the timeout fires the next burst must arm again.
-        with mock.patch.object(win, "_visible_catalogue_labels", return_value=[]), (
-            mock.patch.object(win, "_pending_stem_yaml_urls", return_value=[])
+        with (
+            mock.patch.object(win, "_visible_catalogue_labels", return_value=[]),
+            mock.patch.object(win, "_pending_stem_yaml_urls", return_value=[]),
         ):
             self.assertFalse(callback())
         with mock.patch("gi.repository.GLib.timeout_add") as timeout_add2:
@@ -258,7 +464,7 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
         self.assertEqual(timeout_add2.call_count, 1)
 
     def test_visible_labels_scoped_to_active_tab(self) -> None:
-        """"Visible" must mean the tab on screen, not every tab's filter result."""
+        """ "Visible" must mean the tab on screen, not every tab's filter result."""
         from ui.download_center import PURPOSE_ALL, DownloadCenterWindow
 
         win = object.__new__(DownloadCenterWindow)
@@ -283,9 +489,36 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
         win.stack = mock.MagicMock()
         win.stack.get_visible_child_name.return_value = None
 
-        self.assertEqual(
-            sorted(win._visible_catalogue_labels()), ["MDX Model", "VR Model"]
+        self.assertEqual(sorted(win._visible_catalogue_labels()), ["MDX Model", "VR Model"])
+
+    def test_pending_urls_refetch_fresh_legacy_success_without_digest(self) -> None:
+        import core.catalogue_stem_cache as csc
+        from ui.download_center import DownloadCenterWindow
+
+        meta = EntryMeta(
+            label="Legacy",
+            display="Legacy",
+            arch=MDX_ARCH_TYPE,
+            files={"m.ckpt": "https://example.test/m.ckpt", "m.yaml": _YAML_URL},
+            stems=["Vocals", "other"],
         )
+        win = object.__new__(DownloadCenterWindow)
+        typing.cast(Any, win).manager = SimpleNamespace(catalogue_meta={meta.label: meta})
+
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_path = os.path.join(tmp, "catalogue_stem_cache.json")
+            with (
+                mock.patch.object(csc, "_cache_path", return_value=cache_path),
+                mock.patch("core.model_display.clear_display_cache"),
+            ):
+                csc.clear_catalogue_stem_cache()
+                try:
+                    _write_legacy_success_cache(cache_path, _YAML_URL)
+                    pending = DownloadCenterWindow._pending_stem_yaml_urls(win)
+                finally:
+                    csc.clear_catalogue_stem_cache()
+
+        self.assertEqual(pending, [_YAML_URL])
 
     def test_schedule_stem_yaml_fetches_prioritizes_visible(self) -> None:
         """Drive the real URL selection, not a scripted list of return values.
@@ -301,26 +534,51 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
         import core.catalogue_stem_cache as csc
         from ui.download_center import PURPOSE_ALL, DownloadCenterWindow
 
-        def meta_for(label: str, yaml_url: str | None, stems: list[str]) -> EntryMeta:
+        def meta_for(
+            label: str,
+            yaml_url: str | None,
+            stems: list[str],
+            *,
+            reviewed: bool = False,
+        ) -> EntryMeta:
             files = {"m.ckpt": f"https://example.test/{label}.ckpt"}
             if yaml_url:
                 files["m.yaml"] = yaml_url
+            projection = EntryMeta(label="", display="", arch="").stem_semantics
+            if reviewed:
+                semantics = resolve_model_stem_semantics(
+                    "mdx:UVR_MDXNET_KARA_2",
+                    native_stems=("Instrumental", "Vocals"),
+                    backend_primary="Instrumental",
+                )
+                projection = stem_semantics_projection(semantics)
             return EntryMeta(
                 label=label,
                 display=label,
                 arch=MDX_ARCH_TYPE,
                 files=files,
                 stems=stems,
+                stem_semantics=projection,
             )
 
         cached_url = "https://example.test/cached.yaml"
+        failed_url = "https://example.test/failed.yaml"
         catalogue_meta = {
             # Matches the "kim" query; needs a fetch.
             "Kim Vocal 1": meta_for("Kim Vocal 1", "https://example.test/kim.yaml", []),
-            # Matches, but its stems are already known — must be skipped.
+            # Matches and has source stems, but still lacks exact config evidence.
             "Kim Inst 2": meta_for("Kim Inst 2", "https://example.test/inst.yaml", ["Vocals"]),
             # Matches, but the stem cache already answers for it — must be skipped.
             "Kim Cached 3": meta_for("Kim Cached 3", cached_url, []),
+            # Reviewed rows do not need another config fetch.
+            "Kim Reviewed 4": meta_for(
+                "Kim Reviewed 4",
+                "https://example.test/reviewed.yaml",
+                ["Instrumental", "Vocals"],
+                reviewed=True,
+            ),
+            # A fresh failure retains its shorter failure TTL and is not retried yet.
+            "Kim Failed 5": meta_for("Kim Failed 5", failed_url, []),
             # Does not match the query, so it belongs in the bulk half.
             "Other Model": meta_for("Other Model", "https://example.test/other.yaml", []),
             # No YAML config at all — must never be enqueued.
@@ -340,9 +598,7 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
         win._available = {MDX_ARCH_TYPE: list(catalogue_meta)}
         # Stands in for a Gtk.SearchEntry, which needs a display to construct;
         # _visible_catalogue_labels only ever calls get_text() on it.
-        win._search_entries = typing.cast(
-            "dict[str, Any]", {MDX_ARCH_TYPE: _Entry("kim")}
-        )
+        win._search_entries = typing.cast("dict[str, Any]", {MDX_ARCH_TYPE: _Entry("kim")})
         win._purpose = PURPOSE_ALL
         win.stack = mock.MagicMock()
         win.stack.get_visible_child_name.return_value = MDX_ARCH_TYPE
@@ -352,17 +608,31 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
             with mock.patch.object(csc, "_cache_path", return_value=cache_path):
                 with mock.patch("core.model_display.clear_display_cache"):
                     csc.clear_catalogue_stem_cache()
-                    csc.remember_stems(cached_url, ["Vocals", "other"], "Vocals", ok=True)
-                    with mock.patch.object(csc, "enqueue_missing") as enqueue, (
-                        mock.patch.object(csc, "ensure_worker_started")
-                    ) as ensure:
+                    csc.remember_stems(
+                        cached_url,
+                        ["Vocals", "other"],
+                        "Vocals",
+                        content_sha256="c" * 64,
+                        ok=True,
+                    )
+                    csc.remember_stems(failed_url, [], None, ok=False)
+                    with (
+                        mock.patch.object(csc, "enqueue_missing") as enqueue,
+                        mock.patch.object(csc, "ensure_worker_started") as ensure,
+                    ):
                         DownloadCenterWindow._flush_stem_yaml_fetches(win)
                     csc.clear_catalogue_stem_cache()
 
         self.assertEqual(
             enqueue.call_args_list,
             [
-                mock.call(["https://example.test/kim.yaml"], priority=True),
+                mock.call(
+                    [
+                        "https://example.test/kim.yaml",
+                        "https://example.test/inst.yaml",
+                    ],
+                    priority=True,
+                ),
                 mock.call(["https://example.test/other.yaml"], priority=False),
             ],
         )

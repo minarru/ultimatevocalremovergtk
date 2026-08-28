@@ -1,14 +1,14 @@
 import os
-import shutil
 import tempfile
 import threading
 import unittest
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from bundled.constants import DEMUCS_ARCH_TYPE, MDX_ARCH_TYPE, NO_MODEL, VR_ARCH_TYPE
-from core.downloads import DownloadManager, vip_downloads
 from core import paths
 from core.catalog_sources import EntryMeta
+from core.downloads import DownloadManager
 
 
 def _stub_config_fetch(test: unittest.TestCase) -> None:
@@ -76,43 +76,94 @@ class DownloadManagerResolveTests(unittest.TestCase):
         finally:
             os.remove(path)
 
-    def test_download_registers_paired_mdx_c_jobs(self) -> None:
+    def test_download_is_transfer_only(self) -> None:
+        """`download` transfers files and nothing else.
+
+        Registration and publication moved to
+        `core.model_install.finalize_downloaded_model`, which owns them for one
+        logical model. The paired MDX-C registration this used to assert now
+        lives in `tests/test_model_install.py`.
+        """
+        import inspect
+        from unittest.mock import patch as _patch
+
+        from core.downloads import DownloadManager
+
+        # No repository is accepted, so no publication decision can be made here.
+        self.assertNotIn(
+            "repo", inspect.signature(DownloadManager.download).parameters
+        )
+
         with tempfile.TemporaryDirectory() as tmp:
-            hash_dir = os.path.join(tmp, "model_data")
-            config_dir = os.path.join(hash_dir, "mdx_c_configs")
-            models_dir = os.path.join(tmp, "models")
-            os.makedirs(config_dir)
-            os.makedirs(models_dir)
-
-            checkpoint = os.path.join(models_dir, "download_model.ckpt")
-            yaml_name = "config_musdb18_scnet.yaml"
+            checkpoint = os.path.join(tmp, "already_there.ckpt")
             with open(checkpoint, "wb") as handle:
-                handle.write(b"download registration checkpoint")
-            shutil.copyfile(
-                os.path.join(paths.MDX_C_CONFIG_PATH, yaml_name), os.path.join(config_dir, yaml_name)
-            )
+                handle.write(b"present")
+            jobs = [("https://example.com/already_there.ckpt", checkpoint)]
 
-            jobs = [
-                ("https://example.com/download_model.ckpt", checkpoint),
-                ("https://example.com/model.yaml", os.path.join(config_dir, yaml_name)),
-            ]
-
-            repo = Mock()
-            original_hash_dir = paths.MDX_HASH_DIR
-            original_config_dir = paths.MDX_C_CONFIG_PATH
-            original_models_dir = paths.MDX_MODELS_DIR
-            try:
-                paths.MDX_HASH_DIR = hash_dir
-                paths.MDX_C_CONFIG_PATH = config_dir
-                paths.MDX_MODELS_DIR = models_dir
-                result = self.manager.download(jobs, repo=repo)
-            finally:
-                paths.MDX_HASH_DIR = original_hash_dir
-                paths.MDX_C_CONFIG_PATH = original_config_dir
-                paths.MDX_MODELS_DIR = original_models_dir
+            with _patch(
+                "core.mdx_c_registry.register_mdx_c_from_download_jobs"
+            ) as mdx_c, _patch(
+                "core.apollo_registry.register_apollo_from_download_jobs"
+            ) as apollo:
+                result = self.manager.download(jobs)
 
             self.assertEqual(result, "exists")
-            repo.invalidate_models.assert_called_once()
+            mdx_c.assert_not_called()
+            apollo.assert_not_called()
+
+
+class PresentationBackfillRefreshTests(unittest.TestCase):
+    def _manager(self):
+        from core.catalogue_types import RefreshMode, RefreshReport
+
+        snapshot = SimpleNamespace(
+            vr={},
+            mdx={"Live": {"live.onnx": "https://example.test/live.onnx"}},
+            demucs={},
+            apollo={},
+            meta={},
+            unsupported={},
+        )
+        coordinator = Mock()
+        coordinator.refresh.return_value = RefreshReport(
+            mode=RefreshMode.FORCE,
+            succeeded=(),
+            upstream_live=True,
+            usable=True,
+        )
+        coordinator.snapshot.return_value = snapshot
+        coordinator.ensure.return_value = snapshot
+        coordinator.source.return_value = SimpleNamespace(
+            state=SimpleNamespace(content=None)
+        )
+        repo = object()
+        manager = DownloadManager(coordinator=coordinator, repo=repo)
+        return manager, coordinator, repo
+
+    def test_live_backfill_failure_warns_keeps_snapshot_and_retries(self) -> None:
+        manager, _coordinator, _repo = self._manager()
+        with patch(
+            "core.model_inventory.backfill_installed_presentations",
+            side_effect=OSError("registry is read-only"),
+        ) as backfill, patch(
+            "core.downloads._urlopen", side_effect=OSError("no bulletin")
+        ), patch.object(manager, "schedule_size_cache_warmup"), self.assertWarnsRegex(
+            RuntimeWarning, "live catalogue remains active"
+        ):
+            self.assertTrue(manager.refresh())
+            self.assertTrue(manager.refresh())
+
+        self.assertIn("Live", manager.mdx_download_list)
+        self.assertEqual(backfill.call_count, 2)
+
+    def test_offline_catalogue_load_never_backfills(self) -> None:
+        manager, _coordinator, _repo = self._manager()
+        with patch(
+            "core.model_inventory.backfill_installed_presentations"
+        ) as backfill:
+            self.assertTrue(manager.ensure_catalogues(allow_network=False))
+
+        backfill.assert_not_called()
 
 
 class DownloadManagerAvailabilityTests(unittest.TestCase):
@@ -168,11 +219,42 @@ class LegacyCatalogueSchemaTests(unittest.TestCase):
         self.assertIn("MDX23 Model: Legacy", manager.mdx_download_list)
 
 
-class VipDownloadsTests(unittest.TestCase):
-    def test_wrong_password_returns_no_code(self):
-        from bundled.constants import NO_CODE
+class AdditionalPublicRepositoryTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.manager = DownloadManager()
 
-        self.assertEqual(vip_downloads("definitely-wrong-password"), NO_CODE)
+    def test_former_vip_vr_model_uses_additional_public_repo(self) -> None:
+        label = "VR Arch Single Model VIP: Added"
+        self.manager.vr_download_list = {label: "added.pth"}
+        jobs = self.manager.resolve(label, VR_ARCH_TYPE)
+        self.assertEqual(
+            jobs[0][0],
+            "https://github.com/Anjok0109/ai_magic/releases/download/v5/added.pth",
+        )
+
+    def test_former_vip_mdx_model_uses_additional_public_repo(self) -> None:
+        label = "MDX-Net Model VIP: UVR-MDX-NET_Main_427"
+        self.manager.mdx_download_list = {
+            label: "UVR-MDX-NET_Main_427.onnx"
+        }
+        jobs = self.manager.resolve(label, MDX_ARCH_TYPE, fetch_config=False)
+        self.assertEqual(
+            jobs[0][0],
+            "https://github.com/Anjok0109/ai_magic/releases/download/v5/"
+            "UVR-MDX-NET_Main_427.onnx",
+        )
+
+    def test_former_vip_mdx_c_checkpoint_uses_additional_public_repo(self) -> None:
+        label = "MDX23C Model VIP: MDX23C_D1581"
+        self.manager.mdx_download_list = {
+            label: {"MDX23C_D1581.ckpt": "model_2_stem_061321.yaml"}
+        }
+        jobs = self.manager.resolve(label, MDX_ARCH_TYPE, fetch_config=False)
+        self.assertEqual(
+            jobs[0][0],
+            "https://github.com/Anjok0109/ai_magic/releases/download/v5/"
+            "MDX23C_D1581.ckpt",
+        )
 
 
 class WarmSizeCacheTests(unittest.TestCase):
@@ -236,6 +318,133 @@ class WarmSizeCacheTests(unittest.TestCase):
 
 
 class UpdateModelSettingsTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._presentation_tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._presentation_tmp.cleanup)
+        for target, filename in (
+            ("REGISTERED_MODEL_INDEX", "registered_models.json"),
+            ("LEGACY_REGISTERED_MODEL_INDEX", "legacy-registered_models.json"),
+            ("MDX_MODEL_NAME_SELECT", "mdx_name_mapper.json"),
+            ("DEMUCS_MODEL_NAME_SELECT", "demucs_name_mapper.json"),
+        ):
+            patcher = patch.object(
+                paths, target, os.path.join(self._presentation_tmp.name, filename)
+            )
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def test_overlay_plan_and_commit_serialize_real_local_writer(self) -> None:
+        import io
+        import json
+        import tempfile
+        from unittest import mock
+
+        from core import downloads as downloads_mod
+        from core import name_mapper
+        from core.downloads import DownloadManager
+
+        remote = {"upstream.ckpt": "Fresh upstream"}
+        with tempfile.TemporaryDirectory() as tmp:
+            mapper = os.path.join(tmp, "mdx_mapper.json")
+            overlay = name_mapper.local_overlay_path(mapper)
+            with open(mapper, "w", encoding="utf-8") as handle:
+                json.dump(
+                    {
+                        "legacy.ckpt": "Legacy evidence",
+                        "upstream.ckpt": "Old upstream",
+                    },
+                    handle,
+                )
+
+            class _FileResp:
+                def __init__(self, payload: dict[str, str]) -> None:
+                    self._buf = io.StringIO(json.dumps(payload))
+
+                def __enter__(self) -> io.StringIO:
+                    return self._buf
+
+                def __exit__(self, *args: object) -> None:
+                    return None
+
+            plan_derived = threading.Event()
+            release_refresh = threading.Event()
+            writer_started = threading.Event()
+            writer_done = threading.Event()
+            refresh_results: list[bool] = []
+            writer_results: list[bool] = []
+            failures: list[BaseException] = []
+            real_plan = name_mapper.plan_local_overlay_migration
+
+            def pause_after_plan(
+                mapper_path: str, incoming: dict[str, str]
+            ) -> dict[str, str] | None:
+                planned = real_plan(mapper_path, incoming)
+                plan_derived.set()
+                if not release_refresh.wait(5):
+                    raise TimeoutError("test did not release mapper refresh")
+                return planned
+
+            def refresh() -> None:
+                try:
+                    refresh_results.append(DownloadManager().update_model_settings())
+                except BaseException as exc:
+                    failures.append(exc)
+
+            def add_name() -> None:
+                writer_started.set()
+                try:
+                    writer_results.append(
+                        name_mapper.add_local_name(mapper, "concurrent.ckpt", "Concurrent evidence")
+                    )
+                except BaseException as exc:
+                    failures.append(exc)
+                finally:
+                    writer_done.set()
+
+            with (
+                mock.patch.object(downloads_mod, "_MODEL_DATA_URLS", [("https://x/mdx", mapper)]),
+                mock.patch.object(downloads_mod, "_NAME_MAPPER_DESTS", frozenset({mapper})),
+                mock.patch.object(downloads_mod, "_urlopen", return_value=_FileResp(remote)),
+                mock.patch.object(
+                    name_mapper,
+                    "plan_local_overlay_migration",
+                    side_effect=pause_after_plan,
+                ),
+            ):
+                refresh_thread = threading.Thread(target=refresh)
+                writer_thread = threading.Thread(target=add_name)
+                refresh_thread.start()
+                self.assertTrue(plan_derived.wait(2), "refresh did not reach planning boundary")
+                writer_thread.start()
+                self.assertTrue(writer_started.wait(2), "writer thread did not start")
+                writer_blocked = False
+                try:
+                    writer_blocked = not writer_done.wait(0.5)
+                finally:
+                    release_refresh.set()
+                    refresh_thread.join(2)
+                    writer_thread.join(2)
+
+            self.assertTrue(
+                writer_blocked,
+                "writer replaced the overlay after the refresh derived a stale plan",
+            )
+            self.assertFalse(refresh_thread.is_alive())
+            self.assertFalse(writer_thread.is_alive())
+            self.assertEqual(failures, [])
+            self.assertEqual(refresh_results, [True])
+            self.assertEqual(writer_results, [True])
+            with open(mapper, encoding="utf-8") as handle:
+                self.assertEqual(json.load(handle), remote)
+            with open(overlay, encoding="utf-8") as handle:
+                self.assertEqual(
+                    json.load(handle),
+                    {
+                        "legacy.ckpt": "Legacy evidence",
+                        "concurrent.ckpt": "Concurrent evidence",
+                    },
+                )
+
     def test_name_mapper_keeps_local_only_keys(self) -> None:
         import io
         import json
@@ -348,6 +557,120 @@ class UpdateModelSettingsTests(unittest.TestCase):
             self.assertTrue(ok)
             repo.invalidate_models.assert_not_called()
 
+
+    def _run_update(
+        self,
+        *,
+        local: dict,
+        remote: list,
+        name_dest_indexes: tuple[int, ...] = (2, 3),
+    ):
+        """Drive `update_model_settings` over four temp mapper files.
+
+        Returns the mock repository so a caller can assert which invalidation
+        event the refresh chose.
+        """
+        import io
+        import json
+        import tempfile
+        from unittest import mock
+
+        from core import downloads as downloads_mod
+        from core.downloads import DownloadManager
+
+        with tempfile.TemporaryDirectory() as tmp:
+            dests = [
+                os.path.join(tmp, name)
+                for name in ("vr.json", "mdx_hash.json", "mdx_name.json", "demucs.json")
+            ]
+            for dest in dests:
+                with open(dest, "w", encoding="utf-8") as handle:
+                    json.dump(local, handle)
+
+            class _FileResp:
+                def __init__(self, payload: dict) -> None:
+                    self._buf = io.StringIO(json.dumps(payload))
+
+                def __enter__(self) -> io.StringIO:
+                    return self._buf
+
+                def __exit__(self, *args: object) -> None:
+                    return None
+
+            side = [_FileResp(payload) for payload in remote]
+            repo = mock.Mock()
+            repo.catalogue = SimpleNamespace(
+                _latest=SimpleNamespace(
+                    vr={},
+                    mdx={},
+                    demucs={},
+                    apollo={},
+                    meta_by_family={
+                        "vr": {}, "mdx": {}, "demucs": {}, "apollo": {}
+                    },
+                    display_index_vr={},
+                    display_index_mdx={},
+                    display_index_demucs={},
+                )
+            )
+            with mock.patch.object(
+                downloads_mod,
+                "_MODEL_DATA_URLS",
+                [(f"https://x/{i}", dest) for i, dest in enumerate(dests)],
+            ), mock.patch.object(
+                downloads_mod,
+                "_NAME_MAPPER_DESTS",
+                frozenset(dests[i] for i in name_dest_indexes),
+            ), mock.patch.object(downloads_mod, "_urlopen", side_effect=side):
+                ok = DownloadManager().update_model_settings(repo)
+            self.assertTrue(ok)
+            return repo
+
+    def test_hash_map_change_takes_the_full_invalidation(self) -> None:
+        same = {"a.ckpt": "A"}
+        repo = self._run_update(
+            local=same,
+            remote=[{"a.ckpt": "CHANGED"}, same, same, same],
+        )
+        repo.invalidate_models.assert_called_once_with()
+        repo.invalidate_model_presentation.assert_not_called()
+
+    def test_name_mapper_only_change_takes_the_presentation_event(self) -> None:
+        same = {"a.ckpt": "A"}
+        repo = self._run_update(
+            local=same,
+            remote=[same, same, {"a.ckpt": "Friendlier A"}, same],
+        )
+        repo.invalidate_model_presentation.assert_called_once_with(reload_mappers=True)
+        repo.invalidate_models.assert_not_called()
+
+    def test_hash_change_subsumes_a_simultaneous_name_change(self) -> None:
+        """One mapper transaction never emits both events."""
+        same = {"a.ckpt": "A"}
+        repo = self._run_update(
+            local=same,
+            remote=[{"a.ckpt": "X"}, same, {"a.ckpt": "Friendlier A"}, same],
+        )
+        repo.invalidate_models.assert_called_once_with()
+        repo.invalidate_model_presentation.assert_not_called()
+
+    def test_no_semantic_change_emits_neither_event(self) -> None:
+        same = {"a.ckpt": "A"}
+        repo = self._run_update(local=same, remote=[same, same, same, same])
+        repo.invalidate_models.assert_not_called()
+        repo.invalidate_model_presentation.assert_not_called()
+
+    def test_successful_online_mapper_update_attempts_presentation_backfill(self) -> None:
+        same = {"a.ckpt": "A"}
+        with patch(
+            "core.model_inventory.backfill_installed_presentations",
+            return_value=False,
+        ) as backfill:
+            repo = self._run_update(local=same, remote=[same, same, same, same])
+
+        backfill.assert_called_once()
+        self.assertIs(backfill.call_args.args[0], repo)
+
     def test_update_model_settings_reloads_the_hash_mappers(self):
         """Rewriting the hash map on disk must reach `repo.mdx_hash_MAPPER`.
 
@@ -383,7 +706,17 @@ class UpdateModelSettingsTests(unittest.TestCase):
                 def __exit__(self, *args: object) -> None:
                     return None
 
-            with mock.patch.object(paths, "MDX_HASH_JSON", mdx_hash_json):
+            with mock.patch.object(
+                paths, "MDX_HASH_JSON", mdx_hash_json
+            ), mock.patch.object(
+                paths,
+                "REGISTERED_MODEL_INDEX",
+                os.path.join(tmp, "registered_models.json"),
+            ), mock.patch.object(
+                paths,
+                "LEGACY_REGISTERED_MODEL_INDEX",
+                os.path.join(tmp, "legacy-registered_models.json"),
+            ):
                 repo = ModelRepository()
                 self.assertNotIn("fresh-md5", repo.mdx_hash_MAPPER)
                 with mock.patch.object(
@@ -617,7 +950,6 @@ class DownloadManagerSwrFreshnessTests(unittest.TestCase):
         )
         self.assertNotIn("Old", manager.mdx_download_list)
         self.assertIn("New", coordinator.snapshot(
-            vip=False,
             mode=RefreshMode.OFFLINE,
             policy=AccessPolicy(allow_network=False, allow_metadata_writes=False),
         ).mdx)

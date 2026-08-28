@@ -5,7 +5,7 @@ from __future__ import annotations
 import copy
 from dataclasses import asdict, dataclass, field, fields, replace
 from enum import Enum
-from typing import Any, TypeVar, cast
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from bundled.constants import (
     ALL_STEMS,
@@ -15,7 +15,6 @@ from bundled.constants import (
     MAX_MIN,
     NO_MODEL,
 )
-from core.stems import EnsemblePair
 from core.types import ProcessMethod, SaveFormat
 from core.types.settings_enums import (
     AlignPhaseOption,
@@ -23,6 +22,7 @@ from core.types.settings_enums import (
     ColorScheme,
     DbAnalysis,
     DeverbVocalOpt,
+    DiagnosticLevel,
     FlacBitDepth,
     IntroAnalysis,
     ManualEnsembleOption,
@@ -38,6 +38,28 @@ from .defaults import SETTINGS_SCHEMA_VERSION, default_settings_dict
 from .flat_map import FLAT_TO_PATH
 
 T = TypeVar("T")
+
+if TYPE_CHECKING:
+    from core.model_identity import IdentityIndex
+
+_MODEL_SENTINELS = frozenset({CHOOSE_MODEL, NO_MODEL, ""})
+_SECONDARY_MODEL_FIELDS = (
+    "voc_inst_secondary_model",
+    "other_secondary_model",
+    "bass_secondary_model",
+    "drums_secondary_model",
+)
+_MODEL_PATH_FAMILIES: dict[str, frozenset[str]] = {
+    "vr.model": frozenset({"vr"}),
+    "mdx.model": frozenset({"mdx"}),
+    "demucs.model": frozenset({"demucs"}),
+    "audio_tools.apollo_model": frozenset({"apollo"}),
+    "process.vocal_splitter": frozenset({"vr", "mdx"}),
+    "demucs.pre_proc_model": frozenset({"vr", "mdx"}),
+}
+for _section_name in ("vr", "mdx", "demucs"):
+    for _field_name in _SECONDARY_MODEL_FIELDS:
+        _MODEL_PATH_FAMILIES[f"{_section_name}.{_field_name}"] = frozenset({"vr", "mdx", "demucs"})
 
 
 def _json_value(value: Any) -> Any:
@@ -93,7 +115,6 @@ class ProcessSettings:
     long_file_chunk_seconds: float = 0.0
     long_file_chunk_overlap_seconds: float = 2.0
     semitone_shift: float = 0.0
-    user_code: str = ""
     model_hash_table: dict = field(default_factory=dict)
     vocal_splitter: str = NO_MODEL
     vocal_splitter_enabled: bool = False
@@ -169,9 +190,6 @@ class DemucsSettings:
     segment: int | None = None
     overlap: float = DEMUCS_OVERLAP[0]
     shifts: int = 2
-    chunks_demucs: int | str | None = None
-    margin_demucs: int = 44100
-    is_chunk_demucs: bool = False
     is_split_mode: bool = True
     is_demucs_combine_stems: bool = True
     voc_inst_secondary_model: str = NO_MODEL
@@ -191,7 +209,7 @@ class DemucsSettings:
 
 @dataclass
 class EnsembleSettings:
-    main_stem: EnsemblePair = EnsemblePair.CHOOSE
+    main_stem: str = ""
     type: str = MAX_MIN
     selected_models: list[str] = field(default_factory=list)
     chosen_ensemble: str = CHOOSE_ENSEMBLE_OPTION
@@ -235,9 +253,14 @@ class UiSettings:
 
 
 @dataclass
+class DiagnosticsSettings:
+    level: DiagnosticLevel = DiagnosticLevel.ERRORS
+    include_sensitive: bool = False
+
+
+@dataclass
 class Settings:
     schema_version: int = SETTINGS_SCHEMA_VERSION
-    identity_schema_version: int = 2
     process: ProcessSettings = field(default_factory=ProcessSettings)
     vr: VrSettings = field(default_factory=VrSettings)
     mdx: MdxSettings = field(default_factory=MdxSettings)
@@ -245,7 +268,9 @@ class Settings:
     ensemble: EnsembleSettings = field(default_factory=EnsembleSettings)
     audio_tools: AudioToolsSettings = field(default_factory=AudioToolsSettings)
     ui: UiSettings = field(default_factory=UiSettings)
+    diagnostics: DiagnosticsSettings = field(default_factory=DiagnosticsSettings)
     path: str = ""
+    validation_warnings: list[str] = field(default_factory=list, repr=False, compare=False)
 
     @classmethod
     def defaults(cls) -> Settings:
@@ -263,27 +288,36 @@ class Settings:
             self.process,
             model_hash_table=snapshot_table(self.process.model_hash_table),
         )
-        return _json_value({
-            "schema_version": self.schema_version,
-            "identity_schema_version": self.identity_schema_version,
-            "process": asdict(process),
-            "vr": asdict(self.vr),
-            "mdx": asdict(self.mdx),
-            "demucs": asdict(self.demucs),
-            "ensemble": asdict(self.ensemble),
-            "audio_tools": asdict(self.audio_tools),
-            "ui": asdict(self.ui),
-        })
+        return _json_value(
+            {
+                "schema_version": self.schema_version,
+                "process": asdict(process),
+                "vr": asdict(self.vr),
+                "mdx": asdict(self.mdx),
+                "demucs": asdict(self.demucs),
+                "ensemble": asdict(self.ensemble),
+                "audio_tools": asdict(self.audio_tools),
+                "ui": asdict(self.ui),
+                "diagnostics": asdict(self.diagnostics),
+            }
+        )
 
     @classmethod
     def from_json_dict(cls, data: dict[str, Any]) -> Settings:
+        raw_data = data
+        raw_schema = raw_data.get("schema_version", 1)
+        try:
+            source_schema = int(raw_schema)
+        except (TypeError, ValueError):
+            source_schema = 1
+        raw_ensemble = raw_data.get("ensemble")
+        raw_main_stem = raw_ensemble.get("main_stem") if isinstance(raw_ensemble, dict) else ""
         coerced = coerce_json_dict(data or {})
         # Stamp the current version, never the file's: ``coerce_json_dict`` has
         # already migrated the payload, so keeping the old number would leave a
         # v3 file claiming v1 and mis-gate the next migration.
-        return cls(
+        settings = cls(
             schema_version=SETTINGS_SCHEMA_VERSION,
-            identity_schema_version=int(coerced.get("identity_schema_version") or 0),
             process=_merge_dataclass(ProcessSettings, ProcessSettings(), coerced.get("process")),
             vr=_merge_dataclass(VrSettings, VrSettings(), coerced.get("vr")),
             mdx=_merge_dataclass(MdxSettings, MdxSettings(), coerced.get("mdx")),
@@ -295,7 +329,98 @@ class Settings:
                 AudioToolsSettings, AudioToolsSettings(), coerced.get("audio_tools")
             ),
             ui=_merge_dataclass(UiSettings, UiSettings(), coerced.get("ui")),
+            diagnostics=_merge_dataclass(
+                DiagnosticsSettings,
+                DiagnosticsSettings(),
+                coerced.get("diagnostics"),
+            ),
         )
+        if source_schema < SETTINGS_SCHEMA_VERSION:
+            settings.validation_warnings.append(
+                "ensemble.main_stem: settings schema predates semantic pair IDs; choose an ensemble stem pair again"
+            )
+            settings.ensemble.main_stem = ""
+        elif raw_main_stem not in (None, "") and not settings.ensemble.main_stem:
+            settings.validation_warnings.append(
+                "ensemble.main_stem: unknown semantic pair/mode ID; choose an ensemble stem pair again"
+            )
+        settings.validate_model_references()
+        return settings
+
+    def _model_reference_values(self) -> list[tuple[str, Any, frozenset[str]]]:
+        references: list[tuple[str, Any, frozenset[str]]] = []
+        for path, allowed_families in _MODEL_PATH_FAMILIES.items():
+            section_name, field_name = path.split(".", 1)
+            references.append(
+                (path, getattr(getattr(self, section_name), field_name), allowed_families)
+            )
+        references.extend(
+            (
+                f"ensemble.selected_models[{index}]",
+                value,
+                frozenset({"vr", "mdx", "demucs"}),
+            )
+            for index, value in enumerate(self.ensemble.selected_models)
+        )
+        return references
+
+    def validate_model_references(self, index: IdentityIndex | None = None) -> list[str]:
+        """Validate stored identities without replacing the original text.
+
+        With no index this performs persistence syntax validation only.  A
+        repository-bound :class:`~core.model_identity.IdentityIndex` adds
+        exact existence, installation, identity-completeness, and per-field
+        family checks.
+        """
+        from core.model_identity import parse_stored_model_id
+
+        warnings: list[str] = list(self.validation_warnings)
+        for path, value, allowed_families in self._model_reference_values():
+            if isinstance(value, str) and value in _MODEL_SENTINELS:
+                continue
+            if not isinstance(value, str):
+                warning = (
+                    f"{path}: expected canonical model ID family:basename or a "
+                    f"permitted sentinel; preserved {value!r}"
+                )
+                if warning not in warnings:
+                    warnings.append(warning)
+                continue
+            try:
+                parsed = parse_stored_model_id(value)
+            except ValueError:
+                warning = (
+                    f"{path}: expected canonical model ID family:basename or a "
+                    f"permitted sentinel; preserved {value!r}"
+                )
+                if warning not in warnings:
+                    warnings.append(warning)
+                continue
+            if index is None:
+                continue
+            try:
+                record = index.lookup(parsed.value)
+            except ValueError as exc:
+                warning = f"{path}: {exc}"
+                if warning not in warnings:
+                    warnings.append(warning)
+                continue
+            if record.family not in allowed_families:
+                expected = ", ".join(sorted(allowed_families))
+                warning = f"{path}: model {record.id!r} is not eligible; requires family {expected}"
+                if warning not in warnings:
+                    warnings.append(warning)
+            if not record.installed:
+                warning = f"{path}: model {record.id!r} is not installed"
+                if warning not in warnings:
+                    warnings.append(warning)
+            if not record.identity_complete:
+                detail = record.identity_error or "identity metadata is incomplete"
+                warning = f"{path}: model {record.id!r}: {detail}"
+                if warning not in warnings:
+                    warnings.append(warning)
+        self.validation_warnings = warnings
+        return list(warnings)
 
     @classmethod
     def from_flat(cls, data: dict[str, Any]) -> Settings:
@@ -318,6 +443,7 @@ class Settings:
         process = nested.get("process")
         if isinstance(process, dict) and process.get("stem_focus"):
             settings.process.stem_focus = str(process["stem_focus"])
+        settings.validate_model_references()
         return settings
 
     def get(self, key: str, default: Any = None) -> Any:
@@ -350,7 +476,6 @@ class Settings:
     def reset_to_default(self) -> None:
         fresh = self.defaults()
         self.schema_version = fresh.schema_version
-        self.identity_schema_version = fresh.identity_schema_version
         self.process = copy.deepcopy(fresh.process)
         self.vr = copy.deepcopy(fresh.vr)
         self.mdx = copy.deepcopy(fresh.mdx)
@@ -358,6 +483,8 @@ class Settings:
         self.ensemble = copy.deepcopy(fresh.ensemble)
         self.audio_tools = copy.deepcopy(fresh.audio_tools)
         self.ui = copy.deepcopy(fresh.ui)
+        self.diagnostics = copy.deepcopy(fresh.diagnostics)
+        self.validation_warnings = list(fresh.validation_warnings)
 
     def save(self, path: str | None = None) -> None:
         from .io import save_settings

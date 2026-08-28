@@ -13,9 +13,10 @@ from bundled.constants import (
     WAV,
 )
 
+# v4: persistent diagnostic level and sensitive-detail policy.
 # v3: closed enums + Default/Auto sentinels → null; numeric strings → int/float.
-# v2: ensemble.main_stem EnsemblePair ids only.
-SETTINGS_SCHEMA_VERSION = 3
+# v5: ensemble.main_stem uses reviewed, namespaced semantic pair/mode ids.
+SETTINGS_SCHEMA_VERSION = 5
 
 
 def default_process() -> dict:
@@ -47,7 +48,6 @@ def default_process() -> dict:
         "long_file_chunk_seconds": 0.0,
         "long_file_chunk_overlap_seconds": 2.0,
         "semitone_shift": 0.0,
-        "user_code": "",
         "model_hash_table": {},
         "vocal_splitter": NO_MODEL,
         "vocal_splitter_enabled": False,
@@ -126,9 +126,6 @@ def default_demucs() -> dict:
         "segment": None,
         "overlap": DEMUCS_OVERLAP[0],
         "shifts": 2,
-        "chunks_demucs": None,
-        "margin_demucs": 44100,
-        "is_chunk_demucs": False,
         "is_split_mode": True,
         "is_demucs_combine_stems": True,
         "voc_inst_secondary_model": NO_MODEL,
@@ -148,10 +145,8 @@ def default_demucs() -> dict:
 
 
 def default_ensemble() -> dict:
-    from core.stems import EnsemblePair
-
     return {
-        "main_stem": EnsemblePair.CHOOSE.value,
+        "main_stem": "",
         "type": MAX_MIN,
         "selected_models": [],
         "chosen_ensemble": CHOOSE_ENSEMBLE_OPTION,
@@ -197,10 +192,16 @@ def default_ui() -> dict:
     }
 
 
+def default_diagnostics() -> dict:
+    return {
+        "level": "errors",
+        "include_sensitive": False,
+    }
+
+
 def default_settings_dict() -> dict:
     return {
         "schema_version": SETTINGS_SCHEMA_VERSION,
-        "identity_schema_version": 2,
         "process": default_process(),
         "vr": default_vr(),
         "mdx": default_mdx(),
@@ -208,4 +209,5 @@ def default_settings_dict() -> dict:
         "ensemble": default_ensemble(),
         "audio_tools": default_audio_tools(),
         "ui": default_ui(),
+        "diagnostics": default_diagnostics(),
     }

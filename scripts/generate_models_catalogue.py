@@ -6,9 +6,12 @@ mvsepless, plus Apollo). This script audits stem metadata against catalogue
 naming intent so mislabeled vocal vs instrumental models can be spotted.
 """
 
+# ruff: noqa: E402
+
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -20,16 +23,27 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from catalogue import collect  # noqa: E402
-from catalogue import render  # noqa: E402
+from catalogue import (
+    collect,
+    render,
+    stem_audit,
+)  # noqa: E402
 from catalogue.collect import (  # noqa: E402
-    FetchPolicy,
+    DISPLAY_REFERENCE_TSV_PATH,
     OUTPUT_PATH,
     REFERENCE_TSV_PATH,
+    STEM_SEMANTICS_REFERENCE_TSV_PATH,
+    FetchPolicy,
     _document_digest,
     _ir_path_for,
     _unsupported_count,
     build_ir,
+)
+
+from core.model_stem_manifest import (  # noqa: E402
+    BUNDLED_MANIFEST_PATH,
+    StemManifestError,
+    load_stem_manifest,
 )
 
 
@@ -51,15 +65,17 @@ def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
             "  document with that (exit 2) unless you pass --allow-degraded.\n"
             "\n"
             "Exit status:\n"
-            "  0  wrote, or --check found no drift, or --summary printed\n"
-            "  1  --check found drift (canonical text changed; header dates ignored)\n"
-            "  2  this run's data is too degraded to publish or to judge drift\n"
+            "  0  clean snapshot; write completed or no findings/drift\n"
+            "  1  generated drift or semantic findings\n"
+            "  2  degraded or unusable evidence\n"
+            "  130  interrupted opt-in remote confidence audit\n"
             "\n"
             "Examples:\n"
             "  python scripts/generate_models_catalogue.py\n"
             "  python scripts/generate_models_catalogue.py --refresh\n"
             "  python scripts/generate_models_catalogue.py --check\n"
             "  python scripts/generate_models_catalogue.py --summary --offline\n"
+            "  python scripts/generate_models_catalogue.py --audit-stem-confidence --guessed-only\n"
         ),
     )
     parser.add_argument(
@@ -103,8 +119,24 @@ def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         "--write-tsv",
         action="store_true",
         help=(
-            f"Also write {os.path.basename(REFERENCE_TSV_PATH)} from community "
-            "models.txt. Off by default; --check then compares it too."
+            f"Deprecated compatibility option. {os.path.basename(REFERENCE_TSV_PATH)} "
+            "is always generated and compared."
+        ),
+    )
+    parser.add_argument(
+        "--write-display-reference",
+        action="store_true",
+        help=(
+            f"Deprecated compatibility option. {os.path.basename(DISPLAY_REFERENCE_TSV_PATH)} "
+            "is always generated and compared."
+        ),
+    )
+    parser.add_argument(
+        "--write-stem-semantics-reference",
+        action="store_true",
+        help=(
+            f"Deprecated compatibility option. {os.path.basename(STEM_SEMANTICS_REFERENCE_TSV_PATH)} "
+            "is always generated and compared."
         ),
     )
     mode = parser.add_mutually_exclusive_group()
@@ -112,7 +144,7 @@ def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         "--write",
         action="store_true",
         help=(
-            "Write docs/models-catalogue.md (and optional TSV/sidecar). "
+            "Write the catalogue, IR sidecar, and all generated references. "
             "This is the default when neither --check nor --summary is passed."
         ),
     )
@@ -120,23 +152,85 @@ def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         "--summary",
         action="store_true",
         help=(
-            "Print entry counts, flagged mismatches and unknown intent to "
+            "Print entry counts, semantic findings, flagged mismatches and unknown intent to "
             "stdout. Writes nothing: no document, sidecar, TSV, or yaml "
-            "download into the tree. Prints even when the run is degraded."
+            "download into the tree. Exit 1 on findings or generated drift, "
+            "and 2 on degraded evidence."
         ),
     )
     mode.add_argument(
         "--check",
         action="store_true",
         help=(
-            "Compare the generated catalogue to the on-disk document and "
+            "Compare every generated artifact to its on-disk counterpart and "
             "write nothing. Volatile header lines (Generated, provenance, "
             "cache ages) are ignored, so drift means the catalogue changed, "
             "not that time passed. Exit 1 on drift, 2 if this run is too "
             "degraded to judge. Also read-only for yaml downloads."
         ),
     )
-    return parser.parse_args(argv)
+    mode.add_argument(
+        "--audit-stem-confidence",
+        action="store_true",
+        help=(
+            "Review mvsepless checkpoint confidence without generating or checking "
+            "publication artifacts."
+        ),
+    )
+    audit = parser.add_argument_group("stem confidence audit options")
+    audit.add_argument(
+        "--guessed-only",
+        action="store_true",
+        help="Only report entries whose karaoke confidence is not curated.",
+    )
+    audit.add_argument(
+        "--only",
+        default="",
+        metavar="SUBSTR",
+        help="Audit only entries whose id or label contains this substring.",
+    )
+    audit.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Audit at most this many entries after --only.",
+    )
+    audit.add_argument(
+        "--json",
+        dest="json_path",
+        default=None,
+        metavar="PATH",
+        help="Atomically write the full stem-confidence report JSON to PATH.",
+    )
+    audit.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress per-model stem-confidence audit progress.",
+    )
+    audit.add_argument(
+        "--no-cache",
+        "--no-hash-cache",
+        dest="no_hash_cache",
+        action="store_true",
+        help="Bypass remembered checkpoint-tail hashes for the confidence audit.",
+    )
+    args = parser.parse_args(argv)
+    audit_options_used = any(
+        (
+            args.guessed_only,
+            bool(args.only),
+            args.limit is not None,
+            args.json_path is not None,
+            args.quiet,
+            args.no_hash_cache,
+        )
+    )
+    if audit_options_used and not args.audit_stem_confidence:
+        parser.error("stem-confidence audit options require --audit-stem-confidence")
+    if args.audit_stem_confidence and args.offline and args.no_hash_cache:
+        parser.error("--offline cannot be combined with --no-cache")
+    return args
 
 
 #: A drop larger than this fraction of the previously published catalogue is
@@ -150,6 +244,17 @@ class PublicationVerdict:
 
     ok: bool
     reason: str = ""
+
+
+@dataclass(frozen=True)
+class PublicationBundle:
+    """Every candidate generated from one collected catalogue snapshot."""
+
+    catalogue: str
+    intent_reference: str
+    display_reference: render.PresentationReferenceAudit
+    stem_reference: str
+    ir: dict[str, Any]
 
 
 def _previous_entry_count(path: str) -> Optional[int]:
@@ -230,36 +335,227 @@ def _policy_for(args: argparse.Namespace) -> FetchPolicy:
     """Fetch policy implied by the CLI flags."""
     return FetchPolicy(
         allow_network=not args.offline,
-        refresh=args.refresh,
+        # Offline is cache-only at every boundary, including the confidence
+        # audit's legacy config and checkpoint-hash caches.
+        refresh=args.refresh and not args.offline,
         # --check and --summary must leave the tree exactly as they found it.
         allow_metadata_writes=not (args.check or args.summary),
+        allow_cache_writes=not (args.check or args.summary),
     )
+
+
+def _text_digest(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _required_supplemental_evidence(ctx: collect.CatalogueContext) -> Tuple[str, ...]:
+    """Name supplements required to produce a complete reviewed publication."""
+    unavailable = list(ctx.unavailable_supplemental_evidence)
+    missing_yamls = sorted(ctx.unavailable_yaml_evidence, key=str.casefold)
+    if missing_yamls:
+        preview = ", ".join(missing_yamls[:5])
+        if len(missing_yamls) > 5:
+            preview += f", ... (+{len(missing_yamls) - 5} more)"
+        unavailable.append(
+            f"per-model YAML/config metadata ({len(missing_yamls)} unavailable: {preview})"
+        )
+    return tuple(unavailable)
+
+
+def _render_publication_bundle(
+    entries: List[Any],
+    *,
+    ctx: collect.CatalogueContext,
+    unsupported: int,
+    report: Any,
+    catalogue_text: str,
+    document_sha256: str,
+    audit: stem_audit.StemAuditResult,
+) -> PublicationBundle:
+    """Render the complete in-memory candidate set from validated evidence."""
+    intent_reference = render._reference_tsv_text(ctx.community_by_file)
+    display_reference = render.presentation_reference_audit(entries)
+    stem_reference = render.stem_semantics_reference_tsv(audit.reference_rows)
+    ir = build_ir(
+        entries,
+        report=report,
+        unsupported_count=unsupported,
+        document_sha256=document_sha256,
+    )
+    return PublicationBundle(
+        catalogue=catalogue_text,
+        intent_reference=intent_reference,
+        display_reference=display_reference,
+        stem_reference=stem_reference,
+        ir=ir,
+    )
+
+
+def _canonical_ir_for_diff(payload: Any) -> Any:
+    """Ignore generation/provenance fields that do not change catalogue data."""
+    if not isinstance(payload, dict):
+        return payload
+    canonical = dict(payload)
+    canonical.pop("generated_at", None)
+    canonical.pop("provenance", None)
+    return canonical
+
+
+def _ir_matches(path: str, payload: dict[str, Any]) -> bool:
+    try:
+        with open(path, encoding="utf-8") as handle:
+            existing = json.load(handle)
+    except (OSError, ValueError):
+        return False
+    return _canonical_ir_for_diff(existing) == _canonical_ir_for_diff(payload)
+
+
+def _candidate_parity_diagnostic(
+    audit: stem_audit.StemAuditResult,
+    stem_reference: str,
+) -> stem_audit.StemAuditDiagnostic | None:
+    expected = stem_audit.reference_rows_tsv(audit.reference_rows)
+    if stem_reference == expected:
+        return None
+    return stem_audit.StemAuditDiagnostic(
+        code="reference-candidate-mismatch",
+        model_ids=audit.catalogue_model_ids,
+        message="rendered semantic reference differs from immutable audit rows",
+        expected=(_text_digest(expected),),
+        actual=(_text_digest(stem_reference),),
+    )
+
+
+def _artifact_drift(
+    bundle: PublicationBundle,
+    *,
+    include_ir: bool,
+) -> list[str]:
+    drift = []
+    if not render._text_matches(OUTPUT_PATH, bundle.catalogue):
+        drift.append(OUTPUT_PATH)
+    if include_ir and not _ir_matches(_ir_path_for(OUTPUT_PATH), bundle.ir):
+        drift.append(_ir_path_for(OUTPUT_PATH))
+    if not render._text_matches(REFERENCE_TSV_PATH, bundle.intent_reference):
+        drift.append(REFERENCE_TSV_PATH)
+    if not render._text_matches(DISPLAY_REFERENCE_TSV_PATH, bundle.display_reference.text):
+        drift.append(DISPLAY_REFERENCE_TSV_PATH)
+    if not render._text_matches(STEM_SEMANTICS_REFERENCE_TSV_PATH, bundle.stem_reference):
+        drift.append(STEM_SEMANTICS_REFERENCE_TSV_PATH)
+    return drift
+
+
+def _print_presentation_findings(audit: render.PresentationReferenceAudit) -> None:
+    for model_id, flags in audit.unreviewed:
+        print(
+            f"Unreviewed presentation flag(s): {model_id}: {', '.join(flags)}",
+            file=sys.stderr,
+        )
+    for display, model_ids in audit.collisions:
+        print(
+            f"Accidental case-insensitive display collision: {display!r}: {', '.join(model_ids)}",
+            file=sys.stderr,
+        )
+
+
+def _print_deprecated_reference_flags(args: argparse.Namespace) -> None:
+    for flag in (
+        "write_tsv",
+        "write_display_reference",
+        "write_stem_semantics_reference",
+    ):
+        if getattr(args, flag):
+            option = "--" + flag.replace("_", "-")
+            print(
+                f"Warning: {option} is deprecated and has no effect; "
+                "all generated references are always synchronized.",
+                file=sys.stderr,
+            )
+
+
+def _print_structural_stem_diagnostics(result: stem_audit.StemAuditResult) -> None:
+    for diagnostic in result.diagnostics:
+        if not diagnostic.structural:
+            continue
+        model_ids = ", ".join(diagnostic.model_ids) or "(global)"
+        print(
+            f"Stem audit {diagnostic.code}: {model_ids}: {diagnostic.message}",
+            file=sys.stderr,
+        )
 
 
 def main(argv: Optional[List[str]] = None) -> int:
     args = _parse_args(argv)
     policy = _policy_for(args)
+    if args.audit_stem_confidence:
+        return stem_audit.run_stem_confidence_audit(
+            policy=policy,
+            guessed_only=args.guessed_only,
+            only=args.only,
+            limit=args.limit,
+            json_path=args.json_path,
+            quiet=args.quiet,
+            no_hash_cache=args.no_hash_cache,
+        )
+    try:
+        registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)
+    except StemManifestError as error:
+        print(f"Stem audit manifest-invalid: {error}", file=sys.stderr)
+        return 1
+    _print_deprecated_reference_flags(args)
     ctx = collect._build_catalogue_context(policy=policy)
-    snapshot, entries = collect.collect_entries(ctx, policy=policy)
+    snapshot, entries = collect.collect_entries(ctx, policy=policy, registry=registry)
     unsupported = _unsupported_count(getattr(snapshot, "unsupported", None))
     report = getattr(snapshot, "report", None)
+    missing_evidence = _required_supplemental_evidence(ctx)
 
-    if args.summary:
-        # Ahead of the publication guard on purpose: a summary writes nothing,
-        # so there is no artifact to protect, and a degraded run is exactly
-        # when a maintainer wants to see what the catalogue currently looks
-        # like. The provenance block reports the degradation.
-        print(render.render_summary_report(entries, unsupported_count=unsupported, report=report))
-        return 0
+    # Unavailable per-model evidence is a degraded acquisition, not hundreds
+    # of guessed semantic defects. Report it before constructing any strict
+    # artifact candidate or invoking the structural audit.
+    if missing_evidence:
+        if args.summary:
+            print(
+                render.render_summary_report(
+                    entries,
+                    unsupported_count=unsupported,
+                    report=report,
+                )
+            )
+            print(
+                "Supplemental evidence unavailable: " + ", ".join(missing_evidence),
+                file=sys.stderr,
+            )
+            return 2
+        action = "judge" if args.check else "publish"
+        print(
+            f"Cannot {action} a complete catalogue: required supplemental "
+            "evidence unavailable: " + ", ".join(missing_evidence),
+            file=sys.stderr,
+        )
+        return 2
 
+    # A broken acquisition cannot supply meaningful manifest-coverage
+    # diagnostics; preserve the degraded-evidence exit before phase 1.
     verdict = _publication_verdict(
         entries=list(entries),
         report=report,
         previous_count=_previous_entry_count(OUTPUT_PATH),
-        allow_degraded=args.allow_degraded,
+        allow_degraded=args.allow_degraded and not args.summary,
     )
     if not verdict.ok:
-        if args.check:
+        if args.summary:
+            print(
+                render.render_summary_report(
+                    entries,
+                    unsupported_count=unsupported,
+                    report=report,
+                )
+            )
+            print(
+                f"Cannot judge {OUTPUT_PATH}: {verdict.reason}.",
+                file=sys.stderr,
+            )
+        elif args.check:
             print(
                 f"Cannot judge {OUTPUT_PATH}: {verdict.reason}.\n"
                 "This run's data is too degraded to tell drift from a bad fetch.",
@@ -273,51 +569,90 @@ def main(argv: Optional[List[str]] = None) -> int:
             )
         return 2
 
-    rendered = render._render(entries, unsupported_count=unsupported, report=report)
-    tsv_text = ""
-    if args.write_tsv:
-        if ctx.community_by_file:
-            tsv_text = render._reference_tsv_text(ctx.community_by_file)
-        else:
+    # Phase 1: validate the exact reconciled source/manifest snapshot before
+    # any publication candidate is rendered.
+    audit = stem_audit.audit_catalogue_stems(entries, ctx, registry=registry)
+    if not audit.structurally_valid:
+        if args.summary:
             print(
-                f"--write-tsv had no community data; leaving {REFERENCE_TSV_PATH} alone "
-                "(the models.txt fetch produced nothing).",
-                file=sys.stderr,
+                render.render_summary_report(
+                    entries,
+                    unsupported_count=unsupported,
+                    report=report,
+                    stem_audit=audit,
+                )
             )
+        _print_structural_stem_diagnostics(audit)
+        return 1
+
+    # Phase 2: render all candidates in memory and verify that the renderer is
+    # byte-identical to the audit-owned structured reference rows.
+    rendered_catalogue = render._render(entries, unsupported_count=unsupported, report=report)
+    document_sha256 = _text_digest(rendered_catalogue)
+    if (args.check or args.summary) and render._text_matches(OUTPUT_PATH, rendered_catalogue):
+        document_sha256 = _document_digest(OUTPUT_PATH) or document_sha256
+    bundle = _render_publication_bundle(
+        entries,
+        ctx=ctx,
+        unsupported=unsupported,
+        report=report,
+        catalogue_text=rendered_catalogue,
+        document_sha256=document_sha256,
+        audit=audit,
+    )
+    candidate_diagnostic = _candidate_parity_diagnostic(audit, bundle.stem_reference)
+    if candidate_diagnostic is not None:
+        print(
+            f"Stem audit {candidate_diagnostic.code}: {candidate_diagnostic.message}",
+            file=sys.stderr,
+        )
+        return 1
+
+    drift = _artifact_drift(bundle, include_ir=not args.no_ir)
+
+    if args.summary:
+        print(
+            render.render_summary_report(
+                entries,
+                unsupported_count=unsupported,
+                report=report,
+                stem_audit=audit,
+            )
+        )
+        _print_presentation_findings(bundle.display_reference)
+        for path in drift:
+            print(f"Out of date: {path}", file=sys.stderr)
+        if (
+            audit.diagnostics
+            or drift
+            or bundle.display_reference.unreviewed
+            or (bundle.display_reference.collisions)
+        ):
+            return 1
+        return 0
 
     if args.check:
-        drift = []
-        if not render._text_matches(OUTPUT_PATH, rendered):
-            drift.append(OUTPUT_PATH)
-        if tsv_text and not render._text_matches(REFERENCE_TSV_PATH, tsv_text):
-            drift.append(REFERENCE_TSV_PATH)
+        _print_presentation_findings(bundle.display_reference)
         if drift:
             for path in drift:
                 print(f"Out of date: {path}", file=sys.stderr)
-            regenerate = "python scripts/generate_models_catalogue.py"
-            if REFERENCE_TSV_PATH in drift:
-                regenerate += " --write-tsv"
-            print(f"Regenerate with: {regenerate}", file=sys.stderr)
+            print("Regenerate with: python scripts/generate_models_catalogue.py", file=sys.stderr)
+        if drift or bundle.display_reference.unreviewed or bundle.display_reference.collisions:
             return 1
         print(f"Up to date: {OUTPUT_PATH}")
         return 0
 
     from core.json_store import write_json_atomic, write_text_atomic
 
-    # A failed write must not truncate the checked-in catalogue document.
-    write_text_atomic(OUTPUT_PATH, rendered)
+    # Every renderer and strict validator above has completed. Each generated
+    # target is then atomically replaced, so a failed replacement cannot
+    # truncate a checked-in artifact or publish an unvalidated candidate.
+    write_text_atomic(OUTPUT_PATH, bundle.catalogue)
     if not args.no_ir:
-        # After the document, so the sidecar never describes a run whose
-        # document failed to land.
-        write_json_atomic(
-            _ir_path_for(OUTPUT_PATH),
-            build_ir(
-                entries,
-                report=report,
-                unsupported_count=unsupported,
-                document_sha256=_document_digest(OUTPUT_PATH),
-            ),
-        )
+        write_json_atomic(_ir_path_for(OUTPUT_PATH), bundle.ir)
+    write_text_atomic(REFERENCE_TSV_PATH, bundle.intent_reference)
+    write_text_atomic(DISPLAY_REFERENCE_TSV_PATH, bundle.display_reference.text)
+    write_text_atomic(STEM_SEMANTICS_REFERENCE_TSV_PATH, bundle.stem_reference)
     flagged = sum(1 for e in entries if e.flags)
     unknown = sum(1 for e in entries if e.name_intent == "unknown")
     with_meta = sum(1 for e in entries if e.metadata_source not in ("unavailable", ""))
@@ -325,10 +660,14 @@ def main(argv: Optional[List[str]] = None) -> int:
         f"Wrote {OUTPUT_PATH} ({len(entries)} models, {with_meta} with metadata, "
         f"{unknown} unknown, {flagged} flagged, {unsupported} unsupported omitted)"
     )
-    # Only after the guard: a refused run must not mutate this artifact either.
-    if tsv_text:
-        write_text_atomic(REFERENCE_TSV_PATH, tsv_text)
-        print(f"Wrote {REFERENCE_TSV_PATH}")
+    for path in (
+        _ir_path_for(OUTPUT_PATH),
+        REFERENCE_TSV_PATH,
+        DISPLAY_REFERENCE_TSV_PATH,
+        STEM_SEMANTICS_REFERENCE_TSV_PATH,
+    ):
+        if path != _ir_path_for(OUTPUT_PATH) or not args.no_ir:
+            print(f"Wrote {path}")
     return 0
 
 

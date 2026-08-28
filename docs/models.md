@@ -39,7 +39,7 @@ Earlier catalogues always win (upstream → Politrees → extras → mvsepless).
 - **Name mappers** are split in two: `model_name_mapper.json` mirrors upstream verbatim, and a sibling `model_name_mapper_local.json` holds fork-local and locally-registered names. Reads merge the two (overlay wins); refresh overwrites only the mirror, so a key upstream *deletes* actually disappears instead of surviving forever in a union file. Existing installs are migrated once — keys in the mirror that upstream no longer ships move to the overlay, and the overlay's existence marks the migration done. Hash maps still replace when content changes.
 - Catalogue YAML stem subtitles are fetched in the background with at most two concurrent GETs; rows on the **active tab** matching the current filters are prioritized over the rest of the catalogue, and a row already queued in the bulk backlog is promoted when it becomes visible. Rescans are debounced (250 ms), so a burst of typing costs one catalogue scan rather than one per keystroke.
 
-Entries this build cannot run yet still appear in the matching network tab as **Unsupported** (grayed, not downloadable), with a short reason. Use **Hide unsupported** in the Download Center filters to conceal them. First-pass unsupported classes:
+Entries this build cannot run yet still appear in the matching network tab as **Unsupported** (grayed, not downloadable), with a short reason. Use **Hide unsupported** in the Download Center filters to conceal them. The following first-pass unsupported classes are historical/conditional mechanism guidance, not a claim about the current published feed; the current generated catalogue may contain none of a listed class.
 
 | Class | Why |
 |---|---|
@@ -75,7 +75,7 @@ Verdicts, worst to best. Exit status is 0 only for `buildable`:
 | `key-mismatch` | Runs, but parameter names disagree with the checkpoint. |
 | `buildable` | Builds, runs, and (if checked) matches the checkpoint's keys. |
 
-`config-ignored` is the one to watch: [`engines.mdx_c._filter_init_kwargs`](../engines/mdx_c.py) drops yaml keys a class does not accept, so a model can build cleanly while missing the exact feature that made it unsupported. Use this verdict to catch gaps between yaml and the port before flipping catalogue support flags.
+`config-ignored` is the one to watch: [`engines.mdx_c.filter_init_kwargs`](../engines/mdx_c.py) drops yaml keys a class does not accept, so a model can build cleanly while missing the exact feature that made it unsupported. Use this verdict to catch gaps between yaml and the port before flipping catalogue support flags.
 
 [`docs/unsupported-models-probe.md`](unsupported-models-probe.md) is a point-in-time `--sweep --check-keys` run over every currently-unsupported entry, with per-group findings (which gaps are real architecture work vs. plumbing, and which verdicts undersell how wrong a build actually is).
 
@@ -83,6 +83,26 @@ Verdicts, worst to best. Exit status is 0 only for `buildable`:
 
 - **VR's architecture variant is derived from the checkpoint's byte size**, never declared in the yaml (`engines/vr.py`'s own selection heuristic) — probing a VR entry needs `--checkpoint` or `--check-keys` so the probe has a size to work from; without one it reports `build-failed` rather than guessing.
 - **VR6 ("v6 beta3") entries have no matching network class anywhere in this port** — `ml/vr_network/` only ever implements the VR5/"5.1" family. The probe reports these as `build-failed` explicitly rather than silently building the wrong (VR5) architecture for them.
+
+## Model identity
+
+`core/model_identity.py` and `core/model_inventory.py` own the canonical identity every other layer resolves against. A `ModelRecord` keeps identity and presentation separate:
+
+| Field | Meaning |
+|---|---|
+| `id` (`family:basename`) | Canonical storage/execution key across the four families `vr`, `mdx`, `demucs`, `apollo` |
+| `display` | GUI/CLI human label |
+| Catalogue selectable (`CatalogueRef`) | The Download Center row identity — mirrors `catalog:{family}:{urlencoded(selection)}`, a separate namespace, never a runtime model identity |
+| `backend_name` | The value the legacy engine layer consumes to select/load the model |
+| `artifacts` | `ModelArtifacts.primary_filename` / `supporting_filenames` — the files on disk that make up the model |
+
+`build_identity_index` assembles one `IdentityIndex` per `(inventory_generation, catalogue_revision, naming_revision)` from four family adapters (catalogue snapshot, installed files, bundled `DemucsSpec`s, the Demucs registry). Construction is offline — no network fetch, no MDX-C YAML download, no checkpoint hashing. `IdentityIndex.lookup` is an exact `family:basename` dictionary lookup; there is no reverse/fuzzy display-to-basename resolution left in `engines/`, `core/`, or `cli/` outside `core/model_display.py` (enforced by [`tests/test_no_runtime_display_inversion.py`](../tests/test_no_runtime_display_inversion.py)).
+
+There is no identity migrator and no `identity_schema_version`. A stored model string that does not parse as `family:basename`, or names a model that is not currently installed, is left in `settings.json` untouched — the picker combo shows no selection (`Choose Model`) instead of silently substituting one, and the stored value is only overwritten once the user picks a model from that combo.
+
+GUI method/ensemble/karaoke pickers list installed `ModelRecord`s only (including configurable-but-incomplete Demucs `.th`/YAML records); `uvr models list --all-known` additionally lists catalogue-only records that are not installed. A **Demucs-root `.ckpt`** (the historic single-file layout, not a `.th`/`.th.gz` bag member) never becomes a `ModelRecord` or a picker entry — `uvr models validate` with no model argument instead reports it as an `unsupported Demucs-root .ckpt artifact` diagnostic.
+
+`uvr models download` keeps its own catalogue-only fuzzy resolution (`ModelCatalogueService.resolve` in [`core/model_catalogue.py`](../core/model_catalogue.py)): exact `catalog:` ID, exact selectable/display, then a unique substring. That is unrelated to, and untouched by, the exact `family:basename` identity lookup used everywhere else.
 
 ## HyperACE BS-Roformer
 
@@ -95,7 +115,7 @@ Upstream ships **two** distinct sources; `v2_inst` and `v2_voc` are byte-identic
 | v1 | 398 | 1097 | 68.6M | Backbone strides time only; upsample head has no `out_conv`, narrows more slowly, 1×1 final conv; 16 hyperedges; HyperACE `k=3, l=2` |
 | v2 (inst + voc) | 471 | 1170 | 72.0M | Backbone also halves the band axis in `p4`/`p5`; each upsample stage refined by a TFC-TDF `out_conv`; 32 hyperedges; HyperACE `k=2, l=1` |
 
-**The variant is detected from the checkpoint, not the config.** Only the *packaged* v2-instrumental yaml carries a top-level `hyperace2: true`; upstream's own configs declare nothing at all, and that key is outside `model:` so it never reaches `_filter_init_kwargs` anyway. `hyperace_variant_from_state_dict` keys off the presence of `segm.*` and, within it, `upsample_head.*.out_conv` (v2 only). `SeperateMDXC` therefore loads the checkpoint *before* building the model. The `hyperace2` flag is still honoured as a fallback when no keys are available.
+**The variant is detected from the checkpoint, not the config.** Only the *packaged* v2-instrumental yaml carries a top-level `hyperace2: true`; upstream's own configs declare nothing at all, and that key is outside `model:` so it never reaches `filter_init_kwargs` anyway. `hyperace_variant_from_state_dict` keys off the presence of `segm.*` and, within it, `upsample_head.*.out_conv` (v2 only). `SeperateMDXC` therefore loads the checkpoint *before* building the model. The `hyperace2` flag is still honoured as a fallback when no keys are available.
 
 Verify a HyperACE checkpoint loads without running it — or without even downloading it:
 
@@ -112,7 +132,7 @@ HyperACE configs may still carry `use_torch_checkpoint` in yaml; it is accepted 
 
 A handful of community BS-Roformer checkpoints (`use_pope: true` in the training yaml, labelled "BS PolarFormer" upstream) replace rotary position embeddings with **Polar Coordinate Positional Embedding** ([arXiv:2509.10534](https://arxiv.org/abs/2509.10534)) — magnitudes go through `softplus` and get rotated by a per-head, per-frequency phase, with an extra learned bias on the key side. `BSRoformer(use_pope=True)` in [`ml/bs_roformer.py`](../ml/bs_roformer.py) wires this in via [`PoPE-pytorch`](https://pypi.org/project/PoPE-pytorch/) (same author/lineage as the `rotary-embedding-torch` dependency BS-Roformer already used), pinned in `requirements.txt` along with its own `einx`/`frozendict`/`torch-einops-utils` deps.
 
-Unlike `hyperace`/`value_residual` above, `use_pope` is a literal yaml key that already matches the constructor argument name, so it reaches `BSRoformer.__init__` through the ordinary `_filter_init_kwargs` path — no checkpoint-key detection needed.
+Unlike `hyperace`/`value_residual` above, `use_pope` is a literal yaml key that already matches the constructor argument name, so it reaches `BSRoformer.__init__` through the ordinary `filter_init_kwargs` path — no checkpoint-key detection needed.
 
 **One `PoPE` module per axis, not per layer.** `time_pope_embed`/`freq_pope_embed` are each built once and shared across every one of `depth` outer layers (mirroring how `RotaryEmbedding` is shared in the non-PoPE path). This was verified against a real checkpoint (`bs_pope_vocals_zfturbo`), not assumed: `pope_embed.bias`/`pope_embed.inv_freqs` are byte-identical across all 12 layers for a given axis and differ only between time and freq — confirming the training code shares one module per axis rather than training 12 independent ones. Loading that checkpoint into this build reports `state_dict 723 matched, 0 missing, 0 unexpected`.
 
@@ -136,6 +156,6 @@ Ensemble mode vocal/instrumental filtering does not apply to Bandit stems.
 
 ## Unrecognized models
 
-MDX-C models downloaded from **Download Center** (checkpoint + paired yaml) are **auto-registered** on download. If the model was downloaded earlier, the app also tries the download catalogue on first use before prompting. Download catalogue labels are shown in the model dropdown (for example `BandSplit Roformer | Karaoke Frazer by becruily` instead of the raw checkpoint filename).
+MDX-C models downloaded from **Download Center** (checkpoint + paired yaml) are **auto-registered** on download. If the model was downloaded earlier, the app also tries the download catalogue on first use before prompting. Download catalogue labels are shown in the model dropdown (for example `BandSplit Roformer — Karaoke Frazer · Becruily` instead of the raw checkpoint filename).
 
 When placing a community `.ckpt` manually with no catalogue entry, the unrecognized-model dialog lets you pick the yaml config. The **Architecture** row auto-detects SCNet, Bandit, or Roformer from the yaml shape. Enable **Roformer Model** for SCNet, Bandit, and Roformer checkpoints (routes through the shared MDX-C chunked inference path).

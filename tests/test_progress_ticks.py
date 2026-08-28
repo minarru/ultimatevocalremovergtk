@@ -1,4 +1,5 @@
 """Unit tests for F24 progress-tick helpers (no GTK, no weights)."""
+
 from __future__ import annotations
 
 import unittest
@@ -9,6 +10,41 @@ from vendor.demucs.utils import apply_model_v1, apply_model_v2
 
 
 class ContinueCounterTests(unittest.TestCase):
+    def test_progress_detail_exposes_exact_semantic_route_context(self) -> None:
+        from types import SimpleNamespace
+
+        from core.model_stem_semantics import resolve_catalogue_stem_semantics
+        from core.run_loop import _progress_detail
+
+        model = SimpleNamespace(
+            model_display_label="",
+            process_method="MDX",
+            model_name="bs_neo_inst_beta",
+            model_basename="bs_neo_inst_beta",
+            repo=None,
+            stem_semantics=resolve_catalogue_stem_semantics(
+                "mdx:bs_neo_inst_beta",
+                native_stems=("other",),
+                backend_primary="other",
+                backend_target="other",
+            ),
+        )
+        detail = _progress_detail(
+            file_num=1,
+            file_total=1,
+            model=model,
+            model_num=1,
+            model_count=1,
+        )
+
+        self.assertIsNotNone(detail)
+        assert detail is not None
+        self.assertIn("Instrumental", detail)
+        self.assertIn("mix.instrumental", detail)
+        self.assertIn("native=other", detail)
+        self.assertIn("context=full_mix", detail)
+        self.assertIn("status=reviewed", detail)
+
     def test_hops_then_match_mix_are_monotonic_and_stay_under_save(self) -> None:
         progress = InferenceProgress()
         hops = [progress.hop(4) for _ in range(4)]
@@ -98,12 +134,12 @@ class AudioToolProgressTests(unittest.TestCase):
         runner.settings = mock.Mock()
         audio_tool = mock.Mock()
         callbacks = JobCallbacks(on_progress=lambda fraction, **_k: seen.append(fraction))
-        with mock.patch("core.audio_tools.check_stopped"), mock.patch(
-            "core.audio_tools.snapshot_worker_file"
-        ), mock.patch("core.audio_tools.os.path.isfile", return_value=True):
-            runner._run_pitch_time(
-                audio_tool, "pitch", ["/tmp/a.wav", "/tmp/b.wav"], callbacks
-            )
+        with (
+            mock.patch("core.audio_tools.check_stopped"),
+            mock.patch("core.audio_tools.snapshot_worker_file"),
+            mock.patch("core.audio_tools.os.path.isfile", return_value=True),
+        ):
+            runner._run_pitch_time(audio_tool, "pitch", ["/tmp/a.wav", "/tmp/b.wav"], callbacks)
         self.assertIn(0.0, seen)
         self.assertIn(0.5, seen)
         self.assertIn(1.0, seen)
@@ -119,9 +155,11 @@ class AudioToolProgressTests(unittest.TestCase):
         runner.settings = mock.Mock()
         audio_tool = mock.Mock()
         callbacks = JobCallbacks(on_progress=lambda fraction, **_k: seen.append(fraction))
-        with mock.patch("core.audio_tools.check_stopped"), mock.patch(
-            "core.audio_tools.snapshot_worker_file"
-        ), mock.patch("core.audio_tools.os.path.isfile", return_value=True):
+        with (
+            mock.patch("core.audio_tools.check_stopped"),
+            mock.patch("core.audio_tools.snapshot_worker_file"),
+            mock.patch("core.audio_tools.os.path.isfile", return_value=True),
+        ):
             runner._run_dual(
                 audio_tool,
                 MATCH_INPUTS,
@@ -144,16 +182,15 @@ class AudioToolProgressTests(unittest.TestCase):
         settings.audio_tools.choose_algorithm = ManualEnsembleOption.COMBINE_INPUTS
         runner.settings = settings
         audio_tool = mock.Mock()
-        audio_tool.combine_audio.side_effect = (
-            lambda _inputs, _base, on_progress=None: on_progress and on_progress(0.5)
+        audio_tool.combine_audio.side_effect = lambda _inputs, _base, on_progress=None: (
+            on_progress and on_progress(0.5)
         )
         callbacks = JobCallbacks(on_progress=lambda fraction, **_k: seen.append(fraction))
-        with mock.patch("core.audio_tools.os.path.isfile", return_value=True), mock.patch(
-            "core.audio_tools.snapshot_worker_file"
+        with (
+            mock.patch("core.audio_tools.os.path.isfile", return_value=True),
+            mock.patch("core.audio_tools.snapshot_worker_file"),
         ):
-            runner._run_manual_ensemble(
-                audio_tool, ["/tmp/a.wav", "/tmp/b.wav"], callbacks
-            )
+            runner._run_manual_ensemble(audio_tool, ["/tmp/a.wav", "/tmp/b.wav"], callbacks)
         self.assertIn(0.0, seen)
         self.assertIn(0.5, seen)
         self.assertIn(1.0, seen)

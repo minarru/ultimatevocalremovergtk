@@ -14,6 +14,45 @@ from gi.repository import Adw, Gdk, Gtk, Pango
 from ..widget_state import drop, fetch, has, stash
 
 _ICON_LOOKUP_FLAGS = Gtk.IconLookupFlags.FORCE_SYMBOLIC
+_MODEL_ID_FAMILIES = frozenset({"vr", "mdx", "demucs", "apollo"})
+
+
+def log_model_picker_items(
+    surface: str,
+    items: Iterable[tuple[typing.Any, typing.Any]],
+) -> None:
+    """Verbose trace of the exact canonical-ID/display pairs shown by a picker."""
+    from core.debug_log import debug, verbose
+
+    if not verbose():
+        return
+    projected: list[tuple[str, str, str, bool]] = []
+    for stored, display in items:
+        model_id = str(stored)
+        family, separator, basename = model_id.partition(":")
+        if not separator or family not in _MODEL_ID_FAMILIES or not basename:
+            continue
+        label = str(display)
+        projected.append(
+            (model_id, basename, label, label.casefold() == basename.casefold())
+        )
+
+    if not projected:
+        return
+    surface_text = str(surface or "Model picker")
+    basename_displays = sum(1 for *_values, matches in projected if matches)
+    debug(
+        "model",
+        f"picker surface={surface_text!r} entries={len(projected)} "
+        f"basename_displays={basename_displays}",
+    )
+    for model_id, basename, label, matches in projected:
+        debug(
+            "model",
+            f"picker surface={surface_text!r} id={model_id!r} "
+            f"basename={basename!r} display={label!r} "
+            f"display_is_basename={matches}",
+        )
 
 
 def image_from_icon_name(icon_name: str, size: int = 16) -> Gtk.Image:
@@ -162,6 +201,10 @@ def set_combo_tag_values(row: Adw.ComboRow, items: Iterable) -> None:
             text = str(item)
             ids.append(text)
             labels.append(text)
+    log_model_picker_items(
+        str(row.get_title() or "Model picker"),
+        zip(ids, labels),
+    )
     stash(row, "_uvr_combo_ids", ids)
     model = Gtk.StringList()
     for label in labels:

@@ -1,6 +1,7 @@
 {
     "description": "Optimized for RVC / AI voice training \u2014 Big Beta v6x + Vocals Fullness v4 Gabox",
-    "ensemble_main_stem": "vocals_instrumental",
+    "schema_version": 2,
+    "ensemble_main_stem": "pair.vocals_instrumental",
     "ensemble_type": "Average/Average",
     "selected_models": [
         "mdx:melband_roformer_big_beta6x",

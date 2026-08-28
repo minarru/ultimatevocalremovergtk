@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "models": {
+    "demucs:tasnet": {"entrypoint": "tasnet.th", "alternate_entrypoints": ["tasnet.th.gz"], "display": "v1 — Tasnet", "version": "v1", "source_layout": "4_stem"},
+    "demucs:tasnet_extra": {"entrypoint": "tasnet_extra.th", "alternate_entrypoints": ["tasnet_extra.th.gz"], "display": "v1 — Tasnet_extra", "version": "v1", "source_layout": "4_stem"},
+    "demucs:demucs": {"entrypoint": "demucs.th", "alternate_entrypoints": ["demucs.th.gz"], "display": "v1 — Demucs", "version": "v1", "source_layout": "4_stem"},
+    "demucs:demucs_extra": {"entrypoint": "demucs_extra.th", "display": "v1 — Demucs_extra", "version": "v1", "source_layout": "4_stem"},
+    "demucs:light": {"entrypoint": "light.th", "alternate_entrypoints": ["light.th.gz"], "display": "v1 — Light", "version": "v1", "source_layout": "4_stem"},
+    "demucs:light_extra": {"entrypoint": "light_extra.th", "alternate_entrypoints": ["light_extra.th.gz"], "display": "v1 — Light_extra", "version": "v1", "source_layout": "4_stem"},
+    "demucs:tasnet-beb46fac": {"entrypoint": "tasnet-beb46fac.th", "display": "v2 — Tasnet", "version": "v2", "source_layout": "4_stem"},
+    "demucs:tasnet_extra-df3777b2": {"entrypoint": "tasnet_extra-df3777b2.th", "display": "v2 — Tasnet_extra", "version": "v2", "source_layout": "4_stem"},
+    "demucs:demucs48_hq-28a1282c": {"entrypoint": "demucs48_hq-28a1282c.th", "display": "v2 — Demucs48_hq", "version": "v2", "source_layout": "4_stem"},
+    "demucs:demucs-e07c671f": {"entrypoint": "demucs-e07c671f.th", "display": "v2 — Demucs", "version": "v2", "source_layout": "4_stem"},
+    "demucs:demucs_extra-3646af93": {"entrypoint": "demucs_extra-3646af93.th", "display": "v2 — Demucs_extra", "version": "v2", "source_layout": "4_stem"},
+    "demucs:demucs_unittest-09ebc15f": {"entrypoint": "demucs_unittest-09ebc15f.th", "display": "v2 — Demucs_unittest", "version": "v2", "source_layout": "4_stem"},
+    "demucs:mdx": {"entrypoint": "v3_v4_repo/mdx.yaml", "display": "v3 — mdx", "version": "v3", "source_layout": "4_stem"},
+    "demucs:mdx_extra": {"entrypoint": "v3_v4_repo/mdx_extra.yaml", "display": "v3 — mdx_extra", "version": "v3", "source_layout": "4_stem"},
+    "demucs:mdx_extra_q": {"entrypoint": "v3_v4_repo/mdx_extra_q.yaml", "display": "v3 — mdx_extra_q", "version": "v3", "source_layout": "4_stem"},
+    "demucs:mdx_q": {"entrypoint": "v3_v4_repo/mdx_q.yaml", "display": "v3 — mdx_q", "version": "v3", "source_layout": "4_stem"},
+    "demucs:repro_mdx_a": {"entrypoint": "v3_v4_repo/repro_mdx_a.yaml", "display": "v3 — repro_mdx_a", "version": "v3", "source_layout": "4_stem"},
+    "demucs:repro_mdx_a_hybrid_only": {"entrypoint": "v3_v4_repo/repro_mdx_a_hybrid_only.yaml", "display": "v3 — repro_mdx_a_hybrid", "version": "v3", "source_layout": "4_stem"},
+    "demucs:repro_mdx_a_time_only": {"entrypoint": "v3_v4_repo/repro_mdx_a_time_only.yaml", "display": "v3 — repro_mdx_a_time", "version": "v3", "source_layout": "4_stem"},
+    "demucs:UVR_Demucs_Model_1": {"entrypoint": "v3_v4_repo/UVR_Demucs_Model_1.yaml", "display": "v3 — UVR_Model_1", "version": "v3", "source_layout": "2_stem"},
+    "demucs:UVR_Demucs_Model_2": {"entrypoint": "v3_v4_repo/UVR_Demucs_Model_2.yaml", "display": "v3 — UVR_Model_2", "version": "v3", "source_layout": "2_stem"},
+    "demucs:UVR_Demucs_Model_Bag": {"entrypoint": "v3_v4_repo/UVR_Demucs_Model_Bag.yaml", "display": "v3 — UVR_Model_Bag", "version": "v3", "source_layout": "2_stem"},
+    "demucs:hdemucs_mmi": {"entrypoint": "v3_v4_repo/hdemucs_mmi.yaml", "display": "v4 — hdemucs_mmi", "version": "v4", "source_layout": "4_stem"},
+    "demucs:htdemucs": {"entrypoint": "v3_v4_repo/htdemucs.yaml", "display": "v4 — htdemucs", "version": "v4", "source_layout": "4_stem"},
+    "demucs:htdemucs_ft": {"entrypoint": "v3_v4_repo/htdemucs_ft.yaml", "display": "v4 — htdemucs_ft", "version": "v4", "source_layout": "4_stem"},
+    "demucs:htdemucs_6s": {"entrypoint": "v3_v4_repo/htdemucs_6s.yaml", "display": "v4 — htdemucs_6s", "version": "v4", "source_layout": "6_stem"},
+    "demucs:UVR_Demucs_Model_ht": {"entrypoint": "v3_v4_repo/UVR_Demucs_Model_ht.yaml", "display": "v4 — UVR_Model_ht", "version": "v4", "source_layout": "2_stem"}
+  }
+}

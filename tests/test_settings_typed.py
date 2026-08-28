@@ -5,7 +5,6 @@ import unittest
 
 from core.settings import SETTINGS_SCHEMA_VERSION, Settings
 from core.settings.coerce import coerce_field
-from core.stems import EnsemblePair
 from core.types import Stem
 
 
@@ -29,34 +28,55 @@ class TypedSettingsTests(unittest.TestCase):
 
     def test_ensemble_main_stem_persists_via_set_get(self):
         settings = Settings.defaults()
-        settings.set("ensemble_main_stem", EnsemblePair.VOCALS_INSTRUMENTAL.value)
-        self.assertEqual(
-            settings.get("ensemble_main_stem"), EnsemblePair.VOCALS_INSTRUMENTAL
-        )
-        self.assertIsInstance(settings.ensemble.main_stem, EnsemblePair)
-        self.assertEqual(
-            settings.ensemble.main_stem, EnsemblePair.VOCALS_INSTRUMENTAL
-        )
+        settings.set("ensemble_main_stem", "pair.vocals_instrumental")
+        self.assertEqual(settings.get("ensemble_main_stem"), "pair.vocals_instrumental")
+        self.assertIsInstance(settings.ensemble.main_stem, str)
+        self.assertEqual(settings.ensemble.main_stem, "pair.vocals_instrumental")
         flat = settings.to_dict()
-        self.assertEqual(flat["ensemble_main_stem"], EnsemblePair.VOCALS_INSTRUMENTAL)
+        self.assertEqual(flat["ensemble_main_stem"], "pair.vocals_instrumental")
         payload = settings.to_json_dict()
-        self.assertEqual(payload["ensemble"]["main_stem"], "vocals_instrumental")
+        self.assertEqual(payload["ensemble"]["main_stem"], "pair.vocals_instrumental")
 
     def test_from_json_dict_backfills_missing_sections(self):
         partial = {"process": {"export_path": "/tmp/out"}}
         settings = Settings.from_json_dict(partial)
         self.assertEqual(settings.process.export_path, "/tmp/out")
-        self.assertEqual(settings.ensemble.main_stem, EnsemblePair.CHOOSE)
+        self.assertEqual(settings.ensemble.main_stem, "")
         self.assertFalse(settings.process.use_gpu)
+
+    def test_legacy_vip_code_is_ignored_and_not_reserialized(self) -> None:
+        payload = Settings.defaults().to_json_dict()
+        payload["process"]["user_code"] = "old-secret"
+        restored = Settings.from_json_dict(payload)
+        self.assertFalse(hasattr(restored.process, "user_code"))
+        self.assertNotIn("user_code", restored.to_json_dict()["process"])
+        self.assertIsNone(restored.get("user_code"))
+
+    def test_legacy_demucs_chunk_controls_are_ignored_and_not_reserialized(self) -> None:
+        payload = Settings.defaults().to_json_dict()
+        payload["demucs"].update(
+            {
+                "chunks_demucs": 7,
+                "margin_demucs": 22050,
+                "is_chunk_demucs": True,
+            },
+        )
+
+        restored = Settings.from_json_dict(payload)
+
+        serialized = restored.to_json_dict()["demucs"]
+        self.assertNotIn("chunks_demucs", serialized)
+        self.assertNotIn("margin_demucs", serialized)
+        self.assertNotIn("is_chunk_demucs", serialized)
 
     def test_coerce_field_legacy_display_becomes_choose(self):
         self.assertEqual(
             coerce_field("ensemble", "main_stem", "Vocals/Instrumental"),
-            EnsemblePair.CHOOSE,
+            "",
         )
         self.assertEqual(
             coerce_field("ensemble", "main_stem", "karaoke"),
-            EnsemblePair.KARAOKE,
+            "",
         )
 
     def test_stem_enum_matches_label(self):

@@ -1,6 +1,7 @@
 {
     "description": "Cleanest instrumentals \u2014 Inst Bleedless v2 Gabox + Resurrection Instrumental",
-    "ensemble_main_stem": "vocals_instrumental",
+    "schema_version": 2,
+    "ensemble_main_stem": "pair.vocals_instrumental",
     "ensemble_type": "Max Spec/Max Spec",
     "selected_models": [
         "mdx:mel_band_roformer_inst_bleedless_v2_gabox",

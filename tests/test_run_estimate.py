@@ -5,22 +5,20 @@ from types import SimpleNamespace
 from bundled.constants import (
     ALL_STEMS,
     BASS_STEM,
-    DRUM_STEM,
     DEMUCS_ARCH_TYPE,
+    DRUM_STEM,
     ENSEMBLE_MODE,
     MDX_ARCH_TYPE,
     VOCAL_STEM,
     VR_ARCH_TYPE,
 )
-from core.stems import EnsemblePair
-from core.settings import Settings
 from core.run_estimate import (
     ProgressEtaTracker,
     RunCostTier,
     WorkloadEstimate,
-    combine_progress_local_step,
     classify_export_tier,
     classify_run_tier,
+    combine_progress_local_step,
     compute_run_cost_units,
     count_expected_outputs,
     count_inference_passes,
@@ -30,6 +28,7 @@ from core.run_estimate import (
     format_workload_line,
     save_progress_local_step,
 )
+from core.settings import Settings
 from core.stem_selection import (
     _QUICK_ALL,
     _QUICK_VOCALS,
@@ -40,7 +39,7 @@ from ui.widgets.stem_only import (
 
 
 class _Settings(Settings):
-    def __init__(self, data: typing.Any=None):
+    def __init__(self, data: typing.Any = None):
         super().__init__()
         self.update(data or {})
 
@@ -177,7 +176,7 @@ class OutputCountExtraTests(unittest.TestCase):
     def test_four_stem_ensemble_outputs(self):
         settings = _Settings(
             {
-                "ensemble_main_stem": EnsemblePair.FOUR_STEM.value,
+                "ensemble_main_stem": "mode.four_stem",
                 "selected_models": ["a", "b"],
                 "is_save_all_outputs_ensemble": False,
             }
@@ -191,7 +190,7 @@ class OutputCountExtraTests(unittest.TestCase):
     def test_save_all_adds_member_files(self):
         settings = _Settings(
             {
-                "ensemble_main_stem": EnsemblePair.FOUR_STEM.value,
+                "ensemble_main_stem": "mode.four_stem",
                 "selected_models": ["a", "b", "c"],
                 "is_save_all_outputs_ensemble": True,
             }
@@ -225,7 +224,7 @@ class OutputCountExtraTests(unittest.TestCase):
     def test_estimate_hidden_ensemble_four_stem(self):
         settings = _Settings(
             {
-                "ensemble_main_stem": EnsemblePair.FOUR_STEM.value,
+                "ensemble_main_stem": "mode.four_stem",
                 "selected_models": ["a", "b"],
                 "is_save_all_outputs_ensemble": False,
                 "is_gpu_conversion": True,
@@ -319,7 +318,7 @@ class SaveStemsOutputCountTests(unittest.TestCase):
             secondary_key="is_secondary_stem_only",
             has_model=True,
         )
-        self.settings.process.stem_focus = VOCAL_STEM
+        self.settings.process.stem_focus = "vocal.vocals"
         self.section.sync_from_settings()
         self.assertEqual(self.section.expected_output_count(), 1)
 
@@ -504,6 +503,7 @@ class ProgressEtaTrackerTests(unittest.TestCase):
         tracker.update(0.46, t0 + 260.0, local_step=0.66, pass_index=1, pass_total=1)
         after = tracker.format_text(0.46, 260.0, now=t0 + 260.0)
         if "left" in before and "left" in after:
+
             def _parse_remaining(label: str) -> float:
                 part = label.split("~")[1].split(" left")[0]
                 mins, secs = part.split(":")

@@ -119,6 +119,25 @@ def lookup_mapper_display(basename: str, name_mapper: Optional[Dict[str, str]]) 
     return None
 
 
+def lookup_mapper_display_exact(
+    basename: str, name_mapper: Optional[Mapping[str, str]]
+) -> Optional[str]:
+    """Map an on-disk basename to a display label by exact key only.
+
+    Unlike :func:`lookup_mapper_display`, this never falls back to splitext
+    scanning, casefolding, or substring matching: ``model`` must not pick up
+    ``model_v2.ckpt``. Inventory projection uses this so a display label can
+    never be invented from a near-miss key.
+    """
+    if not basename or not name_mapper:
+        return None
+    for extension in _MAPPER_EXTENSIONS:
+        key = basename if not extension else f"{basename}{extension}"
+        if key in name_mapper:
+            return str(name_mapper[key])
+    return None
+
+
 #: Any of the separators a family/title label has been written with. The Demucs
 #: name mapper is legacy data using ``v4 | X`` while every display is
 #: canonicalised to ``v4 — X`` (model_naming.TITLE_SEPARATOR), so a literal
@@ -242,10 +261,9 @@ def _flatten_source(source: Dict, keys: Tuple[str, ...]) -> Dict[str, Any]:
 def _display_base(keys: Tuple[str, ...], *, allow_network: bool) -> Dict[str, Any]:
     """Flatten one architecture's catalogues from the cache **and** Politrees.
 
-    Politrees is read here as well as inside the merge because the merge omits
-    the ``*_vip_list`` keys — the Download Center must not offer code-gated
-    models. Naming a checkpoint that is already on disk is not gated, though,
-    so the display index keeps reading them, as it always has.
+    Legacy ``*_vip_list`` keys remain external wire-format names. The display
+    index reads their labels so installed checkpoints receive the same public
+    presentation as Download Center rows.
     """
     from .politrees_catalog import load_politrees_links
 
@@ -365,7 +383,7 @@ def display_name_for_basename(
     lookup = catalogue_index if catalogue_index is not None else load_mdx_catalog_display_index()
     if basename in lookup:
         catalogue_name = lookup[basename]
-        # VIP / raw catalogue rows sometimes echo the filename; prefer mapper.
+        # Legacy-prefixed/raw catalogue rows may echo the filename; prefer mapper.
         if catalogue_name != basename:
             return catalogue_name
     mapped = lookup_mapper_display(basename, name_mapper)
@@ -491,31 +509,6 @@ def display_name_for_model(
         return lookup.get(basename) or lookup_mapper_display(
             basename, repo.demucs_name_select_MAPPER
         ) or name
-    return name
-
-
-def resolve_model_basename(
-    arch: str,
-    name: str,
-    repo: "ModelRepository",
-) -> str:
-    """Resolve a friendly label to an on-disk basename/stem."""
-    if not name:
-        return name
-    if arch in (VR_ARCH_TYPE,):
-        return resolve_vr_model_basename(name, catalogue_index=repo.vr_catalogue_display_index())
-    if arch in (MDX_ARCH_TYPE,):
-        return resolve_mdx_model_basename(
-            name,
-            repo.mdx_name_select_MAPPER,
-            catalogue_index=repo.mdx_catalogue_display_index(),
-        )
-    if arch in (DEMUCS_ARCH_TYPE,):
-        return resolve_demucs_model_basename(
-            name,
-            repo.demucs_name_select_MAPPER,
-            catalogue_index=repo.demucs_catalogue_display_index(),
-        )
     return name
 
 

@@ -1,163 +1,281 @@
-"""Ensemble members written by the export path must be collectible.
-
-This is the guard for the one failure mode that no other test catches: if a
-bucket tag does not survive ``format_stem_basename`` and the collection regex,
-``get_files_to_ensemble_for_stem`` silently returns fewer members, the ensemble
-emits one member's audio, and every unit test still passes.
-"""
+"""Ensemble collection retains trusted planned role/tag metadata."""
 
 from __future__ import annotations
 
 import os
 import tempfile
-import typing
 import unittest
+from types import SimpleNamespace
+from typing import Any
 
+from core.ensembler import CollectedStem, Ensembler, planned_ensemble_stems
 from core.export_naming import format_stem_basename
-from core.ensembler import Ensembler
-from core.stems import EnsemblePair, StemBucket, export_stem_label, filename_tag
+from core.stem_roles import StemLiteral, StemRoleId
+from core.stems import StemId, StemRoute, StemRouteKind, run_export_routes
 
 
-class _Model:
-    def __init__(self, *, is_karaoke: bool = False, is_bv: bool = False,
-                 stem_count: int = 2, demucs_stem_count: int = 0,
-                 primary_stem: str = "Vocals") -> None:
-        self.is_karaoke = is_karaoke
-        self.is_bv_model = is_bv
-        self.mdx_stem_count = stem_count
-        self.demucs_stem_count = demucs_stem_count
-        self.mdx_model_stems: list = []
-        self.demucs_source_list: list = []
-        self.primary_stem = primary_stem
-
-
-def _collector() -> typing.Any:
-    """An Ensembler without running __init__ (which would read settings.json).
-
-    ``get_files_to_ensemble_for_stem`` only lists a directory and matches names.
-    """
+def _collector() -> Ensembler:
+    """An Ensembler whose reader can be used without creating run folders."""
     return object.__new__(Ensembler)
 
 
-def _write_member(folder: str, track: str, model_name: str,
-                  model: _Model, stem: str) -> str:
-    tag = export_stem_label(model, stem, for_ensemble=True)
+def _write_member(folder: str, track: str, model_name: str, tag: str) -> str:
     name = format_stem_basename(f"{track} {model_name}", tag) + ".wav"
     with open(os.path.join(folder, name), "wb") as handle:
         handle.write(b"")
     return name
 
 
-class MemberCollectionTests(unittest.TestCase):
-    def test_two_members_with_different_stem_casing_collect_together(self) -> None:
-        # One model's yaml says 'vocals', another says 'Vocals'.
+class PlannedCollectionTests(unittest.TestCase):
+    def test_reader_uses_the_planned_tag_without_normalizing_filename_spelling(self) -> None:
         with tempfile.TemporaryDirectory() as folder:
-            _write_member(folder, "Song", "ModelA", _Model(), "vocals")
-            _write_member(folder, "Song", "ModelB", _Model(), "Vocals")
+            trusted = _write_member(folder, "Song", "ModelA", "Vocals")
+            _write_member(folder, "Song", "ModelB", "vocals")
             found = _collector().get_files_to_ensemble_for_stem(
                 folder=folder, prefix="Song", stem_tag="Vocals"
             )
-        self.assertEqual(len(found), 2)
 
-    def test_two_stem_other_collects_with_instrumental(self) -> None:
-        # mbr_inst2_unwa declares 'other'; it is an instrumental.
-        with tempfile.TemporaryDirectory() as folder:
-            _write_member(folder, "Song", "ModelA", _Model(), "other")
-            _write_member(folder, "Song", "ModelB", _Model(), "Instrumental")
-            found = _collector().get_files_to_ensemble_for_stem(
-                folder=folder, prefix="Song", stem_tag="Instrumental"
-            )
-        self.assertEqual(len(found), 2)
+        self.assertEqual([os.path.basename(path) for path in found], [trusted])
 
-    def test_karaoke_does_not_contaminate_the_clean_instrumental_bucket(self) -> None:
-        with tempfile.TemporaryDirectory() as folder:
-            _write_member(folder, "Song", "Clean", _Model(), "Instrumental")
-            _write_member(folder, "Song", "Kara", _Model(is_karaoke=True), "Instrumental")
-            collector = _collector()
-            clean = collector.get_files_to_ensemble_for_stem(
-                folder=folder, prefix="Song", stem_tag="Instrumental"
-            )
-            karaoke = collector.get_files_to_ensemble_for_stem(
-                folder=folder, prefix="Song", stem_tag="Instrumental_WithBackingVocals"
-            )
-        self.assertEqual(len(clean), 1)
-        self.assertEqual(len(karaoke), 1)
-        self.assertIn("Clean", os.path.basename(clean[0]))
-        self.assertIn("Kara", os.path.basename(karaoke[0]))
-
-    def test_every_karaoke_stem_round_trips(self) -> None:
-        model = _Model(is_karaoke=True)
-        with tempfile.TemporaryDirectory() as folder:
-            for stem in ("Vocals", "Instrumental", "lead_only"):
-                name = _write_member(folder, "Song", "Kara", model, stem)
-                tag = export_stem_label(model, stem, for_ensemble=True)
-                found = _collector().get_files_to_ensemble_for_stem(
-                    folder=folder, prefix="Song", stem_tag=tag
-                )
-                with self.subTest(stem=stem):
-                    self.assertTrue(
-                        any(os.path.basename(f) == name for f in found),
-                        f"{name!r} was written but not collected under {tag!r}",
-                    )
-
-
-class EnsemblerPairBucketTests(unittest.TestCase):
-    """Combine tags must be filename buckets, not UI pair display labels."""
-
-    def test_karaoke_pair_buckets_match_export_labels(self) -> None:
-        primary, secondary = EnsemblePair.KARAOKE.buckets()
-        self.assertEqual(primary, StemBucket.LEAD_VOCALS)
-        self.assertEqual(secondary, StemBucket.INST_WITH_BV)
-        model = _Model(is_karaoke=True)
-        self.assertEqual(export_stem_label(model, "Vocals", for_ensemble=True), primary)
-        self.assertEqual(
-            export_stem_label(model, "Instrumental", for_ensemble=True), secondary
+    def test_planned_member_stems_carry_role_and_registry_tag(self) -> None:
+        model = SimpleNamespace(
+            canonical_id="mdx:member",
+            is_vocal_split_model=False,
+            is_secondary_model=False,
+            is_pre_proc_model=False,
+            is_inst_only_voc_splitter=False,
+            is_sec_bv_rebalance=False,
+            is_ensemble_mode=False,
+            selected_stem_routes=(
+                StemRoute(
+                    StemId("native-vocals"),
+                    StemRoleId("vocal.vocals"),
+                    "Vocals",
+                    "Vocals",
+                    StemRouteKind.NATIVE,
+                ),
+            ),
+            available_stem_routes=(),
         )
 
-    def test_ensembler_stores_karaoke_buckets_not_display_labels(self) -> None:
-        ensembler = object.__new__(Ensembler)
-        # Minimal stand-in for Ensembler.__init__'s pair-bucket assignment.
-        primary, secondary = EnsemblePair.KARAOKE.buckets()
-        ensembler.ensemble_primary_stem = primary
-        ensembler.ensemble_secondary_stem = secondary
-        self.assertEqual(ensembler.ensemble_primary_stem, StemBucket.LEAD_VOCALS)
-        self.assertEqual(ensembler.ensemble_secondary_stem, StemBucket.INST_WITH_BV)
-        self.assertNotEqual(ensembler.ensemble_primary_stem, "Lead Vocals")
+        self.assertEqual(
+            planned_ensemble_stems(model),
+            {"Vocals": CollectedStem(StemRoleId("vocal.vocals"), "Vocals", "mdx:member")},
+        )
 
-    def test_flipped_karaoke_primary_still_exports_pair_buckets(self) -> None:
-        # VR karaoke: primary Instrumental / secondary Vocals.
-        model = _Model(is_karaoke=True, primary_stem="Instrumental")
-        self.assertEqual(
-            export_stem_label(model, "Instrumental", for_ensemble=True),
-            StemBucket.INST_WITH_BV,
-        )
-        self.assertEqual(
-            export_stem_label(model, "Vocals", for_ensemble=True),
-            StemBucket.LEAD_VOCALS,
-        )
-        primary, secondary = EnsemblePair.KARAOKE.buckets()
-        with tempfile.TemporaryDirectory() as folder:
-            _write_member(folder, "Song", "VRKara", model, "Instrumental")
-            _write_member(folder, "Song", "VRKara", model, "Vocals")
-            collector = _collector()
-            self.assertEqual(
-                len(collector.get_files_to_ensemble_for_stem(
-                    folder=folder, prefix="Song", stem_tag=filename_tag(primary)
-                )),
-                1,
-            )
-            self.assertEqual(
-                len(collector.get_files_to_ensemble_for_stem(
-                    folder=folder, prefix="Song", stem_tag=filename_tag(secondary)
-                )),
-                1,
-            )
+    def test_reviewed_roles_combine_but_raw_literals_remain_member_scoped(self) -> None:
+        reviewed_a = CollectedStem(StemRoleId("vocal.vocals"), "Vocals", "member-a")
+        reviewed_b = CollectedStem(StemRoleId("vocal.vocals"), "Vocals", "member-b")
+        raw_a = CollectedStem(StemLiteral("Vocals"), "Vocals", "member-a")
+        raw_b = CollectedStem(StemLiteral("Vocals"), "Vocals", "member-b")
 
-    def test_vocal_pair_unchanged(self) -> None:
-        self.assertEqual(
-            EnsemblePair.VOCALS_INSTRUMENTAL.buckets(),
-            (StemBucket.VOCALS, StemBucket.INSTRUMENTAL),
+        self.assertEqual(reviewed_a.group_key, reviewed_b.group_key)
+        self.assertNotEqual(raw_a.group_key, raw_b.group_key)
+
+    def test_planned_raw_literals_without_a_scope_remain_member_scoped(self) -> None:
+        """Fail closed when a raw route reaches collection without its scope."""
+        route = StemRoute(
+            StemId("Mystery"),
+            StemLiteral("Mystery"),
+            "Mystery",
+            "Mystery",
+            selection_scope="",
         )
+        member_a = SimpleNamespace(
+            canonical_id="mdx:unknown-a",
+            is_vocal_split_model=False,
+            is_secondary_model=False,
+            is_pre_proc_model=False,
+            is_inst_only_voc_splitter=False,
+            is_sec_bv_rebalance=False,
+            is_ensemble_mode=False,
+            selected_stem_routes=(route,),
+            available_stem_routes=(),
+        )
+        member_b = SimpleNamespace(
+            canonical_id="demucs:unknown-b",
+            is_vocal_split_model=False,
+            is_secondary_model=False,
+            is_pre_proc_model=False,
+            is_inst_only_voc_splitter=False,
+            is_sec_bv_rebalance=False,
+            is_ensemble_mode=False,
+            selected_stem_routes=(route,),
+            available_stem_routes=(),
+        )
+
+        planned_a = planned_ensemble_stems(member_a)["Mystery"]
+        planned_b = planned_ensemble_stems(member_b)["Mystery"]
+
+        self.assertNotEqual(planned_a.group_key, planned_b.group_key)
+        self.assertEqual(planned_a.raw_scope, "mdx:unknown-a")
+        self.assertEqual(planned_b.raw_scope, "demucs:unknown-b")
+
+    def test_incomplete_four_stem_member_has_no_dual_pair_exports(self) -> None:
+        """A partial member cannot leak one reviewed role into a dual pair."""
+        from bundled.constants import IS_SAVE_INST_ONLY, IS_SAVE_VOC_ONLY
+        from core.model_config.config import ModelConfig
+        from core.settings import Settings
+        from core.types import ProcessMethod
+
+        settings = Settings.defaults()
+        settings.process.method = ProcessMethod.ENSEMBLE
+        settings.process.stem_focus = "vocal.vocals"
+        settings.ensemble.main_stem = "pair.vocals_instrumental"
+        member: Any = SimpleNamespace(
+            settings=settings,
+            canonical_id="mdx:model_scnet_ep_54_sdr_9.8051",
+            primary_stem="Drums",
+            primary_stem_native="Drums",
+            secondary_stem="",
+            target_instrument="",
+            is_vocal_split_model=False,
+            is_karaoke=False,
+            is_bv_model=False,
+            mdx_stem_count=4,
+            demucs_stem_count=0,
+            mdx_model_stems=["Drums", "Bass", "Other", "Vocals"],
+            demucs_source_list=[],
+            mdxnet_stems_selected=[],
+            is_mdx_include_stem_complement=False,
+            is_ensemble_mode=True,
+            is_secondary_model=False,
+            is_pre_proc_model=False,
+            is_inst_only_voc_splitter=False,
+            is_sec_bv_rebalance=False,
+            ensemble_pair_roles=(
+                StemRoleId("vocal.vocals"),
+                StemRoleId("mix.instrumental"),
+            ),
+            ensemble_primary_stem="Vocals",
+            ensemble_secondary_stem="Instrumental",
+        )
+
+        ModelConfig._apply_stem_focus(member)  # type: ignore[arg-type]
+
+        self.assertEqual(member.selected_stem_routes, ())
+        self.assertEqual(run_export_routes(member), ())
+        self.assertEqual(
+            ModelConfig._exclusive_sides_from_routes(member),  # type: ignore[arg-type]
+            (False, False),
+        )
+        self.assertFalse(
+            ModelConfig.check_only_selection_stem(  # type: ignore[arg-type]
+                member, IS_SAVE_VOC_ONLY
+            )
+        )
+        self.assertFalse(
+            ModelConfig.check_only_selection_stem(  # type: ignore[arg-type]
+                member, IS_SAVE_INST_ONLY
+            )
+        )
+
+    def test_complete_pair_member_keeps_an_explicit_role_focus(self) -> None:
+        """A matched role focus must not be widened to both pair exports."""
+        from bundled.constants import IS_SAVE_INST_ONLY, IS_SAVE_VOC_ONLY
+        from core.model_config.config import ModelConfig
+        from core.settings import Settings
+        from core.types import ProcessMethod
+
+        settings = Settings.defaults()
+        settings.process.method = ProcessMethod.ENSEMBLE
+        settings.process.stem_focus = "vocal.vocals"
+        settings.ensemble.main_stem = "pair.vocals_instrumental"
+        member: Any = SimpleNamespace(
+            settings=settings,
+            canonical_id="mdx:MelBandRoformerBigSYHFTV1",
+            primary_stem="Vocals",
+            primary_stem_native="Vocals",
+            secondary_stem="other",
+            target_instrument="vocals",
+            is_vocal_split_model=False,
+            is_karaoke=False,
+            is_bv_model=False,
+            mdx_stem_count=1,
+            demucs_stem_count=0,
+            mdx_model_stems=["vocals"],
+            demucs_source_list=[],
+            mdxnet_stems_selected=[],
+            is_mdx_include_stem_complement=False,
+            is_ensemble_mode=True,
+            is_secondary_model=False,
+            is_pre_proc_model=False,
+            is_inst_only_voc_splitter=False,
+            is_sec_bv_rebalance=False,
+            ensemble_pair_roles=(
+                StemRoleId("vocal.vocals"),
+                StemRoleId("mix.instrumental"),
+            ),
+            ensemble_primary_stem="Vocals",
+            ensemble_secondary_stem="Instrumental",
+        )
+
+        ModelConfig._apply_stem_focus(member)  # type: ignore[arg-type]
+
+        self.assertEqual(
+            [route.role for route in member.selected_stem_routes],
+            [StemRoleId("vocal.vocals")],
+        )
+        self.assertEqual(
+            [route.role for route in run_export_routes(member)],
+            [StemRoleId("vocal.vocals")],
+        )
+        self.assertEqual(
+            ModelConfig._exclusive_sides_from_routes(member),  # type: ignore[arg-type]
+            (True, False),
+        )
+        self.assertTrue(
+            ModelConfig.check_only_selection_stem(  # type: ignore[arg-type]
+                member, IS_SAVE_VOC_ONLY
+            )
+        )
+        self.assertFalse(
+            ModelConfig.check_only_selection_stem(  # type: ignore[arg-type]
+                member, IS_SAVE_INST_ONLY
+            )
+        )
+
+    def test_karaoke_pair_ignores_giantailab_residual_focus(self) -> None:
+        """A matched non-pair role must not escape karaoke pair routing."""
+        from core.model_config.config import ModelConfig
+        from core.settings import Settings
+        from core.types import ProcessMethod
+
+        settings = Settings.defaults()
+        settings.process.method = ProcessMethod.ENSEMBLE
+        settings.process.stem_focus = "residual.backing_vocal"
+        settings.ensemble.main_stem = "pair.karaoke"
+        member: Any = SimpleNamespace(
+            settings=settings,
+            canonical_id="mdx:bs_karaoke_3stem_giantailab",
+            primary_stem="vocals",
+            primary_stem_native="vocals",
+            secondary_stem="instrumental",
+            target_instrument="",
+            is_vocal_split_model=False,
+            is_karaoke=False,
+            is_bv_model=False,
+            mdx_stem_count=3,
+            demucs_stem_count=0,
+            mdx_model_stems=["vocals", "backing_vocal", "instrumental"],
+            demucs_source_list=[],
+            mdxnet_stems_selected=[],
+            is_mdx_include_stem_complement=False,
+            is_ensemble_mode=True,
+            is_secondary_model=False,
+            is_pre_proc_model=False,
+            is_inst_only_voc_splitter=False,
+            is_sec_bv_rebalance=False,
+        )
+
+        ModelConfig._apply_stem_focus(member)  # type: ignore[arg-type]
+
+        expected_roles = [
+            StemRoleId("mix.instrumental_with_backing_vocals"),
+            StemRoleId("vocal.lead"),
+        ]
+        self.assertEqual([route.role for route in member.selected_stem_routes], expected_roles)
+        self.assertEqual([route.role for route in run_export_routes(member)], expected_roles)
 
 
 if __name__ == "__main__":

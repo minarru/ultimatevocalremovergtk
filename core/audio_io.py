@@ -9,6 +9,10 @@ from .settings import Settings
 from .settings.coerce import enum_value
 
 
+class AudioExportError(RuntimeError):
+    """A requested audio artifact could not be produced."""
+
+
 def resolve_wav_type_set(settings: Settings) -> str:
     """Reproduce ``MainWindow.process_check_wav_type``."""
     wav_type = enum_value(settings.process.wav_type)
@@ -50,7 +54,7 @@ def save_format(
     save_format_sel: str,
     mp3_bit_set: str,
     flac_bit_set: str = "16-bit",
-) -> None:
+) -> str:
     """Torch-free port of ``separate.save_format``.
 
     FLAC prefers a direct libsndfile rewrite; MP3 still goes through ``pydub``
@@ -58,8 +62,14 @@ def save_format(
     """
     from bundled.constants import FLAC, MP3
 
+    if not os.path.isfile(audio_path):
+        raise AudioExportError(f"Source audio export is missing: {audio_path}")
+
     if save_format_sel == WAV:
-        return
+        return audio_path
+
+    if save_format_sel not in (FLAC, MP3):
+        raise AudioExportError(f"Unsupported audio export format: {save_format_sel!r}")
 
     from .debug_log import debug
 
@@ -76,6 +86,8 @@ def save_format(
                 format="FLAC",
                 subtype=flac_subtype(flac_bit_set),
             )
+            if not os.path.isfile(flac_path):
+                raise AudioExportError(f"FLAC export was not created: {flac_path}")
             try:
                 os.remove(audio_path)
             except OSError as exc:
@@ -84,7 +96,7 @@ def save_format(
                     f"export cleanup failed file={os.path.basename(audio_path)} "
                     f"error={type(exc).__name__}: {exc}",
                 )
-            return
+            return flac_path
         except Exception as exc:  # noqa: BLE001 - fall through to pydub
             debug(
                 "audio",
@@ -97,42 +109,54 @@ def save_format(
     from .external_tools import configure_pydub_ffmpeg
 
     if configure_pydub_ffmpeg() is None:
-        debug(
-            "audio",
-            f"export failed format={save_format_sel} file={os.path.basename(audio_path)} reason=ffmpeg_missing",
+        message = (
+            f"Audio export failed for {os.path.basename(audio_path)!r}: "
+            f"ffmpeg is required for {save_format_sel}"
         )
-        return
+        debug("audio", message)
+        raise AudioExportError(message)
 
     try:
         audio_segment = AudioSegment.from_wav(audio_path)
     except Exception as exc:  # noqa: BLE001 - surfaced via missing output file
-        debug(
-            "audio",
-            f"export failed format={save_format_sel} file={os.path.basename(audio_path)} "
-            f"error={type(exc).__name__}: {exc}",
+        message = (
+            f"Audio export failed while reading {os.path.basename(audio_path)!r}: "
+            f"{type(exc).__name__}: {exc}"
         )
-        return
+        debug("audio", message)
+        raise AudioExportError(message) from exc
 
+    output_path = replace_audio_suffix(
+        audio_path,
+        ".flac" if save_format_sel == FLAC else ".mp3",
+    )
     try:
         if save_format_sel == FLAC:
             audio_segment.export(
-                replace_audio_suffix(audio_path, ".flac"),
+                output_path,
                 format="flac",
                 parameters=flac_export_parameters(flac_bit_set),
             )
         elif save_format_sel == MP3:
-            mp3_path = replace_audio_suffix(audio_path, ".mp3")
             try:
-                audio_segment.export(mp3_path, format="mp3", bitrate=mp3_bit_set, codec="libmp3lame")
+                audio_segment.export(
+                    output_path,
+                    format="mp3",
+                    bitrate=mp3_bit_set,
+                    codec="libmp3lame",
+                )
             except Exception:  # noqa: BLE001 - fall back to default codec like UVR
-                audio_segment.export(mp3_path, format="mp3", bitrate=mp3_bit_set)
+                audio_segment.export(output_path, format="mp3", bitrate=mp3_bit_set)
     except Exception as exc:  # noqa: BLE001 - surfaced via missing output file
-        debug(
-            "audio",
-            f"export failed format={save_format_sel} file={os.path.basename(audio_path)} "
-            f"error={type(exc).__name__}: {exc}",
+        message = (
+            f"Audio export failed for {os.path.basename(audio_path)!r} as {save_format_sel}: "
+            f"{type(exc).__name__}: {exc}"
         )
-        return
+        debug("audio", message)
+        raise AudioExportError(message) from exc
+
+    if not os.path.isfile(output_path):
+        raise AudioExportError(f"Converted audio export was not created: {output_path}")
 
     try:
         os.remove(audio_path)
@@ -141,3 +165,4 @@ def save_format(
             "audio",
             f"export cleanup failed file={os.path.basename(audio_path)} error={type(exc).__name__}: {exc}",
         )
+    return output_path

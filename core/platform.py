@@ -51,6 +51,23 @@ def user_data_dir(base_path: str | None = None) -> str:
     return default_user_data_dir()
 
 
+def registry_data_dir(base_path: str, data_dir: str) -> str:
+    """Return the writable model-registry directory.
+
+    Portable source/tarball installs keep their mutable registry beside the
+    checkout, but below an ignored runtime directory.  An explicit
+    ``UVR_DATA_DIR`` remains authoritative even when it happens to equal the
+    checkout root; relocated read-only installs already point at OS user data.
+    """
+    if os.environ.get("UVR_DATA_DIR"):
+        return data_dir
+    if os.path.normcase(os.path.abspath(data_dir)) == os.path.normcase(
+        os.path.abspath(base_path)
+    ):
+        return os.path.join(base_path, ".uvr-runtime")
+    return data_dir
+
+
 def default_user_cache_dir(cache_subdir: str = _CACHE_SUBDIR) -> str:
     """OS-default cache directory for debug logs and temp artifacts."""
     system = system_name()

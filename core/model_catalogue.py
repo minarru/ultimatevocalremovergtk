@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
 from urllib.parse import quote, unquote
 
 from bundled.constants import APOLLO_ARCH_TYPE, DEMUCS_ARCH_TYPE, MDX_ARCH_TYPE, VR_ARCH_TYPE
@@ -22,6 +22,105 @@ FAMILY_ARCH = {
     "demucs": DEMUCS_ARCH_TYPE,
     "apollo": APOLLO_ARCH_TYPE,
 }
+
+
+def catalogue_presentation_id(
+    family: str,
+    selection: str,
+    raw: Any,
+    meta: Any,
+) -> str | None:
+    """Derive an exact presentation ID without changing runtime eligibility.
+
+    Runtime projectors remain authoritative whenever they accept a row.  When
+    they decline one, an exact declared primary that belongs to the validated
+    file set is sufficient for presentation only.  This gives catalogue rows
+    exact ID-aware titles without changing any family's execution rules.
+    """
+    from .model_identity import ModelId
+    from .model_inventory import (
+        _entry_files,
+        _project_apollo,
+        _project_demucs,
+        _project_mdx,
+        _project_vr,
+        artifact_stem,
+    )
+
+    projector = {
+        "vr": _project_vr,
+        "mdx": _project_mdx,
+        "demucs": _project_demucs,
+        "apollo": _project_apollo,
+    }.get(family)
+    if projector is None or meta is None:
+        return None
+    try:
+        files = _entry_files(meta, raw, family)
+    except ValueError:
+        return None
+    try:
+        record = projector(
+            selection,
+            meta,
+            files,
+        )
+    except ValueError:
+        record = None
+    if record is not None:
+        return record.id
+
+    # Presentation references cover syntactic catalogue IDs even when a
+    # family's runtime projector rejects that artifact suffix.  Keep this
+    # escape hatch fail-closed: there must be one exact declared weight and at
+    # most one YAML configuration, and the derived basename must itself be a
+    # valid canonical-ID component.
+    declared = str(getattr(meta, "checkpoint", "") or "")
+    yamls = [
+        name for name in files if name.casefold().endswith((".yaml", ".yml"))
+    ]
+    presentation_primaries = [
+        name
+        for name in files
+        if not name.casefold().endswith((".yaml", ".yml"))
+    ]
+    if (
+        len(yamls) > 1
+        or len(presentation_primaries) != 1
+        or declared != presentation_primaries[0]
+    ):
+        return None
+    try:
+        return ModelId(family, artifact_stem(declared)).value
+    except ValueError:
+        return None
+
+
+def project_catalogue_display(
+    family: str,
+    selection: str,
+    raw: Any,
+    meta: Any,
+) -> str:
+    """Project one catalogue row through the exact presentation contract."""
+    from .model_naming import project_model_display
+
+    model_id = catalogue_presentation_id(family, selection, raw, meta)
+    if model_id is None:
+        return canonical_display_name(selection)
+    return project_model_display(model_id, source_label=selection)
+
+
+def catalogue_entry_meta(manager: Any, family: str, selection: str) -> Any:
+    """Read native family-scoped metadata, with the legacy flat map as fallback."""
+    coordinator = getattr(manager, "_coordinator", None)
+    snapshot = getattr(coordinator, "_latest", None)
+    by_family = getattr(snapshot, "meta_by_family", None)
+    if isinstance(by_family, Mapping):
+        family_meta = by_family.get(family)
+        if isinstance(family_meta, Mapping) and selection in family_meta:
+            return family_meta[selection]
+    return manager.catalogue_meta.get(selection)
 
 
 @dataclass(frozen=True)
@@ -101,7 +200,6 @@ class ModelCatalogueService:
         digest = revision.digest() if revision is not None and hasattr(revision, "digest") else None
         return (
             digest,
-            self.manager.decoded_vip_link,
             len(self.manager.vr_download_list),
             len(self.manager.mdx_download_list),
             len(self.manager.demucs_download_list),
@@ -130,7 +228,10 @@ class ModelCatalogueService:
         for family, values in catalogues.items():
             arch = FAMILY_ARCH[family]
             for selection, _model in values.items():
-                meta = self.manager.catalogue_meta.get(selection)
+                meta = catalogue_entry_meta(self.manager, family, selection)
+                display = project_catalogue_display(
+                    family, selection, _model, meta
+                )
                 intent = str(getattr(meta, "intent", "") or "") or None
                 reason = unsupported.get((arch, selection))
                 jobs = self.manager.resolve(selection, arch, fetch_config=False)
@@ -146,7 +247,7 @@ class ModelCatalogueService:
                 score = scored[1] if scored is not None else parse_sdr_score(selection)
                 rows.append(ModelCatalogueRecord(
                     str(CatalogEntryId(family, selection)), family, selection,
-                    canonical_display_name(selection),
+                    display,
                     purpose_for_label(selection, intent=intent), reason is None,
                     installed, reason, score,
                     describe_cached_download_size(jobs) if jobs else "—",
@@ -167,7 +268,15 @@ class ModelCatalogueService:
             and (purpose in {"", PURPOSE_ALL} or row.purpose == purpose)
             and (supported is None or row.supported is supported)
             and (installed is None or row.installed is installed)
-            and catalogue_label_matches(row.selection, query, extra=row.unsupported_reason or "")
+            and catalogue_label_matches(
+                row.selection,
+                query,
+                extra=" ".join(
+                    value
+                    for value in (row.display, row.unsupported_reason or "")
+                    if value
+                ),
+            )
         )
 
     def resolve(self, reference: str) -> ModelCatalogueRecord:
@@ -195,4 +304,6 @@ class ModelCatalogueService:
 __all__ = [
     "CatalogEntryId", "FAMILY_ARCH", "ModelCatalogueRecord",
     "ModelCatalogueService", "catalogue_label_matches", "filter_catalogue_labels",
+    "catalogue_entry_meta", "catalogue_presentation_id",
+    "project_catalogue_display",
 ]

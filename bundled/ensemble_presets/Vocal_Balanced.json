@@ -1,6 +1,7 @@
 {
     "description": "Best overall vocal quality \u2014 Resurrection Vocals + Big Beta v6x",
-    "ensemble_main_stem": "vocals_instrumental",
+    "schema_version": 2,
+    "ensemble_main_stem": "pair.vocals_instrumental",
     "ensemble_type": "Average/Average",
     "selected_models": [
         "mdx:model_BandSplit-Roformer_Resurrection_Vocals_by-Unwa",

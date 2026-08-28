@@ -9,15 +9,57 @@ The algorithm lands in the output filename, so it must resolve through
 import os
 import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
 
-from core.audio_tools import AudioTools
+from bundled.constants import APOLLO_RESTORE
+from core.audio_tools import AudioToolRunner, AudioTools
+from core.job_callbacks import JobCallbacks
 from core.settings import Settings
 from core.settings.coerce import coerce_field
 from core.types.settings_enums import ManualEnsembleOption
 
 
 class ManualEnsembleNamingTests(unittest.TestCase):
+    def test_apollo_runner_requires_resolved_backend_before_start(self) -> None:
+        runner = AudioToolRunner(Settings.defaults())
+
+        with self.assertRaisesRegex(ValueError, "resolved Apollo backend"):
+            runner.start(APOLLO_RESTORE, [], [], JobCallbacks())
+
+    def test_audio_worker_inherits_current_operation_id(self) -> None:
+        from bundled.constants import CHANGE_PITCH
+        from core import debug_log
+
+        settings = Settings.defaults()
+        settings.process.export_path = "/missing-output-directory"
+        runner = AudioToolRunner(settings)
+        with tempfile.TemporaryDirectory() as tmp:
+            log_path = Path(tmp) / "uvr.log"
+            debug_log.configure(level="debug", log_file=str(log_path))
+            self.addCleanup(debug_log.configure, level="errors", log_file="")
+            with debug_log.operation("audio-run-4"):
+                runner.start(CHANGE_PITCH, [], [], JobCallbacks())
+                thread = runner._thread
+                if thread is not None:
+                    thread.join(timeout=2)
+
+            failed = next(
+                line for line in log_path.read_text(encoding="utf-8").splitlines()
+                if "event=callback_error" in line
+            )
+            self.assertIn("operation=audio-run-4", failed)
+
+    def test_audio_tools_never_uses_canonical_apollo_setting_as_filename(self) -> None:
+        settings = Settings.defaults()
+        settings.audio_tools.apollo_model = "apollo:restorer"
+
+        tool = AudioTools(settings)
+
+        self.assertIsNone(tool.apollo_model)
+        self.assertEqual(tool.apollo_model_location, "")
+        with self.assertRaisesRegex(ValueError, "resolved Apollo backend"):
+            tool.apollo_process("in.wav", "in", {}, {}, mock.Mock())
     def _run_manual_ensemble(self, algorithm: ManualEnsembleOption) -> str:
         with tempfile.TemporaryDirectory() as export_dir:
             settings = Settings.defaults()

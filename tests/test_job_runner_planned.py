@@ -5,8 +5,8 @@ from typing import Any
 from unittest.mock import Mock, patch
 
 from core.export_naming import OutputNamingContext
-from core.job_plan import PlannedInput
 from core.job_callbacks import JobCallbacks
+from core.job_plan import PlannedInput, PlannedOutput
 from core.job_runner import JobRunner
 from core.settings import Settings
 from core.types import ProcessMethod
@@ -30,6 +30,53 @@ def _planned(path: str, track_base: str, export_directory: str = "/out") -> Plan
 
 
 class JobRunnerPlannedTests(unittest.TestCase):
+    def test_required_planned_output_must_exist_before_success(self) -> None:
+        runner = JobRunner(Settings.defaults())
+        planned = PlannedInput(
+            path="/in/song.wav",
+            naming=OutputNamingContext(
+                input_path="/in/song.wav",
+                track="song",
+                track_base="song",
+                export_directory="/out",
+                extension="wav",
+            ),
+            outputs=(PlannedOutput("/out/song (Vocals).wav", "Vocals"),),
+        )
+
+        with patch.object(runner, "_run_separation"):
+            outcome = runner._run_one_planned(planned, JobCallbacks())
+
+        self.assertEqual(outcome.status, "failed")
+        self.assertEqual(outcome.outputs, ())
+        self.assertIn("required output", outcome.error or "")
+
+    def test_missing_conditional_planned_output_does_not_fail_success(self) -> None:
+        runner = JobRunner(Settings.defaults())
+        planned = PlannedInput(
+            path="/in/song.wav",
+            naming=OutputNamingContext(
+                input_path="/in/song.wav",
+                track="song",
+                track_base="song",
+                export_directory="/out",
+                extension="wav",
+            ),
+            outputs=(
+                PlannedOutput(
+                    "/out/song (Optional).wav",
+                    "Optional",
+                    conditional=True,
+                ),
+            ),
+        )
+
+        with patch.object(runner, "_run_separation"):
+            outcome = runner._run_one_planned(planned, JobCallbacks())
+
+        self.assertEqual(outcome.status, "success")
+        self.assertEqual(outcome.outputs, ())
+
     def test_start_skips_assemble_when_models_supplied(self) -> None:
         runner = JobRunner(Settings.defaults())
         models = [Mock(name="already-assembled")]
@@ -84,6 +131,51 @@ class JobRunnerPlannedTests(unittest.TestCase):
         self.assertEqual(runner._run_planned, planned)
         self.assertEqual(runner._run_output_root, "/out")
 
+    def test_legacy_single_runtime_assembles_with_planned_dependencies(self) -> None:
+        settings = Settings.defaults()
+        settings.process.export_path = "/out"
+        runner = JobRunner(settings)
+        dependencies = {"mdx.model": Mock(id="mdx:primary")}
+        runner._run_model_dependencies = dependencies
+        sentinel = RuntimeError("assembly observed")
+        with (
+            patch("core.job_runner.import_separate_engines"),
+            patch.object(runner, "_prepare_paths_for_run", return_value=[]),
+            patch.object(runner, "resolve_models", side_effect=sentinel) as resolve,
+            patch(
+                "core.job_runner.with_worker_lifecycle",
+                side_effect=lambda _runner, _callbacks, _label, body: body(),
+            ),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "assembly observed"):
+                runner._run_separation([], Mock(), "single")
+        resolve.assert_called_once_with(dependencies)
+
+    def test_legacy_ensemble_runtime_assembles_with_planned_dependencies(self) -> None:
+        settings = Settings.defaults()
+        settings.process.method = ProcessMethod.ENSEMBLE
+        runner = JobRunner(settings)
+        dependencies = {"ensemble.selected_models[0]": Mock(id="mdx:a")}
+        runner._run_model_dependencies = dependencies
+        sentinel = RuntimeError("assembly observed")
+        with (
+            patch("core.job_runner.import_separate_engines"),
+            patch.object(runner, "_prepare_paths_for_run", return_value=[]),
+            patch("core.job_runner.assemble_model", side_effect=sentinel) as assemble,
+            patch(
+                "core.job_runner.with_worker_lifecycle",
+                side_effect=lambda _runner, _callbacks, _label, body: body(),
+            ),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "assembly observed"):
+                runner._run_separation([], Mock(), "ensemble")
+        assemble.assert_called_once_with(
+            settings,
+            runner.repo,
+            arch_type="Ensemble Mode",
+            model_dependencies=dependencies,
+        )
+
     def test_naming_keeps_model_folder_when_root_is_plan_output(self) -> None:
         settings = Settings.defaults()
         settings.process.export_path = "/out"
@@ -113,11 +205,13 @@ class JobRunnerPlannedTests(unittest.TestCase):
     def test_reset_clears_run_models_and_planned(self) -> None:
         runner = JobRunner(Settings.defaults())
         runner._run_models = [Mock()]
+        runner._run_model_dependencies = {"mdx.model": Mock()}
         runner._run_planned = ()
         runner._run_output_root = "/out"
         runner._run_path_map = {"/clip": "/in/a.wav"}
         runner._reset_run_state()
         self.assertIsNone(runner._run_models)
+        self.assertIsNone(runner._run_model_dependencies)
         self.assertIsNone(runner._run_planned)
         self.assertIsNone(runner._run_output_root)
         self.assertIsNone(runner._run_path_map)
@@ -234,15 +328,9 @@ class JobRunnerPlannedTests(unittest.TestCase):
                     with patch.object(runner, "_build_all_models"):
                         with patch.object(runner, "_set_run_protect_identities"):
                             with patch.object(runner, "_ensure_vram_for_job"):
-                                with patch.object(
-                                    runner, "_count_true_models", return_value=1
-                                ):
-                                    with patch(
-                                        "core.run_loop._release_inference_resources"
-                                    ):
-                                        runner._run_separation(
-                                            [], JobCallbacks(), "single"
-                                        )
+                                with patch.object(runner, "_count_true_models", return_value=1):
+                                    with patch("core.run_loop._release_inference_resources"):
+                                        runner._run_separation([], JobCallbacks(), "single")
         resolve.assert_not_called()
 
     def test_single_missing_export_path_fails_before_model_resolution(self) -> None:
@@ -280,15 +368,9 @@ class JobRunnerPlannedTests(unittest.TestCase):
                         with patch.object(runner, "_build_all_models"):
                             with patch.object(runner, "_set_run_protect_identities"):
                                 with patch.object(runner, "_ensure_vram_for_job"):
-                                    with patch.object(
-                                        runner, "_count_true_models", return_value=2
-                                    ):
-                                        with patch(
-                                            "core.run_loop._release_inference_resources"
-                                        ):
-                                            runner._run_separation(
-                                                [], JobCallbacks(), "ensemble"
-                                            )
+                                    with patch.object(runner, "_count_true_models", return_value=2):
+                                        with patch("core.run_loop._release_inference_resources"):
+                                            runner._run_separation([], JobCallbacks(), "ensemble")
         assemble.assert_not_called()
 
     def test_run_separation_modes_pass_distinct_hooks(self) -> None:
@@ -310,26 +392,18 @@ class JobRunnerPlannedTests(unittest.TestCase):
                 with patch.object(runner, "_build_all_models"):
                     with patch.object(runner, "_set_run_protect_identities"):
                         with patch.object(runner, "_ensure_vram_for_job"):
-                            with patch.object(
-                                runner, "_count_true_models", return_value=2
-                            ):
+                            with patch.object(runner, "_count_true_models", return_value=2):
                                 with patch(
                                     "core.job_runner.run_models_on_files",
                                     side_effect=capture_run,
                                 ):
-                                    with patch(
-                                        "core.run_loop._release_inference_resources"
-                                    ):
-                                        runner._run_separation(
-                                            [], JobCallbacks(), "single"
-                                        )
+                                    with patch("core.run_loop._release_inference_resources"):
+                                        runner._run_separation([], JobCallbacks(), "single")
                                         with patch(
                                             "core.job_runner.Ensembler",
                                             return_value=fake_ensemble,
                                         ):
-                                            runner._run_separation(
-                                                [], JobCallbacks(), "ensemble"
-                                            )
+                                            runner._run_separation([], JobCallbacks(), "ensemble")
         self.assertEqual(captured, ["separation", "ensemble"])
         self.assertEqual(received_engines, [False, False])
 

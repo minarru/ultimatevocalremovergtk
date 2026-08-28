@@ -1,5 +1,8 @@
 """Demucs method view."""
+
 import typing
+
+from gi.repository import Adw
 
 from bundled.constants import (
     ALL_STEMS,
@@ -18,10 +21,9 @@ from bundled.constants import (
     SHIFTS_HELP,
     VOCAL_STEM,
 )
-
 from core.model_stem_semantics import recommended_export_note
-
 from core.stem_selection import _FOCUS_INSTRUMENTAL, _FOCUS_VOCALS
+
 from .base import MethodView, register_method_view
 
 
@@ -60,21 +62,58 @@ class DemucsView(MethodView):
         return self.context.repo.demucs_name_select_MAPPER
 
     def build_options(self, group: typing.Any):
-        self.add_option_scale(group, "segment", "Segment", values=DEMUCS_SEGMENTS, hint=SEGMENT_HELP)
+        self.identity_banner = Adw.Banner(revealed=False)
+        group.add(self.identity_banner)
+        self.add_option_scale(
+            group, "segment", "Segment", values=DEMUCS_SEGMENTS, hint=SEGMENT_HELP
+        )
+
+    def _on_model_resolved(self, model: typing.Any) -> None:
+        from core.model_identity import ModelIdentityService
+
+        record = None
+        selected = self.selected_model()
+        try:
+            record = ModelIdentityService(self.context.repo).lookup(selected)
+        except ValueError:
+            pass
+        incomplete = bool(
+            record
+            and record.family == "demucs"
+            and record.installed
+            and not record.identity_complete
+        )
+        if incomplete and record is not None:
+            detail = record.identity_error or "Demucs version or source layout is unknown"
+            self.identity_banner.set_title(
+                f"This Demucs model needs identity configuration: {detail}"
+            )
+        self.identity_banner.set_revealed(incomplete)
 
     def _configure_save_stems(self, model: typing.Any) -> None:
         model_name = self.selected_model() or ""
-        if model and (DEMUCS_UVR_MODEL in model_name or getattr(model, "demucs_stem_count", 4) == 2):
+        if model and (
+            DEMUCS_UVR_MODEL in model_name or getattr(model, "demucs_stem_count", 4) == 2
+        ):
             super()._configure_save_stems(model)
             return
         stem_count = getattr(model, "demucs_stem_count", 4) if model else 4
+        routes = tuple(getattr(self, "_resolved_routes", ()) or ())
+        focus_stems = [ALL_STEMS]
+        roles = {str(route.role) for route in routes}
+        if "vocal.vocals" in roles and "mix.instrumental" in roles:
+            focus_stems.extend([_FOCUS_INSTRUMENTAL, _FOCUS_VOCALS])
+        focus_stems.extend(
+            route.native.raw if route.native is not None else route.concept for route in routes
+        )
         self.save_stems.configure_demucs(
-            focus_stems=_demucs_focus_entries(model, model_name),
+            focus_stems=focus_stems or _demucs_focus_entries(model, model_name),
             primary_key=self.primary_only_key,
             secondary_key=self.secondary_only_key,
             has_model=True,
             demucs_stem_count=stem_count,
             export_semantics_note=recommended_export_note(model),
+            routes=routes,
         )
 
     def save_options(self):
@@ -96,5 +135,6 @@ class DemucsView(MethodView):
             hint=OVERLAP_HELP,
         )
         self.add_advanced_switch("is_split_mode", "Split mode", hint=IS_SPLIT_MODE_HELP)
-        # Legacy "Enable chunks" (is_chunk_demucs) is unused by the engine; omit from UI.
-        self.add_advanced_switch("is_demucs_combine_stems", "Combine stems", hint=IS_DEMUCS_COMBINE_STEMS_HELP)
+        self.add_advanced_switch(
+            "is_demucs_combine_stems", "Combine stems", hint=IS_DEMUCS_COMBINE_STEMS_HELP
+        )

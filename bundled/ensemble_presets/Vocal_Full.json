@@ -1,6 +1,7 @@
 {
     "description": "Maximum vocal capture \u2014 Revive v3 + Vocals by becruily",
-    "ensemble_main_stem": "vocals_instrumental",
+    "schema_version": 2,
+    "ensemble_main_stem": "pair.vocals_instrumental",
     "ensemble_type": "Max Spec/Max Spec",
     "selected_models": [
         "mdx:bs_roformer_revive_v3_by_unwa",

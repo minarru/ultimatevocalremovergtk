@@ -1,30 +1,29 @@
 """MDX-C helpers: model build, export routing, and complement math."""
+
 from __future__ import annotations
-import typing
-from typing import Any
 
 import inspect
+import typing
+import warnings
 
 import numpy as np
-import warnings
 
 from bundled.constants import *
 from core.model_stem_semantics import (
     is_vocal_target,
-    vocal_inst_from_sources,
 )
+from core.stem_roles import StemRoleId
 from core.stems import (
     StemBucket,
-    StemId,
+    StemRoute,
     StemRouteKind,
-    resolve_in_sources,
 )
 from ml import spec_utils
 
 warnings.filterwarnings("ignore")
 
-from ml.mel_band_roformer import MelBandRoformer
-from ml.bs_roformer import BSRoformer
+from ml.bs_roformer import BSRoformer  # noqa: E402
+from ml.mel_band_roformer import MelBandRoformer  # noqa: E402
 
 
 def _load_torch_checkpoint(path: str):
@@ -166,14 +165,24 @@ def build_mdx_c_model(
     if 'band_specs' in model_cfg:
         from ml.bandit import MultiMaskMultiSourceBandSplitRNN
 
-        return MultiMaskMultiSourceBandSplitRNN(**filter_init_kwargs(MultiMaskMultiSourceBandSplitRNN, model_cfg))
+        return MultiMaskMultiSourceBandSplitRNN(
+            **filter_init_kwargs(MultiMaskMultiSourceBandSplitRNN, model_cfg)
+        )
     raise UnknownMDXCArchitecture('Unknown MDX-C architecture in configuration.')
+
 
 def _mdx_pitch_reference_sr() -> int:
     return 44100
 
 
-def select_roformer_ola_window(start: typing.Any, chunk_size: typing.Any, mix_length: typing.Any, window_start: typing.Any, window_middle: typing.Any, window_finish: typing.Any):
+def select_roformer_ola_window(
+    start: typing.Any,
+    chunk_size: typing.Any,
+    mix_length: typing.Any,
+    window_start: typing.Any,
+    window_middle: typing.Any,
+    window_finish: typing.Any,
+):
     """Pick the OLA fade window for one Roformer chunk.
 
     The final inference flush can contain several chunk starts; only a chunk
@@ -199,26 +208,18 @@ def mdx_export_routing_flags(
 ):
     routes = tuple(export_routes or ())
     natives = tuple(route for route in routes if route.native is not None)
-    derived = tuple(
-        route for route in routes if route.kind is StemRouteKind.DERIVED
+    derived = tuple(route for route in routes if route.kind is StemRouteKind.DERIVED)
+    native_names = [route.native.raw for route in natives if route.native is not None]
+    has_derived_inst = any(route.concept == StemBucket.INSTRUMENTAL.value for route in derived)
+    has_other_complement = any(
+        route.concept != StemBucket.INSTRUMENTAL.value and route.complement_of is not None
+        for route in derived
     )
-    native_names = [
-        route.native.raw for route in natives if route.native is not None
-    ]
-    has_derived_inst = any(
-        route.concept == StemBucket.INSTRUMENTAL.value for route in derived
+    has_sum_recipe = any(route.derived_from for route in derived)
+    is_full_selection = bool(native_names) and set(name.casefold() for name in native_names) == set(
+        str(stem).casefold() for stem in stem_list
     )
-    has_other_derived = any(
-        route.concept != StemBucket.INSTRUMENTAL.value for route in derived
-    )
-    is_full_selection = (not native_names) or set(
-        name.casefold() for name in native_names
-    ) == set(str(stem).casefold() for stem in stem_list)
-    is_all_stems = (
-        mdxnet_stem_select == ALL_STEMS
-        and not derived
-        and (not native_names or is_full_selection)
-    )
+    is_all_stems = mdxnet_stem_select == ALL_STEMS and is_full_selection
     is_not_ensemble_master = not is_ensemble_master
     is_not_single_stem = not len(stem_list) <= 2
     is_not_secondary_model = not is_secondary_model
@@ -236,10 +237,8 @@ def mdx_export_routing_flags(
         is_not_single_stem
         and len(natives) == 1
         and not has_derived_inst
-        and (
-            bool(include_stem_complement)
-            or has_other_derived
-        )
+        and (bool(include_stem_complement) or has_other_complement)
+        and not has_sum_recipe
         and not is_vocals_quick_export
     )
     is_native_pick = (
@@ -252,9 +251,12 @@ def mdx_export_routing_flags(
         and not has_derived_inst
     )
     is_stem_subset = (
-        len(natives) >= 2 and not is_full_selection
-        and is_not_ensemble_master and is_not_single_stem
-        and is_not_secondary_model and not is_pre_proc_model
+        len(natives) >= 2
+        and not is_full_selection
+        and is_not_ensemble_master
+        and is_not_single_stem
+        and is_not_secondary_model
+        and not is_pre_proc_model
     )
     multi_stem_export = (
         (is_all_stems and is_not_ensemble_master and is_not_single_stem and is_not_secondary_model)
@@ -286,26 +288,35 @@ def mdx_selected_stems(stem_list: typing.Any, stems_selected: typing.Any) -> typ
     and falling back to exporting every stem.
     """
     lookup = {str(stem): stem for stem in (stems_selected or [])}
-    return [
-        stem for stem in stem_list if resolve_in_sources(lookup, StemId(str(stem))) is not None
-    ]
+    return [stem for stem in stem_list if _exact_mdx_source_key(lookup, str(stem)) is not None]
 
 
-def mdx_combined_secondary_key(sources: typing.Any, stem_list: typing.Any, secondary_stem_label: typing.Any):
+def _exact_mdx_source_key(sources: typing.Mapping[str, typing.Any], native: str) -> str | None:
+    """Resolve an MDX-C backend key by exact spelling or casing only."""
+    if native in sources:
+        return native
+    wanted = str(native).casefold()
+    for key in sources:
+        if str(key).casefold() == wanted:
+            return str(key)
+    return None
+
+
+def mdx_combined_secondary_key(
+    sources: typing.Any, stem_list: typing.Any, secondary_stem_label: typing.Any
+):
     """Key in ``sources`` holding the complement of a 2-stem MDX-C model.
 
     ``secondary_stem_label`` is a UVR pair name, which for a model trained on
     stems outside the pair table (``center``/``wide``) matches no source key at
     all. Fall back to the model's own other instrument.
     """
-    key = resolve_in_sources(sources, StemId(str(secondary_stem_label or "")))
+    key = _exact_mdx_source_key(sources, str(secondary_stem_label or ""))
     if key is None and len(stem_list) == 2:
-        key = resolve_in_sources(sources, StemId(str(stem_list[1])))
+        key = _exact_mdx_source_key(sources, str(stem_list[1]))
     if key is None:
         available = sorted(map(str, sources.keys())) if isinstance(sources, dict) else []
-        raise KeyError(
-            f"stem {str(secondary_stem_label)!r} not in sources {available}"
-        )
+        raise KeyError(f"stem {str(secondary_stem_label)!r} not in sources {available}")
     return key
 
 
@@ -316,29 +327,134 @@ def _channel_last_for_write(arr: typing.Any) -> typing.Any:
     return data
 
 
+def materialize_mdx_route_sources(
+    *,
+    available_routes: typing.Sequence[StemRoute],
+    export_routes: typing.Sequence[StemRoute],
+    native_sources: typing.Mapping[str, typing.Any],
+    mix: typing.Any,
+    invert_spec: bool = False,
+    match_frequency_pitch: typing.Any = None,
+) -> dict[str, typing.Any]:
+    """Materialize exact scheduled MDX-C routes from reviewed recipes.
+
+    Native arrays are associated with semantic roles only through their route's
+    exact backend key (case-insensitive spelling reconciliation is allowed).
+    Presentation labels and filename tags never participate in dependency
+    lookup. The returned map uses exact route-native keys for native outputs and
+    stable role concepts for derived outputs.
+    """
+    sources_by_role: dict[StemRoleId, typing.Any] = {}
+    for route in available_routes:
+        if route.native is None or not isinstance(route.role, StemRoleId):
+            continue
+        source_key = _exact_mdx_source_key(native_sources, route.native.raw)
+        if source_key is None:
+            continue
+        source = native_sources[source_key]
+        sources_by_role[route.role] = source
+
+    available_keys = sorted(map(str, native_sources.keys()))
+
+    def require_roles(route: StemRoute, roles: typing.Sequence[StemRoleId]) -> list[typing.Any]:
+        missing = [role.value for role in roles if role not in sources_by_role]
+        if missing:
+            raise RuntimeError(
+                f"Cannot materialize scheduled derived route {route.concept!r}: "
+                f"missing reviewed source roles {missing!r}; "
+                f"available native source keys={available_keys!r}"
+            )
+        return [sources_by_role[role] for role in roles]
+
+    result: dict[str, typing.Any] = {}
+    for route in export_routes:
+        if route.native is not None:
+            source_key = _exact_mdx_source_key(native_sources, route.native.raw)
+            if source_key is not None:
+                result[route.native.raw] = _channel_last_for_write(native_sources[source_key])
+            continue
+        if not isinstance(route.role, StemRoleId):
+            continue
+        if route.complement_of is not None:
+            (source,) = require_roles(route, (route.complement_of,))
+            result[route.concept] = derive_mdx_complement(
+                source,
+                mix,
+                invert_spec=invert_spec,
+                match_frequency_pitch=match_frequency_pitch,
+            )
+            continue
+        if not route.derived_from:
+            continue
+        if len(route.derived_from) < 2:
+            raise RuntimeError(
+                f"Cannot materialize scheduled derived route {route.concept!r}: "
+                "derived_from requires at least two reviewed source roles"
+            )
+
+        dependencies = [
+            np.asarray(_channel_last_for_write(source))
+            for source in require_roles(route, route.derived_from)
+        ]
+        invalid_shapes = [tuple(source.shape) for source in dependencies if source.ndim != 2]
+        channel_counts = {source.shape[1] for source in dependencies if source.ndim == 2}
+        if invalid_shapes or channel_counts != {2}:
+            shapes = [tuple(source.shape) for source in dependencies]
+            raise RuntimeError(
+                f"Cannot materialize scheduled derived route {route.concept!r}: "
+                f"incompatible channel-last dependency shapes {shapes!r}"
+            )
+        result[route.concept] = spec_utils.combine_arrarys(dependencies, is_swap=True)
+    return result
+
+
 def mdx_vocal_split_chain_sources(
     maps: dict[str, typing.Any],
     demix_sources: typing.Any,
+    *,
+    routes: typing.Sequence[typing.Any] | None = None,
 ) -> dict[str, typing.Any]:
-    """Prefer exported maps; fill vocals/inst from community yaml demix keys."""
-    merged = dict(maps)
-    mapped_vocal, mapped_inst = vocal_inst_from_sources(merged)
-    demix_vocal, demix_inst = vocal_inst_from_sources(
-        demix_sources if isinstance(demix_sources, dict) else None
-    )
-    if not isinstance(mapped_vocal, np.ndarray) and isinstance(demix_vocal, np.ndarray):
-        merged[VOCAL_STEM] = _channel_last_for_write(demix_vocal)
-    if not isinstance(mapped_inst, np.ndarray) and isinstance(demix_inst, np.ndarray):
-        merged[INST_STEM] = _channel_last_for_write(demix_inst)
-    return merged
+    """Build a chain handoff from exact reviewed native dependencies only."""
+    demix = demix_sources if isinstance(demix_sources, dict) else {}
+    if routes is None:
+        return {}
+
+    handoff: dict[str, typing.Any] = {}
+    canonical_by_role = {
+        "vocal.vocals": VOCAL_STEM,
+        "mix.instrumental": INST_STEM,
+    }
+    for route in routes:
+        if not isinstance(route.role, StemRoleId):
+            continue
+        canonical_key = canonical_by_role.get(route.role.value)
+        if canonical_key is None:
+            continue
+        route_source_key = route.native.raw if route.native is not None else route.concept
+        source_key = _exact_mdx_source_key(maps, route_source_key)
+        if source_key is not None and isinstance(maps[source_key], np.ndarray):
+            handoff[canonical_key] = maps[source_key]
+            continue
+        if route.native is None:
+            continue
+        source_key = _exact_mdx_source_key(demix, route.native.raw)
+        if source_key is not None and isinstance(demix[source_key], np.ndarray):
+            handoff[canonical_key] = _channel_last_for_write(demix[source_key])
+    return handoff
 
 
-def derive_mdx_complement(native_source: typing.Any, mix: typing.Any, *, invert_spec: typing.Any=False, match_frequency_pitch: typing.Any=None):
+def derive_mdx_complement(
+    native_source: typing.Any,
+    mix: typing.Any,
+    *,
+    invert_spec: typing.Any = False,
+    match_frequency_pitch: typing.Any = None,
+):
     raw_mix = match_frequency_pitch(mix) if match_frequency_pitch is not None else mix
     shaped = spec_utils.to_shape(native_source, raw_mix.shape)
     if invert_spec:
         return spec_utils.invert_stem(raw_mix, shaped)
-    return (-shaped.T + raw_mix.T)
+    return -shaped.T + raw_mix.T
 
 
 def derive_mdx_multi_complement(
@@ -351,11 +467,9 @@ def derive_mdx_multi_complement(
     match_frequency_pitch: typing.Any = None,
 ) -> typing.Any:
     """Derive a multi-source primary complement using the configured recipe."""
-    primary_key = resolve_in_sources(sources, StemId(primary_stem))
+    primary_key = _exact_mdx_source_key(sources, primary_stem)
     if primary_key is None:
-        raise KeyError(
-            f"stem {primary_stem!r} not in sources {sorted(map(str, sources))}"
-        )
+        raise KeyError(f"stem {primary_stem!r} not in sources {sorted(map(str, sources))}")
     if combine_stems:
         remaining = [value for key, value in sources.items() if key != primary_key]
         if not remaining:

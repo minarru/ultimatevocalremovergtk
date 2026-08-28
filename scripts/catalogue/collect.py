@@ -9,7 +9,6 @@ the one collection path.
 from __future__ import annotations
 
 import hashlib
-import json
 import os
 import re
 import sys
@@ -17,26 +16,48 @@ import time
 import urllib.error
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from types import SimpleNamespace
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, ROOT)
 
 from bundled.constants import INST_STEM, VOCAL_STEM  # noqa: E402
 from core import paths  # noqa: E402
-from core.catalogue_coordinator import CatalogueCoordinator, flatten_upstream_lists  # noqa: E402
+from core.access_policy import AccessPolicy, access_policy  # noqa: E402
+from core.catalogue_coordinator import (  # noqa: E402
+    CatalogueCoordinator,
+    flatten_upstream_lists,
+    yaml_basename_from_ref,
+)
 from core.catalogue_types import (  # noqa: E402
-    RefreshMode,
-    SourceId,
     UPSTREAM_DEMUCS_KEYS,
     UPSTREAM_MDX_KEYS,
     UPSTREAM_VR_KEYS,
+    RefreshMode,
+    SourceId,
 )
 from core.extra_catalog import APOLLO_LIST_KEY  # noqa: E402
-from core.mdx_c_registry import compute_checkpoint_hash, infer_mdx_c_architecture  # noqa: E402
-from core.model_data import load_mdx_c_config, load_model_hash_data, _mdx_c_training  # noqa: E402
+from core.mdx_runtime_contract import (  # noqa: E402
+    BUNDLED_MDX_RUNTIME_CONTRACT_PATH,
+    MdxRuntimeContractError,
+    ReconciledMdxRuntimeSignature,
+    is_catalogue_mdx_target_runtime,
+    load_mdx_runtime_contracts,
+    reconcile_catalogue_mdx_runtime_signature,
+)
+from core.model_catalogue import (  # noqa: E402
+    catalogue_presentation_id,
+    project_catalogue_display,
+)
+from core.model_data import (  # noqa: E402
+    _mdx_c_training,
+    load_mdx_c_config_data,
+)
 from core.model_naming import canonical_display_name  # noqa: E402
+from core.model_stem_manifest import StemSemanticsRegistry  # noqa: E402
 from core.model_stem_semantics import (  # noqa: E402
+    INTENT_DUAL_VOC_INST,
     INTENT_MULTI_STEM,
     INTENT_SPECIALTY_STEM,
     INTENT_UNKNOWN,
@@ -48,36 +69,44 @@ from core.model_stem_semantics import (  # noqa: E402
     intent_from_primary_stem,
     is_dual_stem_weight,
     is_special_fx_stem,
-    is_specialty_instrument_pair,
     is_vocal_target,
     normalize_stem_label,
+    resolve_catalogue_stem_semantics,
     resolve_is_karaoke,
     special_fx_ui_note,
     specialty_ui_note,
 )
+from core.stem_roles import (  # noqa: E402
+    ModelStemSemantics,
+    SemanticStemOutput,
+    StemProcessingContext,
+    StemProduction,
+    StemReviewStatus,
+    StemRoleId,
+)
+
 OUTPUT_PATH = os.path.join(ROOT, "docs", "models-catalogue.md")
 REFERENCE_TSV_PATH = os.path.join(ROOT, "docs", "model_intent_reference.tsv")
+DISPLAY_REFERENCE_TSV_PATH = os.path.join(ROOT, "docs", "model_display_reference.tsv")
+STEM_SEMANTICS_REFERENCE_TSV_PATH = os.path.join(ROOT, "docs", "model_stem_semantics_reference.tsv")
 
 #: Ephemeral supplements live under CACHE_DIR, not in the documentation tree:
 #: docs/ holds deliberate, reviewable output only.
 _CACHE_ROOT = os.path.join(paths.CACHE_DIR, "models_catalogue")
 YAML_CACHE_DIR = os.path.join(_CACHE_ROOT, "yaml")
-POLITREES_CACHE_DIR = os.path.join(_CACHE_ROOT, "politrees")
 COMMUNITY_CACHE_DIR = os.path.join(_CACHE_ROOT, "community")
 
+# Deliberate repository seeds are part of the generator input.  Runtime model
+# storage under UVR_DATA_DIR is user state: installed configs and weights must
+# never change a strict publication candidate.
+_BUNDLED_MDX_YAML_DIR = os.path.join(
+    ROOT, "models", "MDX_Net_Models", "model_data", "mdx_c_configs"
+)
 #: How long a supplemental download stays good. Without a TTL, "regenerate
 #: after catalogue updates" silently reused whatever was fetched first.
 CACHE_MAX_AGE_SECONDS = 24 * 60 * 60
 
-_POLITREES_VR_DATA_URL = (
-    "https://raw.githubusercontent.com/Politrees/UVR_resources/main/UVR_resources/model_data/vr_model_data.json"
-)
-_POLITREES_MDX_DATA_URL = (
-    "https://raw.githubusercontent.com/Politrees/UVR_resources/main/UVR_resources/model_data/mdx_model_data.json"
-)
-_COMMUNITY_MODELS_URL = (
-    "https://raw.githubusercontent.com/upseem/uvr5-cli-no-ui/main/models.txt"
-)
+_COMMUNITY_MODELS_URL = "https://raw.githubusercontent.com/upseem/uvr5-cli-no-ui/main/models.txt"
 
 _POLITREES_KEYS = (
     *UPSTREAM_VR_KEYS,
@@ -85,6 +114,77 @@ _POLITREES_KEYS = (
     *UPSTREAM_DEMUCS_KEYS,
 )
 _SUPPLEMENT_LIST_KEYS = (*_POLITREES_KEYS, APOLLO_LIST_KEY)
+
+# The VR backend always emits its reviewed primary plus the computed
+# complement. This exact BVE artifact has authoritative hash metadata for the
+# primary and an exact community record for the complement, but catalogue
+# sources do not carry a native inventory list. Keep the exception scoped to
+# its canonical ID so absent inventory for every other model remains absent.
+_REVIEWED_MISSING_NATIVE_SIGNATURES = {
+    "vr:UVR-BVE-4B_SN-44100-1": ("Vocals", "Instrumental"),
+}
+
+
+def reviewed_stem_signature(model_id: str, instruments: Any) -> tuple[str, ...]:
+    """Return actual inventory, or one exact reviewed missing-inventory supplement."""
+    actual = tuple(str(native) for native in instruments)
+    if actual:
+        return actual
+    return _REVIEWED_MISSING_NATIVE_SIGNATURES.get(model_id, ())
+
+
+is_runtime_target_instrument = is_catalogue_mdx_target_runtime
+
+
+def runtime_stem_signature(
+    model_id: str,
+    instruments: Any,
+    *,
+    target_instrument: str = "",
+    config_yaml: str = "",
+    config_sha256: str = "",
+    metadata_source: str = "",
+) -> tuple[str, ...]:
+    """Project collected training evidence to actual engine-native source keys."""
+    return runtime_stem_reconciliation(
+        model_id,
+        instruments,
+        target_instrument=target_instrument,
+        config_yaml=config_yaml,
+        config_sha256=config_sha256,
+        metadata_source=metadata_source,
+    ).native_signature
+
+
+def runtime_stem_reconciliation(
+    model_id: str,
+    instruments: Any,
+    *,
+    target_instrument: str = "",
+    config_yaml: str = "",
+    config_sha256: str = "",
+    metadata_source: str = "",
+) -> ReconciledMdxRuntimeSignature:
+    """Return the one shared exact runtime-signature reconciliation result."""
+    reconciled = reconcile_catalogue_mdx_runtime_signature(
+        model_id,
+        tuple(str(native) for native in instruments),
+        target_instrument=target_instrument,
+        config_yaml=config_yaml,
+        config_sha256=config_sha256,
+        metadata_source=metadata_source,
+    )
+    if reconciled.native_signature:
+        return reconciled
+    fallback = reviewed_stem_signature(model_id, instruments)
+    if not fallback:
+        return reconciled
+    return ReconciledMdxRuntimeSignature(
+        native_signature=fallback,
+        contract=reconciled.contract,
+        reviewed=reconciled.reviewed,
+        warning=reconciled.warning,
+    )
 
 
 @dataclass
@@ -100,9 +200,14 @@ class CommunityRef:
 @dataclass
 class CatalogueContext:
     community_by_file: Dict[str, CommunityRef] = field(default_factory=dict)
-    vr_by_hash: Dict[str, dict] = field(default_factory=dict)
-    mdx_by_hash: Dict[str, dict] = field(default_factory=dict)
-    weight_to_hash: Dict[str, str] = field(default_factory=dict)
+    #: Required supplements that could not be read at all. An empty but valid
+    #: response is evidence too; callers must not confuse zero rows with an
+    #: unavailable source and reject a coherent snapshot on that basis.
+    unavailable_supplemental_evidence: Tuple[str, ...] = ()
+    #: Per-model configs required by the collected membership but unavailable
+    #: or unparseable in the checked-in seed plus URL-keyed generator cache.
+    #: A set keeps duplicate catalogue aliases from inflating the diagnostic.
+    unavailable_yaml_evidence: set[str] = field(default_factory=set)
 
 
 @dataclass
@@ -113,6 +218,7 @@ class ModelEntry:
     weight_file: str
     config_yaml: str = ""
     config_url: str = ""
+    config_sha256: str = ""
     arch: str = ""
     primary_stem: str = ""
     secondary_stem: str = ""
@@ -130,6 +236,271 @@ class ModelEntry:
     # Family-specific prose that should win over the generic derivation in
     # _best_result. Set by a family overlay *before* _finalize_entry runs.
     best_result_override: str = ""
+    # Attached once, after collection, from exact canonical identity plus the
+    # reconciled runtime signature. Renderers and audit consume this frozen
+    # evidence instead of independently resolving the same entry again.
+    stem_semantics: ReconciledStemEvidence | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ReconciledStemEvidence:
+    """Exact semantic evidence attached to one collected catalogue row."""
+
+    model_id: str
+    model_display: str
+    native_signature: tuple[str, ...]
+    runtime_warning: str
+    reviewed: bool
+    contexts: tuple[ModelStemSemantics, ...]
+    guessed_intent: str = ""
+    guessed_flags: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class ReviewedResultProjection:
+    """Human-facing result fields derived only from exact reviewed routes."""
+
+    intent: str
+    best_result: str
+    ui_export_note: str
+
+
+_RUNTIME_FAMILY_BY_CATALOGUE_FAMILY = {
+    "VR Architecture": "vr",
+    "Demucs": "demucs",
+    "Apollo": "apollo",
+    "MDX-Net": "mdx",
+    "MDX-Net ONNX": "mdx",
+    "MDX23C": "mdx",
+    "Roformer": "mdx",
+    "SCNet": "mdx",
+    "Bandit": "mdx",
+}
+
+
+def catalogue_projection(entry: ModelEntry) -> tuple[str, str]:
+    """Return the exact canonical ID and display for a collected row."""
+    try:
+        family = _RUNTIME_FAMILY_BY_CATALOGUE_FAMILY[entry.family]
+    except KeyError as exc:
+        accepted = ", ".join(_RUNTIME_FAMILY_BY_CATALOGUE_FAMILY)
+        raise ValueError(
+            f"unsupported catalogue family {entry.family!r} for "
+            f"{entry.catalogue_label!r}; accepted families: {accepted}"
+        ) from exc
+    if not entry.weight_file:
+        raise ValueError(f"catalogue row has no primary artifact: {entry.catalogue_label!r}")
+    files = {entry.weight_file: ""}
+    if entry.config_yaml:
+        files[entry.config_yaml] = ""
+    meta = SimpleNamespace(
+        label=entry.catalogue_label,
+        display=entry.catalogue_label,
+        files=files,
+        checkpoint=entry.weight_file,
+        stems=(),
+    )
+    model_id = catalogue_presentation_id(family, entry.catalogue_label, files, meta)
+    if model_id is None:
+        raise ValueError(
+            f"catalogue row has no unambiguous presentation primary: {entry.catalogue_label!r}"
+        )
+    return model_id, project_catalogue_display(family, entry.catalogue_label, files, meta)
+
+
+def _reviewed_result_projection(
+    contexts: tuple[ModelStemSemantics, ...],
+    registry: StemSemanticsRegistry,
+) -> ReviewedResultProjection:
+    """Project result prose from semantic priority without reordering routes."""
+    semantics = next(
+        (context for context in contexts if context.context is StemProcessingContext.FULL_MIX),
+        contexts[0],
+    )
+    routes: list[tuple[int, SemanticStemOutput, str]] = []
+    for index, output in enumerate(semantics.outputs):
+        if isinstance(output.role, StemRoleId):
+            definition = registry.roles.get(output.role)
+            display = definition.display if definition is not None else output.role.value
+        elif output.native is not None:
+            display = output.native.raw
+        else:
+            display = output.role.tag
+        routes.append((index, output, display))
+
+    if not routes:
+        return ReviewedResultProjection(semantics.intent, semantics.intent, "")
+
+    primary_route = next(
+        ((index, output, display) for index, output, display in routes if output.logical_primary),
+        None,
+    )
+    if primary_route is None:
+        raise ValueError("reviewed result projection has no logical primary route")
+    primary_index, primary_output, primary_display = primary_route
+
+    secondary_index = next(
+        (index for index, output, _display in routes if output.logical_secondary),
+        None,
+    )
+    if secondary_index is None and semantics.logical_secondary_role is not None:
+        secondary_index = next(
+            (
+                index
+                for index, output, _display in routes
+                if output.role == semantics.logical_secondary_role
+            ),
+            None,
+        )
+    role_indices = {
+        output.role: index
+        for index, output, _display in routes
+        if isinstance(output.role, StemRoleId)
+    }
+    matching_pair = (
+        next(
+            (
+                pair
+                for pair in registry.pairs.values()
+                if primary_output.role in pair.roles and set(pair.roles).issubset(role_indices)
+            ),
+            None,
+        )
+        if isinstance(primary_output.role, StemRoleId)
+        else None
+    )
+    if secondary_index is None and matching_pair is not None:
+        secondary_role = next(role for role in matching_pair.roles if role != primary_output.role)
+        secondary_index = role_indices[secondary_role]
+
+    priority_indices = [primary_index]
+    if secondary_index is not None and secondary_index != primary_index:
+        priority_indices.append(secondary_index)
+    used_indices = set(priority_indices)
+    priority_indices.extend(
+        index
+        for index, output, _display in routes
+        if index not in used_indices and output.selected_by_default
+    )
+    used_indices.update(priority_indices)
+    priority_indices.extend(
+        index for index, _output, _display in routes if index not in used_indices
+    )
+    routes_by_index = {index: (output, display) for index, output, display in routes}
+    ordered_routes = tuple(routes_by_index[index] for index in priority_indices)
+
+    def availability_label(output: SemanticStemOutput, display: str) -> str:
+        if output.selected_by_default:
+            return display
+        kind = "derived output" if output.production is StemProduction.DERIVED else "output"
+        return f"{display} (available {kind}; not selected by default)"
+
+    ordered_labels = tuple(
+        availability_label(output, display) for output, display in ordered_routes
+    )
+    primary_complement_source = next(
+        (
+            display
+            for _index, output, display in routes
+            if primary_output.complement_of is not None
+            and output.role == primary_output.complement_of
+        ),
+        "",
+    )
+    complement_of_primary = next(
+        (
+            availability_label(output, display)
+            for _index, output, display in routes
+            if output.complement_of is not None and output.complement_of == primary_output.role
+        ),
+        "",
+    )
+    if (
+        matching_pair is not None
+        and len(ordered_routes) == 2
+        and (primary_complement_source or complement_of_primary)
+    ):
+        best_result = " / ".join(ordered_labels)
+    elif primary_complement_source and len(ordered_routes) == 2:
+        best_result = f"{primary_display} (complement of {primary_complement_source})"
+    elif complement_of_primary and len(ordered_routes) == 2:
+        best_result = f"{ordered_labels[0]} (+ {complement_of_primary} complement)"
+    elif semantics.intent == INTENT_MULTI_STEM:
+        best_result = f"Multi-stem: {', '.join(ordered_labels)}"
+    elif semantics.intent == INTENT_DUAL_VOC_INST and len(ordered_labels) == 2:
+        best_result = (
+            f"{ordered_labels[0]} or {ordered_labels[1]} — both are first-class 2-stem exports"
+        )
+    else:
+        best_result = ", ".join(ordered_labels)
+
+    if len(ordered_labels) < 2:
+        ui_export_note = ""
+    elif semantics.intent in (INTENT_MULTI_STEM, INTENT_SPECIALTY_STEM):
+        ui_export_note = f"UI: {' / '.join(ordered_labels)} subset"
+    elif semantics.intent == INTENT_DUAL_VOC_INST:
+        ui_export_note = f"UI: {' / '.join(ordered_labels)} (either stem is a valid primary export)"
+    else:
+        ui_export_note = f"UI: {' / '.join(ordered_labels)}"
+    return ReviewedResultProjection(semantics.intent, best_result, ui_export_note)
+
+
+def reconcile_stem_semantics(
+    entries: List[ModelEntry],
+    *,
+    registry: StemSemanticsRegistry,
+) -> None:
+    """Attach exact reviewed semantics to one already-collected snapshot."""
+    for entry in entries:
+        model_id, model_display = catalogue_projection(entry)
+        runtime = runtime_stem_reconciliation(
+            model_id,
+            entry.instruments,
+            target_instrument=entry.target_instrument,
+            config_yaml=entry.config_yaml,
+            config_sha256=entry.config_sha256,
+            metadata_source=entry.metadata_source,
+        )
+        declaration = registry.models.get(model_id)
+        contexts = (
+            tuple(declaration.contexts)
+            if declaration is not None
+            else (StemProcessingContext.FULL_MIX,)
+        )
+        projections = tuple(
+            resolve_catalogue_stem_semantics(
+                model_id,
+                native_stems=runtime.native_signature,
+                backend_primary=entry.primary_stem,
+                backend_target=entry.target_instrument,
+                context=context,
+                registry=registry,
+                runtime_warning=runtime.warning,
+            )
+            for context in contexts
+        )
+        reviewed = bool(projections) and all(
+            projection.status is StemReviewStatus.REVIEWED for projection in projections
+        )
+        guessed_intent = "" if reviewed else entry.name_intent
+        guessed_flags = () if reviewed else tuple(entry.flags)
+        if reviewed:
+            result = _reviewed_result_projection(projections, registry)
+            entry.name_intent = result.intent
+            entry.best_result = result.best_result
+            entry.ui_export_note = result.ui_export_note
+            entry.best_result_override = ""
+            entry.flags.clear()
+        entry.stem_semantics = ReconciledStemEvidence(
+            model_id=model_id,
+            model_display=model_display,
+            native_signature=runtime.native_signature,
+            runtime_warning=runtime.warning,
+            reviewed=reviewed,
+            contexts=projections,
+            guessed_intent=guessed_intent,
+            guessed_flags=guessed_flags,
+        )
 
 
 def _source_payload(coordinator: CatalogueCoordinator, source_id: SourceId) -> dict:
@@ -163,7 +534,13 @@ def _snapshot_and_payloads(
     allow_network: bool,
     refresh: bool = False,
     coordinator: Optional[CatalogueCoordinator] = None,
+    policy: Optional[FetchPolicy] = None,
 ) -> Tuple[Any, Tuple[dict, dict, dict, dict]]:
+    source_policy = AccessPolicy(
+        allow_network=allow_network,
+        allow_metadata_writes=True if policy is None else policy.allow_metadata_writes,
+        allow_cache_writes=True if policy is None else policy.allow_cache_writes,
+    )
     owned = coordinator is None
     if owned:
         coordinator = CatalogueCoordinator()
@@ -171,10 +548,15 @@ def _snapshot_and_payloads(
         # One blocking snapshot, not refresh() then ensure(). ensure() is
         # stale-while-revalidate and used to republish the FORCE snapshot from
         # cache, including a placeholder RefreshReport(usable=False).
-        if refresh and allow_network:
-            snapshot = coordinator.snapshot(vip=False, mode=RefreshMode.FORCE)
-        else:
-            snapshot = coordinator.ensure(vip=False, allow_network=allow_network)
+        with access_policy(
+            allow_network=source_policy.allow_network,
+            allow_metadata_writes=source_policy.allow_metadata_writes,
+            allow_cache_writes=source_policy.allow_cache_writes,
+        ):
+            if refresh and allow_network:
+                snapshot = coordinator.snapshot(mode=RefreshMode.FORCE, policy=source_policy)
+            else:
+                snapshot = coordinator.ensure(allow_network=allow_network, policy=source_policy)
         payloads = _source_payloads(coordinator)
         return snapshot, payloads
     finally:
@@ -230,10 +612,13 @@ class FetchPolicy:
     allow_network: bool = True
     refresh: bool = False
     max_age: float = CACHE_MAX_AGE_SECONDS
-    #: Whether this run may write into runtime model config storage. --check
-    #: promises to write nothing, and fetch_mdx_config_url writes a yaml into
-    #: paths.MDX_C_CONFIG_PATH -- inside the repo in the portable dev layout.
+    #: Whether coordinator/runtime metadata may be persisted. Generator YAML
+    #: evidence never uses runtime config storage; it is governed exclusively
+    #: by allow_cache_writes below.
     allow_metadata_writes: bool = True
+    #: Whether network responses may be persisted in catalogue supplement or
+    #: coordinator source caches. Check/summary may still fetch into memory.
+    allow_cache_writes: bool = True
 
 
 #: Used by callers that do not care -- online, cache-respecting, TTL'd.
@@ -255,6 +640,80 @@ def _cache_path(cache_dir: str, url: str, filename: str) -> str:
     return os.path.join(cache_dir, f"{stem}-{digest}{ext}")
 
 
+def _fetch_cached_bytes(
+    url: str,
+    cache_dir: str,
+    filename: str,
+    *,
+    policy: FetchPolicy = DEFAULT_FETCH_POLICY,
+    allow_network: Optional[bool] = None,
+    refresh: bool = False,
+) -> Tuple[Optional[bytes], Optional[str]]:
+    """Return response bytes and the readable cache path, if one exists.
+
+    Offline is strictly cache-only: a miss stays a miss and a stale entry is
+    still served, because the alternative is a silent download. Online, an
+    entry older than ``policy.max_age`` is refreshed. A read-only online run
+    receives fresh bytes in memory without creating or replacing cache files.
+    """
+    if allow_network is not None or refresh:
+        policy = FetchPolicy(
+            allow_network=policy.allow_network if allow_network is None else allow_network,
+            refresh=refresh or policy.refresh,
+            max_age=policy.max_age,
+            allow_metadata_writes=policy.allow_metadata_writes,
+            allow_cache_writes=policy.allow_cache_writes,
+        )
+
+    cache_path = _cache_path(cache_dir, url, filename)
+    cached = os.path.isfile(cache_path)
+    cached_data: Optional[bytes] = None
+    if cached:
+        try:
+            with open(cache_path, "rb") as handle:
+                cached_data = handle.read()
+        except OSError:
+            pass
+
+    if not policy.allow_network:
+        # However old: offline must never turn a cache hit into a fetch.
+        return cached_data, cache_path if cached_data is not None else None
+    if cached_data is not None and not policy.refresh:
+        try:
+            if time.time() - os.path.getmtime(cache_path) < policy.max_age:
+                return cached_data, cache_path
+        except OSError:
+            pass
+
+    try:
+        from core.mdx_config_fetch import _urlopen
+
+        with _urlopen(url) as response:
+            data = response.read()
+    except (urllib.error.URLError, OSError, TimeoutError):
+        return cached_data, cache_path if cached_data is not None else None
+
+    persisted_path: Optional[str] = cache_path if cached_data is not None else None
+    if policy.allow_cache_writes:
+        # Staged, so a failed write cannot truncate a good entry into a
+        # corrupt one that is then served for the rest of the TTL.
+        tmp_path = f"{cache_path}.part"
+        try:
+            os.makedirs(cache_dir, exist_ok=True)
+            with open(tmp_path, "wb") as handle:
+                handle.write(data)
+            os.replace(tmp_path, cache_path)
+            persisted_path = cache_path
+        except OSError:
+            pass
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+    return data, persisted_path
+
+
 def _fetch_cached(
     url: str,
     cache_dir: str,
@@ -264,93 +723,16 @@ def _fetch_cached(
     allow_network: Optional[bool] = None,
     refresh: bool = False,
 ) -> Optional[str]:
-    """Return a cached copy of ``url``, refetching when stale or asked to.
-
-    Offline is strictly cache-only: a miss stays a miss and a stale entry is
-    still served, because the alternative is a silent download. Online, an
-    entry older than ``policy.max_age`` is refreshed.
-    """
-    if allow_network is not None or refresh:
-        policy = FetchPolicy(
-            allow_network=policy.allow_network if allow_network is None else allow_network,
-            refresh=refresh or policy.refresh,
-            max_age=policy.max_age,
-            allow_metadata_writes=policy.allow_metadata_writes,
-        )
-
-    cache_path = _cache_path(cache_dir, url, filename)
-    cached = os.path.isfile(cache_path)
-
-    if not policy.allow_network:
-        # However old: offline must never turn a cache hit into a fetch.
-        return cache_path if cached else None
-    if cached and not policy.refresh:
-        try:
-            if time.time() - os.path.getmtime(cache_path) < policy.max_age:
-                return cache_path
-        except OSError:
-            pass
-
-    os.makedirs(cache_dir, exist_ok=True)
-    try:
-        from core.mdx_config_fetch import _urlopen
-
-        with _urlopen(url) as response:
-            data = response.read()
-        # Staged, so a failed write cannot truncate a good entry into a
-        # corrupt one that is then served for the rest of the TTL.
-        tmp_path = f"{cache_path}.part"
-        try:
-            with open(tmp_path, "wb") as handle:
-                handle.write(data)
-            os.replace(tmp_path, cache_path)
-        finally:
-            try:
-                os.unlink(tmp_path)
-            except FileNotFoundError:
-                pass
-        return cache_path
-    except (urllib.error.URLError, OSError, TimeoutError):
-        return cache_path if cached else None
-
-
-def _load_json_cache(
-    url: str, cache_dir: str, filename: str, *, policy: FetchPolicy = DEFAULT_FETCH_POLICY
-) -> dict:
-    path = _fetch_cached(url, cache_dir, filename, policy=policy)
-    if not path:
-        return {}
-    try:
-        with open(path, encoding="utf-8") as handle:
-            payload = json.load(handle)
-        return payload if isinstance(payload, dict) else {}
-    except (json.JSONDecodeError, OSError):
-        return {}
-
-
-def _merge_hash_tables(local_path: str, remote: dict) -> dict:
-    merged: dict = {}
-    if os.path.isfile(local_path):
-        try:
-            merged.update(load_model_hash_data(local_path))
-        except (FileNotFoundError, ValueError, json.JSONDecodeError):
-            pass
-    merged.update(remote)
-    return merged
-
-
-def _scan_weight_hashes(*weight_dirs: str) -> Dict[str, str]:
-    index: Dict[str, str] = {}
-    for weight_dir in weight_dirs:
-        if not os.path.isdir(weight_dir):
-            continue
-        for name in os.listdir(weight_dir):
-            if not name.endswith((".pth", ".onnx", ".ckpt", ".th")):
-                continue
-            digest = compute_checkpoint_hash(os.path.join(weight_dir, name))
-            if digest:
-                index[name.lower()] = digest
-    return index
+    """Return a readable cache path for compatibility with path consumers."""
+    data, path = _fetch_cached_bytes(
+        url,
+        cache_dir,
+        filename,
+        policy=policy,
+        allow_network=allow_network,
+        refresh=refresh,
+    )
+    return path if data is not None else None
 
 
 def _intent_from_primary_stem(primary: str, *, is_karaoke: bool = False) -> str:
@@ -377,36 +759,47 @@ def _intent_from_community_stems(stems_text: str) -> Tuple[str, str]:
     return intent, primary
 
 
-def _parse_community_models_txt(path: str) -> Dict[str, CommunityRef]:
+def _parse_community_model_lines(lines: Any) -> Tuple[Dict[str, CommunityRef], bool]:
+    """Parse the community table without mistaking malformed rows for an empty table."""
     refs: Dict[str, CommunityRef] = {}
-    if not os.path.isfile(path):
-        return refs
-    with open(path, encoding="utf-8") as handle:
-        for line in handle:
-            line = line.rstrip()
-            if not line or line.startswith("#") or line.startswith("-"):
-                continue
-            if set(line) <= {"-"}:
-                continue
-            if "Model Filename" in line or "Output Stems" in line:
-                continue
-            parts = re.split(r"\s{2,}", line.strip())
-            if len(parts) < 4:
-                continue
-            filename, arch, stems_text, friendly = parts[0], parts[1], parts[2], parts[3]
-            if not filename.endswith((".pth", ".onnx", ".ckpt", ".th")):
-                continue
-            intent, primary = _intent_from_community_stems(stems_text)
-            refs[filename.lower()] = CommunityRef(
-                filename=filename,
-                arch=arch,
-                primary_stem=primary,
-                stems_text=stems_text,
-                friendly_name=friendly,
-                intent=intent,
-            )
-    return refs
+    for line in lines:
+        line = line.rstrip()
+        if not line or line.startswith("#") or line.startswith("-"):
+            continue
+        if set(line) <= {"-"}:
+            continue
+        if "Model Filename" in line or "Output Stems" in line:
+            continue
+        parts = re.split(r"\s{2,}", line.strip())
+        if len(parts) < 4:
+            return {}, False
+        filename, arch, stems_text, friendly = parts[0], parts[1], parts[2], parts[3]
+        if not arch or not stems_text or not friendly:
+            return {}, False
+        if not filename.endswith((".pth", ".onnx", ".ckpt", ".th")):
+            # Demucs configuration YAMLs share this otherwise valid table.
+            # They are not model-weight references, so preserve the legacy
+            # parser behavior: retain evidence availability but omit them from
+            # the weight-keyed community projection.
+            continue
+        intent, primary = _intent_from_community_stems(stems_text)
+        refs[filename.lower()] = CommunityRef(
+            filename=filename,
+            arch=arch,
+            primary_stem=primary,
+            stems_text=stems_text,
+            friendly_name=friendly,
+            intent=intent,
+        )
+    return refs, True
 
+
+def _parse_community_models_bytes(data: bytes) -> Tuple[Dict[str, CommunityRef], bool]:
+    """Return parsed community evidence and whether the payload was valid."""
+    try:
+        return _parse_community_model_lines(data.decode("utf-8").splitlines())
+    except UnicodeDecodeError:
+        return {}, False
 
 
 def _build_catalogue_context(
@@ -420,22 +813,25 @@ def _build_catalogue_context(
             refresh=policy.refresh,
             max_age=policy.max_age,
             allow_metadata_writes=policy.allow_metadata_writes,
+            allow_cache_writes=policy.allow_cache_writes,
         )
-    remote_vr = _load_json_cache(
-        _POLITREES_VR_DATA_URL, POLITREES_CACHE_DIR, "vr_model_data.json", policy=policy
-    )
-    remote_mdx = _load_json_cache(
-        _POLITREES_MDX_DATA_URL, POLITREES_CACHE_DIR, "mdx_model_data.json", policy=policy
-    )
-    community_path = _fetch_cached(
+    community_data, _community_path = _fetch_cached_bytes(
         _COMMUNITY_MODELS_URL, COMMUNITY_CACHE_DIR, "models.txt", policy=policy
     )
-    community = _parse_community_models_txt(community_path or "")
+    if community_data is None:
+        community, community_available = {}, False
+    else:
+        community, community_available = _parse_community_models_bytes(community_data)
+    unavailable = []
+    if not community_available:
+        unavailable.append("community models.txt reference")
+    try:
+        load_mdx_runtime_contracts(BUNDLED_MDX_RUNTIME_CONTRACT_PATH)
+    except MdxRuntimeContractError as error:
+        unavailable.append(f"MDX runtime contract ({error})")
     return CatalogueContext(
         community_by_file=community,
-        vr_by_hash=_merge_hash_tables(paths.VR_HASH_JSON, remote_vr),
-        mdx_by_hash=_merge_hash_tables(paths.MDX_HASH_JSON, remote_mdx),
-        weight_to_hash=_scan_weight_hashes(paths.VR_MODELS_DIR, paths.MDX_MODELS_DIR),
+        unavailable_supplemental_evidence=tuple(unavailable),
     )
 
 
@@ -538,7 +934,11 @@ def _ui_note(entry: ModelEntry) -> str:
         return "UI: Vocals / Instrumental (either stem is a valid primary export)"
     if entry.target_instrument and entry.target_instrument.lower() in ("vocals", "vocal"):
         return "UI: Vocals / Instrumental"
-    if entry.target_instrument and entry.target_instrument.lower() in ("instrumental", "inst", "other"):
+    if entry.target_instrument and entry.target_instrument.lower() in (
+        "instrumental",
+        "inst",
+        "other",
+    ):
         return "UI: Instrumental / Vocals (yaml `other` relabeled as Instrumental)"
     if entry.primary_stem in (VOCAL_STEM, INST_STEM):
         return f"UI: {entry.primary_stem} / complement"
@@ -598,7 +998,11 @@ def _flag_mismatches(entry: ModelEntry) -> List[str]:
             flags.append("NAME says vocals but backend is not vocal-focused")
         elif intent == "specialty_stem" and not focus.startswith(("specialty_", "single_target:")):
             flags.append("NAME says specialty stem but backend focus differs")
-    if intent == "vocals" and focus == "two_stem" and not _is_vocals_instrumental_pair(entry.instruments):
+    if (
+        intent == "vocals"
+        and focus == "two_stem"
+        and not _is_vocals_instrumental_pair(entry.instruments)
+    ):
         flags.append("NAME says vocals but backend is specialty 2-stem")
     if intent == "vocals" and focus.startswith("single_target:"):
         stem = focus.split(":", 1)[-1]
@@ -607,49 +1011,40 @@ def _flag_mismatches(entry: ModelEntry) -> List[str]:
     if intent == "instrumental" and entry.target_instrument.lower() in ("vocals", "vocal"):
         flags.append("target_instrument=Vocals on instrumental-named model")
     if intent == "vocals" and entry.target_instrument.lower() in ("other", "instrumental", "inst"):
-        if not (intent == "vocals" and entry.target_instrument.lower() == "other" and "inst" in entry.catalogue_label.lower()):
+        if not (
+            intent == "vocals"
+            and entry.target_instrument.lower() == "other"
+            and "inst" in entry.catalogue_label.lower()
+        ):
             flags.append("target_instrument is non-vocal on vocal-named model")
     return flags
 
 
 def _yaml_paths(yaml_name: str, yaml_url: str = "") -> List[str]:
-    """Where a config yaml may already be on disk, most authoritative first.
+    """Strict generator-owned YAML locations, most authoritative first.
 
-    The cache entry is URL-keyed, so it can only be probed when the URL is
-    known -- looking for the bare basename there never matches and left the
-    cache write-only.
+    Checked-in configs are deliberate seeds. The optional second path is the
+    URL-keyed generator cache. Arbitrary installed configs under UVR_DATA_DIR
+    are intentionally absent.
     """
-    candidates = [
-        os.path.join(paths.MDX_C_CONFIG_PATH, yaml_name),
-        os.path.join(ROOT, "models", "MDX_Net_Models", "model_data", "mdx_c_configs", yaml_name),
-    ]
+    candidates = [os.path.join(_BUNDLED_MDX_YAML_DIR, yaml_name)]
     if yaml_url:
         candidates.append(_cache_path(YAML_CACHE_DIR, yaml_url, yaml_name))
     return candidates
 
 
 def _yaml_source_label(yaml_name: str, config_path: str) -> str:
-    """Provenance label for a resolved config, keyed on where it now lives.
-
-    Must be a pure function of the final location: anything that depends on
-    whether *this* run downloaded it changes between runs and shows up as
-    catalogue drift.
-
-    "bundled_yaml" means "resolved from the local config store", which holds
-    both shipped configs and ones core downloaded earlier; the two are not
-    distinguishable after the fact. "remote_yaml" means this script fetched it
-    into its own cache.
-    """
+    """Stable provenance for checked-in versus generator-cache evidence."""
     where = "remote_yaml" if YAML_CACHE_DIR in config_path else "bundled_yaml"
     return f"{where}:{yaml_name}"
 
 
-def _fetch_yaml(
+def _fetch_yaml_bytes(
     url: str, yaml_name: str, *, policy: FetchPolicy = DEFAULT_FETCH_POLICY
-) -> Optional[str]:
-    if not url or not yaml_name.endswith(".yaml"):
-        return None
-    return _fetch_cached(url, YAML_CACHE_DIR, yaml_name, policy=policy)
+) -> Tuple[Optional[bytes], Optional[str]]:
+    if not url or not yaml_name.casefold().endswith((".yaml", ".yml")):
+        return None, None
+    return _fetch_cached_bytes(url, YAML_CACHE_DIR, yaml_name, policy=policy)
 
 
 def _training_fields(training: Any) -> Tuple[List[str], str]:
@@ -664,129 +1059,136 @@ def _training_fields(training: Any) -> Tuple[List[str], str]:
     return instruments, str(target) if target else ""
 
 
+def _architecture_from_config(yaml_name: str, config: Any) -> str:
+    """Infer architecture from already-loaded bytes without reopening runtime state."""
+    if not isinstance(config, dict):
+        return ""
+    if config.get("cls") == "Bandit":
+        return "Bandit"
+    model = config.get("model") or {}
+    if not isinstance(model, dict):
+        return "MDX23C"
+    if "band_specs" in model:
+        return "Bandit"
+    if "band_SR" in model or "sources" in model:
+        if any(str(key).startswith("tran_") for key in model):
+            return "SCNet Tran"
+        if "masked" in yaml_name.lower():
+            return "SCNet Masked"
+        return "SCNet"
+    if "num_bands" in model:
+        return "Mel-Band Roformer"
+    if "freqs_per_bands" in model:
+        return "BS Roformer"
+    return "MDX23C"
+
+
+def _architecture_from_yaml_name(yaml_name: str) -> str:
+    """Deterministic informational hint used only when config evidence is absent."""
+    low = yaml_name.casefold()
+    if "bandit" in low:
+        return "Bandit"
+    if "scnet" in low:
+        if "tran" in low:
+            return "SCNet Tran"
+        if "masked" in low:
+            return "SCNet Masked"
+        return "SCNet"
+    if "melband" in low or "mel_band" in low:
+        return "Mel-Band Roformer"
+    if "roformer" in low:
+        return "Roformer"
+    if "mdx23" in low:
+        return "MDX23C"
+    return ""
+
+
 def _load_yaml_meta(
     yaml_name: str,
     yaml_url: str = "",
     *,
     policy: FetchPolicy = DEFAULT_FETCH_POLICY,
     allow_network: Optional[bool] = None,
-) -> Tuple[List[str], str, str, str]:
+) -> Tuple[List[str], str, str, str, str]:
     if allow_network is not None:
         policy = FetchPolicy(
             allow_network=allow_network,
             refresh=policy.refresh,
             max_age=policy.max_age,
             allow_metadata_writes=policy.allow_metadata_writes,
+            allow_cache_writes=policy.allow_cache_writes,
         )
     if not yaml_name:
-        return [], "", "", ""
-    config_path = ""
-    for candidate in _yaml_paths(yaml_name, yaml_url):
-        if os.path.isfile(candidate):
-            config_path = candidate
-            break
+        return [], "", "", "", ""
+    bundled_path = _yaml_paths(yaml_name, yaml_url)[0]
+    config_path = bundled_path if os.path.isfile(bundled_path) else ""
 
     source = ""
+    config_data: Optional[bytes] = None
     if config_path:
         source = _yaml_source_label(yaml_name, config_path)
     elif yaml_url:
-        if policy.allow_network and policy.allow_metadata_writes:
-            # fetch_mdx_config_url writes into runtime model config storage, so
-            # it must never run for a read-only offline or --check report.
-            from core.mdx_config_fetch import fetch_mdx_config_url
-
-            if fetch_mdx_config_url(yaml_name, yaml_url):
-                dest = os.path.join(paths.MDX_C_CONFIG_PATH, yaml_name)
-                if os.path.isfile(dest):
-                    config_path = dest
-                    # Same rule as the on-disk lookup above. Labelling this
-                    # "remote_yaml" made the value flip to "bundled_yaml" on the
-                    # next run, once the file was found in place -- which reads
-                    # as drift to --check.
-                    source = _yaml_source_label(yaml_name, config_path)
-        if not config_path:
-            # Not gated on allow_network: _fetch_cached honours the policy
-            # itself, and offline it is the only thing that reads the cache.
-            fetched = _fetch_yaml(yaml_url, yaml_name, policy=policy)
-            if fetched:
-                config_path = fetched
-                source = f"remote_yaml:{yaml_name}"
-    if not config_path:
+        # This boundary owns both fetch and persistence policy. In particular,
+        # refresh must revalidate an existing cache entry, and no path here may
+        # write to runtime model config storage.
+        config_data, fetched_path = _fetch_yaml_bytes(yaml_url, yaml_name, policy=policy)
+        if fetched_path:
+            config_path = fetched_path
+        if config_data is not None:
+            source = f"remote_yaml:{yaml_name}"
+    if not config_path and config_data is None:
         inferred = _infer_from_yaml_name(yaml_name)
         if inferred[0] or inferred[1]:
-            return inferred[0], inferred[1], inferred[2], f"yaml_name_heuristic:{yaml_name}"
-        return [], "", "", ""
+            return (
+                inferred[0],
+                inferred[1],
+                inferred[2],
+                f"yaml_name_heuristic:{yaml_name}",
+                "",
+            )
+        return [], "", "", "", ""
     try:
-        config = load_mdx_c_config(config_path)
+        if config_data is None:
+            with open(config_path, "rb") as config_file:
+                config_data = config_file.read()
+        config = load_mdx_c_config_data(config_data)
         training = _mdx_c_training(config)
         instruments, target = _training_fields(training)
-        arch, _ = infer_mdx_c_architecture(yaml_name)
-        if not arch:
-            model = config.get("model") or {}
-            if "num_bands" in model:
-                arch = "Mel-Band Roformer"
-            elif "freqs_per_bands" in model:
-                arch = "BS Roformer"
-        return instruments, target, arch, source
+        arch = _architecture_from_config(yaml_name, config)
+        digest = hashlib.sha256(config_data).hexdigest()
+        return instruments, target, arch, source, digest
     except Exception:
         inferred = _infer_from_yaml_name(yaml_name)
-        if inferred[0] or inferred[1]:
-            return inferred[0], inferred[1], inferred[2], f"yaml_name_heuristic:{yaml_name}"
-        return [], "", "", source or "yaml_parse_failed"
+        return inferred[0], inferred[1], inferred[2], f"yaml_parse_failed:{yaml_name}", ""
 
 
 def _infer_from_yaml_name(yaml_name: str) -> Tuple[List[str], str, str]:
     low = yaml_name.lower()
-    arch, _ = infer_mdx_c_architecture(yaml_name)
+    arch = _architecture_from_yaml_name(yaml_name)
     if "4stem" in low or "4_stem" in low or "musdb18" in low or "dnr_bandit" in low:
         return [], "", arch
     if any(k in low for k in ("instvoc", "duality", "2_stem", "2stem")):
         return ["instrumental", "vocals"], "", arch
     if any(k in low for k in ("inst", "instrumental", "fno", "crowd", "guitar", "metal")):
         return ["other", "vocals"], "other", arch
-    if any(k in low for k in ("voc", "karaoke", "aspiration", "bve", "revive", "chorus", "male_female", "big_beta", "kim_ft")):
+    if any(
+        k in low
+        for k in (
+            "voc",
+            "karaoke",
+            "aspiration",
+            "bve",
+            "revive",
+            "chorus",
+            "male_female",
+            "big_beta",
+            "kim_ft",
+        )
+    ):
         return ["other", "vocals"], "vocals", arch
     if any(k in low for k in ("dereverb", "deverb", "denoise", "echo", "bleed")):
         return ["no_reverb"], "no_reverb", arch
     return [], "", arch
-
-
-def _hash_lookup_local(weight_path: str, hash_json_path: str) -> Optional[dict]:
-    if not os.path.isfile(weight_path) or not os.path.isfile(hash_json_path):
-        return None
-    digest = compute_checkpoint_hash(weight_path)
-    if not digest:
-        return None
-    data = load_model_hash_data(hash_json_path)
-    return data.get(digest)
-
-
-def _lookup_hash_row(
-    weight_file: str,
-    ctx: CatalogueContext,
-    *,
-    prefer_vr: bool,
-) -> Tuple[Optional[dict], str]:
-    digest = ctx.weight_to_hash.get(weight_file.lower())
-    if not digest:
-        return None, ""
-    if prefer_vr and digest in ctx.vr_by_hash:
-        return ctx.vr_by_hash[digest], "politrees_vr_hash"
-    if digest in ctx.mdx_by_hash:
-        return ctx.mdx_by_hash[digest], "politrees_mdx_hash"
-    if digest in ctx.vr_by_hash:
-        return ctx.vr_by_hash[digest], "politrees_vr_hash"
-    return None, ""
-
-
-def _apply_hash_row(meta: ModelEntry, row: dict, source: str) -> None:
-    meta.metadata_source = source
-    if row.get("primary_stem"):
-        meta.primary_stem = row["primary_stem"]
-        meta.stem_count = 2
-    meta.is_karaoke = bool(row.get("is_karaoke"))
-    if row.get("config_yaml") and not meta.config_yaml:
-        meta.config_yaml = row["config_yaml"]
 
 
 def _infer_onnx_meta(filename: str, label: str) -> Tuple[str, bool, str]:
@@ -795,7 +1197,19 @@ def _infer_onnx_meta(filename: str, label: str) -> Tuple[str, bool, str]:
         return INST_STEM, True, "onnx_name_heuristic"
     if "kara" in low:
         return VOCAL_STEM, True, "onnx_name_heuristic"
-    if any(k in low for k in ("kim_vocal", "voc_ft", "vocals", "_voc", "mdxnet_1", "mdxnet_2", "mdxnet_3", "9482")):
+    if any(
+        k in low
+        for k in (
+            "kim_vocal",
+            "voc_ft",
+            "vocals",
+            "_voc",
+            "mdxnet_1",
+            "mdxnet_2",
+            "mdxnet_3",
+            "9482",
+        )
+    ):
         return VOCAL_STEM, False, "onnx_name_heuristic"
     if any(k in low for k in ("kim_inst", "inst_", "_inst", "inst main", "crowd", "reverb")):
         if "reverb" in low:
@@ -814,7 +1228,10 @@ def _infer_vr_meta(filename: str, label: str) -> Tuple[str, bool, str]:
         return INST_STEM, True, "vr_name_heuristic"
     if any(k in low for k in ("hp-vocal", "hp_vocal", "bve", "vocal")):
         return VOCAL_STEM, False, "vr_name_heuristic"
-    if any(k in low for k in ("hp-uvr", "hp2-uvr", "hp_uvr", "hp2_uvr", "wind_inst", "mgm", "sp-uvr", "sp_uvr")):
+    if any(
+        k in low
+        for k in ("hp-uvr", "hp2-uvr", "hp_uvr", "hp2_uvr", "wind_inst", "mgm", "sp-uvr", "sp_uvr")
+    ):
         return INST_STEM, False, "vr_name_heuristic"
     if any(k in low for k in ("deecho", "de-echo", "dereverb", "denoise", "deverb")):
         return "No Reverb", False, "vr_name_heuristic"
@@ -916,24 +1333,44 @@ def _parse_catalogue_entry(
     label: str,
     payload: Any,
     ctx: CatalogueContext,
-    hash_json: str = "",
-    weight_dir: str = "",
     entry_meta: Any = None,
     policy: FetchPolicy = DEFAULT_FETCH_POLICY,
+    config_url_index: Mapping[tuple[str, str], str] | None = None,
 ) -> List[ModelEntry]:
     yaml_name = ""
     yaml_url = ""
     weight = ""
+    weight_candidates: List[str] = []
+    compact_yaml_by_checkpoint: Dict[str, str] = {}
     if isinstance(payload, str):
         weight = payload
     elif isinstance(payload, dict):
-        for key, ref in payload.items():
-            if key.endswith(".yaml"):
+        for raw_key, ref in payload.items():
+            key = str(raw_key)
+            if key.casefold().endswith((".yaml", ".yml")):
                 yaml_name = key
                 if isinstance(ref, str) and ref.startswith("http"):
                     yaml_url = ref
             elif key.endswith((".pth", ".onnx", ".ckpt", ".th")):
                 weight = key
+                weight_candidates.append(key)
+                compact_yaml = yaml_basename_from_ref(ref)
+                if compact_yaml is not None:
+                    compact_yaml_by_checkpoint[os.path.basename(key)] = compact_yaml
+        if family == "Demucs" and weight_candidates:
+            # Remote JSON preserves server insertion order while the atomic
+            # cache sorts object keys. A bag contains every member checkpoint,
+            # so choose one deterministic representative for audit/display
+            # instead of letting fresh-online and warm-offline reports differ.
+            weight = max(weight_candidates, key=lambda item: (item.casefold(), item))
+        compact_yaml = compact_yaml_by_checkpoint.get(os.path.basename(weight))
+        if not yaml_name and compact_yaml is not None:
+            yaml_name = compact_yaml
+            if config_url_index is not None:
+                yaml_url = config_url_index.get(
+                    (os.path.basename(weight), compact_yaml),
+                    "",
+                )
 
     meta = ModelEntry(
         source=source,
@@ -945,31 +1382,32 @@ def _parse_catalogue_entry(
     )
     meta.name_intent = _infer_name_intent(label)
 
-    if yaml_name:
-        instruments, target, arch, yaml_source = _load_yaml_meta(
-            yaml_name, yaml_url, policy=policy
+    if yaml_name and family not in ("Apollo", "Demucs"):
+        # Apollo and Demucs sidecars describe execution/configuration details,
+        # not the MDX-C training inventory used by this strict stem projection.
+        # Their family overlays supply the publication semantics, so those
+        # sidecars are not required supplemental evidence here.
+        instruments, target, arch, yaml_source, config_sha256 = _load_yaml_meta(
+            yaml_name,
+            yaml_url,
+            policy=policy,
         )
-        meta.instruments = instruments
-        meta.target_instrument = target
         meta.arch = arch
-        meta.stem_count = len(instruments) or (1 if target else 0)
-        if target:
-            meta.primary_stem = target
-        elif instruments:
-            meta.primary_stem = instruments[0]
+        if yaml_source.startswith(("bundled_yaml:", "remote_yaml:")):
+            meta.instruments = instruments
+            meta.target_instrument = target
+            meta.config_sha256 = config_sha256
+            meta.stem_count = len(instruments) or (1 if target else 0)
+            if target:
+                meta.primary_stem = target
+            elif instruments:
+                meta.primary_stem = instruments[0]
+        else:
+            # Filename guesses can still label architecture informally, but
+            # cannot become a native signature used by strict publication.
+            ctx.unavailable_yaml_evidence.add(yaml_name)
         if yaml_source:
             meta.metadata_source = yaml_source
-
-    prefer_vr = family == "VR Architecture"
-    if weight:
-        row, row_source = _lookup_hash_row(weight, ctx, prefer_vr=prefer_vr)
-        if row:
-            _apply_hash_row(meta, row, row_source)
-        elif hash_json and weight_dir:
-            full = os.path.join(weight_dir, weight)
-            row = _hash_lookup_local(full, hash_json)
-            if row:
-                _apply_hash_row(meta, row, "hash_json")
 
     if weight:
         ref = ctx.community_by_file.get(weight.lower())
@@ -1040,7 +1478,7 @@ def _source_for(
     rebuilding them per entry meant one full mvsepless conversion per model.
     """
     if upstream_lists is None and trvlvr:
-        upstream_lists = flatten_upstream_lists(trvlvr, vip=False)
+        upstream_lists = flatten_upstream_lists(trvlvr)
     in_tr = False
     if upstream_lists is not None:
         vr, mdx, demucs = upstream_lists
@@ -1090,11 +1528,12 @@ def _entries_from_snapshot(
 ) -> List[ModelEntry]:
     trvlvr, politrees, extras, mvsepless = payloads
     meta_index = getattr(snapshot, "meta", {}) or {}
+    config_url_index = getattr(snapshot, "checkpoint_yaml_url_index", {}) or {}
     all_entries: List[ModelEntry] = []
 
     # Both of these are constant across the run; computing them per label meant
     # a full mvsepless catalogue conversion for every one of ~474 entries.
-    upstream_lists = flatten_upstream_lists(trvlvr, vip=False) if trvlvr else None
+    upstream_lists = flatten_upstream_lists(trvlvr) if trvlvr else None
     mvsepless_lists = _mvsepless_lists(mvsepless)
 
     def source_for(label: str) -> str:
@@ -1116,10 +1555,9 @@ def _entries_from_snapshot(
                 label=label,
                 payload=payload,
                 ctx=ctx,
-                hash_json=paths.VR_HASH_JSON,
-                weight_dir=paths.VR_MODELS_DIR,
                 entry_meta=meta_index.get(label),
                 policy=policy,
+                config_url_index=config_url_index,
             )
         )
 
@@ -1132,10 +1570,9 @@ def _entries_from_snapshot(
                 label=label,
                 payload=payload,
                 ctx=ctx,
-                hash_json=paths.MDX_HASH_JSON if family == "MDX-Net ONNX" else "",
-                weight_dir=paths.MDX_MODELS_DIR,
                 entry_meta=meta_index.get(label),
                 policy=policy,
+                config_url_index=config_url_index,
             )
         )
 
@@ -1149,6 +1586,7 @@ def _entries_from_snapshot(
                 ctx=ctx,
                 entry_meta=meta_index.get(label),
                 policy=policy,
+                config_url_index=config_url_index,
             )
         )
 
@@ -1162,6 +1600,7 @@ def _entries_from_snapshot(
                 ctx=ctx,
                 entry_meta=meta_index.get(label),
                 policy=policy,
+                config_url_index=config_url_index,
             )
         )
 
@@ -1174,6 +1613,7 @@ def collect_entries(
     policy: Optional[FetchPolicy] = None,
     allow_network: Optional[bool] = None,
     coordinator: Optional[CatalogueCoordinator] = None,
+    registry: Optional[StemSemanticsRegistry] = None,
 ) -> Tuple[Any, List[ModelEntry]]:
     """Acquire a snapshot and turn it into entries. The one collection path.
 
@@ -1188,13 +1628,18 @@ def collect_entries(
             refresh=policy.refresh,
             max_age=policy.max_age,
             allow_metadata_writes=policy.allow_metadata_writes,
+            allow_cache_writes=policy.allow_cache_writes,
         )
     snapshot, payloads = _snapshot_and_payloads(
         allow_network=policy.allow_network,
         refresh=policy.refresh,
         coordinator=coordinator,
+        policy=policy,
     )
-    return snapshot, _entries_from_snapshot(snapshot, payloads, ctx, policy=policy)
+    entries = _entries_from_snapshot(snapshot, payloads, ctx, policy=policy)
+    if registry is not None:
+        reconcile_stem_semantics(entries, registry=registry)
+    return snapshot, entries
 
 
 #: Bumped when the IR's shape changes in a way a consumer would notice.
@@ -1228,6 +1673,13 @@ def build_ir(
     know how many entries the last good run produced, rather than recovering
     that by re-parsing a summary line.
     """
+    serialized_entries = []
+    for entry in entries:
+        serialized = asdict(entry)
+        # Reconciled evidence is an in-process publication contract.  It is
+        # deliberately absent from schema-1 IR and checked-in generated data.
+        serialized.pop("stem_semantics", None)
+        serialized_entries.append(serialized)
     return {
         "schema_version": IR_SCHEMA_VERSION,
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -1238,6 +1690,5 @@ def build_ir(
         # a sidecar left behind by a degraded run silently lowers the
         # publication guard's floor for a document it does not describe.
         "document_sha256": document_sha256,
-        "entries": [asdict(entry) for entry in entries],
+        "entries": serialized_entries,
     }
-

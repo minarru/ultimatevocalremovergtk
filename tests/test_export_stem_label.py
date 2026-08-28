@@ -3,13 +3,60 @@
 import typing
 import unittest
 
+from core.export_naming import format_stem_basename
 from core.stems import StemBucket, canonical_ensemble_stem_tag, export_stem_label
 
 
+class PortableStemFilenameTests(unittest.TestCase):
+    def test_slash_is_presented_as_hyphen_before_sanitizing(self) -> None:
+        for label, expected in (
+            ("Drum/Bass", "song (Drum-Bass)"),
+            ("Reverb/Echo", "song (Reverb-Echo)"),
+            ("Front L/R", "song (Front L-R)"),
+        ):
+            with self.subTest(label=label):
+                self.assertEqual(format_stem_basename("song", label), expected)
+
+    def test_separator_uses_display_for_public_path_and_tag_for_ensemble_path(self) -> None:
+        from core.stem_roles import StemId, StemRoleId
+        from core.stems import StemRoute, StemRouteKind
+        from engines.base import SeperateAttributes
+
+        route = StemRoute(
+            native=StemId("LRF"),
+            role=StemRoleId("cinematic.front_lr"),
+            label="Front L/R",
+            filename_tag="Front_L_R",
+            kind=StemRouteKind.NATIVE,
+        )
+        sep = SeperateAttributes.__new__(SeperateAttributes)
+        sep.export_path = "/tmp"
+        sep.audio_file_base = "song"
+        sep.is_vocal_split_model = False
+
+        sep.is_ensemble_mode = False
+        self.assertEqual(
+            sep.stem_export_wav_path(route.label, route=route),
+            "/tmp/song (Front L-R).wav",
+        )
+
+        sep.is_ensemble_mode = True
+        self.assertEqual(
+            sep.stem_export_wav_path(route.label, route=route),
+            "/tmp/song (Front_L_R).wav",
+        )
+
+
 class _FakeModel:
-    def __init__(self, *, is_karaoke: bool = False, is_bv: bool = False,
-                 stem_count: int = 2, demucs_stem_count: int = 0,
-                 demucs_source_list: typing.Sequence[str] = ()) -> None:
+    def __init__(
+        self,
+        *,
+        is_karaoke: bool = False,
+        is_bv: bool = False,
+        stem_count: int = 2,
+        demucs_stem_count: int = 0,
+        demucs_source_list: typing.Sequence[str] = (),
+    ) -> None:
         self.is_karaoke = is_karaoke
         self.is_bv_model = is_bv
         self.mdx_stem_count = stem_count
@@ -48,19 +95,26 @@ class DemucsStemCountTests(unittest.TestCase):
     """
 
     def test_four_stem_demucs_other_is_not_instrumental(self) -> None:
-        model = _FakeModel(stem_count=1, demucs_stem_count=4,
-                       demucs_source_list=["drums", "bass", "other", "vocals"])
+        model = _FakeModel(
+            stem_count=1,
+            demucs_stem_count=4,
+            demucs_source_list=["drums", "bass", "other", "vocals"],
+        )
         self.assertEqual(export_stem_label(model, "other", for_ensemble=True), StemBucket.OTHER)
 
     def test_four_stem_demucs_other_stems_unaffected(self) -> None:
-        model = _FakeModel(stem_count=1, demucs_stem_count=4,
-                       demucs_source_list=["drums", "bass", "other", "vocals"])
+        model = _FakeModel(
+            stem_count=1,
+            demucs_stem_count=4,
+            demucs_source_list=["drums", "bass", "other", "vocals"],
+        )
         self.assertEqual(export_stem_label(model, "vocals", for_ensemble=True), StemBucket.VOCALS)
         self.assertEqual(export_stem_label(model, "drums", for_ensemble=True), "Drums")
 
     def test_two_stem_demucs_other_is_still_instrumental(self) -> None:
-        model = _FakeModel(stem_count=1, demucs_stem_count=2,
-                       demucs_source_list=["instrumental", "vocals"])
+        model = _FakeModel(
+            stem_count=1, demucs_stem_count=2, demucs_source_list=["instrumental", "vocals"]
+        )
         self.assertEqual(
             export_stem_label(model, "other", for_ensemble=True), StemBucket.INSTRUMENTAL
         )
@@ -80,12 +134,8 @@ class DemucsStemCountTests(unittest.TestCase):
         model = _FakeModel(stem_count=3)
         self.assertEqual(export_stem_label(model, "Speech", for_ensemble=True), "Speech")
         self.assertEqual(export_stem_label(model, "Sfx", for_ensemble=True), "Sfx")
-        self.assertEqual(
-            export_stem_label(model, "Similarity", for_ensemble=True), "Similarity"
-        )
-        self.assertNotEqual(
-            export_stem_label(model, "Speech", for_ensemble=True), "Unknown"
-        )
+        self.assertEqual(export_stem_label(model, "Similarity", for_ensemble=True), "Similarity")
+        self.assertNotEqual(export_stem_label(model, "Speech", for_ensemble=True), "Unknown")
 
     def test_no_other_is_not_written_as_unknown(self) -> None:
         model = _FakeModel(stem_count=4)

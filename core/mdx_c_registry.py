@@ -7,20 +7,14 @@ import json
 import os
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
 
-from bundled.constants import CKPT, MDX_ARCH_TYPE
+from bundled.constants import MDX_ARCH_TYPE
 
 from . import paths
 from .access_policy import current_access_policy
 from .mdx_config_fetch import ensure_mdx_c_config
-from .model_display import (
-    _is_checkpoint_name,
-    build_checkpoint_display_index,
-    display_name_for_basename,
-    load_mdx_catalog_display_index,
-    resolve_mdx_model_basename,
-    sanitize_catalogue_label,
-)
+from .model_display import _is_checkpoint_name
 
+# Ordinary and legacy-named upstream lists are all public presentation sources.
 _MDX_CATALOG_SOURCE_KEYS = (
     "mdx_download_list",
     "mdx23_download_list",
@@ -101,67 +95,6 @@ def params_from_config_yaml(yaml_name: str) -> Optional[Dict[str, object]]:
     return params
 
 
-_CHECKPOINT_EXTENSIONS = (".ckpt", ".pth", ".onnx")
-
-
-def _mapper_key_for_checkpoint(checkpoint_path: str) -> str:
-    basename = os.path.basename(checkpoint_path)
-    if basename.lower().endswith(_CHECKPOINT_EXTENSIONS):
-        return basename
-    for ext in _CHECKPOINT_EXTENSIONS:
-        candidate = f"{basename}{ext}"
-        if os.path.isfile(os.path.join(paths.MDX_MODELS_DIR, candidate)):
-            return candidate
-    return basename
-
-
-def register_mdx_display_name(
-    checkpoint_path: str,
-    display_name: str,
-    *,
-    write: bool = True,
-) -> bool:
-    """Persist a friendly display label for a locally-registered checkpoint.
-
-    Reads the merged mapper (upstream mirror + local overlay) to decide whether
-    the name is already known, but writes only to the overlay — the mirror has
-    to stay a verbatim copy of upstream so deletions there propagate.
-    """
-    if not display_name:
-        return False
-    from .name_mapper import add_local_name, load_name_mapper
-
-    mapper_key = _mapper_key_for_checkpoint(checkpoint_path)
-    mapper_path = paths.MDX_MODEL_NAME_SELECT
-    existing: Dict[str, str] = load_name_mapper(mapper_path)
-
-    if mapper_key in existing or display_name in existing.values():
-        return False
-
-    if not write:
-        return True
-
-    add_local_name(mapper_path, mapper_key, display_name)
-    return True
-
-
-def _register_display_name_for_checkpoint(
-    checkpoint_path: str,
-    *,
-    display_index: Optional[Dict[str, str]] = None,
-) -> bool:
-    basename = os.path.splitext(os.path.basename(checkpoint_path))[0]
-    lookup = (
-        display_index
-        if display_index is not None
-        else load_mdx_catalog_display_index(allow_network=False)
-    )
-    display_name = lookup.get(basename)
-    if not display_name:
-        return False
-    return register_mdx_display_name(checkpoint_path, display_name)
-
-
 def _yaml_name_from_ref(ref: object) -> Optional[str]:
     if isinstance(ref, str) and ref.endswith(".yaml") and "/" not in ref and "\\" not in ref:
         return ref
@@ -223,10 +156,10 @@ def load_mdx_catalog_index(*, allow_network: bool | None = None, coordinator: An
         else allow_network
     )
     if coordinator is not None:
-        snapshot = coordinator.ensure(vip=True, allow_network=network)
+        snapshot = coordinator.ensure(allow_network=network)
         return dict(snapshot.checkpoint_yaml_index)
     payload = _load_manual_download_cache()
-    _vr, mdx, _demucs = flatten_upstream_lists(payload, vip=True)
+    _vr, mdx, _demucs = flatten_upstream_lists(payload)
     merged = merged_catalogues(
         vr=_vr, mdx=mdx, demucs=_demucs, allow_network=network
     )
@@ -305,15 +238,12 @@ def try_register_from_catalog(
     yaml_name = yaml_for_checkpoint(checkpoint_path, index=index)
     if not yaml_name:
         return None
-    params = register_mdx_c_checkpoint(
+    return register_mdx_c_checkpoint(
         checkpoint_path,
         yaml_name,
         model_hash=model_hash,
         write=True,
     )
-    if params:
-        _register_display_name_for_checkpoint(checkpoint_path)
-    return params
 
 
 def pair_checkpoint_yaml_jobs(jobs: List[Tuple[str, str]]) -> List[Tuple[str, str]]:
@@ -346,11 +276,7 @@ def register_mdx_c_from_download_jobs(
     if not pairs:
         return False
     registered = False
-    # Naming a file that just landed on disk must not FORCE-fetch catalogues.
-    display_index = load_mdx_catalog_display_index(allow_network=False)
     for checkpoint_path, yaml_name in pairs:
         if register_mdx_c_checkpoint(checkpoint_path, yaml_name):
-            registered = True
-        if _register_display_name_for_checkpoint(checkpoint_path, display_index=display_index):
             registered = True
     return registered

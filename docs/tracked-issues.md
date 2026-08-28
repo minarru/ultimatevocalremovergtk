@@ -124,7 +124,7 @@ Originally deferred during [docs/superpowers/plans/2026-08-04-ui-performance.md]
 | Startup win conditional on in-TTL disk cache | both catalogue modules | **done** — stale-while-revalidate: any readable disk entry served immediately; BG refresh when expired |
 | No `Gtk.ListBox.set_sort_func` wiring test | [ui/download_center.py](../ui/download_center.py) | **done** — [tests/test_download_center_sort.py](../tests/test_download_center_sort.py) |
 | No test for two unmapped appends → one map handler | [ui/widgets/console.py](../ui/widgets/console.py) | **done** — [tests/test_console_scroll.py](../tests/test_console_scroll.py) |
-| No test for `reload_mappers` display-cache hook | [core/model_data.py](../core/model_data.py) | **done** — [tests/test_model_display_cache.py](../tests/test_model_display_cache.py) |
+| No test for `reload_mappers` display-cache hook | [core/model_repository.py](../core/model_repository.py) | **done** — [tests/test_model_display_cache.py](../tests/test_model_display_cache.py) |
 | Unsupported rows sort via `canonical_display_name` | [ui/download_center.py](../ui/download_center.py) | **done** (shipped in PR #13; behavioural note only) |
 | One idle per unmapped `append` while parked on map | [ui/widgets/console.py](../ui/widgets/console.py) | **done** — early-out on `_map_handler_id` |
 | `.desktop` / `run_uvr.sh` GTK health-probe tax | [run_uvr.sh](../run_uvr.sh) | **done** — cheap `-x` by default; full probe on stamp miss/stale, rebuild, or `UVR_FORCE_VENV_CHECK`; desktop entry `--update` from installer |
@@ -140,4 +140,4 @@ Originally deferred during [docs/superpowers/plans/2026-08-04-ui-performance.md]
 
 ---
 
-*Last reviewed: 2026-08-11 — fixed GTK refresh/backlog findings (F5–F8) and merged-catalogue integrity findings (F9–F15).*
+*Last reviewed: 2026-08-26 — covers findings F1–F24; completed GTK refresh/backlog and merged-catalogue integrity work remains recorded above.*

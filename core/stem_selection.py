@@ -14,19 +14,27 @@ from bundled.constants import (
     VOCAL_STEM,
     secondary_stem,
 )
+from core.model_stem_manifest import load_bundled_stem_semantics
 from core.model_stem_semantics import confident_stem_bucket
 from core.settings.model import Settings
+from core.stem_pairs import (
+    exclusive_flags_for_stem_pair,
+    normalize_stem_pair_id,
+    stem_pair_definition,
+)
+from core.stem_roles import StemProcessingContext, StemRoleId
 from core.stems import (
-    EnsemblePair,
     FOCUS_PRIMARY,
     FOCUS_SECONDARY,
     StemBucket,
     StemRoute,
+    StemRouteKind,
     StemSelectionStatus,
     concept_is,
-    derived_stem_route,
-    exclusive_flags_for_pair,
+    logical_primary_route,
+    logical_secondary_route,
     model_stem_routes,
+    persisted_stem_focus,
     positional_stem_focus,
     select_stem_routes,
 )
@@ -53,6 +61,197 @@ _STEM_ALIASES = {
     "drum": "drums",
     "other": "other",
 }
+
+
+def _focus_is_exact_role(focus: str, role: str) -> bool:
+    """Match only a persisted namespaced reviewed role ID."""
+    return focus == role
+
+
+def _route_native_key(route: StemRoute) -> str:
+    return route.native.casefold() if route.native is not None else ""
+
+
+def _manifest_signature_roles(routes: Sequence[StemRoute]) -> dict[str, str]:
+    """Return roles agreed by every full-mix declaration for this inventory."""
+    native_keys = tuple(_route_native_key(route) for route in routes if route.native is not None)
+    if not native_keys or any(not key for key in native_keys):
+        return {}
+    signature = frozenset(native_keys)
+    if len(signature) != len(native_keys):
+        return {}
+    candidates: list[dict[str, str]] = []
+    for declaration in load_bundled_stem_semantics().models.values():
+        declared = tuple(native.casefold() for native in declaration.native_signature)
+        if len(declared) != len(signature) or frozenset(declared) != signature:
+            continue
+        context = declaration.contexts.get(StemProcessingContext.FULL_MIX)
+        if context is None:
+            continue
+        candidates.append(
+            {
+                output.native.casefold(): output.role.value
+                for output in context.outputs
+                if output.native is not None and isinstance(output.role, StemRoleId)
+            }
+        )
+    if not candidates:
+        return {}
+    return {
+        key: candidates[0][key]
+        for key in signature
+        if all(candidate.get(key) == candidates[0].get(key) for candidate in candidates)
+    }
+
+
+def _manifest_pair_roles(
+    routes: Sequence[StemRoute],
+    *,
+    stem_pair_id: str,
+    is_karaoke: bool,
+    is_bv: bool,
+) -> dict[str, str]:
+    """Use a reviewed pair only when pair context makes it unambiguous."""
+    pair_id = normalize_stem_pair_id(stem_pair_id)
+    if not pair_id and len(routes) == 2:
+        if is_karaoke and not is_bv:
+            pair_id = "pair.karaoke"
+        elif is_bv and not is_karaoke:
+            pair_id = "pair.backing_vocals"
+    if not pair_id:
+        return {}
+    pair = stem_pair_definition(pair_id)
+    if pair is None or len(routes) != len(pair.roles):
+        return {}
+    return {route.concept: role.value for route, role in zip(routes, pair.roles, strict=True)}
+
+
+def _manifest_complement_role(routes: Sequence[StemRoute], route: StemRoute) -> str:
+    """Resolve a ``No <role>`` legacy complement through ``removed_of``."""
+    label = (route.native.raw if route.native is not None else route.label).strip()
+    if not label.casefold().startswith("no ") or len(routes) != 2:
+        return ""
+    base = label[3:].casefold()
+    registry = load_bundled_stem_semantics()
+    base_roles = [
+        role
+        for role, definition in registry.roles.items()
+        if base
+        in {
+            role.value.casefold(),
+            definition.display.casefold(),
+            definition.filename_tag.casefold(),
+        }
+    ]
+    if len(base_roles) != 1:
+        return ""
+    removed = [
+        role.value
+        for role, definition in registry.roles.items()
+        if definition.removed_of == base_roles[0]
+    ]
+    return removed[0] if len(removed) == 1 else ""
+
+
+def _manifest_role_for_exact_legacy_bucket(route: StemRoute) -> str:
+    """Promote a legacy bucket only when its native spelling agrees exactly."""
+    if route.native is None or route.native.casefold() != route.concept.casefold():
+        return ""
+    candidates = [
+        role.value
+        for role, definition in load_bundled_stem_semantics().roles.items()
+        if route.concept.casefold()
+        in {
+            role.value.casefold(),
+            definition.display.casefold(),
+            definition.filename_tag.casefold(),
+        }
+    ]
+    return candidates[0] if len(candidates) == 1 else ""
+
+
+def _manifest_quick_role(requested: str) -> str:
+    """Resolve the two explicit quick-export presets from their reviewed pair."""
+    pair = load_bundled_stem_semantics().pairs.get("pair.vocals_instrumental")
+    if pair is None:
+        return ""
+    positions = {StemBucket.VOCALS.value: 0, StemBucket.INSTRUMENTAL.value: 1}
+    index = positions.get(requested)
+    return pair.roles[index].value if index is not None else ""
+
+
+def _compatibility_role_for_route(
+    route: StemRoute,
+    routes: Sequence[StemRoute],
+    *,
+    stem_pair_id: str = "",
+    is_karaoke: bool = False,
+    is_bv: bool = False,
+) -> str:
+    """Promote only a reviewed role proven by full available state context."""
+    if isinstance(route.role, StemRoleId):
+        return persisted_stem_focus(route)
+    pair_roles = _manifest_pair_roles(
+        routes,
+        stem_pair_id=stem_pair_id,
+        is_karaoke=is_karaoke,
+        is_bv=is_bv,
+    )
+    if route.concept in pair_roles:
+        return pair_roles[route.concept]
+    signature_roles = _manifest_signature_roles(routes)
+    role = signature_roles.get(_route_native_key(route), "")
+    return (
+        role
+        or _manifest_complement_role(routes, route)
+        or _manifest_role_for_exact_legacy_bucket(route)
+    )
+
+
+def _persist_route_focus(
+    route: StemRoute,
+    routes: Sequence[StemRoute] = (),
+    *,
+    stem_pair_id: str = "",
+    is_karaoke: bool = False,
+    is_bv: bool = False,
+) -> str:
+    """Persist proven reviewed roles, never unscoped literal compatibility tags."""
+    return _compatibility_role_for_route(
+        route,
+        routes,
+        stem_pair_id=stem_pair_id,
+        is_karaoke=is_karaoke,
+        is_bv=is_bv,
+    )
+
+
+def _route_for_exact_persisted_role(
+    routes: Sequence[StemRoute],
+    focus: str,
+    *,
+    stem_pair_id: str = "",
+    is_karaoke: bool = False,
+    is_bv: bool = False,
+) -> Optional[StemRoute]:
+    """Restore only one exact namespaced role; legacy/raw focus never matches."""
+    try:
+        role = StemRoleId(focus).value
+    except ValueError:
+        return None
+    matches = [
+        route
+        for route in routes
+        if _persist_route_focus(
+            route,
+            routes,
+            stem_pair_id=stem_pair_id,
+            is_karaoke=is_karaoke,
+            is_bv=is_bv,
+        )
+        == role
+    ]
+    return matches[0] if len(matches) == 1 else None
 
 
 def _stem_focus_tag(
@@ -116,34 +315,32 @@ def _exclusive_inventory(
     secondary_stem_name: Optional[str],
     is_karaoke: bool,
     is_bv: bool,
-    ensemble_pair: Optional[EnsemblePair],
+    stem_pair_id: str,
 ) -> tuple[StemRoute, ...]:
     """Route inventory for exclusive Save Stems.
 
     Ensemble pairs use derived bucket routes so native ``other`` is not
     remapped to Instrumental by a 2-stem ``stem_count``.
     """
-    if ensemble_pair is not None:
-        primary_b, secondary_b = ensemble_pair.buckets()
+    pair = stem_pair_definition(normalize_stem_pair_id(stem_pair_id))
+    if pair is not None:
+        registry = load_bundled_stem_semantics()
         routes: list[StemRoute] = []
-        if primary_b is not StemBucket.UNKNOWN:
+        for index, role in enumerate(pair.roles):
+            role_definition = registry.roles[role]
             routes.append(
-                derived_stem_route(primary_b, label=primary_stem)
-            )
-        elif primary_stem:
-            routes.append(derived_stem_route(primary_stem, label=primary_stem))
-        if secondary_b is not StemBucket.UNKNOWN:
-            routes.append(
-                derived_stem_route(secondary_b, label=secondary_stem_name)
-            )
-        elif secondary_stem_name:
-            routes.append(
-                derived_stem_route(secondary_stem_name, label=secondary_stem_name)
+                StemRoute(
+                    native=None,
+                    role=role,
+                    label=role_definition.display,
+                    filename_tag=role_definition.filename_tag,
+                    kind=StemRouteKind.DERIVED,
+                    selected_by_default=False,
+                    logical_primary=index == 0,
+                )
             )
         return tuple(routes)
-    natives = tuple(
-        stem for stem in (primary_stem, secondary_stem_name) if stem
-    )
+    natives = tuple(stem for stem in (primary_stem, secondary_stem_name) if stem)
     if not natives:
         return ()
     return model_stem_routes(
@@ -157,31 +354,55 @@ def _exclusive_inventory(
     )
 
 
-def _route_for_native(
-    routes: Sequence[StemRoute], stem: str
-) -> Optional[StemRoute]:
+def _route_for_native(routes: Sequence[StemRoute], stem: str) -> Optional[StemRoute]:
     for route in routes:
         if route.native is not None and route.native.matches(stem):
             return route
     return None
 
 
+def _route_for_exact_backend_stem(
+    routes: Sequence[StemRoute],
+    stem: str | None,
+) -> Optional[StemRoute]:
+    """Resolve one exact backend native or derived-route identity."""
+    token = str(stem or "").strip()
+    if not token:
+        return None
+    folded = token.casefold()
+    matches = tuple(
+        route
+        for route in routes
+        if (
+            route.native.matches(token)
+            if route.native is not None
+            else route.concept.casefold() == folded or route.label.strip().casefold() == folded
+        )
+    )
+    return matches[0] if len(matches) == 1 else None
+
+
+def _route_for_exact_concept(routes: Sequence[StemRoute], concept: str) -> Optional[StemRoute]:
+    matches = [route for route in routes if route.concept == concept]
+    return matches[0] if len(matches) == 1 else None
+
+
 def _cli_concept_inventory() -> tuple[StemRoute, ...]:
     return (
-        derived_stem_route(StemBucket.VOCALS),
-        derived_stem_route(StemBucket.INSTRUMENTAL),
-        derived_stem_route(StemBucket.BASS),
-        derived_stem_route(StemBucket.DRUMS),
-        derived_stem_route(StemBucket.OTHER),
+        StemRoute(None, StemRoleId("vocal.vocals"), label="Vocals"),
+        StemRoute(None, StemRoleId("mix.instrumental"), label="Instrumental"),
+        StemRoute(None, StemRoleId("instrument.bass"), label="Bass"),
+        StemRoute(None, StemRoleId("instrument.drums"), label="Drums"),
+        StemRoute(None, StemRoleId("residual.other"), label="Other"),
     )
 
 
 _CLI_CONCEPTS = {
-    "vocals": StemBucket.VOCALS.value,
-    "instrumental": StemBucket.INSTRUMENTAL.value,
-    "bass": BASS_STEM,
-    "drums": DRUM_STEM,
-    "other": OTHER_STEM,
+    "vocals": "vocal.vocals",
+    "instrumental": "mix.instrumental",
+    "bass": "instrument.bass",
+    "drums": "instrument.drums",
+    "other": "residual.other",
 }
 
 
@@ -246,8 +467,7 @@ def _debug_stem_focus_persist(
         suffix = f" {detail}" if detail else ""
         debug(
             "settings",
-            f"stem_focus persist mode={mode} choice={choice!r} "
-            f"focus={focus!r}{suffix}",
+            f"stem_focus persist mode={mode} choice={choice!r} focus={focus!r}{suffix}",
         )
     except Exception:
         pass
@@ -268,7 +488,7 @@ class StemSelectionState:
         self.is_karaoke_curated = False
         self.is_bv = False
         self.stem_count = 2
-        self.ensemble_pair: Optional[EnsemblePair] = None
+        self.stem_pair_id = ""
         self.demucs_export_primary: Optional[str] = None
         self.demucs_export_secondary: Optional[str] = None
         self.subset_mode = _QUICK_ALL
@@ -295,7 +515,7 @@ class StemSelectionState:
         is_karaoke_curated: bool = False,
         is_bv: bool = False,
         stem_count: int = 2,
-        ensemble_pair: Optional[EnsemblePair] = None,
+        stem_pair_id: str = "",
     ) -> None:
         self.mode = "exclusive"
         self.has_model = has_model
@@ -307,13 +527,13 @@ class StemSelectionState:
         self.is_karaoke_curated = is_karaoke_curated
         self.is_bv = is_bv
         self.stem_count = stem_count
-        self.ensemble_pair = ensemble_pair
+        self.stem_pair_id = normalize_stem_pair_id(stem_pair_id)
         self.routes = _exclusive_inventory(
             primary_stem=primary_stem,
             secondary_stem_name=secondary_stem,
             is_karaoke=is_karaoke,
             is_bv=is_bv,
-            ensemble_pair=ensemble_pair,
+            stem_pair_id=self.stem_pair_id,
         )
 
     def configure_subset(
@@ -382,11 +602,7 @@ class StemSelectionState:
         for entry in natives:
             concept = self._concept_for_subset_token(entry)
             route = _route_for_native(self.routes, entry)
-            persist = (
-                route.native.raw
-                if route is not None and route.native is not None
-                else entry
-            )
+            persist = route.native.raw if route is not None and route.native is not None else entry
             self.demucs_focus_map[concept] = persist
 
     def demucs_export_routes(self, native: str) -> tuple[StemRoute, ...]:
@@ -395,7 +611,7 @@ class StemSelectionState:
             secondary_stem_name=secondary_stem(native),
             is_karaoke=False,
             is_bv=False,
-            ensemble_pair=None,
+            stem_pair_id="",
         )
 
     def _demucs_persist_native(self, active: str) -> str:
@@ -411,17 +627,17 @@ class StemSelectionState:
             return inventory[0].concept
         if positional == FOCUS_SECONDARY and len(inventory) > 1:
             return inventory[1].concept
-        selection = select_stem_routes(inventory, focus)
-        if (
-            selection.status is StemSelectionStatus.MATCHED
-            and len(selection.routes) == 1
-        ):
-            return selection.routes[0].concept
+        route = _route_for_exact_persisted_role(inventory, focus)
+        if route is not None:
+            return route.concept
         return _TOGGLE_ALL
 
     def _primary_route(self) -> Optional[StemRoute]:
         if not self.routes:
             return None
+        logical = logical_primary_route(self.routes)
+        if logical is not None:
+            return logical
         if self.exclusive_primary:
             match = _route_for_native(self.routes, self.exclusive_primary)
             if match is not None:
@@ -429,13 +645,14 @@ class StemSelectionState:
         return self.routes[0]
 
     def _secondary_route(self) -> Optional[StemRoute]:
-        if self.exclusive_secondary:
-            match = _route_for_native(self.routes, self.exclusive_secondary)
-            if match is not None:
-                return match
-        if len(self.routes) < 2:
-            return None
-        return self.routes[1]
+        logical = logical_secondary_route(self.routes)
+        if logical is not None:
+            return logical
+        pair = stem_pair_definition(self.stem_pair_id)
+        if pair is not None and len(pair.roles) == 2:
+            pair_matches = tuple(route for route in self.routes if route.role == pair.roles[1])
+            return pair_matches[0] if len(pair_matches) == 1 else None
+        return _route_for_exact_backend_stem(self.routes, self.exclusive_secondary)
 
     def _concept_for_flag(self, flag: str) -> str:
         if flag == self.primary_key:
@@ -447,8 +664,8 @@ class StemSelectionState:
         return _TOGGLE_ALL
 
     def _flag_name_for_route(self, route: StemRoute) -> str:
-        if self.ensemble_pair is not None:
-            flags = exclusive_flags_for_pair(route.concept, self.ensemble_pair)
+        if self.stem_pair_id:
+            flags = exclusive_flags_for_stem_pair(route.concept, self.stem_pair_id)
             if flags == (True, False):
                 return self.primary_key
             if flags == (False, True):
@@ -461,6 +678,24 @@ class StemSelectionState:
         if secondary is not None and secondary.concept == route.concept:
             return self.secondary_key
         return _TOGGLE_ALL
+
+    def _persist_focus_for_exclusive_route(self, route: StemRoute) -> str:
+        """Use a semantic role when known, otherwise preserve a side choice."""
+        persisted = _persist_route_focus(
+            route,
+            self.routes,
+            stem_pair_id=self.stem_pair_id,
+            is_karaoke=self.is_karaoke,
+            is_bv=self.is_bv,
+        )
+        if persisted:
+            return persisted
+        flag = self._flag_name_for_route(route)
+        if flag == self.primary_key:
+            return FOCUS_PRIMARY
+        if flag == self.secondary_key:
+            return FOCUS_SECONDARY
+        return ""
 
     def _concept_for_native(self, stem: str) -> str:
         route = _route_for_native(self.routes, stem)
@@ -476,22 +711,39 @@ class StemSelectionState:
         )
 
     def _concept_for_subset_token(self, token: str) -> str:
+        route = _route_for_native(self.routes, token)
+        if route is not None:
+            return route.concept
+        route = _route_for_exact_concept(self.routes, token)
+        if route is not None:
+            return route.concept
         selection = select_stem_routes(self.routes, token)
-        if (
-            selection.status is StemSelectionStatus.MATCHED
-            and selection.routes
-        ):
+        if selection.status is StemSelectionStatus.MATCHED and selection.routes:
             return selection.routes[0].concept
         return self._concept_for_native(token)
 
     def _focus_from_inventory(self, requested: str) -> str:
+        route = _route_for_exact_concept(self.routes, requested)
+        if route is not None:
+            persisted = _persist_route_focus(
+                route,
+                self.routes,
+                stem_pair_id=self.stem_pair_id,
+                is_karaoke=self.is_karaoke,
+                is_bv=self.is_bv,
+            )
+            return persisted or _manifest_quick_role(requested)
         selection = select_stem_routes(self.routes, requested)
-        if (
-            selection.status is StemSelectionStatus.MATCHED
-            and selection.routes
-        ):
-            return selection.routes[0].concept
-        return requested
+        if selection.status is StemSelectionStatus.MATCHED and selection.routes:
+            persisted = _persist_route_focus(
+                selection.routes[0],
+                self.routes,
+                stem_pair_id=self.stem_pair_id,
+                is_karaoke=self.is_karaoke,
+                is_bv=self.is_bv,
+            )
+            return persisted or _manifest_quick_role(requested)
+        return _manifest_quick_role(requested)
 
     def _subset_concepts(self) -> Set[str]:
         return {self._concept_for_subset_token(stem) for stem in self.subset_stems}
@@ -506,11 +758,7 @@ class StemSelectionState:
             route = _route_for_native(self.routes, stem)
             if route is not None and route.native is None:
                 continue
-            persist = (
-                route.native.raw
-                if route is not None and route.native is not None
-                else stem
-            )
+            persist = route.native.raw if route is not None and route.native is not None else stem
             natives.append(persist)
             seen.add(concept)
         return natives
@@ -526,9 +774,7 @@ class StemSelectionState:
         if not selected or len(selected) != 1:
             return False
         chosen = next(iter(selected))
-        return concept_is(
-            chosen, StemBucket.VOCALS, stem_count=len(self.subset_stems)
-        )
+        return concept_is(chosen, StemBucket.VOCALS, stem_count=len(self.subset_stems))
 
     def set_custom_selection(
         self,
@@ -572,15 +818,11 @@ class StemSelectionState:
         stem_set = set(self.subset_stems)
         focus = str(getattr(settings.process, "stem_focus", "") or "")
 
-        concepts = {
-            self._concept_for_subset_token(token) for token in selected_set
-        }
-        if self.vocal_stem_in_subset() and self.selection_matches_vocal_stem(
-            selected_set
-        ):
-            if concept_is(focus, StemBucket.INSTRUMENTAL, stem_count=2):
+        concepts = {self._concept_for_subset_token(token) for token in selected_set}
+        if self.vocal_stem_in_subset() and self.selection_matches_vocal_stem(selected_set):
+            if _focus_is_exact_role(focus, "mix.instrumental"):
                 return _QUICK_INSTRUMENTAL, concepts
-            if concept_is(focus, StemBucket.VOCALS, stem_count=2):
+            if _focus_is_exact_role(focus, "vocal.vocals"):
                 return _QUICK_VOCALS, concepts
         if not selected_set or selected_set >= stem_set:
             if not focus:
@@ -599,20 +841,19 @@ class StemSelectionState:
             positional = positional_stem_focus(focus)
             if positional == FOCUS_PRIMARY:
                 route = self._primary_route()
-                return ExclusiveView(
-                    choice=route.concept if route is not None else _TOGGLE_ALL
-                )
+                return ExclusiveView(choice=route.concept if route is not None else _TOGGLE_ALL)
             if positional == FOCUS_SECONDARY:
                 route = self._secondary_route()
-                return ExclusiveView(
-                    choice=route.concept if route is not None else _TOGGLE_ALL
-                )
-            selection = select_stem_routes(self.routes, focus)
-            if (
-                selection.status is StemSelectionStatus.MATCHED
-                and len(selection.routes) == 1
-            ):
-                return ExclusiveView(choice=selection.routes[0].concept)
+                return ExclusiveView(choice=route.concept if route is not None else _TOGGLE_ALL)
+            route = _route_for_exact_persisted_role(
+                self.routes,
+                focus,
+                stem_pair_id=self.stem_pair_id,
+                is_karaoke=self.is_karaoke,
+                is_bv=self.is_bv,
+            )
+            if route is not None:
+                return ExclusiveView(choice=route.concept)
             return ExclusiveView(choice=_TOGGLE_ALL)
         if self.mode == "subset":
             mode, selected = self.stored_subset_selection(settings)
@@ -626,17 +867,13 @@ class StemSelectionState:
         if self.mode == "demucs":
             native_focus = settings.demucs.stems or ALL_STEMS
             stem_focus = str(getattr(settings.process, "stem_focus", "") or "")
-            focus_is_vocals = concept_is(
-                str(native_focus), StemBucket.VOCALS, stem_count=4
-            )
+            focus_is_vocals = concept_is(str(native_focus), StemBucket.VOCALS, stem_count=4)
             if native_focus == ALL_STEMS:
                 active = _QUICK_ALL
-            elif focus_is_vocals and concept_is(
-                stem_focus, StemBucket.INSTRUMENTAL, stem_count=2
-            ):
+            elif focus_is_vocals and _focus_is_exact_role(stem_focus, "mix.instrumental"):
                 active = _FOCUS_INSTRUMENTAL
             elif focus_is_vocals and (
-                concept_is(stem_focus, StemBucket.VOCALS, stem_count=2)
+                _focus_is_exact_role(stem_focus, "vocal.vocals")
                 or positional_stem_focus(stem_focus) == FOCUS_PRIMARY
             ):
                 active = _FOCUS_VOCALS
@@ -679,36 +916,33 @@ class StemSelectionState:
     def write_cli_concept(self, settings: Settings, concept: str) -> None:
         """Persist a CLI concept pick into ``process.stem_focus``."""
         selection = select_stem_routes(_cli_concept_inventory(), concept)
-        if (
-            selection.status is not StemSelectionStatus.MATCHED
-            or len(selection.routes) != 1
-        ):
+        if selection.status is not StemSelectionStatus.MATCHED or len(selection.routes) != 1:
             raise ValueError(f"invalid stem selection {concept!r}")
         route = selection.routes[0]
-        settings.process.stem_focus = route.concept
+        settings.process.stem_focus = _persist_route_focus(route)
         if route.concept in (
-            StemBucket.VOCALS.value,
-            StemBucket.INSTRUMENTAL.value,
+            "vocal.vocals",
+            "mix.instrumental",
         ):
             settings.demucs.stems = settings.mdx.stems = VOCAL_STEM
             settings.mdx.stems_selected = [VOCAL_STEM]
             return
-        settings.demucs.stems = route.concept
+        settings.demucs.stems = {
+            "instrument.bass": BASS_STEM,
+            "instrument.drums": DRUM_STEM,
+            "residual.other": OTHER_STEM,
+        }[route.concept]
         settings.mdx.stems = ALL_STEMS
         settings.mdx.stems_selected = []
 
-    def write_cli_positional(
-        self, settings: Settings, choice: str
-    ) -> None:
+    def write_cli_positional(self, settings: Settings, choice: str) -> None:
         """Persist a CLI positional pick as a stem_focus sentinel."""
         if choice == "both":
             settings.process.stem_focus = ""
             settings.demucs.stems = settings.mdx.stems = ALL_STEMS
             settings.mdx.stems_selected = []
             return
-        settings.process.stem_focus = (
-            FOCUS_PRIMARY if choice == "primary" else FOCUS_SECONDARY
-        )
+        settings.process.stem_focus = FOCUS_PRIMARY if choice == "primary" else FOCUS_SECONDARY
         settings.mdx.stems = ALL_STEMS
         settings.mdx.stems_selected = []
 
@@ -716,17 +950,17 @@ class StemSelectionState:
         if view.choice == _TOGGLE_ALL:
             settings.process.stem_focus = ""
             return "reason=all-stems"
-        selection = select_stem_routes(self.routes, view.choice)
-        if (
-            selection.status is not StemSelectionStatus.MATCHED
-            or len(selection.routes) != 1
-        ):
-            settings.process.stem_focus = ""
-            return (
-                f"reason=exclusive-unmatched status={selection.status.value} "
-                f"routes={len(selection.routes)}"
-            )
-        settings.process.stem_focus = selection.routes[0].concept
+        route = _route_for_exact_concept(self.routes, view.choice)
+        if route is None:
+            selection = select_stem_routes(self.routes, view.choice)
+            if selection.status is not StemSelectionStatus.MATCHED or len(selection.routes) != 1:
+                settings.process.stem_focus = ""
+                return (
+                    f"reason=exclusive-unmatched status={selection.status.value} "
+                    f"routes={len(selection.routes)}"
+                )
+            route = selection.routes[0]
+        settings.process.stem_focus = self._persist_focus_for_exclusive_route(route)
         return "reason=exclusive-matched"
 
     def _write_subset(self, settings: Any, view: SubsetView) -> None:
@@ -744,9 +978,7 @@ class StemSelectionState:
             elif view.mode == _QUICK_VOCALS:
                 settings.mdx.stems_selected = [VOCAL_STEM]
                 settings.mdx.stems = VOCAL_STEM
-                settings.process.stem_focus = self._focus_from_inventory(
-                    StemBucket.VOCALS.value
-                )
+                settings.process.stem_focus = self._focus_from_inventory(StemBucket.VOCALS.value)
             return
 
         concepts = {self._concept_for_subset_token(token) for token in view.selected}
@@ -759,8 +991,9 @@ class StemSelectionState:
             settings.mdx.stems_selected = natives
             settings.mdx.stems = natives[0] if len(natives) == 1 else ALL_STEMS
             if len(natives) == 1:
-                settings.process.stem_focus = self._concept_for_subset_token(
-                    natives[0]
+                route = _route_for_native(self.routes, natives[0])
+                settings.process.stem_focus = (
+                    _persist_route_focus(route, self.routes) if route is not None else ""
                 )
             else:
                 settings.process.stem_focus = ""
@@ -773,15 +1006,11 @@ class StemSelectionState:
             return
         if active == _FOCUS_INSTRUMENTAL:
             settings.demucs.stems = VOCAL_STEM
-            settings.process.stem_focus = self._focus_from_inventory(
-                StemBucket.INSTRUMENTAL.value
-            )
+            settings.process.stem_focus = self._focus_from_inventory(StemBucket.INSTRUMENTAL.value)
             return
         if active == _FOCUS_VOCALS:
             settings.demucs.stems = VOCAL_STEM
-            settings.process.stem_focus = self._focus_from_inventory(
-                StemBucket.VOCALS.value
-            )
+            settings.process.stem_focus = self._focus_from_inventory(StemBucket.VOCALS.value)
             return
 
         persist = self._demucs_persist_native(active)
@@ -796,20 +1025,22 @@ class StemSelectionState:
             if name == _TOGGLE_ALL:
                 settings.process.stem_focus = ""
                 return
-            selection = select_stem_routes(inventory, name)
-            if (
-                selection.status is not StemSelectionStatus.MATCHED
-                or len(selection.routes) != 1
-            ):
-                settings.process.stem_focus = ""
-                return
-            settings.process.stem_focus = selection.routes[0].concept
+            route = _route_for_exact_concept(inventory, name)
+            if route is None:
+                selection = select_stem_routes(inventory, name)
+                if (
+                    selection.status is not StemSelectionStatus.MATCHED
+                    or len(selection.routes) != 1
+                ):
+                    settings.process.stem_focus = ""
+                    return
+                route = selection.routes[0]
+            settings.process.stem_focus = _persist_route_focus(route, inventory)
             return
-        settings.process.stem_focus = self._concept_for_subset_token(persist)
+        route = _route_for_native(self.routes, persist)
+        settings.process.stem_focus = _persist_route_focus(route, self.routes) if route else ""
 
-    def ensure_demucs_export_defaults(
-        self, settings: Any, native: Optional[str] = None
-    ) -> None:
+    def ensure_demucs_export_defaults(self, settings: Any, native: Optional[str] = None) -> None:
         """When a native-stem focus first shows the export filter, default to primary."""
         if str(getattr(settings.process, "stem_focus", "") or ""):
             return
@@ -819,7 +1050,7 @@ class StemSelectionState:
             return
         inventory = self.demucs_export_routes(native)
         if inventory:
-            settings.process.stem_focus = inventory[0].concept
+            settings.process.stem_focus = _persist_route_focus(inventory[0], inventory)
 
     def expected_output_count(
         self,

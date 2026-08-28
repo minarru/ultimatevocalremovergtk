@@ -42,22 +42,18 @@ def coerce_process_method(value: str | None) -> str | None:
 
 
 def resolve_splitter_identity(reference: str, settings: Settings, repo: Any) -> str:
+    from ..model_identity import parse_stored_model_id
+
+    parse_stored_model_id(reference)
     service = ModelIdentityService(repo)
-    pool = list(repo.karaoke_model_list(settings))
-    records: dict[str, str] = {}
-    for tag in pool:
-        try:
-            records[service.canonical_id_from_member_tag(tag)] = tag
-        except ValueError:
-            continue
-    try:
-        record = service.resolve(reference)
-    except ValueError:
-        matches = [model_id for model_id, tag in records.items() if reference.casefold() in tag.casefold()]
-        if len(matches) != 1:
-            raise ValueError(f"unknown or ambiguous vocal splitter {reference!r}") from None
-        return matches[0]
-    if record.id not in records:
+    record = service.index.lookup(reference)
+    if record.family not in {"vr", "mdx"}:
+        raise ValueError(f"model {record.id} is not eligible for this setting")
+    pool = {
+        service.canonical_id_from_member_tag(tag)
+        for tag in repo.karaoke_model_list(settings)
+    }
+    if record.id not in pool:
         raise ValueError(f"model {record.id} is not an installed vocal splitter")
     return record.id
 

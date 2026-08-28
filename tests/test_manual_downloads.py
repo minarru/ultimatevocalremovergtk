@@ -8,10 +8,10 @@ Download Center listed 459.
 
 from __future__ import annotations
 
-import typing
 import unittest
 from unittest import mock
 
+from bundled.constants import VR_ARCH_TYPE
 from core.downloads import DownloadManager
 
 
@@ -50,29 +50,17 @@ class ManualDownloadMergeTests(unittest.TestCase):
             data = self.manager.manual_download_data()
         self.assertEqual(len(data["vr"]), 1)
 
-    def test_vip_entries_survive_the_merge_when_unlocked(self) -> None:
-        from bundled.constants import NO_CODE
-
+    def test_vip_entries_are_public_without_state_or_code(self) -> None:
         self.manager.online_data = {
-            "mdx23c_download_vip_list": {"VIP Model": {"v.ckpt": "v.yaml"}},
-        }
-        self.manager.decoded_vip_link = "unlocked"
-        self.assertNotEqual(self.manager.decoded_vip_link, NO_CODE)
-        with mock.patch(
-            "core.catalog_sources._supplemental_sources", return_value=({}, {}, {}, {})
-        ):
-            data = self.manager.manual_download_data()
-        self.assertIn("VIP Model", data["mdx"])
-
-    def test_vip_entries_stay_hidden_without_a_code(self) -> None:
-        self.manager.online_data = {
-            "mdx23c_download_vip_list": {"VIP Model": {"v.ckpt": "v.yaml"}},
+            "mdx23c_download_vip_list": {
+                "MDX23C Model VIP: Added": {"v.ckpt": "v.yaml"}
+            },
         }
         with mock.patch(
             "core.catalog_sources._supplemental_sources", return_value=({}, {}, {}, {})
         ):
             data = self.manager.manual_download_data()
-        self.assertNotIn("VIP Model", data["mdx"])
+        self.assertIn("MDX23C Model VIP: Added", data["mdx"])
 
     def test_entries_are_sorted_by_display_name(self) -> None:
         self.manager.online_data = {
@@ -90,7 +78,7 @@ class ManualDownloadMergeTests(unittest.TestCase):
         )
 
     def test_labels_stay_raw_so_manual_links_still_resolve(self) -> None:
-        """Keys remain catalogue labels; the dialog renders the canonical name."""
+        """The compatibility mapping continues to retain raw catalogue keys."""
         with mock.patch(
             "core.catalog_sources._supplemental_sources", return_value=({}, {}, {}, {})
         ):
@@ -99,9 +87,53 @@ class ManualDownloadMergeTests(unittest.TestCase):
         links = DownloadManager.manual_links("MDX-Net", model)
         self.assertTrue(links)
 
+    def test_exact_projection_controls_row_title_sort_and_link_selection(self) -> None:
+        hp = "VR Arch Single Model v5: 1_HP-UVR"
+        aardvark = "VR Arch Single Model v5: Aardvark"
+        self.manager.online_data = {
+            "vr_download_list": {
+                hp: "1_HP-UVR.pth",
+                aardvark: "Aardvark.pth",
+            }
+        }
+        with mock.patch(
+            "core.catalog_sources._supplemental_sources",
+            return_value=({}, {}, {}, {}),
+        ):
+            rows = self.manager.manual_download_rows()["vr"]
 
-class ManualDownloadRowTitleTests(unittest.TestCase):
-    def test_dialog_renders_the_canonical_name(self) -> None:
+        self.assertEqual(
+            [(row.display, row.selection) for row in rows],
+            [("VR v5 — Aardvark", aardvark), ("VR v5 — HP 1", hp)],
+        )
+        hp_row = rows[1]
+        self.assertEqual(hp_row.model, "1_HP-UVR.pth")
+        with mock.patch.object(
+            DownloadManager,
+            "manual_links",
+            return_value=[("Model", "https://example.invalid/model")],
+        ) as resolve:
+            self.assertTrue(hp_row.resolve_links())
+        resolve.assert_called_once_with(
+            VR_ARCH_TYPE,
+            "1_HP-UVR.pth",
+            selection=hp,
+        )
+
+    def test_former_vip_manual_link_uses_additional_public_repo(self) -> None:
+        label = "MDX-Net Model VIP: UVR-MDX-NET_Main_427"
+        links = DownloadManager.manual_links(
+            "MDX-Net", "UVR-MDX-NET_Main_427.onnx", selection=label
+        )
+        self.assertEqual(
+            links[0][1],
+            "https://github.com/Anjok0109/ai_magic/releases/download/v5/"
+            "UVR-MDX-NET_Main_427.onnx",
+        )
+
+
+class StructureOnlyFormatterCompatibilityTests(unittest.TestCase):
+    def test_canonical_formatter_remains_available(self) -> None:
         from core.model_naming import canonical_display_name
 
         self.assertEqual(

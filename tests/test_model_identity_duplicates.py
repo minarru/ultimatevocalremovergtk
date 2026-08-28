@@ -2,13 +2,21 @@
 
 import unittest
 
-from core.model_identity import ModelRecord, resolve_model_record
+from core.model_identity import ModelArtifacts, ModelRecord, resolve_model_record
 
 
 def _rec(model_id: str, basename: str, *, installed: bool = True, display: str = "") -> ModelRecord:
+    family = model_id.split(":", 1)[0]
     return ModelRecord(
-        id=model_id, family=model_id.split(":", 1)[0], basename=basename,
-        display=display or basename, installed=installed,
+        id=model_id,
+        family=family,
+        basename=basename,
+        display=display or basename,
+        backend_name=basename,
+        artifacts=ModelArtifacts(
+            f"{basename}.ckpt" if family == "mdx" else f"{basename}.pth"
+        ),
+        installed=installed,
     )
 
 
@@ -30,17 +38,15 @@ class ExactIdPrecedenceTests(unittest.TestCase):
         record = resolve_model_record("mdx:MDX23C_D1581", self._records())
         self.assertEqual(record.id, "mdx:MDX23C_D1581")
 
-    def test_an_unqualified_case_ambiguous_term_still_raises(self) -> None:
-        """Without an exact id there is genuinely nothing to prefer."""
+    def test_an_unqualified_case_variant_is_not_a_runtime_identity(self) -> None:
         with self.assertRaises(ValueError) as ctx:
             resolve_model_record("mdx23c_d1581", self._records())
-        self.assertIn("ambiguous", str(ctx.exception))
+        self.assertIn("not a canonical model ID", str(ctx.exception))
 
-    def test_a_single_casefold_match_still_resolves(self) -> None:
+    def test_a_qualified_casefold_match_is_rejected(self) -> None:
         records = (_rec("mdx:Some_Model", "Some_Model"),)
-        self.assertEqual(
-            resolve_model_record("mdx:some_model", records).id, "mdx:Some_Model"
-        )
+        with self.assertRaises(ValueError):
+            resolve_model_record("mdx:some_model", records)
 
     def test_an_unknown_reference_still_raises(self) -> None:
         with self.assertRaises(ValueError):

@@ -28,7 +28,6 @@ from ui.help_text import (
     SAVE_STEM_ONLY_HELP,
     STEM_ONLY_ALL_HINT,
     VIEW_INPUTS_BUTTON_HINT,
-    VIP_DOWNLOAD_CODE_HINT,
     iter_help_strings,
     validate_help_text,
 )
@@ -82,7 +81,6 @@ class HelpTextStyleTests(unittest.TestCase):
         self.assertNotIn("default", STEM_ONLY_ALL_HINT.casefold())
         self.assertIn("unless waveform mode supports", MANUAL_ENSEMBLE_ALGORITHM_HINT)
         self.assertEqual(VIEW_INPUTS_BUTTON_HINT, "Review and verify inputs")
-        self.assertEqual(VIP_DOWNLOAD_CODE_HINT, "Enter VIP download code")
         self.assertNotIn("holds while saving", PROGRESS_ETA_HINT)
         self.assertIn("fills during inference", PROGRESS_ETA_HINT)
         self.assertIn("Combining i/n", PROGRESS_ETA_HINT)

@@ -6,6 +6,7 @@ auto-detected by :class:`core.ModelConfig` (``is_mdx_c``), so the
 :class:`core.JobRunner` selects ``SeperateMDXC`` vs ``SeperateMDX`` at run
 time. There is therefore one MDX model dropdown here, exactly as in the Tk app.
 """
+
 import typing
 
 from bundled.constants import (
@@ -30,19 +31,18 @@ from bundled.constants import (
     VOCAL_STEM,
     VOL_COMPENSATION,
 )
-from core.settings import Settings
-from core.stems import StemId, resolve_in_sources
-
 from core.model_stem_semantics import (
     apply_karaoke_quick_export_default,
     recommended_export_note,
     shows_voc_inst_quick_export,
     stem_display_overrides,
 )
+from core.settings import Settings
+from core.stems import StemId, resolve_in_sources
 
-from .base import MethodView, register_method_view
 from ..help_text import MDX_INCLUDE_COMPLEMENT_HELP, MDX_OVERLAP_HINT, MDX_SEGMENT_SIZE_HINT
 from ..settings_bind import get_flat, set_flat
+from ..widget_state import fetch
 from ..widgets.rows import (
     get_scale_row_value,
     make_discrete_scale_row,
@@ -52,7 +52,7 @@ from ..widgets.rows import (
     set_scale_default_mark,
     set_scale_row_value,
 )
-from ..widget_state import fetch
+from .base import MethodView, register_method_view
 
 # Full stem universe presented in the UI. The backend intersects this with the
 # selected model's actual stems, so checking a stem a model does not produce is
@@ -231,8 +231,11 @@ class MDXView(MethodView):
             self._loading = was_loading
 
     def _configure_save_stems(self, model: typing.Any) -> None:
-        stems = list(getattr(model, "mdx_model_stems", []) or []) if model else []
-        ordered = [s for s in _MDX_STEM_OPTIONS if s in stems]
+        routes = tuple(getattr(self, "_resolved_routes", ()) or ())
+        stems: list[str] = [route.native.raw for route in routes if route.native is not None] or (
+            list(getattr(model, "mdx_model_stems", []) or []) if model else []
+        )
+        ordered: list[str] = [s for s in _MDX_STEM_OPTIONS if s in stems]
         ordered += [s for s in stems if s not in _MDX_STEM_OPTIONS]
         if len(ordered) > 2:
             self.save_stems.configure_subset(
@@ -243,6 +246,7 @@ class MDXView(MethodView):
                 has_model=True,
                 stem_label_overrides=stem_display_overrides(model),
                 export_semantics_note=recommended_export_note(model),
+                routes=routes,
             )
         else:
             super()._configure_save_stems(model)
@@ -286,12 +290,34 @@ class MDXView(MethodView):
             set_flat(self.settings, self._overlap_key(), overlap_value)
 
     def build_advanced(self, group: typing.Any):
-        self.add_advanced_scale("mdx_batch_size", "Batch size", values=BATCH_SIZE, hint=BATCH_SIZE_HELP)
-        self.add_option_combo(group, "denoise_option", "Denoise", MDX_DENOISE_OPTION, hint=IS_DENOISE_HELP)
-        self.add_option_scale(group, "compensate", "Volume compensation", values=VOL_COMPENSATION, hint=COMPENSATE_HELP)
-        self.add_option_switch(group, "is_match_frequency_pitch", "Match frequency cut-off", hint=IS_FREQUENCY_MATCH_HELP)
-        self.add_option_switch(group, "is_invert_spec", "Spectral inversion", hint=IS_INVERT_SPEC_HELP)
-        self.add_option_switch(group, "is_mdx23_combine_stems", "Combine stems (MDX23C)", hint=IS_DEMUCS_COMBINE_STEMS_HELP)
+        self.add_advanced_scale(
+            "mdx_batch_size", "Batch size", values=BATCH_SIZE, hint=BATCH_SIZE_HELP
+        )
+        self.add_option_combo(
+            group, "denoise_option", "Denoise", MDX_DENOISE_OPTION, hint=IS_DENOISE_HELP
+        )
+        self.add_option_scale(
+            group,
+            "compensate",
+            "Volume compensation",
+            values=VOL_COMPENSATION,
+            hint=COMPENSATE_HELP,
+        )
+        self.add_option_switch(
+            group,
+            "is_match_frequency_pitch",
+            "Match frequency cut-off",
+            hint=IS_FREQUENCY_MATCH_HELP,
+        )
+        self.add_option_switch(
+            group, "is_invert_spec", "Spectral inversion", hint=IS_INVERT_SPEC_HELP
+        )
+        self.add_option_switch(
+            group,
+            "is_mdx23_combine_stems",
+            "Combine stems (MDX23C)",
+            hint=IS_DEMUCS_COMBINE_STEMS_HELP,
+        )
         self.add_advanced_switch(
             "is_mdx_include_stem_complement",
             "Include complement (No X)",

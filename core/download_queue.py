@@ -9,12 +9,14 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Callable, List, Optional
 
-from core.debug_log import debug
+from core.debug_log import debug, log_event, operation
 
 # Cap queue UI refresh rate while a download reports per-chunk progress.
 _PROGRESS_NOTIFY_INTERVAL_S = 0.1
 from core.download_status import (
     ACTIVE_STATUSES,
+    RESULT_COMPLETE,
+    RESULT_EXISTS,
     RESULT_STOPPED,
     STATUS_CANCELLED,
     STATUS_COMPLETE,
@@ -198,9 +200,32 @@ class DownloadQueue:
                 self._ensure_worker()
 
     def _process_item(self, item: DownloadQueueItem) -> bool:
+        operation_id = f"download-{item.item_id}"
+        with operation(operation_id):
+            return self._process_item_with_context(item, operation_id)
+
+    def _process_item_with_context(
+        self,
+        item: DownloadQueueItem,
+        operation_id: str,
+    ) -> bool:
+        log_event(
+            "download",
+            "download_item_started",
+            operation_id=operation_id,
+            selection=item.selection,
+            architecture=item.arch_type,
+            file_count=len(item.jobs),
+        )
         if item.stop_event.is_set():
             item.status = STATUS_CANCELLED
             item.detail = default_detail_for_status(STATUS_CANCELLED)
+            log_event(
+                "download",
+                "download_item_cancelled",
+                operation_id=operation_id,
+                stage="before_transfer",
+            )
             self._notify()
             return False
 
@@ -208,6 +233,12 @@ class DownloadQueue:
 
         def on_progress(fraction: float) -> None:
             item.progress = max(0.0, min(1.0, fraction))
+            log_event(
+                "download",
+                "download_progress",
+                level="trace",
+                fraction=round(item.progress, 6),
+            )
             nonlocal last_progress_notify
             now = time.monotonic()
             if fraction >= 1.0 or now - last_progress_notify >= _PROGRESS_NOTIFY_INTERVAL_S:
@@ -218,6 +249,12 @@ class DownloadQueue:
             if item.detail == text:
                 return
             item.detail = text
+            log_event(
+                "download",
+                "download_status_changed",
+                level="trace",
+                detail=text,
+            )
             self._notify()
 
         try:
@@ -226,16 +263,28 @@ class DownloadQueue:
                 on_progress=on_progress,
                 on_info=on_info,
                 stop_event=item.stop_event,
-                repo=self.repo,
             )
         except Exception as exc:  # noqa: BLE001
             if item.stop_event.is_set():
-                debug("download", f"queue cancelled id={item.item_id}")
+                log_event(
+                    "download",
+                    "download_item_cancelled",
+                    operation_id=operation_id,
+                    stage="transfer",
+                )
                 item.status = STATUS_CANCELLED
                 item.detail = default_detail_for_status(STATUS_CANCELLED)
                 self._notify()
                 return False
-            debug("download", f"queue failed id={item.item_id} err={type(exc).__name__}: {exc}")
+            log_event(
+                "download",
+                "download_item_failed",
+                level="error",
+                operation_id=operation_id,
+                stage="transfer",
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
             item.status = STATUS_FAILED
             detail = str(exc).strip() or type(exc).__name__
             if type(exc).__name__ not in detail:
@@ -254,10 +303,27 @@ class DownloadQueue:
             self._notify()
             return False
 
+        outcome = None
         if item.stop_event.is_set() and result == RESULT_STOPPED:
             item.status = STATUS_CANCELLED
             item.detail = default_detail_for_status(STATUS_CANCELLED)
         else:
+            outcome = self._finalize_item(item, result)
+            if outcome is not None and not outcome.ready:
+                # The transfer succeeded but the model is not usable: publishing
+                # it would put a model in the pickers that cannot run.
+                item.status = STATUS_FAILED
+                item.detail = outcome.detail or default_detail_for_status(STATUS_FAILED)
+                log_event(
+                    "download",
+                    "download_item_failed",
+                    level="error",
+                    operation_id=operation_id,
+                    stage="publication",
+                    error=item.detail,
+                )
+                self._notify()
+                return False
             item.status = map_download_result(result)
             if item.status == STATUS_COMPLETE:
                 item.progress = 1.0
@@ -265,4 +331,41 @@ class DownloadQueue:
             if default_detail:
                 item.detail = default_detail
         self._notify()
+        log_event(
+            "download",
+            "download_item_completed",
+            operation_id=operation_id,
+            status=item.status,
+            published=bool(getattr(outcome, "published", False)),
+        )
         return item.status == STATUS_COMPLETE
+
+    def _finalize_item(self, item: DownloadQueueItem, result: str) -> typing.Any:
+        """Publish one logical model as soon as it becomes usable.
+
+        Per item, not per batch: the first of two queued models must reach the
+        pickers while the second is still downloading.
+        """
+        if self.repo is None or result not in (RESULT_COMPLETE, RESULT_EXISTS):
+            return None
+        from core.model_identity import FAMILY_BY_ARCH
+        from core.model_install import finalize_downloaded_model
+
+        family = FAMILY_BY_ARCH.get(item.arch_type or "")
+        if not family:
+            return None
+        try:
+            return finalize_downloaded_model(
+                repo=self.repo,
+                family=family,
+                selection=item.selection,
+                jobs=list(item.jobs),
+                transfer_result=result,
+            )
+        except Exception as exc:  # noqa: BLE001 - a bad item must not kill the queue
+            debug("download", f"finalize failed id={item.item_id}: {exc}")
+            from core.model_install import ModelInstallResult
+
+            return ModelInstallResult(
+                ready=False, published=False, detail=f"could not publish: {exc}"
+            )

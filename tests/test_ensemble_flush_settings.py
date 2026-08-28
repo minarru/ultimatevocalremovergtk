@@ -14,7 +14,14 @@ from core.stem_selection import ExclusiveView, StemSelectionState
 from core.types import ProcessMethod
 
 
-def _resolved_job(*, command: str, path: str, output: str, settings: Settings) -> ResolvedJob:
+def _resolved_job(
+    *,
+    command: str,
+    path: str,
+    output: str,
+    settings: Settings,
+    model_dependencies: typing.Mapping[str, typing.Any] | None = None,
+) -> ResolvedJob:
     planned = PlannedInput(
         path=path,
         naming=OutputNamingContext(
@@ -38,6 +45,7 @@ def _resolved_job(*, command: str, path: str, output: str, settings: Settings) -
         settings_fingerprint=settings_fingerprint(settings),
         device="cpu",
         output=output,
+        model_dependencies=model_dependencies or {},
     )
 
 
@@ -47,6 +55,7 @@ def _minimal_page(*, settings: Settings | None = None) -> typing.Any:
     page = object.__new__(ensemble_window.EnsemblePage)
     page.settings = settings or Settings.defaults()
     page.save_stems = MagicMock()
+    page.vocal_split_row = MagicMock()
     page._persist_selected_models = MagicMock()
     page.input_row = MagicMock()
     page.input_row.paths = ["/tmp/song.wav"]
@@ -70,6 +79,7 @@ class EnsembleFlushSettingsTests(unittest.TestCase):
 
         self.assertEqual(page.settings.process.method, ProcessMethod.ENSEMBLE)
         page._persist_selected_models.assert_called_once()
+        page.vocal_split_row.persist_to_settings.assert_called_once_with(page.settings)
         page.save_stems.persist_to_settings.assert_called_once()
         self.assertEqual(spec.command, "ensemble")
         self.assertEqual(spec.inputs, ("/tmp/song.wav",))
@@ -80,6 +90,7 @@ class EnsembleFlushSettingsTests(unittest.TestCase):
         page.start(MagicMock())
 
         page.save_stems.persist_to_settings.assert_called_once()
+        page.vocal_split_row.persist_to_settings.assert_called_once_with(page.settings)
         page._persist_selected_models.assert_called_once()
         page.window.begin_run.assert_called_once_with(page)
         page.context.runner.start.assert_called_once()
@@ -88,11 +99,13 @@ class EnsembleFlushSettingsTests(unittest.TestCase):
         page = _minimal_page()
         page.input_row.paths = ["/widget/changed.wav"]
         page.output_row.path = "/widget/out"
+        dependencies = {"ensemble.selected_models[0]": Mock(id="mdx:a")}
         plan = _resolved_job(
             command="ensemble",
             path="/in/song.wav",
             output="/plan/out",
             settings=page.settings,
+            model_dependencies=dependencies,
         )
 
         page.start(MagicMock(), plan=plan)
@@ -101,6 +114,7 @@ class EnsembleFlushSettingsTests(unittest.TestCase):
         self.assertEqual(list(args[0]), ["/in/song.wav"])
         self.assertEqual(kwargs["planned"], plan.inputs)
         self.assertEqual(kwargs["planned_output_root"], "/plan/out")
+        self.assertIs(kwargs["model_dependencies"], dependencies)
         page.save_stems.persist_to_settings.assert_called_once()
 
     def test_flush_preserves_stem_focus_from_widget(self) -> None:
@@ -122,7 +136,7 @@ class EnsembleFlushSettingsTests(unittest.TestCase):
 
         page._flush_run_settings()
 
-        self.assertEqual(settings.process.stem_focus, INST_STEM)
+        self.assertEqual(settings.process.stem_focus, "mix.instrumental")
         self.assertEqual(settings.process.method, ProcessMethod.ENSEMBLE)
 
 
@@ -132,8 +146,8 @@ def _minimal_separation_window() -> typing.Any:
     window = MagicMock()
     window.input_row.paths = ["/widget/changed.wav"]
     window.context.try_save_settings = MagicMock(return_value=None)
-    window._start_separation = lambda callbacks, plan=None: (
-        window_mod.MainWindow._start_separation(window, callbacks, plan=plan)
+    window._start_separation = lambda callbacks, plan=None: window_mod.MainWindow._start_separation(
+        window, callbacks, plan=plan
     )
     return window
 
@@ -143,11 +157,13 @@ class SeparationPlannedStartTests(unittest.TestCase):
         from ui.window import _SeparationTarget
 
         window = _minimal_separation_window()
+        dependencies = {"mdx.model": Mock(id="mdx:primary")}
         plan = _resolved_job(
             command="separate",
             path="/in/song.wav",
             output="/plan/out",
             settings=Settings.defaults(),
+            model_dependencies=dependencies,
         )
         target = _SeparationTarget(window)
 
@@ -157,6 +173,7 @@ class SeparationPlannedStartTests(unittest.TestCase):
         self.assertEqual(list(args[0]), ["/in/song.wav"])
         self.assertEqual(kwargs["planned"], plan.inputs)
         self.assertEqual(kwargs["planned_output_root"], "/plan/out")
+        self.assertIs(kwargs["model_dependencies"], dependencies)
         window.begin_run.assert_called_once_with(window._separation_target)
 
     def test_unplanned_start_still_reads_widget_paths(self) -> None:

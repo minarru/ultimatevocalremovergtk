@@ -13,8 +13,13 @@ model is ever renamed into something misleading.
 
 from __future__ import annotations
 
+import json
 import re
-from typing import Tuple
+from pathlib import Path
+from types import MappingProxyType
+from typing import Any, Mapping, Tuple
+
+from .model_identity import parse_stored_model_id
 
 #: Rendered between the family and the descriptive title.
 TITLE_SEPARATOR = " — "
@@ -59,11 +64,9 @@ _FAMILY_PATTERNS = (
 #: ``by <author>`` at the end of a label, in any of the four dialects — or the
 #: canonical ``· <author>`` this function itself emits, which is what makes
 #: ``canonical_display_name`` idempotent.
-_AUTHOR_RE = re.compile(
-    r"(?:\s+by[\s_-]+|\s*\u00b7\s*)(?P<author>[^|\u00b7]+?)\s*$", re.IGNORECASE
-)
+_AUTHOR_RE = re.compile(r"(?:\s+by[\s_-]+|\s*\u00b7\s*)(?P<author>[^|\u00b7]+?)\s*$", re.IGNORECASE)
 
-_DEMUCS_RE = re.compile(r"^Demucs (v\d+): (.+)$", re.IGNORECASE)
+_DEMUCS_RE = re.compile(r"^Demucs (v\d+)(?::| —) (.+)$", re.IGNORECASE)
 
 #: mvsepless HyperACE rows append this parenthetical; crop it for display.
 _HYPERACE_FINETUNE_PAREN_RE = re.compile(
@@ -71,10 +74,65 @@ _HYPERACE_FINETUNE_PAREN_RE = re.compile(
     re.IGNORECASE,
 )
 
+_MANIFEST_PATH = Path(__file__).resolve().parent.parent / "bundled" / "model_display_manifest.json"
+_STEM_COUNT_RE = re.compile(r"(?<!\()\b(?P<count>\d+)[\s-]+stems?\b", re.IGNORECASE)
+_TOKEN_REPLACEMENTS = (
+    (re.compile(r"\binst(?:rumental)?[-\s]?voc(?:als)?\b", re.IGNORECASE), "Instrumental/Vocals"),
+    (re.compile(r"\binst\b", re.IGNORECASE), "Instrumental"),
+    (re.compile(r"\bvoc\b", re.IGNORECASE), "Vocals"),
+    (re.compile(r"\bvox\b", re.IGNORECASE), "Vocals"),
+    (re.compile(r"\bvocal\b", re.IGNORECASE), "Vocals"),
+    (re.compile(r"\bft\b", re.IGNORECASE), "Fine-Tuned"),
+    (re.compile(r"\bhigh[\s_-]+quality\b", re.IGNORECASE), "HQ"),
+    (re.compile(r"\bhq\b", re.IGNORECASE), "HQ"),
+    (re.compile(r"\bsdr\b", re.IGNORECASE), "SDR"),
+    (re.compile(r"\bfft\b", re.IGNORECASE), "FFT"),
+    (re.compile(r"\b8k\b", re.IGNORECASE), "8K"),
+    (re.compile(r"\b16k\b", re.IGNORECASE), "16 kHz"),
+    (re.compile(r"\bde[\s_-]?verb\b|\bdereverb\b", re.IGNORECASE), "DeReverb"),
+    (re.compile(r"\bdenoise\b", re.IGNORECASE), "DeNoise"),
+    (re.compile(r"\bdebleed\b", re.IGNORECASE), "DeBleed"),
+    (re.compile(r"\bspeechsep\b", re.IGNORECASE), "SpeechSep"),
+    (re.compile(r"\bchoirsep\b", re.IGNORECASE), "ChoirSep"),
+    (re.compile(r"\bdrumsep\b", re.IGNORECASE), "DrumSep"),
+    (re.compile(r"\bmale[\s_-]+female\b", re.IGNORECASE), "Male/Female"),
+    (
+        re.compile(r"\b(beta|preview|full|final)\b", re.IGNORECASE),
+        lambda match: match.group(1).title(),
+    ),
+    (re.compile(r"\bV(?=\d+(?:\.\d+)?\b)", re.IGNORECASE), "v"),
+)
+_DEMUCS_BACKEND_ALIASES = {
+    "demucs": "Time-Domain",
+    "demucs_extra": "Time-Domain Extra",
+    "light": "Light",
+    "light_extra": "Light Extra",
+    "tasnet": "Conv-TasNet",
+    "tasnet_extra": "Conv-TasNet Extra",
+    "demucs48_hq": "Time-Domain 48 kHz HQ",
+    "demucs_unittest": "Unit Test",
+    "mdx": "MDX",
+    "mdx_extra": "MDX Extra",
+    "mdx_extra_q": "MDX Extra Quantized",
+    "mdx_q": "MDX Quantized",
+    "repro_mdx_a": "Repro MDX A",
+    "repro_mdx_a_hybrid_only": "Repro MDX A Hybrid Only",
+    "repro_mdx_a_time_only": "Repro MDX A Time-Domain Only",
+    "uvr model": "UVR Model (2 Stems)",
+    "hdemucs_mmi": "Hybrid Demucs MMI",
+    "htdemucs": "Hybrid Transformer",
+    "htdemucs_6s": "Hybrid Transformer (6 Stems)",
+    "htdemucs_ft": "Hybrid Transformer Fine-Tuned",
+}
+
 
 #: Category prefixes that themselves declare a family. ``Roformer Model: `` is
 #: absent on purpose: it does not say *which* Roformer, and the remainder does.
 _PREFIX_FAMILIES = {
+    "VR Arch Single Model v5: ": "VR v5",
+    "VR Arch Single Model v4: ": "VR v4",
+    "VR Arch Single Model ": "VR",
+    "VR Arch ": "VR",
     "SCnet: ": "SCNet",
     "MDX23C Model VIP: ": "MDX23C",
     "MDX23 Model VIP: ": "MDX23C",
@@ -91,6 +149,71 @@ _PREFIX_FAMILIES = {
 }
 
 
+def load_model_display_manifest(path: str | Path = _MANIFEST_PATH) -> Mapping[str, Any]:
+    """Load and validate the exact-ID presentation manifest.
+
+    The manifest is deliberately data-only: it may improve a title, but it
+    never supplies an identity lookup or accepts a display string as an ID.
+    """
+    manifest_path = Path(path)
+    try:
+        raw = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise ValueError(f"invalid model display manifest: {manifest_path}") from error
+    if not isinstance(raw, dict):
+        raise ValueError("model display manifest must be a JSON object")
+    if raw.get("schema_version") != 1:
+        raise ValueError("unsupported model display manifest schema_version")
+
+    validated: dict[str, dict[str, Any]] = {}
+    for section in ("model_aliases", "author_aliases", "waivers"):
+        value = raw.get(section)
+        if not isinstance(value, dict):
+            raise ValueError(f"model display manifest {section} must be an object")
+        validated[section] = value
+
+    aliases: dict[str, str] = {}
+    for model_id, display in validated["model_aliases"].items():
+        if not isinstance(display, str) or not display.strip():
+            raise ValueError("model display aliases must map non-empty strings")
+        aliases[parse_stored_model_id(model_id).value] = display.strip()
+
+    authors: dict[str, str] = {}
+    for author, display in validated["author_aliases"].items():
+        if not isinstance(display, str) or not author.strip() or not display.strip():
+            raise ValueError("author aliases must map non-empty strings")
+        authors[author.casefold()] = display.strip()
+
+    waivers: dict[str, Mapping[str, str]] = {}
+    for model_id, flags in validated["waivers"].items():
+        exact_id = parse_stored_model_id(str(model_id)).value
+        if not isinstance(flags, dict) or not flags:
+            raise ValueError("model display waivers must contain flag reasons")
+        reasons: dict[str, str] = {}
+        for flag, reason in flags.items():
+            if (
+                not isinstance(flag, str)
+                or not flag.strip()
+                or not isinstance(reason, str)
+                or not reason.strip()
+            ):
+                raise ValueError("model display waiver flags and reasons must be non-empty strings")
+            reasons[flag] = reason.strip()
+        waivers[exact_id] = MappingProxyType(reasons)
+
+    return MappingProxyType(
+        {
+            "schema_version": 1,
+            "model_aliases": MappingProxyType(aliases),
+            "author_aliases": MappingProxyType(authors),
+            "waivers": MappingProxyType(waivers),
+        }
+    )
+
+
+_DISPLAY_MANIFEST = load_model_display_manifest()
+
+
 def split_catalogue_prefix(label: str) -> Tuple[str, str]:
     """Return ``(family_from_prefix, remainder)`` for a catalogue label.
 
@@ -103,7 +226,7 @@ def split_catalogue_prefix(label: str) -> Tuple[str, str]:
     for prefix in _CATEGORY_PREFIXES:
         if text.lower().startswith(prefix.lower()):
             family = _PREFIX_FAMILIES.get(prefix, "")
-            text = text[len(prefix):].strip()
+            text = text[len(prefix) :].strip()
             break
     if text.lower().endswith(".ckpt"):
         text = text[: -len(".ckpt")].strip()
@@ -127,7 +250,7 @@ def canonical_family(text: str) -> str:
 def _strip_hyperace_finetune_paren(text: str) -> str:
     """Drop the mvsepless HyperACE ``(finetuned anvuew vocal model)`` note."""
     cleaned = _HYPERACE_FINETUNE_PAREN_RE.sub(" ", text)
-    return re.sub(r"\s+", " ", cleaned).strip(" -—\u2014")
+    return re.sub(r"^[\s—-]+|[\s—-]+$", "", re.sub(r"\s+", " ", cleaned))
 
 
 def canonical_display_name(label: str) -> str:
@@ -142,7 +265,7 @@ def canonical_display_name(label: str) -> str:
 
     match = _DEMUCS_RE.match(text)
     if match:
-        return f"{match.group(1)}{TITLE_SEPARATOR}{match.group(2)}"
+        return f"Demucs {match.group(1)}{TITLE_SEPARATOR}{match.group(2)}"
 
     author = ""
     author_match = _AUTHOR_RE.search(text)
@@ -191,3 +314,98 @@ def _join(family: str, remainder: str, author: str) -> str:
     )
     title = f"{family}{TITLE_SEPARATOR}{text}" if text else family
     return f"{title}{AUTHOR_SEPARATOR}{author}" if author else title
+
+
+def _project_source_label(source_label: str) -> str:
+    """Apply only deterministic presentation cleanup to one exact source label."""
+    display = canonical_display_name(source_label)
+    if not display:
+        return ""
+
+    title, separator, author = display.partition(AUTHOR_SEPARATOR)
+    title = re.sub(r"^BS\s+PolarFormer\b", "BandSplit PolarFormer", title, flags=re.IGNORECASE)
+    if title.startswith("BandSplit PolarFormer ") and TITLE_SEPARATOR not in title:
+        title = title.replace(
+            "BandSplit PolarFormer ", f"BandSplit PolarFormer{TITLE_SEPARATOR}", 1
+        )
+    title = re.sub(r"^(MDX-Net — )UVR-MDX-NET[_-]?", r"\1UVR ", title)
+    if title.startswith("MDX-Net — UVR"):
+        title = title.replace("_", " ")
+    for pattern, replacement in _TOKEN_REPLACEMENTS:
+        title = pattern.sub(replacement, title)
+    title = _STEM_COUNT_RE.sub(r"(\g<count> Stems)", title)
+    family, family_separator, remainder = title.partition(TITLE_SEPARATOR)
+    if family_separator:
+        repeated_family = re.compile(
+            rf"^(?P<prefix>(?:\(\d+ Stems\)\s+)?(?:Huge\s+)?)"
+            rf"{re.escape(family)}\b[\s_-]*",
+            re.IGNORECASE,
+        )
+        remainder = repeated_family.sub(r"\g<prefix>", remainder)
+        count_match = re.search(r"\((?P<count>\d+) Stems\)", remainder)
+        if count_match:
+            stem_count = count_match.group(0)
+            remainder = re.sub(r"\(\d+ Stems\)", " ", remainder, count=1)
+            remainder = re.sub(
+                r"\b(?P<version>v\d+(?:\.\d+)?)\s+(?P<size>Small|Large|XL)\b",
+                r"\g<size> \g<version>",
+                remainder,
+                flags=re.IGNORECASE,
+            )
+            remainder = re.sub(r"\s+", " ", remainder).strip(" -—")
+            title = (
+                f"{family}{TITLE_SEPARATOR}{remainder} {stem_count}"
+                if remainder
+                else f"{family} {stem_count}"
+            )
+        else:
+            title = f"{family}{TITLE_SEPARATOR}{remainder}"
+    version, demucs_separator, backend = title.partition(TITLE_SEPARATOR)
+    if demucs_separator and re.fullmatch(r"Demucs v\d+", version, re.IGNORECASE):
+        title = (
+            f"{version}{TITLE_SEPARATOR}{_DEMUCS_BACKEND_ALIASES.get(backend.casefold(), backend)}"
+        )
+    title = re.sub(r"\s+", " ", title).strip()
+
+    if not separator:
+        return title
+    author = re.sub(r"(\()\s*sdr\b", r"\1SDR", author, flags=re.IGNORECASE)
+    author = re.sub(r"\s*\(\s*only weights\s*\)\s*$", "", author, flags=re.IGNORECASE)
+    canonical_components: list[str] = []
+    for component in re.split(r"\s*&\s*", author.strip()):
+        token = component.strip()
+        canonical_components.append(
+            _DISPLAY_MANIFEST["author_aliases"].get(token.casefold(), token)
+        )
+    canonical_author = " & ".join(component for component in canonical_components if component)
+    return f"{title}{AUTHOR_SEPARATOR}{canonical_author}" if canonical_author else title
+
+
+def project_model_display(
+    model_id: str,
+    *,
+    source_label: str = "",
+    explicit_display: str = "",
+) -> str:
+    """Return the human display label for one exact canonical model ID.
+
+    ``model_id`` is validated but never inferred from either presentation
+    argument.  Precedence is trusted override, exact manifest alias, exact
+    source label, then a family-labelled raw basename for VR/Demucs or the raw
+    basename for another family.
+    """
+    exact_id = parse_stored_model_id(model_id)
+    override = str(explicit_display or "").strip()
+    if override:
+        return override
+    alias = _DISPLAY_MANIFEST["model_aliases"].get(exact_id.value)
+    if alias:
+        return alias
+    source = _project_source_label(str(source_label or ""))
+    if source:
+        return source
+    if exact_id.family == "vr":
+        return f"VR{TITLE_SEPARATOR}{exact_id.basename}"
+    if exact_id.family == "demucs":
+        return f"Demucs{TITLE_SEPARATOR}{exact_id.basename}"
+    return exact_id.basename

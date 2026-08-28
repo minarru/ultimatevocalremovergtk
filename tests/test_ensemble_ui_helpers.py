@@ -26,7 +26,11 @@ from core.ensemble_algorithms import (
     preset_for_pair,
     wav_ensemble_subtitle,
 )
-from core.stems import EnsemblePair, ui_label
+from tests.private_gtk import require_private_gtk
+
+
+def setUpModule() -> None:
+    require_private_gtk()
 
 
 class PresetMappingTests(unittest.TestCase):
@@ -80,7 +84,7 @@ class SummaryAndBlurbTests(unittest.TestCase):
     def test_incomplete_summary(self) -> None:
         text = ensemble_options_summary(
             stem_chosen=False,
-            main_stem=ui_label(EnsemblePair.CHOOSE),
+            main_stem="Choose Stem Pair",
             primary_stem=None,
             secondary_stem=None,
             primary_algo=MAX_SPEC,
@@ -89,12 +93,11 @@ class SummaryAndBlurbTests(unittest.TestCase):
             multi_stem=False,
         )
         self.assertIn("stem pair", text.casefold())
-        self.assertEqual(ui_label(EnsemblePair.CHOOSE), "Choose Stem Pair")
 
     def test_dual_ready_summary(self) -> None:
         text = ensemble_options_summary(
             stem_chosen=True,
-            main_stem=ui_label(EnsemblePair.VOCALS_INSTRUMENTAL),
+            main_stem="Vocals/Instrumental",
             primary_stem="Vocals",
             secondary_stem="Instrumental",
             primary_algo=MAX_SPEC,
@@ -105,9 +108,6 @@ class SummaryAndBlurbTests(unittest.TestCase):
         self.assertEqual(
             text,
             "Vocals ← Max Spec · Instrumental ← Min Spec · 3 models",
-        )
-        self.assertEqual(
-            ui_label(EnsemblePair.VOCALS_INSTRUMENTAL), "Vocals/Instrumental"
         )
 
     def test_algorithm_blurb_and_wav_subtitle(self) -> None:
@@ -147,18 +147,95 @@ class MainStemChangedOrderTests(unittest.TestCase):
         page._update_ensemble_options_summary = mock.Mock(
             side_effect=lambda: order.append("update_summary")
         )
-        page._selected_model_tags = mock.Mock(return_value=["tag-a"])
+        page._model_members_for_rebuild = mock.Mock(return_value=["tag-a"])
 
-        with mock.patch.object(
-            ensemble_window,
-            "get_combo_value",
-            return_value=EnsemblePair.VOCALS_INSTRUMENTAL.value,
-        ), mock.patch.object(ensemble_window, "set_combo_value"):
+        with (
+            mock.patch.object(
+                ensemble_window,
+                "get_combo_value",
+                return_value="pair.vocals_instrumental",
+            ),
+            mock.patch.object(ensemble_window, "set_combo_value"),
+        ):
             page._on_main_stem_changed()
 
         self.assertEqual(
             order,
             ["refresh_type", "rebuild_model_list", "rebuild_stem_toggles", "update_summary"],
+        )
+
+
+class CenterSideReadinessTests(unittest.TestCase):
+    def test_current_center_side_id_is_ready_with_two_selected_models(self) -> None:
+        """The current spatial pair reaches the normal ensemble readiness path."""
+        from core.settings import Settings
+        from ui.ensemble.window import EnsemblePage
+
+        settings = Settings.defaults()
+        settings.ensemble.main_stem = "pair.center_side"
+        settings.ensemble.selected_models = [
+            "mdx:bs_mid_side1_gilliaaan",
+            "mdx:bs_mid_side2_gilliaaan",
+        ]
+        page = object.__new__(EnsemblePage)
+        page.settings = settings
+        page._effective_selected_models = lambda: settings.ensemble.selected_models
+
+        self.assertEqual(page._ensemble_pair(), "pair.center_side")
+        self.assertIsNone(page._config_blocked_reason())
+
+    def test_splitter_refresh_repick_blocks_ensemble_readiness(self) -> None:
+        from unittest import mock
+
+        from core.settings import Settings
+        from ui.ensemble.window import EnsemblePage
+
+        settings = Settings.defaults()
+        settings.ensemble.main_stem = "pair.center_side"
+        settings.ensemble.selected_models = ["mdx:center", "mdx:side"]
+        page = object.__new__(EnsemblePage)
+        page.settings = settings
+        page._effective_selected_models = lambda: settings.ensemble.selected_models
+        page.vocal_split_row = mock.MagicMock()
+        page.vocal_split_row.blocked_reason.return_value = (
+            "Choose a vocal splitter model again after the model refresh"
+        )
+
+        self.assertEqual(
+            page._config_blocked_reason(),
+            "Choose a vocal splitter model again after the model refresh",
+        )
+
+
+class InstalledPairChoiceTests(unittest.TestCase):
+    def test_only_choices_with_two_distinct_installed_contributors_are_listed(self) -> None:
+        from ui.ensemble.window import installed_ensemble_pair_choices
+
+        class _Repo:
+            def ensemble_model_list(self, _settings: object, pair_id: str) -> list[str]:
+                return {
+                    "pair.vocals_instrumental": ["mdx:a", "vr:b"],
+                    "pair.karaoke": ["mdx:k"],
+                    "pair.backing_vocals": ["vr:bve", "mdx:bve"],
+                    "pair.center_side": ["mdx:center", "mdx:side", "mdx:center"],
+                    "mode.four_stem": ["demucs:a"],
+                    "mode.multi_stem": ["demucs:a", "mdx:a"],
+                }.get(pair_id, [])
+
+        choices = installed_ensemble_pair_choices(_Repo(), object())
+
+        self.assertEqual(
+            choices,
+            [
+                ("", "Choose Stem Pair"),
+                ("pair.vocals_instrumental", "Vocals/Instrumental"),
+                (
+                    "pair.backing_vocals",
+                    "Backing Vocals/Instrumental with Lead Vocals",
+                ),
+                ("pair.center_side", "Center/Side"),
+                ("mode.multi_stem", "Multi-stem Ensemble"),
+            ],
         )
 
 
@@ -182,15 +259,13 @@ class RebuildStemOnlyTogglesConfidenceTests(unittest.TestCase):
         page.save_stems = save_stems
         page.stems_group = mock.Mock()
         page._ensemble_stem_pair = mock.Mock(return_value=("Vocals", "Instrumental"))
-        page._ensemble_pair = mock.Mock(
-            return_value=mock.Mock(is_multi_or_four=mock.Mock(return_value=False))
-        )
+        page._ensemble_is_multi_or_four = mock.Mock(return_value=False)
+        page._ensemble_pair_routes = mock.Mock(return_value=())
         page._update_stems_group_metadata = mock.Mock()
         return page, save_stems
 
     def test_passes_karaoke_and_bv_confidence_from_the_resolved_model(self) -> None:
         from types import SimpleNamespace
-
         from unittest import mock
 
         page, save_stems = self._page()

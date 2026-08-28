@@ -1,12 +1,17 @@
+import os
+import typing
 import unittest
 
 from core.export_naming import (
+    build_output_naming_context,
     format_stem_basename,
     format_track_base,
     preview_output_name,
     sanitize_filename_component,
 )
 from core.settings import Settings
+from core.stem_roles import StemId, StemRoleId
+from core.stems import StemRoute
 
 
 class SanitizeTests(unittest.TestCase):
@@ -54,8 +59,52 @@ class FormatTrackBaseTests(unittest.TestCase):
         self.assertEqual(base, "1-song Ensembled")
         self.assertNotIn("UVR", base)
 
+    def test_add_model_name_does_not_enable_an_unrequested_ensemble_label(self):
+        settings = Settings.defaults()
+        settings.process.add_model_name = True
+
+        naming = build_output_naming_context(
+            settings,
+            "/in/song.wav",
+            export_path="/out",
+            ensemble_label="Ensembled",
+            force_ensemble_label=False,
+        )
+
+        self.assertEqual(naming.track_base, "song")
+
+    def test_requested_ensemble_label_is_kept_when_model_names_are_disabled(self):
+        settings = Settings.defaults()
+        settings.process.add_model_name = False
+
+        naming = build_output_naming_context(
+            settings,
+            "/in/song.wav",
+            export_path="/out",
+            ensemble_label="Ensembled",
+            force_ensemble_label=True,
+        )
+
+        self.assertEqual(naming.track_base, "song Ensembled")
+
 
 class FormatStemBasenameTests(unittest.TestCase):
+    def test_model_test_and_normal_export_share_the_route_filename_label(self):
+        route = StemRoute(
+            StemId("other"),
+            StemRoleId("mix.instrumental_with_backing_vocals"),
+            label="Instrumental with Backing Vocals",
+            filename_tag="Instrumental with Backing Vocals",
+        )
+        normal = format_stem_basename("song", route.filename_tag)
+        model_test = format_stem_basename("song Model Display", route.filename_tag)
+
+        self.assertEqual(normal, "song (Instrumental with Backing Vocals)")
+        self.assertEqual(
+            model_test,
+            "song Model Display (Instrumental with Backing Vocals)",
+        )
+
     def test_space_before_stem_parens(self):
         self.assertEqual(format_stem_basename("song", "Vocals"), "song (Vocals)")
 
@@ -105,19 +154,73 @@ class PreviewOutputNameTests(unittest.TestCase):
                 "save_format": "FLAC",
             }
         )
-        name = preview_output_name(
-            settings
-        )
+        name = preview_output_name(settings)
         self.assertEqual(name, "1710000000 song UVR-MDX-Net (Vocals).flac")
 
     def test_multi_file_preview(self):
         self.assertEqual(
-            preview_output_name(
-                Settings.from_flat({"save_format": "WAV"}), multi_file=True
-            ),
+            preview_output_name(Settings.from_flat({"save_format": "WAV"}), multi_file=True),
             "1-song (Vocals).wav",
         )
 
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EnrichedModelLabelNamingTests(unittest.TestCase):
+    """Filenames and model folders use `ModelRecord.display`, sanitized.
+
+    Sanitization touches filesystem components only. It must never reach the
+    canonical id, backend name or artifacts, which stay exactly as resolved.
+    """
+
+    _FRIENDLY = "MelBand Roformer — Karaoke · becruily"
+
+    def _naming(self, **overrides: typing.Any):
+
+        settings = Settings.defaults()
+        settings.process.add_model_name = True
+        for key, value in overrides.pop("settings", {}).items():
+            setattr(settings.process, key, value)
+        return build_output_naming_context(
+            settings,
+            "/music/song.wav",
+            export_path="/out",
+            model_label=overrides.pop("model_label", self._FRIENDLY),
+            **overrides,
+        )
+
+    def test_add_model_name_uses_the_friendly_display(self) -> None:
+        naming = self._naming()
+
+        self.assertEqual(naming.track_base, f"song {self._FRIENDLY}")
+        self.assertEqual(
+            format_stem_basename(naming.track_base, "Vocals"),
+            f"song {self._FRIENDLY} (Vocals)",
+        )
+
+    def test_create_model_folder_uses_the_same_sanitized_display(self) -> None:
+        naming = self._naming(settings={"create_model_folder": True})
+
+        self.assertEqual(
+            naming.export_directory,
+            os.path.join("/out", sanitize_filename_component(self._FRIENDLY), "song"),
+        )
+
+    def test_unsafe_label_is_sanitized_only_in_path_components(self) -> None:
+        unsafe = "Evil/Model\\Name: v2"
+        naming = self._naming(model_label=unsafe, settings={"create_model_folder": True})
+
+        self.assertNotIn("/", os.path.basename(os.path.dirname(naming.export_directory)))
+        self.assertEqual(
+            os.path.dirname(naming.export_directory),
+            os.path.join("/out", "Evil Model Name v2"),
+        )
+        # The label itself is carried verbatim; only the path component changed.
+        self.assertEqual(naming.model_label, unsafe)
+
+    def test_unknown_custom_model_appends_its_raw_basename(self) -> None:
+        naming = self._naming(model_label="my_private_model")
+
+        self.assertEqual(naming.track_base, "song my_private_model")

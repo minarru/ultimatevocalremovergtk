@@ -10,8 +10,8 @@ The window builds a ``Gtk.Stack`` from :data:`METHOD_VIEWS` and a "Process
 method" ``Adw.ComboRow`` to choose between them, so additional method panels can
 be registered by appending to the registry without touching the window assembly.
 """
-import typing
 
+import typing
 from typing import Callable, List, Optional, Type
 
 from gi.repository import Adw, Gio, Gtk
@@ -21,10 +21,8 @@ from bundled.constants import (
     CHOOSE_MODEL,
     CHOOSE_MODEL_HELP,
     CLEAR_CACHE_HELP,
-    DEMUCS_ARCH_TYPE,
     DRUM_STEM,
     INST_STEM,
-    MDX_ARCH_TYPE,
     NO_MODEL,
     OTHER_STEM,
     PRE_PROC_MODEL_ACTIVATE_HELP,
@@ -34,14 +32,27 @@ from bundled.constants import (
     SECONDARY_MODEL_ACTIVATE_HELP,
     SECONDARY_MODEL_HELP,
     SECONDARY_MODEL_SCALE_HELP,
-    SECONDARY_STEM,
     VOCAL_STEM,
-    VR_ARCH_TYPE,
 )
+from core.model_display import map_basenames_to_display
+from core.model_identity import FAMILY_BY_ARCH, ModelIdentityService, parse_stored_model_id
+from core.model_scores import parse_sdr_score
+from core.model_stem_semantics import recommended_export_note, stem_display_overrides
+from core.run_estimate import compose_stem_group_tooltip, estimate_workload, format_workload_line
 from core.settings import Settings
-from core.stems import EnsemblePair, StemBucket, model_stem_count, ui_label
+from core.stems import StemBucket, logical_secondary_route, model_stem_count, model_stem_routes
 
+from ..help_text import RUN_WORKLOAD_HINT
 from ..hints import HelpHintManager
+from ..option_summaries import (
+    four_stem_secondaries_apply,
+    preproc_summary,
+    secondary_models_summary,
+    secondary_stem_pair_label,
+)
+from ..settings_bind import get_flat, set_flat, setting_for_combo
+from ..widget_state import fetch, stash
+from ..widgets.lazy_populate import LazyPopulator
 from ..widgets.rows import (
     get_combo_value,
     get_scale_row_float,
@@ -50,42 +61,38 @@ from ..widgets.rows import (
     make_switch_row,
     set_combo_tag_values,
     set_combo_value,
-    set_combo_values,
     set_scale_row_float,
     set_scale_row_value,
     use_wrapping_list,
 )
-from core.model_display import (
-    format_tag_title,
-    map_basenames_to_display,
-    resolve_model_basename,
-)
-from ..widgets.lazy_populate import LazyPopulator
 from ..widgets.stem_only import SaveStemsSection
-from core.model_stem_semantics import recommended_export_note, stem_display_overrides
-from core.run_estimate import compose_stem_group_tooltip, estimate_workload, format_workload_line
-from ..help_text import RUN_WORKLOAD_HINT
-from ..option_summaries import (
-    four_stem_secondaries_apply,
-    preproc_summary,
-    secondary_models_summary,
-)
-from ..settings_bind import get_flat, set_flat, setting_for_combo
-from ..widget_state import fetch, stash
 
 _DEFAULT_SETTINGS = Settings.defaults()
 
-# Per-stem secondary-model slots: (settings-key slot, EnsemblePair, primary stem,
-# secondary stem) used to build the four secondary-model selectors UVR exposes.
+# Per-stem secondary-model slots keep only backend eligibility and native
+# arguments. Presentation comes from ``secondary_stem_pair_label``'s exact
+# manifest pair/role projection.
 _SECONDARY_SLOTS = (
-    ("voc_inst", EnsemblePair.VOCALS_INSTRUMENTAL, VOCAL_STEM, INST_STEM),
-    ("other", EnsemblePair.OTHER, OTHER_STEM, "No Other"),
-    ("bass", EnsemblePair.BASS, BASS_STEM, "No Bass"),
-    ("drums", EnsemblePair.DRUMS, DRUM_STEM, "No Drums"),
+    (
+        "voc_inst",
+        frozenset({StemBucket.VOCALS, StemBucket.INSTRUMENTAL}),
+        VOCAL_STEM,
+        INST_STEM,
+    ),
+    ("other", frozenset({StemBucket.OTHER}), OTHER_STEM, "No Other"),
+    ("bass", frozenset({StemBucket.BASS}), BASS_STEM, "No Bass"),
+    ("drums", frozenset({StemBucket.DRUMS}), DRUM_STEM, "No Drums"),
 )
 
 
-def apply_name_mapper(names: typing.Any, name_mapper: typing.Any, *, catalogue_index: typing.Any=None, arch: typing.Any=None, repo: typing.Any=None) -> List[str]:
+def apply_name_mapper(
+    names: typing.Any,
+    name_mapper: typing.Any,
+    *,
+    catalogue_index: typing.Any = None,
+    arch: typing.Any = None,
+    repo: typing.Any = None,
+) -> List[str]:
     """Map on-disk basenames to runtime display labels."""
     if arch and repo:
         return map_basenames_to_display(names, arch, repo)
@@ -97,23 +104,6 @@ def apply_name_mapper(names: typing.Any, name_mapper: typing.Any, *, catalogue_i
         display_name_for_basename(name, name_mapper, catalogue_index=catalogue_index)
         for name in names
     ]
-
-
-def current_display_for_stored_model(stored: typing.Any, basenames: typing.Any, arch: typing.Any, repo: typing.Any) -> str:
-    """Resolve a stored picker value to the current runtime display label.
-
-    Accepts an on-disk basename or an older mapper/catalogue alias and returns
-    the catalogue-first display name when the model is still installed.
-    """
-    if not stored:
-        return stored
-    if stored in basenames:
-        candidate = stored
-    else:
-        candidate = resolve_model_basename(arch, stored, repo)
-    if candidate in basenames:
-        return map_basenames_to_display([candidate], arch, repo)[0]
-    return stored
 
 
 class MethodView:
@@ -156,6 +146,7 @@ class MethodView:
         self._switch_rows = {}
         self._spin_rows = {}
         self._model_combos = []
+        self._model_write_gated = False
         self._secondary_slot_rows = {}
         self._switch_dependent_appliers = []
         self.hints = HelpHintManager()
@@ -173,11 +164,20 @@ class MethodView:
         self.group = Adw.PreferencesGroup()
         self.groups.append(self.group)
 
-        self.model_row = make_combo_row("Model", [CHOOSE_MODEL], icon_name="applications-science-symbolic")
+        self.model_row = make_combo_row(
+            "Model", [CHOOSE_MODEL], icon_name="applications-science-symbolic"
+        )
         use_wrapping_list(self.model_row)
         self.model_row.connect("notify::selected", self._on_model_changed)
         self.group.add(self.model_row)
         self.hints.register(self.model_row, CHOOSE_MODEL_HELP)
+
+        # A stored value the picker cannot select stays on disk verbatim (the
+        # cutover never writes Choose/No Model over it). Without this banner the
+        # page just shows "Choose Model" and the user has no way to tell an
+        # unset picker from a preserved illegal or uninstalled one.
+        self.stored_model_banner = Adw.Banner(revealed=False)
+        self.group.add(self.stored_model_banner)
 
         self.build_options(self.group)
 
@@ -198,6 +198,7 @@ class MethodView:
         self._resolved_primary_stem = None
         self._resolved_secondary_stem = None
         self._resolved_model = None
+        self._resolved_routes = ()
         self.save_stems.attach_to(self.stem_group)
         self.hints.register(self.stem_group, SAVE_STEM_ONLY_HELP)
         self.build_stem_options(self.stem_group)
@@ -211,7 +212,11 @@ class MethodView:
 
     def has_any_models(self) -> bool:
         """Whether any model is installed for this method (excludes the picker placeholder)."""
-        return bool(self.list_models())
+        family = FAMILY_BY_ARCH[self.method_key_for_resolution]
+        return any(
+            record.installed and record.family == family
+            for record in ModelIdentityService(self.context.repo).records()
+        )
 
     def name_mapper(self):
         return None
@@ -219,38 +224,78 @@ class MethodView:
     def populate_models(self) -> None:
         arch = self.method_key_for_resolution
         repo = self.context.repo
-        basenames = list(self.list_models())
-        names = map_basenames_to_display(basenames, arch, repo)
-        from core.model_scores import sort_labels_by_sdr
-
-        sorted_names = sort_labels_by_sdr(
-            names,
-            score_texts=[(display, basename) for display, basename in zip(names, basenames)],
-        )
-        basename_by_display = {display: basename for display, basename in zip(names, basenames)}
-        from core.model_identity import FAMILY_BY_ARCH, ModelId
-
         family = FAMILY_BY_ARCH[arch]
-        items = [
-            (str(ModelId(family, basename_by_display[name])), name)
-            for name in sorted_names
-        ]
+        installed = tuple(
+            record for record in ModelIdentityService(repo).records() if record.installed
+        )
+        records = [record for record in installed if record.family == family]
+
+        def sort_key(record: typing.Any) -> tuple[int, float, str, str]:
+            score = parse_sdr_score(record.display, record.basename)
+            return (
+                1 if score is None else 0,
+                0.0 if score is None else -score,
+                record.display.casefold(),
+                record.id,
+            )
+
+        records.sort(key=sort_key)
+        items = [(record.id, record.display) for record in records]
         set_combo_tag_values(self.model_row, [CHOOSE_MODEL, *items])
         stored = get_flat(self.settings, self.model_key, CHOOSE_MODEL)
-        if stored not in (CHOOSE_MODEL, NO_MODEL, None):
+        ids = {item[0] for item in items}
+        gate_survives_refresh = bool(
+            getattr(self, "_model_write_gated", False)
+            and stored == getattr(self, "_model_gated_value", None)
+        )
+        if not gate_survives_refresh:
+            self._model_write_gated = False
+            self._model_gated_value = None
+        if gate_survives_refresh:
+            if isinstance(stored, str) and stored in ids:
+                self.stored_model_banner.set_title(
+                    f"Saved model “{stored}” is now available; pick it to select it."
+                )
+                self.stored_model_banner.set_revealed(True)
+            set_combo_value(self.model_row, CHOOSE_MODEL)
+            return
+        stored_is_item = isinstance(stored, str) and stored in ids
+        if stored not in (CHOOSE_MODEL, NO_MODEL, None, "") and not stored_is_item:
             try:
-                from core.model_identity import ModelIdentityService
-
-                stored = ModelIdentityService(repo).resolve(
-                    str(stored), family=family
-                ).id
-                set_flat(self.settings, self.model_key, stored)
+                parse_stored_model_id(str(stored))
             except ValueError:
-                pass
+                self._gate_stored_model(stored, "is not a canonical model ID (family:basename)")
+                return
+            present = any(record.id == stored for record in installed)
+            if not present:
+                self._gate_stored_model(stored, "is not installed")
+                return
+            # A canonical ID installed under another family is likewise only
+            # a visual no-selection state. It stays stored verbatim until the
+            # user explicitly chooses one of this picker's installed IDs.
+            self._gate_stored_model(stored, f"is not a {family} model")
+            return
+        self._clear_stored_model_banner()
         set_combo_value(self.model_row, stored)
+
+    def _gate_stored_model(self, stored: typing.Any, reason: str) -> None:
+        """Show no selection, keep the stored text, and say why."""
+        self._model_write_gated = True
+        self._model_gated_value = stored
+        self.stored_model_banner.set_title(
+            f"Saved model \u201c{stored}\u201d {reason}; "
+            "it was kept as written \u2014 pick a model to replace it."
+        )
+        self.stored_model_banner.set_revealed(True)
+        set_combo_value(self.model_row, CHOOSE_MODEL)
+
+    def _clear_stored_model_banner(self) -> None:
+        self.stored_model_banner.set_revealed(False)
 
     def refresh_models(self) -> None:
         """Re-list on-disk models (e.g. after a Download Center download)."""
+        previous_model = self.selected_model()
+        previous_focus = str(self.settings.process.stem_focus or "")
         self._loading = True
         try:
             self.populate_models()
@@ -258,6 +303,8 @@ class MethodView:
             self._loading = False
         self._invalidate_model_combos()
         self.update_stem_labels()
+        if self.selected_model() == previous_model and self.has_model():
+            self.save_stems.require_refresh_repick(previous_focus)
 
     def _invalidate_model_combos(self) -> None:
         """Drop the combo lists, repopulating any section already on screen.
@@ -295,6 +342,8 @@ class MethodView:
             return
         from core.debug_log import debug, preview_text
 
+        self._model_write_gated = False
+        self._model_gated_value = None
         set_flat(self.settings, self.model_key, self.selected_model())
         name = self.selected_model()
         debug(
@@ -316,9 +365,25 @@ class MethodView:
             )
         primary_stem = model.primary_stem if model else None
         secondary = model.secondary_stem if model else None
+        routes = model_stem_routes(model) if model is not None else ()
+        if routes:
+            primary_route = next((route for route in routes if route.logical_primary), routes[0])
+            secondary_route = logical_secondary_route(routes)
+            primary_stem = (
+                primary_route.native.raw
+                if primary_route.native is not None
+                else primary_route.label
+            )
+            if secondary_route is not None:
+                secondary = (
+                    secondary_route.native.raw
+                    if secondary_route.native is not None
+                    else secondary_route.label
+                )
         self._resolved_primary_stem = primary_stem
         self._resolved_secondary_stem = secondary
         self._resolved_model = model
+        self._resolved_routes = routes
         if not self.has_model():
             self.save_stems.configure_hidden(has_model=False)
         else:
@@ -339,11 +404,12 @@ class MethodView:
             has_model=True,
             stem_label_overrides=stem_display_overrides(model),
             export_semantics_note=recommended_export_note(model),
-                is_karaoke=bool(getattr(model, "is_karaoke", False)),
-                is_karaoke_curated=bool(getattr(model, "is_karaoke_curated", False)),
-                is_bv=bool(getattr(model, "is_bv_model", False)),
-                stem_count=max(1, model_stem_count(model)),
-            )
+            is_karaoke=bool(getattr(model, "is_karaoke", False)),
+            is_karaoke_curated=bool(getattr(model, "is_karaoke_curated", False)),
+            is_bv=bool(getattr(model, "is_bv_model", False)),
+            stem_count=max(1, model_stem_count(model)),
+            routes=self._resolved_routes,
+        )
 
     def _update_stem_group_metadata(self) -> None:
         line1 = self.save_stems.export_summary()
@@ -446,13 +512,25 @@ class MethodView:
         so from an inactive view (e.g. Demucs ``quick_all`` while MDX is active)
         clears the active view's export focus before plan review.
         """
-        set_flat(self.settings, self.model_key, self.selected_model())
+        if not getattr(self, "_model_write_gated", False):
+            set_flat(self.settings, self.model_key, self.selected_model())
         if include_stem_only:
             self._persist_stem_only()
         self.save_options()
         self._save_scales()
         self._save_switches()
         self._save_spins()
+        self._flush_gated_model_settings()
+
+    def _flush_gated_model_settings(self) -> None:
+        """Remove UI-gated auxiliary models from effective run settings."""
+        for entry in getattr(self, "_model_combos", ()):
+            if not entry.get("write_gated", False):
+                continue
+            set_flat(self.settings, entry["key"], NO_MODEL)
+            activate_key = entry.get("activate_key")
+            if activate_key:
+                set_flat(self.settings, activate_key, False)
 
     # -- Method-specific option controls ---------------------------------------
 
@@ -470,7 +548,15 @@ class MethodView:
             self.hints.register(row, hint)
         return row
 
-    def add_option_combo(self, group: typing.Any, key: typing.Any, title: typing.Any, values: typing.Any, subtitle: typing.Any=None, hint: typing.Any=None):
+    def add_option_combo(
+        self,
+        group: typing.Any,
+        key: typing.Any,
+        title: typing.Any,
+        values: typing.Any,
+        subtitle: typing.Any = None,
+        hint: typing.Any = None,
+    ):
         """Add a combo row bound to settings ``key`` (stored as a string)."""
         row = make_combo_row(title, values, subtitle)
         row.connect("notify::selected", lambda *_a, k=key, r=row: self._on_option_combo(k, r))
@@ -484,14 +570,14 @@ class MethodView:
         key: typing.Any,
         title: typing.Any,
         *,
-        values: typing.Any=None,
+        values: typing.Any = None,
         lower: Optional[float] = None,
         upper: Optional[float] = None,
         step: float = 1,
-        digits: typing.Any=0,
-        subtitle: typing.Any=None,
-        hint: typing.Any=None,
-        store_float: typing.Any=False,
+        digits: typing.Any = 0,
+        subtitle: typing.Any = None,
+        hint: typing.Any = None,
+        store_float: typing.Any = False,
     ):
         """Add a constrained slider row bound to settings ``key``."""
         from ..widgets.rows import (
@@ -505,7 +591,9 @@ class MethodView:
         else:
             if lower is None or upper is None:
                 raise ValueError("lower and upper are required when values is None")
-            row = make_numeric_scale_row(title, lower, upper, step=step, digits=digits, subtitle=subtitle)
+            row = make_numeric_scale_row(
+                title, lower, upper, step=step, digits=digits, subtitle=subtitle
+            )
         stash(row, "_uvr_store_float", store_float)
         default_value = _DEFAULT_SETTINGS.get(key)
         if default_value is not None:
@@ -518,7 +606,14 @@ class MethodView:
         self._scale_rows[key] = row
         return self._hint(row, hint)
 
-    def add_option_switch(self, group: typing.Any, key: typing.Any, title: typing.Any, subtitle: typing.Any=None, hint: typing.Any=None):
+    def add_option_switch(
+        self,
+        group: typing.Any,
+        key: typing.Any,
+        title: typing.Any,
+        subtitle: typing.Any = None,
+        hint: typing.Any = None,
+    ):
         """Add a switch row bound to boolean settings ``key``."""
         row = make_switch_row(title, subtitle)
         row.connect("notify::active", lambda *_a, k=key, r=row: self._on_option_switch(k, r))
@@ -526,7 +621,18 @@ class MethodView:
         self._switch_rows[key] = row
         return self._hint(row, hint)
 
-    def add_option_spin(self, group: typing.Any, key: typing.Any, title: typing.Any, lower: typing.Any, upper: typing.Any, step: typing.Any, digits: typing.Any=2, subtitle: typing.Any=None, hint: typing.Any=None):
+    def add_option_spin(
+        self,
+        group: typing.Any,
+        key: typing.Any,
+        title: typing.Any,
+        lower: typing.Any,
+        upper: typing.Any,
+        step: typing.Any,
+        digits: typing.Any = 2,
+        subtitle: typing.Any = None,
+        hint: typing.Any = None,
+    ):
         """Add a spin row bound to a numeric settings ``key`` (stored as float)."""
         adjustment = Gtk.Adjustment(lower=lower, upper=upper, step_increment=step)
         row = Adw.SpinRow(title=title, adjustment=adjustment, digits=digits)
@@ -615,19 +721,37 @@ class MethodView:
     def load_options(self) -> None:
         """Set method-specific combo rows from settings."""
         for key, row in self._option_rows.items():
-            set_combo_value(
-                row, setting_for_combo(key, get_flat(self.settings, key))
-            )
+            set_combo_value(row, setting_for_combo(key, get_flat(self.settings, key)))
 
     def save_options(self) -> None:
         """Write method-specific combo rows back to settings."""
         for key, row in self._option_rows.items():
             set_flat(self.settings, key, get_combo_value(row))
 
-    def add_advanced_combo(self, key: typing.Any, title: typing.Any, values: typing.Any, subtitle: typing.Any=None, hint: typing.Any=None):
+    def add_advanced_combo(
+        self,
+        key: typing.Any,
+        title: typing.Any,
+        values: typing.Any,
+        subtitle: typing.Any = None,
+        hint: typing.Any = None,
+    ):
         return self.add_option_combo(self.advanced_group, key, title, values, subtitle, hint=hint)
 
-    def add_advanced_scale(self, key: typing.Any, title: typing.Any, *, values: typing.Any=None, lower: typing.Any=None, upper: typing.Any=None, step: typing.Any=1, digits: typing.Any=0, subtitle: typing.Any=None, hint: typing.Any=None, store_float: typing.Any=False):
+    def add_advanced_scale(
+        self,
+        key: typing.Any,
+        title: typing.Any,
+        *,
+        values: typing.Any = None,
+        lower: typing.Any = None,
+        upper: typing.Any = None,
+        step: typing.Any = 1,
+        digits: typing.Any = 0,
+        subtitle: typing.Any = None,
+        hint: typing.Any = None,
+        store_float: typing.Any = False,
+    ):
         return self.add_option_scale(
             self.advanced_group,
             key,
@@ -642,12 +766,27 @@ class MethodView:
             store_float=store_float,
         )
 
-    def add_advanced_switch(self, key: typing.Any, title: typing.Any, subtitle: typing.Any=None, hint: typing.Any=None):
+    def add_advanced_switch(
+        self,
+        key: typing.Any,
+        title: typing.Any,
+        subtitle: typing.Any = None,
+        hint: typing.Any = None,
+    ):
         return self.add_option_switch(self.advanced_group, key, title, subtitle, hint=hint)
 
     # -- Secondary / pre-process / vocal-splitter model selection --------------
 
-    def _add_model_combo(self, container: typing.Any, key: typing.Any, provider: typing.Any, title: typing.Any, hint: typing.Any=None):
+    def _add_model_combo(
+        self,
+        container: typing.Any,
+        key: typing.Any,
+        provider: typing.Any,
+        title: typing.Any,
+        hint: typing.Any = None,
+        *,
+        activate_key: typing.Any = None,
+    ):
         """Add a model-picker combo (lazily populated to avoid startup hashing).
 
         The combo is registered separately from :attr:`_option_rows` so its value
@@ -661,8 +800,40 @@ class MethodView:
         set_combo_value(row, stored)
         row.connect("notify::selected", lambda *_a, k=key, r=row: self._on_model_combo(k, r))
         self._add_row(container, row)
-        self._model_combos.append({"row": row, "key": key, "provider": provider, "ready": False})
+        warning_row = Adw.ActionRow(title="Saved model unavailable", visible=False)
+        warning_row.set_subtitle_lines(0)
+        self._add_row(container, warning_row)
+        self._model_combos.append(
+            {
+                "row": row,
+                "warning_row": warning_row,
+                "key": key,
+                "activate_key": activate_key,
+                "provider": provider,
+                "ready": False,
+                "eligible_ids": set(),
+                "write_gated": False,
+                "gated_value": None,
+            }
+        )
         return self._hint(row, hint)
+
+    @staticmethod
+    def _set_model_combo_warning(entry: dict[str, typing.Any], stored: typing.Any) -> None:
+        warning_row = entry.get("warning_row")
+        if warning_row is None:
+            return
+        warning_row.set_subtitle(
+            f"Saved model {stored!r} cannot be selected and will be disabled "
+            "when settings are applied. Pick a model to enable it."
+        )
+        warning_row.set_visible(True)
+
+    @staticmethod
+    def _clear_model_combo_warning(entry: dict[str, typing.Any]) -> None:
+        warning_row = entry.get("warning_row")
+        if warning_row is not None:
+            warning_row.set_visible(False)
 
     def _on_model_combo(self, key: typing.Any, row: typing.Any) -> None:
         if self._loading or getattr(self, "_populating_models", False):
@@ -670,7 +841,17 @@ class MethodView:
         entry = next((e for e in self._model_combos if e["key"] == key), None)
         if entry and not entry["ready"]:
             return
-        set_flat(self.settings, key, get_combo_value(row))
+        selected = get_combo_value(row)
+        if entry is not None:
+            if selected != NO_MODEL:
+                try:
+                    parse_stored_model_id(str(selected))
+                except ValueError:
+                    return
+            entry["write_gated"] = False
+            entry["gated_value"] = None
+            self._clear_model_combo_warning(entry)
+        set_flat(self.settings, key, selected)
         self._touch_settings()
 
     def _ensure_model_combos_populated(self, *_args: typing.Any) -> None:
@@ -684,14 +865,37 @@ class MethodView:
                     values = entry["provider"]()
                 except Exception:
                     values = []
-                tag_items = [
-                    (tag, format_tag_title(tag, self.context.repo))
-                    for tag in values
-                ]
-                set_combo_tag_values(entry["row"], [NO_MODEL, *tag_items])
-                set_combo_value(
-                    entry["row"], get_flat(self.settings, entry["key"], NO_MODEL)
+                eligible = set(values)
+                records = sorted(
+                    (
+                        record
+                        for record in ModelIdentityService(self.context.repo).records()
+                        if record.installed and record.id in eligible
+                    ),
+                    key=lambda record: (record.display.casefold(), record.id),
                 )
+                tag_items = [(record.id, record.display) for record in records]
+                set_combo_tag_values(entry["row"], [NO_MODEL, *tag_items])
+                ids = {record.id for record in records}
+                entry["eligible_ids"] = ids
+                stored = get_flat(self.settings, entry["key"], NO_MODEL)
+                already_gated = bool(entry.get("write_gated", False))
+                gated_value = entry.get("gated_value")
+                if already_gated and stored == gated_value:
+                    gated = True
+                else:
+                    gated = stored not in (NO_MODEL, None, "") and (
+                        not isinstance(stored, str) or stored not in ids
+                    )
+                entry["write_gated"] = gated
+                if gated:
+                    entry["gated_value"] = stored
+                    self._set_model_combo_warning(entry, stored)
+                    set_combo_value(entry["row"], NO_MODEL)
+                else:
+                    entry["gated_value"] = None
+                    self._clear_model_combo_warning(entry)
+                    set_combo_value(entry["row"], stored)
                 entry["ready"] = True
         finally:
             self._populating_models = False
@@ -765,12 +969,15 @@ class MethodView:
             four_stem = four_stem_secondaries_apply(self.settings, self.method_key)
             secondary.set_subtitle(
                 secondary_models_summary(
-                    self.settings, self.secondary_prefix, four_stem=four_stem
+                    self.settings,
+                    self.secondary_prefix,
+                    four_stem=four_stem,
+                    repo=self.context.repo,
                 )
             )
         preproc = getattr(self, "preproc_expander", None)
         if preproc is not None:
-            preproc.set_subtitle(preproc_summary(self.settings))
+            preproc.set_subtitle(preproc_summary(self.settings, self.context.repo))
 
     def _sync_expander_summaries(self) -> None:
         """Refresh subtitles, then open whatever is switched on.
@@ -789,10 +996,7 @@ class MethodView:
             if (
                 getattr(self, "secondary_expander", None) is not None
                 and self.secondary_prefix
-                and get_flat(
-                    self.settings,
-                    f"{self.secondary_prefix}_is_secondary_model_activate"
-                )
+                and get_flat(self.settings, f"{self.secondary_prefix}_is_secondary_model_activate")
             ):
                 self.secondary_expander.set_expanded(True)
             if (
@@ -826,27 +1030,27 @@ class MethodView:
             )
             dependents = []
             self._secondary_slot_rows = {}
-            for slot, pair, primary, secondary in _SECONDARY_SLOTS:
+            for slot, wanted, primary, secondary in _SECONDARY_SLOTS:
+                pair_label = secondary_stem_pair_label(slot)
                 model_key = f"{prefix}_{slot}_secondary_model"
                 scale_key = f"{prefix}_{slot}_secondary_model_scale"
-                pair_label = ui_label(pair)
-                wanted = {b for b in pair.buckets() if b is not StemBucket.UNKNOWN}
+
                 # Pair request buckets — not stem_count=1 on the UI half names,
                 # which turns Other/No Other into an Instrumental request.
-                provider = (
-                    lambda p=primary, s=secondary, w=wanted: repo.model_list(
-                        settings,
-                        p,
-                        s,
-                        wanted_buckets=w,
-                    )
-                )
+                def provider(
+                    p: str = primary,
+                    s: str = secondary,
+                    w: frozenset[StemBucket] = wanted,
+                ) -> typing.Any:
+                    return repo.model_list(settings, p, s, wanted_buckets=w)
+
                 combo = self._add_model_combo(
                     self.secondary_expander,
                     model_key,
                     provider,
                     pair_label,
                     hint=SECONDARY_MODEL_HELP,
+                    activate_key=f"{prefix}_is_secondary_model_activate",
                 )
                 scale = self.add_option_scale(
                     self.secondary_expander,
@@ -868,15 +1072,26 @@ class MethodView:
         if self.has_preproc:
             self.preproc_expander = Adw.ExpanderRow(title="Pre-process model")
             self.preproc_expander.connect("notify::expanded", self._ensure_model_combos_populated)
-            activate = self.add_option_switch(self.preproc_expander, "is_demucs_pre_proc_model_activate", "Activate pre-process model", hint=PRE_PROC_MODEL_ACTIVATE_HELP)
+            activate = self.add_option_switch(
+                self.preproc_expander,
+                "is_demucs_pre_proc_model_activate",
+                "Activate pre-process model",
+                hint=PRE_PROC_MODEL_ACTIVATE_HELP,
+            )
             model_row = self._add_model_combo(
                 self.preproc_expander,
                 "demucs_pre_proc_model",
                 lambda: repo.model_list(settings, VOCAL_STEM, INST_STEM, is_no_demucs=True),
                 "Pre-process model",
                 hint=PRE_PROC_MODEL_HELP,
+                activate_key="is_demucs_pre_proc_model_activate",
             )
-            inst_mix_row = self.add_option_switch(self.preproc_expander, "is_demucs_pre_proc_model_inst_mix", "Save instrumental mixture", hint=PRE_PROC_MODEL_INST_MIX_HELP)
+            inst_mix_row = self.add_option_switch(
+                self.preproc_expander,
+                "is_demucs_pre_proc_model_inst_mix",
+                "Save instrumental mixture",
+                hint=PRE_PROC_MODEL_INST_MIX_HELP,
+            )
             self._bind_switch_dependents(activate, [model_row, inst_mix_row])
             group.add(self.preproc_expander)
 

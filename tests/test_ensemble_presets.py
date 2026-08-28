@@ -1,9 +1,11 @@
 """Tests for curated ensemble recipe loading and member resolution."""
 
 from __future__ import annotations
-import typing
 
+import json
+import typing
 import unittest
+from pathlib import Path
 from unittest import mock
 
 from bundled.constants import MDX_ARCH_TYPE
@@ -17,6 +19,24 @@ from core.ensemble_presets import (
     load_curated_ensemble,
     resolve_member_tag,
 )
+from core.model_identity import (
+    CatalogueRef,
+    IdentityIndex,
+    ModelArtifacts,
+    ModelIdentityService,
+    ModelRecord,
+    parse_stored_model_id,
+)
+from core.stem_pairs import normalize_stem_pair_id
+
+
+class CuratedPresetIdTests(unittest.TestCase):
+    def test_every_bundled_member_is_a_canonical_id(self) -> None:
+        root = Path("bundled/ensemble_presets")
+        for path in root.glob("*.json"):
+            payload = json.loads(path.read_text())
+            for member in payload["selected_models"]:
+                parse_stored_model_id(member)
 
 
 class CuratedPresetLoadTests(unittest.TestCase):
@@ -30,7 +50,8 @@ class CuratedPresetLoadTests(unittest.TestCase):
         self.assertIsNotNone(data)
         assert data is not None
         self.assertIn("description", data)
-        self.assertEqual(data["ensemble_main_stem"], "vocals_instrumental")
+        self.assertEqual(data["schema_version"], 2)
+        self.assertEqual(data["ensemble_main_stem"], "pair.vocals_instrumental")
         self.assertEqual(data["ensemble_type"], "Average/Average")
         self.assertGreaterEqual(len(data["selected_models"]), 2)
         from core.model_identity import ModelId
@@ -43,7 +64,18 @@ class CuratedPresetLoadTests(unittest.TestCase):
         data = load_curated_ensemble("Karaoke")
         self.assertIsNotNone(data)
         assert data is not None
-        self.assertEqual(data["ensemble_main_stem"], "karaoke")
+        self.assertEqual(data["ensemble_main_stem"], "pair.karaoke")
+
+    def test_every_bundled_preset_uses_schema_two_and_a_current_pair_or_mode(self) -> None:
+        root = Path("bundled/ensemble_presets")
+        for path in root.glob("*.json"):
+            payload = json.loads(path.read_text())
+            self.assertEqual(payload["schema_version"], 2, path.name)
+            self.assertEqual(
+                normalize_stem_pair_id(payload["ensemble_main_stem"]),
+                payload["ensemble_main_stem"],
+                path.name,
+            )
 
     def test_combo_label_roundtrip(self) -> None:
         label = curated_combo_label("Vocal_Balanced")
@@ -52,26 +84,48 @@ class CuratedPresetLoadTests(unittest.TestCase):
 
 
 class ResolveAndDownloadTests(unittest.TestCase):
-    def test_resolve_member_tag_uses_display(self) -> None:
-        repo = mock.Mock()
-        repo.mdx_name_select_MAPPER = {}
-        repo.mdx_catalogue_display_index.return_value = {
-            "model_BandSplit-Roformer_Resurrection_Vocals_by-Unwa": (
-                "BandSplit Roformer | Resurrection Vocals by Unwa"
-            ),
-        }
-        with mock.patch(
-            "core.ensemble_presets.resolve_model_basename",
-            return_value="model_BandSplit-Roformer_Resurrection_Vocals_by-Unwa",
-        ):
-            tag = resolve_member_tag(
-                "MDX-Net: BandSplit Roformer | Resurrection Vocals by Unwa",
-                repo,
-            )
-        self.assertEqual(
-            tag,
-            "mdx:model_BandSplit-Roformer_Resurrection_Vocals_by-Unwa",
+    @staticmethod
+    def _resurrection_record() -> ModelRecord:
+        return ModelRecord(
+            id="mdx:model_BandSplit-Roformer_Resurrection_Vocals_by-Unwa",
+            family="mdx",
+            basename="model_BandSplit-Roformer_Resurrection_Vocals_by-Unwa",
+            display="BandSplit Roformer | Resurrection Vocals by Unwa",
+            backend_name="model_BandSplit-Roformer_Resurrection_Vocals_by-Unwa",
+            artifacts=ModelArtifacts("model_BandSplit-Roformer_Resurrection_Vocals_by-Unwa.ckpt"),
+            installed=False,
         )
+
+    def test_resolve_member_tag_preserves_legacy_text(self) -> None:
+        """Saved legacy text remains visible rather than becoming an identity."""
+        repo = mock.Mock()
+        record = self._resurrection_record()
+        index = IdentityIndex({record.id: record})
+        with mock.patch.object(
+            ModelIdentityService,
+            "_published_index",
+            return_value=index,
+        ):
+            tag = resolve_member_tag(f"MDX-Net: {record.basename}", repo)
+        self.assertEqual(tag, f"MDX-Net: {record.basename}")
+
+    def test_resolve_member_tag_does_not_invert_a_display_label(self) -> None:
+        """A catalogue rename must not be able to move a stored member.
+
+        The legacy tag keeps its raw name half so the missing-model report can
+        show what was written; it is never silently converted into an id.
+        """
+        repo = mock.Mock()
+        record = self._resurrection_record()
+        index = IdentityIndex({record.id: record})
+        with mock.patch.object(
+            ModelIdentityService,
+            "_published_index",
+            return_value=index,
+        ):
+            tag = resolve_member_tag(f"MDX-Net: {record.display}", repo)
+        self.assertNotEqual(tag, record.id)
+        self.assertEqual(tag, f"MDX-Net: {record.display}")
 
     def test_classify_missing_members(self) -> None:
         repo = mock.Mock()
@@ -79,12 +133,15 @@ class ResolveAndDownloadTests(unittest.TestCase):
         def _installed(tag: typing.Any, _repo: typing.Any):
             return tag.endswith(": A")
 
-        with mock.patch(
-            "core.ensemble_presets.member_is_installed",
-            side_effect=_installed,
-        ), mock.patch(
-            "core.ensemble_presets.resolve_member_tag",
-            side_effect=lambda tag, _repo: tag,
+        with (
+            mock.patch(
+                "core.ensemble_presets.member_is_installed",
+                side_effect=_installed,
+            ),
+            mock.patch(
+                "core.ensemble_presets.resolve_member_tag",
+                side_effect=lambda tag, _repo: tag,
+            ),
         ):
             installed, missing = classify_preset_members(
                 ["MDX-Net: A", "MDX-Net: B"],
@@ -117,20 +174,29 @@ class ResolveAndDownloadTests(unittest.TestCase):
 
     def test_download_entries_for_missing(self) -> None:
         manager = mock.Mock()
-        with mock.patch(
-            "core.ensemble_presets.find_download_selection",
-            side_effect=[
-                ("sel-a", MDX_ARCH_TYPE),
-                None,
-            ],
+        record = ModelRecord(
+            id="mdx:model-a",
+            family="mdx",
+            basename="model-a",
+            display="A display that is not a catalogue selection",
+            backend_name="model-a",
+            artifacts=ModelArtifacts("model-a.ckpt"),
+            installed=False,
+            catalogue_entry=CatalogueRef("mdx", "sel-a"),
+        )
+        index = IdentityIndex({record.id: record})
+        with mock.patch.object(
+            ModelIdentityService,
+            "_published_index",
+            return_value=index,
         ):
             entries, unresolved = download_entries_for_missing(
-                ["MDX-Net: A", "MDX-Net: B"],
+                ["mdx:model-a", "mdx:model-b"],
                 manager,
+                mock.Mock(),
             )
         self.assertEqual(entries, [("sel-a", MDX_ARCH_TYPE)])
-        self.assertEqual(unresolved, ["MDX-Net: B"])
-
+        self.assertEqual(unresolved, ["mdx:model-b"])
 
 
 class IneligibleMemberTests(unittest.TestCase):
@@ -173,9 +239,11 @@ class IneligibleMemberTests(unittest.TestCase):
         # A real repository with nothing installed: resolve_member_tag reads
         # mapper attributes a hand-rolled fake would not have.
         repo = ModelRepository()
-        with mock.patch.object(ModelRepository, "list_mdx_models", return_value=[]), \
-             mock.patch.object(ModelRepository, "list_vr_models", return_value=[]), \
-             mock.patch.object(ModelRepository, "list_demucs_models", return_value=[]):
+        with (
+            mock.patch.object(ModelRepository, "list_mdx_models", return_value=[]),
+            mock.patch.object(ModelRepository, "list_vr_models", return_value=[]),
+            mock.patch.object(ModelRepository, "list_demucs_models", return_value=[]),
+        ):
             installed, missing = classify_preset_members(["MDX-Net: Gone"], repo)
         self.assertEqual(installed, [])
         self.assertEqual(missing, ["MDX-Net: Gone"])

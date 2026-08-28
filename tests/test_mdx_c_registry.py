@@ -10,20 +10,21 @@ from unittest.mock import patch
 
 from core import paths
 from core.mdx_c_registry import (
-    build_checkpoint_display_index,
     build_checkpoint_yaml_index,
     compute_checkpoint_hash,
-    display_name_for_basename,
     load_mdx_catalog_index,
     pair_checkpoint_yaml_jobs,
     params_from_config_yaml,
     register_mdx_c_checkpoint,
     register_mdx_c_from_download_jobs,
-    register_mdx_display_name,
-    resolve_mdx_model_basename,
-    sanitize_catalogue_label,
     try_register_from_catalog,
     yaml_for_checkpoint,
+)
+from core.model_display import (
+    build_checkpoint_display_index,
+    display_name_for_basename,
+    resolve_mdx_model_basename,
+    sanitize_catalogue_label,
 )
 from core.model_config import ModelConfig
 
@@ -112,38 +113,6 @@ class ParamsFromConfigYamlTests(unittest.TestCase):
         self.assertEqual(params["config_yaml"], "config_musdb18_scnet.yaml")
         self.assertTrue(params["is_roformer"])
         self.assertEqual(params["model_type"], "SCNet")
-
-
-class RegisterMdxDisplayNameTests(unittest.TestCase):
-    def test_writes_mapper_entry_once(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            models_dir = os.path.join(tmp, "models")
-            mapper_path = os.path.join(tmp, "model_data", "model_name_mapper.json")
-            os.makedirs(models_dir)
-            checkpoint = os.path.join(models_dir, "catalog_model.ckpt")
-            with open(checkpoint, "wb") as handle:
-                handle.write(b"catalogue display name test")
-
-            original_models_dir = paths.MDX_MODELS_DIR
-            original_mapper = paths.MDX_MODEL_NAME_SELECT
-            try:
-                paths.MDX_MODELS_DIR = models_dir
-                paths.MDX_MODEL_NAME_SELECT = mapper_path
-                from core.name_mapper import load_name_mapper, local_overlay_path
-
-                self.assertTrue(register_mdx_display_name(checkpoint, "Friendly Name"))
-                # Locally-registered names go to the overlay, never the mirror.
-                self.assertFalse(os.path.exists(mapper_path))
-                with open(local_overlay_path(mapper_path), "r", encoding="utf-8") as handle:
-                    payload = json.load(handle)
-                self.assertEqual(payload["catalog_model.ckpt"], "Friendly Name")
-                self.assertEqual(
-                    load_name_mapper(mapper_path)["catalog_model.ckpt"], "Friendly Name"
-                )
-                self.assertFalse(register_mdx_display_name(checkpoint, "Other Name"))
-            finally:
-                paths.MDX_MODELS_DIR = original_models_dir
-                paths.MDX_MODEL_NAME_SELECT = original_mapper
 
 
 class RegisterMdxCCheckpointTests(unittest.TestCase):
@@ -271,17 +240,16 @@ class PairCheckpointYamlJobsTests(unittest.TestCase):
 
 
 class RegisterFromDownloadJobsTests(unittest.TestCase):
-    def test_unrelated_jobs_do_not_load_the_display_index(self) -> None:
+    def test_unrelated_jobs_do_not_register(self) -> None:
         jobs = [("https://example.com/a.onnx", "/tmp/a.onnx")]
-        with patch("core.mdx_c_registry.load_mdx_catalog_display_index") as load:
-            self.assertFalse(register_mdx_c_from_download_jobs(jobs))
-        load.assert_not_called()
+        self.assertFalse(register_mdx_c_from_download_jobs(jobs))
 
     def test_registers_existing_download_batch(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             hash_dir = os.path.join(tmp, "model_data")
             config_dir = os.path.join(hash_dir, "mdx_c_configs")
             models_dir = os.path.join(tmp, "models")
+            mapper_path = os.path.join(hash_dir, "model_name_mapper.json")
             os.makedirs(config_dir)
             os.makedirs(models_dir)
 
@@ -301,18 +269,30 @@ class RegisterFromDownloadJobsTests(unittest.TestCase):
             original_hash_dir = paths.MDX_HASH_DIR
             original_config_dir = paths.MDX_C_CONFIG_PATH
             original_models_dir = paths.MDX_MODELS_DIR
+            original_mapper_path = paths.MDX_MODEL_NAME_SELECT
             try:
                 paths.MDX_HASH_DIR = hash_dir
                 paths.MDX_C_CONFIG_PATH = config_dir
                 paths.MDX_MODELS_DIR = models_dir
-                self.assertTrue(register_mdx_c_from_download_jobs(jobs))
+                paths.MDX_MODEL_NAME_SELECT = mapper_path
+                with patch(
+                    "core.model_display._merged_for_display", return_value=object()
+                ), patch(
+                    "core.model_display._index_from_meta",
+                    return_value={"batch_model": "Friendly Batch Model"},
+                ):
+                    self.assertTrue(register_mdx_c_from_download_jobs(jobs))
                 model_hash = compute_checkpoint_hash(checkpoint)
                 assert model_hash is not None
                 self.assertTrue(os.path.isfile(os.path.join(hash_dir, f"{model_hash}.json")))
+                from core.name_mapper import local_overlay_path
+
+                self.assertFalse(os.path.exists(local_overlay_path(mapper_path)))
             finally:
                 paths.MDX_HASH_DIR = original_hash_dir
                 paths.MDX_C_CONFIG_PATH = original_config_dir
                 paths.MDX_MODELS_DIR = original_models_dir
+                paths.MDX_MODEL_NAME_SELECT = original_mapper_path
 
 
 class ModelDataCatalogFallbackTests(unittest.TestCase):

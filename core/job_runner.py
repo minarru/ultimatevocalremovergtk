@@ -10,10 +10,10 @@ Supports single-model separation, ensemble runs, sample mode, and secondary /
 vocal-splitter / Demucs pre-process machinery. Audio tools live in
 :mod:`core.audio_tools`.
 """
-import typing
 
 import os
 import time
+import typing
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, List, Literal, Optional, Sequence
 
@@ -25,38 +25,47 @@ from bundled.constants import (
     VR_ARCH_TYPE,
 )
 
-from .job_plan import PlannedInput, ResolvedJob
+from . import job_callbacks, run_hooks
+from .debug_log import (
+    current_operation_id,
+    debug,
+    debug_elapsed,
+    log_event,
+    new_operation_id,
+    set_operation_id,
+)
 from .ensembler import Ensembler
 from .export_naming import (
     OutputNamingContext,
     build_output_naming_context,
     rebase_output_naming,
 )
+from .inference_cleanup import (
+    clear_source_mapper,
+)
+from .inference_cleanup import (
+    release_inference_memory as _release_inference_resources,
+)
+from .job_plan import PlannedInput, ResolvedJob
 from .model_config import ModelConfig, assemble_model
 from .model_repository import ModelRepository
 from .process_data import ProcessData
-from .sample_mode import prepare_input_paths
-from .settings import Settings
-from .stems import coerce_ensemble_pair
 from .run_estimate import count_inference_passes_from_models
-from .debug_log import debug, debug_elapsed
-from . import job_callbacks
-from . import run_hooks
 from .run_loop import (
     run_models_on_files,
     with_worker_lifecycle,
 )
+from .sample_mode import prepare_input_paths
 from .separate_import import import_separate_engines
-from .types import ProcessMethod
-from .inference_cleanup import (
-    clear_source_mapper,
-    release_inference_memory as _release_inference_resources,
-)
 from .separator_run import apply_segment_override
+from .settings import Settings
+from .stem_pairs import is_stem_mode, normalize_stem_pair_id
+from .types import ProcessMethod
 
 if TYPE_CHECKING:
-    from engines.model_weight_cache import FileIdentity
     from kthread import KThread
+
+    from engines.model_weight_cache import FileIdentity
 
 
 def collect_run_model_paths(models: Sequence[ModelConfig]) -> set[str]:
@@ -107,7 +116,11 @@ class JobRunner:
 
     def __init__(self, settings: Settings, repo: Optional[ModelRepository] = None):
         self.settings = settings
-        self.repo = repo or ModelRepository()
+        if repo is None:
+            self.repo = ModelRepository()
+            self.repo.bind_model_hash_table(lambda: self.settings.process.model_hash_table)
+        else:
+            self.repo = repo
         self._thread: Optional[KThread] = None
         self._is_stopped = False
         self._is_paused = False
@@ -125,10 +138,12 @@ class JobRunner:
         self._ensemble_salvage_members: list[dict[str, Any]] = []
         self._last_oom_exported = False
         self._run_models: Sequence[Any] | None = None
+        self._run_model_dependencies: typing.Mapping[str, Any] | None = None
         self._run_planned: Sequence[PlannedInput] | None = None
         self._run_output_root: str | None = None
         self._run_path_map: dict[str, str] | None = None
         self._resolved_command: str | None = None
+        self._operation_id: str | None = None
         self.last_outcomes: tuple[InputOutcome, ...] = ()
 
     # -- Public control ---------------------------------------------------------
@@ -143,10 +158,12 @@ class JobRunner:
         self._ensemble_salvage_members = []
         self._last_oom_exported = False
         self._run_models = None
+        self._run_model_dependencies = None
         self._run_planned = None
         self._run_output_root = None
         self._run_path_map = None
         self._resolved_command = None
+        self._operation_id = None
         self.last_outcomes = ()
 
     def start(
@@ -157,6 +174,8 @@ class JobRunner:
         models: Sequence[Any] | None = None,
         planned: Sequence[PlannedInput] | None = None,
         planned_output_root: str | None = None,
+        model_dependencies: typing.Mapping[str, Any] | None = None,
+        operation_id: str | None = None,
     ) -> None:
         """Launch the worker thread. No-op if a run is already in flight.
 
@@ -167,13 +186,13 @@ class JobRunner:
         basenames come from the matching :class:`~core.job_plan.PlannedInput`
         after rebasing onto the current export path. ``planned_output_root``
         is required in that case so model-folder rebasing cannot flatten.
+        ``model_dependencies`` carries the accepted plan's exact nested model
+        records into legacy GUI worker assembly.
         """
         if self.is_running():
             return
         mode: Literal["single", "ensemble"] = (
-            "ensemble"
-            if self.settings.process.method == ProcessMethod.ENSEMBLE
-            else "single"
+            "ensemble" if self.settings.process.method == ProcessMethod.ENSEMBLE else "single"
         )
         self._start_worker(
             input_paths,
@@ -182,6 +201,8 @@ class JobRunner:
             models=models,
             planned=planned,
             planned_output_root=planned_output_root,
+            model_dependencies=model_dependencies,
+            operation_id=operation_id,
         )
 
     def _start_worker(
@@ -193,6 +214,8 @@ class JobRunner:
         models: Sequence[Any] | None = None,
         planned: Sequence[PlannedInput] | None = None,
         planned_output_root: str | None = None,
+        model_dependencies: typing.Mapping[str, Any] | None = None,
+        operation_id: str | None = None,
     ) -> None:
         """Shared KThread launch for single-method and ensemble workers."""
         if self.is_running():
@@ -203,18 +226,23 @@ class JobRunner:
 
         self._reset_run_state()
         self._run_models = list(models) if models is not None else None
+        self._run_model_dependencies = model_dependencies
         self._run_planned = tuple(planned) if planned is not None else None
         self._run_output_root = planned_output_root
-        paths = (
-            [item.path for item in planned]
-            if planned is not None
-            else list(input_paths)
-        )
+        self._operation_id = operation_id or current_operation_id() or new_operation_id("run")
+        paths = [item.path for item in planned] if planned is not None else list(input_paths)
         self._thread = KThread(
             target=self._run_separation,
             args=(paths, callbacks, mode),
         )
         kind = "ensemble" if mode == "ensemble" else "single"
+        log_event(
+            "worker",
+            "worker_started",
+            operation_id=self._operation_id,
+            kind=kind,
+            input_count=len(paths),
+        )
         debug("worker", f"KThread {kind} start files={len(paths)}")
         self._thread.start()
 
@@ -226,6 +254,7 @@ class JobRunner:
         models: Sequence[Any] | None = None,
         fail_fast: bool = True,
         export_paths: Sequence[str] | None = None,
+        operation_id: str | None = None,
     ) -> None:
         """Assemble models once and walk every planned input on one worker.
 
@@ -241,9 +270,24 @@ class JobRunner:
         self._reset_run_state()
         self._run_output_root = job.output
         self._resolved_command = job.command
+        self._operation_id = operation_id or current_operation_id() or new_operation_id("job")
         self._thread = KThread(
             target=self._run_resolved,
-            args=(job, callbacks, models, fail_fast, export_paths),
+            args=(
+                job,
+                callbacks,
+                models,
+                fail_fast,
+                export_paths,
+                self._operation_id,
+            ),
+        )
+        log_event(
+            "worker",
+            "worker_started",
+            operation_id=self._operation_id,
+            kind=job.command,
+            input_count=len(job.inputs),
         )
         debug("worker", f"KThread resolved start inputs={len(job.inputs)}")
         self._thread.start()
@@ -255,17 +299,27 @@ class JobRunner:
         models: Sequence[Any] | None,
         fail_fast: bool,
         export_paths: Sequence[str] | None,
+        operation_id: str | None,
     ) -> None:
+        set_operation_id(operation_id)
         outcomes: list[InputOutcome] = []
         try:
             if models is not None:
                 self._run_models = list(models)
             else:
-                self._run_models = self.resolve_models()
+                self._run_models = self.resolve_models(job.model_dependencies)
             self._run_output_root = job.output
             self._resolved_command = job.command
 
             for index, planned in enumerate(job.inputs):
+                log_event(
+                    "worker",
+                    "input_started",
+                    operation_id=operation_id,
+                    input_index=index + 1,
+                    input_count=len(job.inputs),
+                    input_path=planned.path,
+                )
                 previous_export: str | None = None
                 if export_paths is not None:
                     previous_export = self.settings.process.export_path
@@ -276,6 +330,16 @@ class JobRunner:
                     if export_paths is not None and previous_export is not None:
                         self.settings.process.export_path = previous_export
                 outcomes.append(outcome)
+                log_event(
+                    "worker",
+                    "input_completed",
+                    operation_id=operation_id,
+                    input_index=index + 1,
+                    status=outcome.status,
+                    output_count=len(outcome.outputs),
+                    elapsed_s=round(outcome.elapsed_s, 6),
+                    error=outcome.error,
+                )
                 self.last_outcomes = tuple(outcomes)
                 if outcome.stopped:
                     break
@@ -284,14 +348,42 @@ class JobRunner:
 
             self.last_outcomes = tuple(outcomes)
             if any(item.stopped for item in outcomes):
+                log_event(
+                    "worker",
+                    "worker_stopped",
+                    operation_id=operation_id,
+                    completed_inputs=len(outcomes),
+                )
                 callbacks.stopped()
             else:
+                log_event(
+                    "worker",
+                    "worker_completed",
+                    operation_id=operation_id,
+                    completed_inputs=len(outcomes),
+                    failed_inputs=sum(item.status == "failed" for item in outcomes),
+                )
                 callbacks.complete()
         except Exception as exc:  # noqa: BLE001 - surfaced through the callback
             self.last_outcomes = tuple(outcomes)
             if self._is_stopped:
+                log_event(
+                    "worker",
+                    "worker_stopped",
+                    operation_id=operation_id,
+                    completed_inputs=len(outcomes),
+                )
                 callbacks.stopped()
                 return
+            log_event(
+                "worker",
+                "worker_failed",
+                level="error",
+                operation_id=operation_id,
+                error_type=type(exc).__name__,
+                error=str(exc),
+                completed_inputs=len(outcomes),
+            )
             callbacks.error(exc)
             _release_inference_resources(self, park_weights=True)
 
@@ -335,9 +427,7 @@ class JobRunner:
             or self.settings.process.method == ProcessMethod.ENSEMBLE
         )
         try:
-            mode: Literal["single", "ensemble"] = (
-                "ensemble" if use_ensemble else "single"
-            )
+            mode: Literal["single", "ensemble"] = "ensemble" if use_ensemble else "single"
             self._run_separation([planned.path], item_callbacks, mode)
         except Exception as exc:  # noqa: BLE001 - convert to outcome
             return InputOutcome(
@@ -345,6 +435,23 @@ class JobRunner:
                 status="failed",
                 error=str(exc),
                 elapsed_s=time.perf_counter() - started,
+            )
+
+        if box["status"] == "success":
+            missing_required = tuple(
+                output.path
+                for output in planned.outputs
+                if not output.conditional and not os.path.isfile(output.path)
+            )
+            if missing_required:
+                return InputOutcome(
+                    path=planned.path,
+                    status="failed",
+                    error=f"Missing required output after processing: {missing_required!r}",
+                    elapsed_s=time.perf_counter() - started,
+                )
+            box["outputs"] = tuple(
+                output.path for output in planned.outputs if os.path.isfile(output.path)
             )
 
         return InputOutcome(
@@ -376,9 +483,7 @@ class JobRunner:
             if self._run_path_map is not None:
                 target = self._run_path_map.get(target, target)
             item = next(
-                entry
-                for entry in self._run_planned
-                if os.path.abspath(entry.path) == target
+                entry for entry in self._run_planned if os.path.abspath(entry.path) == target
             )
             return rebase_output_naming(
                 item.naming,
@@ -436,16 +541,14 @@ class JobRunner:
                 debug("model", f"sample clip fallback log failed: {exc}")
 
         prep_started = time.perf_counter()
-        prepared = prepare_input_paths(
-            self.settings, input_paths, on_fallback=on_fallback
-        )
+        prepared = prepare_input_paths(self.settings, input_paths, on_fallback=on_fallback)
         debug_elapsed("worker", "prepare_input_paths", prep_started, files=len(prepared))
         if self._run_planned is not None:
             # Sample mode (and any future rewrite) can replace paths; map the
             # prepared path back to the original so planned lookup still hits.
             self._run_path_map = {
                 os.path.abspath(prep): os.path.abspath(orig)
-                for orig, prep in zip(input_paths, prepared)
+                for orig, prep in zip(input_paths, prepared, strict=False)
             }
         return prepared
 
@@ -500,13 +603,15 @@ class JobRunner:
         self._mdx_cache_source_mapper = {}
         self._demucs_cache_source_mapper = {}
 
-    def _cached_source_callback(self, process_method: typing.Any, model_name: typing.Any=None):
+    def _cached_source_callback(self, process_method: typing.Any, model_name: typing.Any = None):
         mapper = self._mapper_for(process_method)
         if model_name and model_name in mapper:
             return model_name, mapper[model_name]
         return None, None
 
-    def _cached_model_source_holder(self, process_method: typing.Any, sources: typing.Any, model_name: typing.Any=None):
+    def _cached_model_source_holder(
+        self, process_method: typing.Any, sources: typing.Any, model_name: typing.Any = None
+    ):
         mapper = self._mapper_for(process_method)
         mapper[model_name] = sources
 
@@ -522,11 +627,19 @@ class JobRunner:
 
     # -- Worker -----------------------------------------------------------------
 
-    def resolve_models(self) -> List[ModelConfig]:
+    def resolve_models(
+        self,
+        model_dependencies: typing.Mapping[str, typing.Any] | None = None,
+    ) -> List[ModelConfig]:
         """Build the ``ModelConfig`` list for the currently chosen method."""
         method = ProcessMethod(self.settings.process.method)
         if method is ProcessMethod.ENSEMBLE:
-            return assemble_model(self.settings, self.repo, arch_type=ENSEMBLE_MODE)
+            return assemble_model(
+                self.settings,
+                self.repo,
+                arch_type=ENSEMBLE_MODE,
+                model_dependencies=model_dependencies,
+            )
         if method is ProcessMethod.VR:
             model_name = self.settings.vr.model
         elif method is ProcessMethod.MDX:
@@ -537,7 +650,13 @@ class JobRunner:
             raise NotImplementedError(
                 f"process method '{method.value}' is implemented in a later phase"
             )
-        return assemble_model(self.settings, self.repo, model_name, method.value)
+        return assemble_model(
+            self.settings,
+            self.repo,
+            model_name,
+            method.value,
+            model_dependencies=model_dependencies,
+        )
 
     def _count_true_models(self, models: Sequence[Any]) -> int:
         """Progress denominator: shared with the Save stems workload estimate."""
@@ -549,22 +668,32 @@ class JobRunner:
         The engines use ``list_all_models`` to decide whether a referenced
         primary/secondary model participates in the current run.
         """
-        primary = [m.model_basename for m in models if m.model_basename]
+        primary = [
+            getattr(m, "backend_name", None) or m.model_basename
+            for m in models
+            if getattr(m, "backend_name", None) or m.model_basename
+        ]
         secondary = []
         for m in models:
             if not m.is_secondary_model_activated or m.secondary_model is None:
                 continue
-            name = m.secondary_model.model_basename
+            name = (
+                getattr(m.secondary_model, "backend_name", None) or m.secondary_model.model_basename
+            )
             if name:
                 secondary.append(name)
         pre_proc: List[str] = []
         for m in models:
             proc = getattr(m, "pre_proc_model", None)
-            if proc is not None and proc.model_basename:
-                pre_proc.append(proc.model_basename)
+            if proc is not None:
+                name = getattr(proc, "backend_name", None) or proc.model_basename
+                if name:
+                    pre_proc.append(name)
         demucs_4_stem: List[str] = []
         for m in models:
-            if m.process_method == DEMUCS_ARCH_TYPE and getattr(m, "is_demucs_4_stem_secondaries", False):
+            if m.process_method == DEMUCS_ARCH_TYPE and getattr(
+                m, "is_demucs_4_stem_secondaries", False
+            ):
                 demucs_4_stem.extend(n for n in m.secondary_model_4_stem_model_names_list if n)
         self.all_models = [n for n in primary + secondary + pre_proc + demucs_4_stem if n]
 
@@ -597,13 +726,9 @@ class JobRunner:
             prefer_gpu_identity=prefer_gpu_identity,
         )
         if action in {"parked_other", "cleared_other"}:
-            callbacks.console(
-                "Low GPU memory — freed unused cached models for this run\n"
-            )
+            callbacks.console("Low GPU memory — freed unused cached models for this run\n")
         elif action in {"parked_all", "cleared_all"}:
-            callbacks.console(
-                "Low GPU memory — freed all cached models for this run\n"
-            )
+            callbacks.console("Low GPU memory — freed all cached models for this run\n")
 
     def _build_separator(
         self,
@@ -635,6 +760,8 @@ class JobRunner:
         """
         import shutil
 
+        set_operation_id(self._operation_id)
+
         lifecycle_label = "_run_ensemble" if mode == "ensemble" else "_run"
         debug("worker", f"{lifecycle_label} entered")
         import_started = time.perf_counter()
@@ -654,37 +781,32 @@ class JobRunner:
                 models = list(self._run_models)
             elif mode == "ensemble":
                 models = assemble_model(
-                    self.settings, self.repo, arch_type=ENSEMBLE_MODE
+                    self.settings,
+                    self.repo,
+                    arch_type=ENSEMBLE_MODE,
+                    model_dependencies=self._run_model_dependencies,
                 )
             else:
-                models = self.resolve_models()
-            debug_elapsed(
-                "worker", "resolve_models", resolve_started, count=len(models)
-            )
+                models = self.resolve_models(self._run_model_dependencies)
+            debug_elapsed("worker", "resolve_models", resolve_started, count=len(models))
 
             ensemble_export_path: str | None = None
             if mode == "ensemble":
                 if len(models) <= 1:
-                    raise RuntimeError(
-                        "Select at least two models to run an ensemble"
-                    )
+                    raise RuntimeError("Select at least two models to run an ensemble")
                 ensemble = Ensembler(self.settings)
                 ensemble_export_path = ensemble.ensemble_folder_name
-                is_4_stem = coerce_ensemble_pair(
-                    self.settings.ensemble.main_stem
-                ).is_multi_or_four()
-                hooks: Any = run_hooks._EnsembleRunHooks(ensemble, is_4_stem)
+                is_multi_stem = is_stem_mode(
+                    normalize_stem_pair_id(self.settings.ensemble.main_stem)
+                )
+                hooks: Any = run_hooks._EnsembleRunHooks(ensemble, is_multi_stem)
             else:
                 assert single_export_path is not None
                 try:
-                    amp_threshold = float(
-                        self.settings.process.amplification_threshold or 0.0
-                    )
+                    amp_threshold = float(self.settings.process.amplification_threshold or 0.0)
                 except (TypeError, ValueError):
                     amp_threshold = 0.0
-                hooks = run_hooks._SingleRunHooks(
-                    single_export_path, amp_threshold
-                )
+                hooks = run_hooks._SingleRunHooks(single_export_path, amp_threshold)
 
             self.iteration = 0
             self._build_all_models(models)

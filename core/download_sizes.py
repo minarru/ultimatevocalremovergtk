@@ -66,6 +66,12 @@ def _submit_wave(
 
 
 def _cache_path() -> str:
+    if not current_access_policy().allow_cache_writes:
+        from .remote_catalog_cache import inspect_cache_path
+
+        return inspect_cache_path(
+            "download_size_cache.json", paths.DOWNLOAD_SIZE_CACHE_FILE
+        )
     return paths.migrate_cache_file("download_size_cache.json", paths.DOWNLOAD_SIZE_CACHE_FILE)
 
 
@@ -123,7 +129,7 @@ def _write_cache(payload: Dict[str, object]) -> None:
     with _memory_lock:
         _memory_payload = payload
         _memory_path = path
-        if not current_access_policy().allow_metadata_writes:
+        if not current_access_policy().allow_cache_writes:
             return
         try:
             write_json_atomic(path, payload)
@@ -483,11 +489,6 @@ def _head_remote_meta(
             return size, validator, content_id
     except Exception:
         return None, None, None
-
-
-def _head_content_length(url: str) -> Optional[int]:
-    size, _validator, _content_id = _unpack_head_meta(_head_remote_meta(url))
-    return size
 
 
 def _get_content_length(url: str) -> Optional[int]:

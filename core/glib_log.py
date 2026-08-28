@@ -7,6 +7,7 @@ from typing import Any, Callable, Optional
 
 _EMIT_HOOK: Optional[Callable[[str, str, int], None]] = None
 _INITIALIZED = False
+_INITIALIZING = False
 _GLIB: Any = None
 _WARNED_NO_GLIB = False
 
@@ -21,13 +22,13 @@ def set_emit_hook(
 
 def init() -> None:
     """Load GLib once; call from the UI entry point before worker threads log."""
-    global _INITIALIZED, _GLIB
-    if _INITIALIZED:
+    global _INITIALIZED, _INITIALIZING, _GLIB
+    if _INITIALIZED or _INITIALIZING:
         return
     from .debug_log import normalize_g_messages_debug_env
 
     normalize_g_messages_debug_env()
-    _INITIALIZED = True
+    _INITIALIZING = True
     try:
         import gi
 
@@ -37,6 +38,9 @@ def init() -> None:
         _GLIB = GLib
     except Exception:  # noqa: BLE001 - optional until first emit
         _GLIB = None
+    finally:
+        _INITIALIZING = False
+        _INITIALIZED = True
 
 
 def _warn_no_glib_once() -> None:
@@ -58,6 +62,8 @@ def emit(domain: str, message: str, *, level: str = "debug") -> None:
         _EMIT_HOOK(domain, message, glib_level)
         return
 
+    if _INITIALIZING:
+        return
     if _GLIB is None:
         init()
     glib = _GLIB

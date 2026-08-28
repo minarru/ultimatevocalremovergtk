@@ -123,6 +123,10 @@ class MergedForDisplayCacheTests(unittest.TestCase):
         gen_before = md._display_generation
         stub = mock.MagicMock()
         stub._naming_revision = 0
+        # reload_mappers now delegates to two semantic halves; route them back to
+        # the real implementations so this still exercises the load, not the mock.
+        stub._reload_hash_mappers = lambda: ModelRepository._reload_hash_mappers(stub)
+        stub._reload_name_mappers = lambda: ModelRepository._reload_name_mappers(stub)
         ModelRepository.reload_mappers(stub)
         second = md._merged_for_display()
         self.assertEqual(md._display_generation, gen_before)

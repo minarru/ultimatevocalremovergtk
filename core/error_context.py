@@ -17,6 +17,7 @@ from bundled.constants import (
     VR_ARCH_TYPE,
 )
 from core.model_display import display_name_for_model
+from core.model_identity import ModelIdentityService
 from core.settings import Settings
 from core.settings.flat_map import FLAT_TO_PATH
 
@@ -76,7 +77,6 @@ _PROCESS_SETTING_KEYS = (
     "mdx_is_secondary_model_activate",
     "vr_is_secondary_model_activate",
     "demucs_stems",
-    "is_chunk_demucs",
     "is_chunk_mdxnet",
     "is_split_mode",
     "is_demucs_combine_stems",
@@ -206,7 +206,10 @@ def non_default_setting_lines(settings: Settings) -> List[str]:
 
 
 def model_summary_lines(model: typing.Any) -> List[str]:
-    label = display_name_for_model(model.process_method, model.model_name, model.repo)
+    label = (
+        str(getattr(model, "model_display_label", "") or "")
+        or display_name_for_model(model.process_method, model.model_name, model.repo)
+    )
     lines = [
         f"model={label or model.model_name}",
         f"basename={model.model_basename or '(unknown)'}",
@@ -330,7 +333,10 @@ def build_separation_context(
     )
     models: List[str] = []
     if model_name and model_name not in (CHOOSE_MODEL, "", None):
-        label = display_name_for_model(method_key, model_name, repo)
+        try:
+            label = ModelIdentityService(repo).display_label(str(model_name))
+        except (TypeError, ValueError):
+            label = display_name_for_model(method_key, model_name, repo)
         models.append(label or str(model_name))
 
     return {
@@ -342,9 +348,21 @@ def build_separation_context(
 
 
 def build_ensemble_context(
-    settings: Settings, input_paths: Sequence[str]
+    settings: Settings,
+    input_paths: Sequence[str],
+    repo: typing.Any = None,
 ) -> Dict[str, Any]:
-    models = list(settings.ensemble.selected_models or [])
+    references = list(settings.ensemble.selected_models or [])
+    models: List[str] = []
+    identities = ModelIdentityService(repo) if repo is not None else None
+    for reference in references:
+        if identities is None:
+            models.append(str(reference))
+            continue
+        try:
+            models.append(identities.lookup(str(reference)).display)
+        except (TypeError, ValueError):
+            models.append(str(reference))
     return {
         "process": ENSEMBLE_MODE,
         "models": models,

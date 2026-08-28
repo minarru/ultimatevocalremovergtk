@@ -21,6 +21,27 @@ class PlatformPathTests(unittest.TestCase):
             with mock.patch("os.access", return_value=True):
                 self.assertEqual(uvr_platform.user_data_dir("/writable/root"), "/writable/root")
 
+    def test_registry_data_dir_uses_ignored_local_state_for_portable_mode(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(
+                uvr_platform.registry_data_dir("/portable", "/portable"),
+                "/portable/.uvr-runtime",
+            )
+
+    def test_registry_data_dir_keeps_explicit_data_dir_authoritative(self):
+        with mock.patch.dict(os.environ, {"UVR_DATA_DIR": "/portable"}, clear=True):
+            self.assertEqual(
+                uvr_platform.registry_data_dir("/portable", "/portable"),
+                "/portable",
+            )
+
+    def test_registry_data_dir_uses_relocated_read_only_data_dir(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(
+                uvr_platform.registry_data_dir("/app", "/home/user/.local/share/uvr"),
+                "/home/user/.local/share/uvr",
+            )
+
     def test_default_user_data_dir_linux(self):
         with mock.patch.object(uvr_platform, "system_name", return_value="Linux"):
             with mock.patch.dict(

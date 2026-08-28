@@ -1,4 +1,8 @@
+import tempfile
 import unittest
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Any, cast
 from unittest import mock
 
 from core.job_plan import PlannedInput, ResolvedJob, ValidationLevel, settings_fingerprint
@@ -51,6 +55,53 @@ class FormatMmssTests(unittest.TestCase):
 
     def test_over_one_minute(self):
         self.assertEqual(_format_mmss(125), "2:05")
+
+
+class EnsembleErrorContextSnapshotTests(unittest.TestCase):
+    def test_live_snapshot_uses_repository_display_labels(self) -> None:
+        from core.model_identity import ModelArtifacts, ModelRecord
+
+        settings = Settings.defaults()
+        settings.ensemble.selected_models = ["mdx:first", "vr:second"]
+        records = {
+            "mdx:first": ModelRecord(
+                "mdx:first",
+                "mdx",
+                "first",
+                "Friendly First",
+                "first",
+                ModelArtifacts("first.onnx"),
+                True,
+            ),
+            "vr:second": ModelRecord(
+                "vr:second",
+                "vr",
+                "second",
+                "Friendly Second",
+                "second",
+                ModelArtifacts("second.pth"),
+                True,
+            ),
+        }
+        repo = object()
+        window = SimpleNamespace(
+            settings=settings,
+            context=SimpleNamespace(repo=repo),
+            content_stack=SimpleNamespace(get_visible_child_name=lambda: "ensemble"),
+            _ensemble_page=SimpleNamespace(input_row=SimpleNamespace(paths=["/tmp/song.wav"])),
+        )
+        controller = cast(Any, RunController.__new__(RunController))
+        controller._window = window
+
+        with mock.patch(
+            "core.error_context.ModelIdentityService.lookup",
+            autospec=True,
+            side_effect=lambda _service, model_id: records[model_id],
+        ):
+            context = controller._snapshot_error_context(object())
+
+        self.assertEqual(context["models"], ["Friendly First", "Friendly Second"])
+        self.assertEqual(settings.ensemble.selected_models, ["mdx:first", "vr:second"])
 
 
 class SetRunningUnlockTests(unittest.TestCase):
@@ -223,8 +274,16 @@ class AudioPreflightTests(unittest.TestCase):
 
         settings = Settings.defaults()
         plan = ResolvedAudioJob(
-            TIME_STRETCH, settings, "/tmp/out", (), {}, (),
-            ValidationLevel.RUNTIME, 0, "fingerprint", "cpu",
+            TIME_STRETCH,
+            settings,
+            "/tmp/out",
+            (),
+            {},
+            (),
+            ValidationLevel.RUNTIME,
+            0,
+            "fingerprint",
+            "cpu",
         )
         window = mock.Mock()
         controller = RunController.__new__(RunController)
@@ -238,6 +297,60 @@ class AudioPreflightTests(unittest.TestCase):
 
         controller._accept_plan.assert_called_once_with(target, "fingerprint", plan)
         controller._present_plan_confirmation.assert_not_called()
+
+    def test_audio_page_uses_resolved_apollo_backend_at_start(self) -> None:
+        from bundled.constants import APOLLO_RESTORE
+        from core.audio_plan import ResolvedAudioJob
+        from core.job_plan import ModelDescriptor, ValidationLevel
+        from core.model_identity import ModelArtifacts
+        from ui.audio_tools.window import AudioToolsPage
+
+        settings = Settings.defaults()
+        settings.audio_tools.apollo_model = "apollo:restorer"
+        plan = ResolvedAudioJob(
+            APOLLO_RESTORE,
+            settings,
+            "/tmp/out",
+            (),
+            {},
+            (),
+            ValidationLevel.RUNTIME,
+            0,
+            "fingerprint",
+            "cpu",
+            ModelDescriptor(
+                id="apollo:restorer",
+                family="apollo",
+                basename="restorer",
+                display="Restorer",
+                backend_name="restorer.ckpt",
+                artifacts=ModelArtifacts("restorer.ckpt"),
+            ),
+        )
+        runner = mock.Mock(apollo_backend_name=None)
+        page = SimpleNamespace(
+            _current_tool=mock.Mock(return_value=APOLLO_RESTORE),
+            _dual_pairs=[],
+            inputs_row=SimpleNamespace(paths=["/tmp/song.wav"]),
+            _resolve_apollo_model=mock.Mock(return_value={"ok": True}),
+            runner=runner,
+            window=mock.Mock(),
+            context=mock.Mock(try_save_settings=mock.Mock(return_value=None)),
+            _toast=mock.Mock(),
+        )
+        callbacks = mock.Mock()
+
+        AudioToolsPage.start(cast(Any, page), callbacks, plan)
+
+        page._resolve_apollo_model.assert_called_once_with("restorer.ckpt")
+        self.assertEqual(runner.apollo_backend_name, "restorer.ckpt")
+        runner.start.assert_called_once_with(
+            APOLLO_RESTORE,
+            ["/tmp/song.wav"],
+            [],
+            callbacks,
+            apollo_params={"ok": True},
+        )
 
 
 class StartTargetSettingsCopyTests(unittest.TestCase):
@@ -293,7 +406,7 @@ class StartTargetSettingsCopyTests(unittest.TestCase):
 
         target.start.assert_called_once_with(callbacks, plan=plan)
 
-    def test_start_target_does_not_forward_audio_plan(self) -> None:
+    def test_start_target_forwards_audio_plan_backend_contract(self) -> None:
         from bundled.constants import TIME_STRETCH
         from core.audio_plan import ResolvedAudioJob
         from core.job_plan import ValidationLevel
@@ -301,8 +414,16 @@ class StartTargetSettingsCopyTests(unittest.TestCase):
 
         settings = Settings.defaults()
         plan = ResolvedAudioJob(
-            TIME_STRETCH, settings, "/tmp/out", (), {}, (),
-            ValidationLevel.RUNTIME, 0, "fingerprint", "cpu",
+            TIME_STRETCH,
+            settings,
+            "/tmp/out",
+            (),
+            {},
+            (),
+            ValidationLevel.RUNTIME,
+            0,
+            "fingerprint",
+            "cpu",
         )
         runner = mock.Mock()
         runner.settings = Settings.defaults()
@@ -318,8 +439,7 @@ class StartTargetSettingsCopyTests(unittest.TestCase):
 
         controller._start_target(target, plan)
 
-        target.start.assert_called_once_with(callbacks)
-        self.assertNotIn("plan", target.start.call_args.kwargs)
+        target.start.assert_called_once_with(callbacks, plan=plan)
 
     def test_start_target_applies_plan_to_audio_tools_page_runner(self) -> None:
         from core.settings import Settings
@@ -376,9 +496,7 @@ class PlanRecheckTests(unittest.TestCase):
         controller._begin_preflight = mock.Mock()
         plan = object()
 
-        controller._finish_plan_recheck(
-            target, settings_fingerprint(settings), plan, True, None
-        )
+        controller._finish_plan_recheck(target, settings_fingerprint(settings), plan, True, None)
 
         controller._set_preflight_busy.assert_called_once_with(False)
         controller._start_target.assert_called_once_with(target, plan)
@@ -412,9 +530,7 @@ class PlanRecheckTests(unittest.TestCase):
         settings = Settings.defaults()
         plan = _resolved_job(path="/in/old.wav", output="/out", settings=settings)
         target = mock.Mock()
-        target.build_job_spec.return_value = JobSpec(
-            "separate", settings, ("/in/new.wav",), "/out"
-        )
+        target.build_job_spec.return_value = JobSpec("separate", settings, ("/in/new.wav",), "/out")
         window = mock.Mock()
         controller = RunController.__new__(RunController)
         controller._window = window
@@ -456,9 +572,7 @@ class PlanRecheckTests(unittest.TestCase):
         settings = Settings.defaults()
         plan = _resolved_job(path="/in/old.wav", output="/out", settings=settings)
         target = mock.Mock()
-        target.build_job_spec.return_value = JobSpec(
-            "separate", settings, ("/in/new.wav",), "/out"
-        )
+        target.build_job_spec.return_value = JobSpec("separate", settings, ("/in/new.wav",), "/out")
         window = mock.Mock()
         controller = RunController.__new__(RunController)
         controller._window = window
@@ -466,15 +580,172 @@ class PlanRecheckTests(unittest.TestCase):
         controller._start_target = mock.Mock()
         controller._begin_preflight = mock.Mock()
 
-        controller._finish_plan_recheck(
-            target, settings_fingerprint(settings), plan, True, None
-        )
+        controller._finish_plan_recheck(target, settings_fingerprint(settings), plan, True, None)
 
         controller._start_target.assert_not_called()
         controller._begin_preflight.assert_called_once_with(target)
 
 
 class BeginRunOutputTests(unittest.TestCase):
+    def test_start_target_clears_operation_when_target_aborts_before_begin_run(self) -> None:
+        from core import debug_log
+
+        window = mock.Mock()
+        window.settings = Settings.defaults()
+        window.context.runner.settings = Settings.defaults()
+        target = mock.Mock()
+        controller = RunController.__new__(RunController)
+        controller._window = window
+        controller._operation_id = None
+        controller._operation_started_at = 0.0
+        controller._running_target = None
+        controller._callbacks = mock.Mock(return_value=mock.Mock())
+
+        with mock.patch("ui.run_control.new_operation_id", return_value="ui-run-aborted"):
+            controller._start_target(target)
+
+        self.assertIsNone(controller._operation_id)
+        self.assertIsNone(debug_log.current_operation_id())
+
+    def test_start_target_handles_pre_begin_exception_and_clears_operation(self) -> None:
+        from core import debug_log
+
+        window = mock.Mock()
+        window.settings = Settings.defaults()
+        window.context.runner.settings = Settings.defaults()
+        target = mock.Mock()
+        target.start.side_effect = RuntimeError("pre-begin failure")
+        controller = RunController.__new__(RunController)
+        controller._window = window
+        controller._operation_id = None
+        controller._operation_started_at = 0.0
+        controller._running_target = None
+        controller._callbacks = mock.Mock(return_value=mock.Mock())
+        controller.fail_to_start = mock.Mock(
+            side_effect=lambda _message, _exc: controller._finish_operation(
+                "run_start_failed", level="error"
+            )
+        )
+
+        with mock.patch("ui.run_control.new_operation_id", return_value="ui-run-failed"):
+            controller._start_target(target)
+
+        controller.fail_to_start.assert_called_once()
+        self.assertIsNone(controller._operation_id)
+        self.assertIsNone(debug_log.current_operation_id())
+
+    def test_preflight_operation_is_reused_when_run_begins(self) -> None:
+        from core import debug_log
+        from core.run_estimate import ProgressEtaTracker
+        from core.settings import Settings
+
+        window = mock.Mock()
+        window.settings = Settings.defaults()
+        window.context.runner.settings = Settings.defaults()
+        window.log_panel = mock.Mock()
+        window.console = mock.Mock()
+        controller = RunController.__new__(RunController)
+        controller._window = window
+        controller._operation_id = "ui-run-preflight"
+        controller._operation_started_at = 10.0
+        controller._eta_tracker = ProgressEtaTracker()
+        controller._snapshot_error_context = mock.Mock(return_value={})
+        controller._run_label_for = mock.Mock(return_value="Separation")
+        controller._set_running = mock.Mock()
+        debug_log.set_operation_id("ui-run-preflight")
+        self.addCleanup(debug_log.set_operation_id, None)
+
+        with (
+            mock.patch("ui.run_control.mark_run_start"),
+            mock.patch("ui.run_control.reset_progress_log"),
+            mock.patch("ui.run_control.new_operation_id") as new_operation_id,
+            mock.patch("core.error_context.clear_run_error_context"),
+            mock.patch("core.error_context.set_run_error_context"),
+        ):
+            controller.begin_run(object())
+
+        new_operation_id.assert_not_called()
+        self.assertEqual(controller._operation_id, "ui-run-preflight")
+        self.assertEqual(debug_log.current_operation_id(), "ui-run-preflight")
+
+    def test_preflight_worker_inherits_ui_operation_id(self) -> None:
+        from core import debug_log
+        from core.settings import Settings
+
+        observed: list[str | None] = []
+        settings = Settings.defaults()
+        spec = mock.Mock(settings=settings)
+        plan = mock.Mock(diagnostics=[])
+        target = mock.Mock()
+        target.build_job_spec.return_value = spec
+        window = mock.Mock()
+        controller = RunController.__new__(RunController)
+        controller._window = window
+        controller._operation_id = None
+        controller._operation_started_at = 0.0
+        controller._preflight_in_progress = False
+        controller._plan_dialog = None
+        controller._set_preflight_busy = mock.Mock()
+        controller._finish_preflight = mock.Mock()
+
+        class ImmediateThread:
+            def __init__(
+                self,
+                *,
+                target: Any,
+                **_kwargs: Any,
+            ) -> None:
+                self._target = target
+
+            def start(self) -> None:
+                self._target()
+
+        resolver = mock.Mock()
+
+        def resolve(_spec: object, _level: object) -> object:
+            observed.append(debug_log.current_operation_id())
+            debug_log.log_event("settings", "plan_resolved")
+            return plan
+
+        resolver.resolve.side_effect = resolve
+        with tempfile.TemporaryDirectory() as tmp:
+            log_path = Path(tmp) / "uvr.log"
+            debug_log.configure(level="debug", log_file=str(log_path))
+            self.addCleanup(debug_log.configure, level="errors", log_file="")
+            with (
+                mock.patch("ui.run_control.target_blocked_reason", return_value=None),
+                mock.patch("ui.run_control.new_operation_id", return_value="ui-run-preflight"),
+                mock.patch("ui.run_control.threading.Thread", ImmediateThread),
+                mock.patch("core.job_plan.JobResolver", return_value=resolver),
+                mock.patch(
+                    "ui.run_control.idle_on_main", side_effect=lambda func, *args: func(*args)
+                ),
+            ):
+                controller.handle_start(target)
+
+            debug_log.log_event("worker", "worker_started")
+            debug_log.log_event("audio", "export_completed")
+            controller._finish_operation("run_completed")
+            correlated = [
+                line
+                for line in log_path.read_text(encoding="utf-8").splitlines()
+                if any(
+                    event in line
+                    for event in (
+                        "event=plan_resolved",
+                        "event=worker_started",
+                        "event=export_completed",
+                        "event=run_completed",
+                    )
+                )
+            ]
+
+        self.assertEqual(observed, ["ui-run-preflight"])
+        self.assertEqual(len(correlated), 4)
+        self.assertTrue(all("operation=ui-run-preflight" in line for line in correlated))
+        self.assertIsNone(controller._operation_id)
+        self.assertIsNone(debug_log.current_operation_id())
+
     def test_begin_run_uses_runner_export_path(self) -> None:
         from core.run_estimate import ProgressEtaTracker
         from core.settings import Settings
@@ -499,13 +770,49 @@ class BeginRunOutputTests(unittest.TestCase):
         controller._run_label_for = mock.Mock(return_value="Separation")
         controller._set_running = mock.Mock()
 
-        with mock.patch("ui.run_control.mark_run_start"), \
-             mock.patch("ui.run_control.reset_progress_log"), \
-             mock.patch("core.error_context.clear_run_error_context"), \
-             mock.patch("core.error_context.set_run_error_context"):
+        with (
+            mock.patch("ui.run_control.mark_run_start"),
+            mock.patch("ui.run_control.reset_progress_log"),
+            mock.patch("core.error_context.clear_run_error_context"),
+            mock.patch("core.error_context.set_run_error_context"),
+        ):
             controller.begin_run(object())
 
         self.assertEqual(controller._run_output_dir, "/plan/out")
+
+    def test_begin_run_creates_operation_context_and_completion_clears_it(self) -> None:
+        from core import debug_log
+        from core.run_estimate import ProgressEtaTracker
+        from core.settings import Settings
+
+        window = mock.Mock()
+        window.settings = Settings.defaults()
+        window.context.runner.settings = Settings.defaults()
+        window.log_panel = mock.Mock()
+        window.console = mock.Mock()
+        controller = RunController.__new__(RunController)
+        controller._window = window
+        controller._eta_tracker = ProgressEtaTracker()
+        controller._snapshot_error_context = mock.Mock(return_value={})
+        controller._run_label_for = mock.Mock(return_value="Separation")
+        controller._set_running = mock.Mock()
+        controller._restore_runner_settings = mock.Mock()
+        controller._show_complete_toast = mock.Mock()
+        controller._send_completion_notification = mock.Mock()
+        controller._schedule_release_inference_memory = mock.Mock()
+
+        with (
+            mock.patch("ui.run_control.mark_run_start"),
+            mock.patch("ui.run_control.reset_progress_log"),
+            mock.patch("ui.run_control.new_operation_id", return_value="ui-run-7"),
+            mock.patch("core.error_context.clear_run_error_context"),
+            mock.patch("core.error_context.set_run_error_context"),
+        ):
+            controller.begin_run(object())
+            self.assertEqual(debug_log.current_operation_id(), "ui-run-7")
+            controller._on_complete()
+
+        self.assertIsNone(debug_log.current_operation_id())
 
     def test_fail_to_start_restores_runner_settings(self) -> None:
         window = mock.Mock()
@@ -536,3 +843,50 @@ class StartingProgressTextTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ActiveModelLabelTests(unittest.TestCase):
+    """The label the run surfaces is the identity display, not a second mapper.
+
+    `ModelConfig.model_display_label` is assigned from `identity.display`, and
+    `_model_output_label` is what export paths and the floating log read. No UI
+    code re-derives a label during a run.
+    """
+
+    def test_run_label_prefers_the_identity_display(self) -> None:
+        from core.run_hooks import _model_output_label
+
+        model = SimpleNamespace(
+            model_display_label="MelBand Roformer — Karaoke · becruily",
+            model_name="melband_roformer_karaoke_becruily",
+            model_basename="melband_roformer_karaoke_becruily",
+        )
+
+        self.assertEqual(
+            _model_output_label(cast(Any, model)),
+            "MelBand Roformer — Karaoke · becruily",
+        )
+
+    def test_unknown_custom_model_falls_back_to_its_basename(self) -> None:
+        from core.run_hooks import _model_output_label
+
+        model = SimpleNamespace(
+            model_display_label="",
+            model_name="",
+            model_basename="my_private_model",
+        )
+
+        self.assertEqual(_model_output_label(cast(Any, model)), "my_private_model")
+
+    def test_model_config_takes_its_label_from_the_identity_record(self) -> None:
+        """Locks the assignment in core/model_config/config.py."""
+        import inspect
+
+        from core.model_config import config as config_mod
+
+        source = inspect.getsource(config_mod)
+        self.assertRegex(
+            source,
+            r"self\.model_display_label\s*=\s*(?:\(\s*)?"
+            r"identity\.display\s+if\s+identity\s+is\s+not\s+None\s+else\s+model_name",
+        )

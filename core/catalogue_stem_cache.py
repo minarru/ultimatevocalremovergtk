@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import itertools
 import json
 import os
@@ -48,6 +49,7 @@ class StemCacheHit:
     stems: tuple[str, ...]
     target_instrument: Optional[str]
     ok: bool
+    content_sha256: str = ""
 
 
 def catalogue_stems_enabled() -> bool:
@@ -64,10 +66,14 @@ def normalize_config_url(url: str) -> str:
 
 def _cache_path() -> str:
     from core import paths
+    from core.access_policy import current_access_policy
 
-    return paths.migrate_cache_file(
-        "catalogue_stem_cache.json", paths.CATALOGUE_STEM_CACHE_FILE
-    )
+    if not current_access_policy().allow_cache_writes:
+        from core.remote_catalog_cache import inspect_cache_path
+
+        return inspect_cache_path("catalogue_stem_cache.json", paths.CATALOGUE_STEM_CACHE_FILE)
+
+    return paths.migrate_cache_file("catalogue_stem_cache.json", paths.CATALOGUE_STEM_CACHE_FILE)
 
 
 def _ensure_loaded() -> Dict[str, Dict[str, Any]]:
@@ -111,10 +117,19 @@ def _entry_to_hit(entry: Mapping[str, Any]) -> StemCacheHit:
         stems = tuple(str(s) for s in raw_stems if s is not None)
     target = entry.get("target_instrument")
     target_instrument = str(target) if target is not None and target != "" else None
+    raw_digest = entry.get("content_sha256")
+    content_sha256 = (
+        raw_digest
+        if isinstance(raw_digest, str)
+        and len(raw_digest) == 64
+        and all(character in "0123456789abcdef" for character in raw_digest)
+        else ""
+    )
     return StemCacheHit(
         stems=stems,
         target_instrument=target_instrument,
         ok=bool(entry.get("ok")),
+        content_sha256=content_sha256,
     )
 
 
@@ -133,6 +148,7 @@ def remember_stems(
     stems: Sequence[str],
     target_instrument: Optional[str],
     *,
+    content_sha256: str = "",
     ok: bool,
 ) -> None:
     key = normalize_config_url(url)
@@ -140,6 +156,7 @@ def remember_stems(
     entry: Dict[str, Any] = {
         "stems": list(stems),
         "target_instrument": target_instrument,
+        "content_sha256": content_sha256,
         "fetched_at": now,
         "ok": ok,
     }
@@ -152,7 +169,7 @@ def remember_stems(
         entries[key] = entry
         from .access_policy import current_access_policy
 
-        if not current_access_policy().allow_metadata_writes:
+        if not current_access_policy().allow_cache_writes:
             return
         try:
             cache_path = _cache_path()
@@ -290,7 +307,13 @@ def _fetch_and_remember(url: str) -> None:
         if not stems:
             remember_stems(url, [], None, ok=False)
             return
-        remember_stems(url, stems, target, ok=True)
+        remember_stems(
+            url,
+            stems,
+            target,
+            content_sha256=hashlib.sha256(body).hexdigest(),
+            ok=True,
+        )
     except Exception:
         remember_stems(url, [], None, ok=False)
 
@@ -342,9 +365,7 @@ def _worker_loop() -> None:
                 while pending:
                     chunk = pending[:workers]
                     pending = pending[workers:]
-                    futures = [
-                        pool.submit(_fetch_and_remember, item[2]) for item in chunk
-                    ]
+                    futures = [pool.submit(_fetch_and_remember, item[2]) for item in chunk]
                     for future in as_completed(futures):
                         future.result()
                     with _queue_lock:

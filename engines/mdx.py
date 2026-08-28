@@ -1,35 +1,35 @@
 from __future__ import annotations
+
 import typing
-from typing import Any, TYPE_CHECKING
+import warnings
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import onnxruntime as ort
 import torch
-import warnings
 from onnx import load
 from onnx2pytorch import ConvertModel
 
+import ml.mdxnet as MdxnetSet
 from bundled.constants import *
 from bundled.error_handling import *
 from core.debug_log import trace_phase
 from core.stems import exports_named_stem
 from core.torch_checkpoint import load_torch_checkpoint
 from ml import spec_utils
-import ml.mdxnet as MdxnetSet
 
 from .base import SeperateAttributes
-from .mix import prepare_mix
 from .mdx_classic_batch import (
     is_oom_message,
     mdx_hop_starts,
     next_batch_after_oom,
     resolve_mdx_effective_batch,
 )
-from .vr_utils import vr_denoiser
+from .mix import prepare_mix
 from .orchestration import process_secondary_model
+from .vr_utils import vr_denoiser
 
 if TYPE_CHECKING:
-    from core.model_config import ModelConfig
     from engines.stem_writer import ExportPlan
 
 # onnxruntime reports CUDA OOM through its own exception types rather than
@@ -52,23 +52,29 @@ def _is_batch_oom(exc: BaseException) -> bool:
         return True
     return is_oom_message(str(exc))
 
+
 cpu = torch.device('cpu')
 warnings.filterwarnings("ignore")
 
-from ml.tfc_tdf_v3 import STFT
+# Keep this import after warning suppression: the module emits import-time
+# warnings that the engine has historically filtered before model setup.
+from ml.tfc_tdf_v3 import STFT  # noqa: E402
 
 
-class SeperateMDX(SeperateAttributes):        
-
+class SeperateMDX(SeperateAttributes):
     def seperate(self) -> ExportPlan:
         samplerate = 44100
         self.model_run: Any
-    
-        if self.primary_model_name == self.model_basename and isinstance(self.primary_sources, tuple):
+
+        if self.primary_model_name == self.model_cache_key and isinstance(
+            self.primary_sources, tuple
+        ):
             mix, source = self.primary_sources
             self.load_cached_sources()
         else:
-            with trace_phase("separate", "seperate", engine="SeperateMDX", model=self.model_basename):
+            with trace_phase(
+                "separate", "seperate", engine="SeperateMDX", model=self.model_display_label
+            ):
                 self.start_inference_console_write()
                 self.write_to_console(LOADING_MODEL)
 
@@ -93,7 +99,9 @@ class SeperateMDX(SeperateAttributes):
                         )["hyper_parameters"]
                         self.dim_c, self.hop = model_params['dim_c'], model_params['hop_length']
                         separator = MdxnetSet.ConvTDFNet(**model_params)
-                        self.model_run = separator.load_from_checkpoint(self.model_path).to(self.device).eval()
+                        self.model_run = (
+                            separator.load_from_checkpoint(self.model_path).to(self.device).eval()
+                        )
                         self._weight_cache_meta = {"dim_c": self.dim_c, "hop": self.hop}
                 else:
                     use_ort = self.mdx_segment_size == self.dim_t and not self.is_other_gpu
@@ -139,17 +147,28 @@ class SeperateMDX(SeperateAttributes):
 
                 self.running_inference_console_write()
                 mix = prepare_mix(self.audio_file)
-                
+
                 source: Any = self.demix(mix)
-                
+
                 if not self.is_vocal_split_model:
                     self.cache_source((mix, source))
-                self.write_to_console(DONE, base_text='')            
+                self.write_to_console(DONE, base_text='')
 
-        mdx_net_cut = True if self.primary_stem in MDX_NET_FREQ_CUT and self.is_match_frequency_pitch else False
+        mdx_net_cut = (
+            True
+            if self.primary_stem in MDX_NET_FREQ_CUT and self.is_match_frequency_pitch
+            else False
+        )
 
         if self.is_secondary_model_activated and self.secondary_model:
-            self.secondary_source_primary, self.secondary_source_secondary = process_secondary_model(self.secondary_model, self.process_data, main_process_method=self.process_method, main_model_primary=self.primary_stem)
+            self.secondary_source_primary, self.secondary_source_secondary = (
+                process_secondary_model(
+                    self.secondary_model,
+                    self.process_data,
+                    main_process_method=self.process_method,
+                    main_model_primary=self.primary_stem,
+                )
+            )
 
         sources: dict[str, Any] = {}
         if exports_named_stem(self, self.secondary_stem):
@@ -178,23 +197,24 @@ class SeperateMDX(SeperateAttributes):
         from engines.stem_writer import ExportPlan
 
         return ExportPlan(sources=sources, samplerate=samplerate)
+
     def initialize_model_settings(self):
-        self.n_bins = self.n_fft//2+1
-        self.trim = self.n_fft//2
-        self.chunk_size = self.hop * (self.mdx_segment_size-1)
-        self.gen_size = self.chunk_size-2*self.trim
+        self.n_bins = self.n_fft // 2 + 1
+        self.trim = self.n_fft // 2
+        self.chunk_size = self.hop * (self.mdx_segment_size - 1)
+        self.gen_size = self.chunk_size - 2 * self.trim
         self.stft = STFT(self.n_fft, self.hop, self.dim_f, self.device)
 
-    def demix(self, mix: typing.Any, is_match_mix: typing.Any=False):
+    def demix(self, mix: typing.Any, is_match_mix: typing.Any = False):
         with trace_phase(
             "separate",
             "demix",
             engine="SeperateMDX",
-            model=self.model_basename,
+            model=self.model_display_label,
             match_mix=is_match_mix,
         ):
             self.initialize_model_settings()
-            
+
             org_mix = mix
             tar_waves_ = []
             # Only read back under ``is_pitch_change``, which is also the only
@@ -202,19 +222,28 @@ class SeperateMDX(SeperateAttributes):
             sr_pitched = 44100
 
             if is_match_mix:
-                chunk_size = self.hop * (256-1)
+                chunk_size = self.hop * (256 - 1)
                 overlap = 0.02
             else:
                 chunk_size = self.chunk_size
                 overlap = self.overlap_mdx
-                
-                if self.is_pitch_change:
-                    mix, sr_pitched = spec_utils.change_pitch_semitones(mix, 44100, semitone_shift=-self.semitone_shift)
 
-            gen_size = chunk_size-2*self.trim
+                if self.is_pitch_change:
+                    mix, sr_pitched = spec_utils.change_pitch_semitones(
+                        mix, 44100, semitone_shift=-self.semitone_shift
+                    )
+
+            gen_size = chunk_size - 2 * self.trim
 
             pad = gen_size + self.trim - ((mix.shape[-1]) % gen_size)
-            mixture = np.concatenate((np.zeros((2, self.trim), dtype='float32'), mix, np.zeros((2, pad), dtype='float32')), 1)
+            mixture = np.concatenate(
+                (
+                    np.zeros((2, self.trim), dtype='float32'),
+                    mix,
+                    np.zeros((2, pad), dtype='float32'),
+                ),
+                1,
+            )
             mixture_t = torch.as_tensor(mixture, dtype=torch.float32, device=self.device)
 
             # ``overlap`` is always a float here: model_data resolves the
@@ -259,9 +288,7 @@ class SeperateMDX(SeperateAttributes):
             with torch.inference_mode():
                 hop_idx = 0
                 hop_weight = (
-                    2
-                    if self.is_denoise and not self.is_denoise_model and not is_match_mix
-                    else 1
+                    2 if self.is_denoise and not self.is_denoise_model and not is_match_mix else 1
                 )
                 progress_units = max(1, n_chunks * hop_weight)
                 if not is_match_mix:
@@ -312,15 +339,15 @@ class SeperateMDX(SeperateAttributes):
             tar_waves = (result / divider).detach().cpu().numpy()
             tar_waves_.append(tar_waves)
 
-            tar_waves_ = np.vstack(tar_waves_)[:, :, self.trim:-self.trim]
-            tar_waves = np.concatenate(tar_waves_, axis=-1)[:, :mix.shape[-1]]
+            tar_waves_ = np.vstack(tar_waves_)[:, :, self.trim : -self.trim]
+            tar_waves = np.concatenate(tar_waves_, axis=-1)[:, : mix.shape[-1]]
 
-            source = tar_waves[:,0:None]
+            source = tar_waves[:, 0:None]
 
             if self.is_pitch_change and not is_match_mix:
                 source = self.pitch_fix(source, sr_pitched, org_mix)
 
-            source = source if is_match_mix else source*self.compensate
+            source = source if is_match_mix else source * self.compensate
 
             if self.is_denoise_model and not is_match_mix:
                 # ``primary_stem_native`` stays None when model resolution never
@@ -349,7 +376,7 @@ class SeperateMDX(SeperateAttributes):
 
             return source
 
-    def run_model(self, mix: typing.Any, is_match_mix: typing.Any=False):
+    def run_model(self, mix: typing.Any, is_match_mix: typing.Any = False):
         """Run STFT → model → iSTFT and return a device-resident waveform tensor."""
         from engines.amp_runtime import maybe_autocast
 
@@ -373,5 +400,6 @@ class SeperateMDX(SeperateAttributes):
         if torch.is_tensor(spec_pred):
             # Keep OLA math in float32 even when autocast produced fp16 logits.
             return self.stft.inverse(spec_pred.float())
-        return self.stft.inverse(torch.as_tensor(spec_pred, device=self.device, dtype=torch.float32))
-
+        return self.stft.inverse(
+            torch.as_tensor(spec_pred, device=self.device, dtype=torch.float32)
+        )

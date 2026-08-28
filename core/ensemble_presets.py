@@ -1,10 +1,10 @@
 """Bundled curated ensemble recipes (model combos + algorithm pairs)."""
 
 from __future__ import annotations
-import typing
 
 import json
 import os
+import typing
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 from bundled.constants import (
@@ -16,7 +16,6 @@ from core import paths
 from core.debug_log import debug
 from core.model_display import (
     parse_model_tag,
-    resolve_model_basename,
     sanitize_catalogue_label,
 )
 from core.politrees_catalog import mdx_checkpoint_filename
@@ -75,18 +74,13 @@ def load_curated_ensemble(preset_id: str) -> Optional[dict]:
 
 
 def resolve_member_tag(tag: str, repo: typing.Any) -> str:
-    """Rewrite an ensemble member reference to a canonical ``family:basename`` id."""
-    from core.model_identity import FAMILY_BY_ARCH, ModelId
+    """Keep persisted members exact; legacy text remains visible for repair."""
+    from core.model_identity import parse_stored_model_id
 
-    arch, model_name = parse_model_tag(tag)
-    if not arch or not model_name:
+    try:
+        return parse_stored_model_id(tag).value
+    except ValueError:
         return tag
-    basename = resolve_model_basename(arch, model_name, repo) or model_name
-    stem = os.path.splitext(basename)[0]
-    family = FAMILY_BY_ARCH.get(arch)
-    if family and stem and ":" not in stem:
-        return str(ModelId(family, stem))
-    return tag
 
 
 def resolve_member_tags(tags: Sequence[str], repo: typing.Any) -> List[str]:
@@ -104,10 +98,18 @@ def _installed_basenames(repo: typing.Any, arch: str) -> set:
 
 
 def member_is_installed(tag: str, repo: typing.Any) -> bool:
-    arch, model_name = parse_model_tag(tag)
-    if not arch or not model_name:
-        return False
-    basename = resolve_model_basename(arch, model_name, repo)
+    from core.model_identity import ARCH_BY_FAMILY, parse_stored_model_id
+
+    try:
+        model_id = parse_stored_model_id(tag)
+    except ValueError:
+        arch, model_name = parse_model_tag(tag)
+        if not arch or not model_name:
+            return False
+        basename = model_name
+    else:
+        arch = ARCH_BY_FAMILY[model_id.family]
+        basename = model_id.basename
     installed = _installed_basenames(repo, arch)
     if basename in installed:
         return True
@@ -187,13 +189,31 @@ def find_download_selection(tag: str, manager: typing.Any) -> Optional[Tuple[str
 def download_entries_for_missing(
     missing_tags: Iterable[str],
     manager: typing.Any,
+    repo: typing.Any = None,
 ) -> Tuple[List[Tuple[str, str]], List[str]]:
     """Return ``(enqueue_entries, unresolved_tags)`` for missing preset members."""
+    from core.model_identity import ARCH_BY_FAMILY, ModelIdentityService
+
     entries: List[Tuple[str, str]] = []
     unresolved: List[str] = []
     seen = set()
+    service = ModelIdentityService(repo) if repo is not None else None
     for tag in missing_tags:
-        found = find_download_selection(tag, manager)
+        if service is None:
+            # Compatibility for callers still loading legacy display-tag presets.
+            found = find_download_selection(tag, manager)
+        else:
+            try:
+                record = service.index.lookup(tag)
+            except ValueError:
+                found = None
+            else:
+                reference = record.catalogue_entry
+                found = (
+                    (reference.selection, ARCH_BY_FAMILY[reference.family])
+                    if reference is not None
+                    else None
+                )
         if found is None:
             unresolved.append(tag)
             continue

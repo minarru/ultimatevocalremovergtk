@@ -11,16 +11,15 @@ class EnsembleStemBucketTests(unittest.TestCase):
         self.assertEqual(_ensemble_stem_bucket("Vocals"), VOCAL_STEM)
         self.assertEqual(_ensemble_stem_bucket("drums"), "Drums")
 
-    def test_capture_merges_case_variant_buffer_keys(self):
+    def test_capture_preserves_case_variant_buffer_keys_for_planned_route_matching(self):
         sep = MagicMock()
         sep._ensemble_stem_buffers = {
             "vocals": [[0.1, 0.2]],
-            # A second key that canonicalizes to the same tag should not create
-            # a parallel bucket (last write wins for a single separator).
             "Vocals": [[0.3, 0.4]],
         }
         captured = _capture_separator_stem_arrays(sep)
-        self.assertEqual(set(captured), {VOCAL_STEM})
+        self.assertEqual(set(captured), {"vocals", VOCAL_STEM})
+        self.assertEqual(captured["vocals"].tolist(), [[0.1, 0.2]])
         self.assertEqual(captured[VOCAL_STEM].tolist(), [[0.3, 0.4]])
 
 

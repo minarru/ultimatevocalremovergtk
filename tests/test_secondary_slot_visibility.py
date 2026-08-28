@@ -1,9 +1,9 @@
 """Secondary stem slots that cannot affect the run are hidden, not dimmed."""
 
 from __future__ import annotations
-import typing
 
 import os
+import typing
 import unittest
 
 from bundled.constants import (
@@ -12,7 +12,6 @@ from bundled.constants import (
     ENSEMBLE_MODE,
     MDX_ARCH_TYPE,
 )
-from core.stems import EnsemblePair
 
 
 @unittest.skipUnless(
@@ -74,7 +73,7 @@ class SecondarySlotVisibilityTests(unittest.TestCase):
     def test_a_four_stem_ensemble_shows_every_slot_on_every_architecture(self):
         window = self._window()
         window.settings.set("chosen_process_method", ENSEMBLE_MODE)
-        window.settings.set("ensemble_main_stem", EnsemblePair.FOUR_STEM.value)
+        window.settings.set("ensemble_main_stem", "mode.four_stem")
         for stack_name in ("vr", "mdx", "demucs"):
             view = self._view(window, stack_name)
             view._sync_secondary_slot_visibility()
@@ -87,9 +86,7 @@ class SecondarySlotVisibilityTests(unittest.TestCase):
         window.settings.set("mdx_bass_secondary_model", "VR Arc: 1_HP-UVR")
         view = self._view(window, "mdx")
         view._sync_secondary_slot_visibility()
-        self.assertEqual(
-            window.settings.get("mdx_bass_secondary_model"), "VR Arc: 1_HP-UVR"
-        )
+        self.assertEqual(window.settings.get("mdx_bass_secondary_model"), "VR Arc: 1_HP-UVR")
 
     def test_the_real_demucs_stem_focus_combo_re_syncs_slot_visibility(self):
         """Regression: changing focus through the widget must re-sync slots.
@@ -165,7 +162,7 @@ class SecondarySlotVisibilityTests(unittest.TestCase):
         # Same two settings.set calls ui/ensemble/window.py makes: on_activated()
         # sets chosen_process_method, _on_main_stem_changed sets the stem pair.
         window.settings.set("chosen_process_method", ENSEMBLE_MODE)
-        window.settings.set("ensemble_main_stem", EnsemblePair.FOUR_STEM.value)
+        window.settings.set("ensemble_main_stem", "mode.four_stem")
 
         sheet.update_context(
             context=OPEN_CONTEXT_ENSEMBLE,

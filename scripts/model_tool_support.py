@@ -2,7 +2,7 @@
 """Shared support for the model diagnostic scripts.
 
 Checkpoint and catalogue plumbing used by both :mod:`scripts.model_probe` and
-:mod:`scripts.stem_semantics_audit`. It lives here rather than inside one of
+:mod:`catalogue.stem_audit`. It lives here rather than inside one of
 those CLIs so neither has to import the other's private helpers: this is the
 factual, low-level layer -- remote byte ranges, checkpoint headers and tail
 hashes, catalogue target resolution and cache identity -- with no opinion
@@ -222,6 +222,7 @@ def _default_mvsepless_catalogue(*, allow_network: bool = True) -> Dict[str, Any
             policy = AccessPolicy(
                 allow_network=False,
                 allow_metadata_writes=policy.allow_metadata_writes,
+                allow_cache_writes=policy.allow_cache_writes,
             )
             source.load(mode=RefreshMode.OFFLINE, policy=policy)
         else:

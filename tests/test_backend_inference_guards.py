@@ -169,14 +169,20 @@ class DirectFlacExportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             wav_path = str(Path(tmp) / "stem.WAV")
             Path(wav_path).write_bytes(b"placeholder")
+
+            def create_output(path: str, *_args: object, **_kwargs: object) -> None:
+                Path(path).write_bytes(b"flac")
+
             with mock.patch("soundfile.read", return_value=(np.zeros(8), 44100)):
-                with mock.patch("soundfile.write") as write:
+                with mock.patch("soundfile.write", side_effect=create_output) as write:
                     with mock.patch("os.remove") as remove:
                         # Force direct path by avoiding pydub fallback on success.
                         save_format(wav_path, "FLAC", "320k", "24-bit")
             write.assert_called_once()
             self.assertTrue(str(write.call_args[0][0]).endswith(".flac"))
-            self.assertEqual(write.call_args.kwargs.get("subtype") or write.call_args[1].get("subtype"), "PCM_24")
+            self.assertEqual(
+                write.call_args.kwargs.get("subtype") or write.call_args[1].get("subtype"), "PCM_24"
+            )
             remove.assert_called_once_with(wav_path)
 
 

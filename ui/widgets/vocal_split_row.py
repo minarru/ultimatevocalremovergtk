@@ -16,14 +16,13 @@ iterate, so they only work inside a view.
 """
 
 from __future__ import annotations
-import typing
 
+import typing
 from typing import Callable
 
 from gi.repository import Adw
 
 from bundled.constants import DEVERB_MAPPER, NO_MODEL
-from core.model_display import format_tag_title
 
 from ..help_text import (
     IS_DEVERB_OPT_HELP,
@@ -44,6 +43,7 @@ from .rows import (
 )
 
 _DEFAULT_DEVERB = "Main Vocals Only"
+_SPLITTER_REPICK_REASON = "Choose a vocal splitter model again after the model refresh"
 
 
 class VocalSplitRow(Adw.ExpanderRow):
@@ -53,7 +53,7 @@ class VocalSplitRow(Adw.ExpanderRow):
         self,
         repo: typing.Any,
         on_changed: Callable[[], None],
-        hints: typing.Any=None,
+        hints: typing.Any = None,
     ):
         super().__init__(title="Vocal splitter and deverb")
         self._repo = repo
@@ -69,6 +69,9 @@ class VocalSplitRow(Adw.ExpanderRow):
         #: unopened row would clobber the stored tag with ``NO_MODEL``.
         #: ``_populator.ready`` is that gate.
         self._stored_splitter = NO_MODEL
+        self._splitter_write_gated = False
+        self._splitter_gated_value: typing.Any = None
+        self._splitter_ids: set[str] = set()
         self._populator = LazyPopulator(
             is_expanded=self.get_expanded,
             populate=self._populate_models_now,
@@ -77,15 +80,16 @@ class VocalSplitRow(Adw.ExpanderRow):
         self.split_switch = make_switch_row("Enable vocal split mode")
         self.splitter_row = make_combo_row("Vocal splitter model", [NO_MODEL])
         use_wrapping_list(self.splitter_row)
+        self.splitter_warning_row = Adw.ActionRow(title="Saved model unavailable", visible=False)
+        self.splitter_warning_row.set_subtitle_lines(0)
         self.save_inst_switch = make_switch_row("Save split vocal instrumentals")
         self.deverb_switch = make_switch_row("Deverb vocals")
-        self.deverb_row = make_combo_row(
-            "Deverb vocal type", list(DEVERB_MAPPER.keys())
-        )
+        self.deverb_row = make_combo_row("Deverb vocal type", list(DEVERB_MAPPER.keys()))
 
         for row in (
             self.split_switch,
             self.splitter_row,
+            self.splitter_warning_row,
             self.save_inst_switch,
             self.deverb_switch,
             self.deverb_row,
@@ -114,17 +118,20 @@ class VocalSplitRow(Adw.ExpanderRow):
         """Restore every row from ``settings`` without emitting changes."""
         self._settings = settings
         process = settings.process
-        self._stored_splitter = process.vocal_splitter or NO_MODEL
+        incoming = process.vocal_splitter or NO_MODEL
+        gated_value = getattr(self, "_splitter_gated_value", None)
+        if getattr(self, "_splitter_write_gated", False) and incoming == gated_value:
+            self._stored_splitter = gated_value
+        else:
+            self._splitter_write_gated = False
+            self._splitter_gated_value = None
+            self._stored_splitter = incoming
         self._syncing = True
         try:
             self.split_switch.set_active(bool(process.vocal_splitter_enabled))
-            self.save_inst_switch.set_active(
-                bool(process.save_inst_vocal_splitter)
-            )
+            self.save_inst_switch.set_active(bool(process.save_inst_vocal_splitter))
             self.deverb_switch.set_active(bool(process.deverb_vocals))
-            set_combo_value(
-                self.deverb_row, process.deverb_vocal_opt or _DEFAULT_DEVERB
-            )
+            set_combo_value(self.deverb_row, process.deverb_vocal_opt or _DEFAULT_DEVERB)
             if not self._populator.ready:
                 seed = (
                     [NO_MODEL]
@@ -132,7 +139,25 @@ class VocalSplitRow(Adw.ExpanderRow):
                     else [NO_MODEL, self._stored_splitter]
                 )
                 set_combo_tag_values(self.splitter_row, seed)
-            set_combo_value(self.splitter_row, self._stored_splitter)
+            if not getattr(self, "_splitter_write_gated", False):
+                self._splitter_write_gated = bool(
+                    self._populator.ready
+                    and self._stored_splitter not in (NO_MODEL, None, "")
+                    and (
+                        not isinstance(self._stored_splitter, str)
+                        or self._stored_splitter not in self._splitter_ids
+                    )
+                )
+                if self._splitter_write_gated:
+                    self._splitter_gated_value = self._stored_splitter
+            if self._splitter_write_gated:
+                self._show_splitter_warning()
+            else:
+                self._hide_splitter_warning()
+            set_combo_value(
+                self.splitter_row,
+                NO_MODEL if self._splitter_write_gated else self._stored_splitter,
+            )
         finally:
             self._syncing = False
 
@@ -152,12 +177,14 @@ class VocalSplitRow(Adw.ExpanderRow):
         process.vocal_splitter_enabled = self.split_switch.get_active()
         process.save_inst_vocal_splitter = self.save_inst_switch.get_active()
         process.deverb_vocals = self.deverb_switch.get_active()
-        process.deverb_vocal_opt = (
-            get_combo_value(self.deverb_row) or _DEFAULT_DEVERB
-        )
+        process.deverb_vocal_opt = get_combo_value(self.deverb_row) or _DEFAULT_DEVERB
         # Only trust the combo once its real list has loaded; before that it is
         # a seeded placeholder and the stored tag is authoritative.
-        if self._populator.ready:
+        if self._splitter_write_gated:
+            process.vocal_splitter = (
+                getattr(self, "_splitter_gated_value", None) or self._stored_splitter
+            )
+        elif self._populator.ready:
             process.vocal_splitter = get_combo_value(self.splitter_row)
         else:
             process.vocal_splitter = self._stored_splitter
@@ -165,7 +192,36 @@ class VocalSplitRow(Adw.ExpanderRow):
     def refresh_summary(self) -> None:
         """Re-read the section's subtitle from the cached settings."""
         settings = self._settings
-        self.set_subtitle(vocal_split_summary(settings) if settings is not None else OFF)
+        self.set_subtitle(
+            vocal_split_summary(settings, self._repo) if settings is not None else OFF
+        )
+
+    @property
+    def repick_required(self) -> bool:
+        """Whether an unavailable exact splitter ID awaits a picker action."""
+        return bool(self._splitter_write_gated)
+
+    def blocked_reason(self) -> str | None:
+        """Return the persistent refresh blocker until the picker is changed."""
+        return _SPLITTER_REPICK_REASON if self.repick_required else None
+
+    def _show_splitter_warning(self) -> None:
+        row = getattr(self, "splitter_warning_row", None)
+        if row is None:
+            return
+        stored = getattr(self, "_splitter_gated_value", None)
+        if stored is None:
+            stored = self._stored_splitter
+        row.set_subtitle(
+            f"Saved model {stored!r} cannot be selected; it was "
+            "disabled for processing. Pick a model to enable vocal splitting."
+        )
+        row.set_visible(True)
+
+    def _hide_splitter_warning(self) -> None:
+        row = getattr(self, "splitter_warning_row", None)
+        if row is not None:
+            row.set_visible(False)
 
     # -- Internals --------------------------------------------------------------
 
@@ -191,27 +247,39 @@ class VocalSplitRow(Adw.ExpanderRow):
             values = []
         self._syncing = True
         try:
-            tag_items = []
-            for tag in values:
-                try:
-                    friendly = format_tag_title(tag, self._repo)
-                except Exception:
-                    friendly = tag
-                tag_items.append((tag, friendly))
-            # A stored tag absent from the fresh list -- a deleted/renamed model,
-            # an older catalogue, or ``karaoke_model_list`` raising -- must still
-            # be selectable, or selecting it here would silently rewrite it to
-            # ``NO_MODEL`` on the next persist. Keep it as its own entry rather
-            # than dropping it.
-            known_tags = {NO_MODEL, *(item for item, _ in tag_items)}
-            if self._stored_splitter not in known_tags:
-                try:
-                    friendly = format_tag_title(self._stored_splitter, self._repo)
-                except Exception:
-                    friendly = self._stored_splitter
-                tag_items.append((self._stored_splitter, friendly))
+            from core.model_identity import ModelIdentityService
+
+            eligible = set(values)
+            records = sorted(
+                (
+                    record
+                    for record in ModelIdentityService(self._repo).records()
+                    if record.installed and record.id in eligible
+                ),
+                key=lambda record: (record.display.casefold(), record.id),
+            )
+            tag_items = [(record.id, record.display) for record in records]
             set_combo_tag_values(self.splitter_row, [NO_MODEL, *tag_items])
-            set_combo_value(self.splitter_row, self._stored_splitter)
+            ids = {record.id for record in records}
+            self._splitter_ids = ids
+            if not getattr(self, "_splitter_write_gated", False):
+                self._splitter_write_gated = bool(
+                    self._stored_splitter not in (NO_MODEL, None, "")
+                    and (
+                        not isinstance(self._stored_splitter, str)
+                        or self._stored_splitter not in ids
+                    )
+                )
+                if self._splitter_write_gated:
+                    self._splitter_gated_value = self._stored_splitter
+            if self._splitter_write_gated:
+                self._show_splitter_warning()
+            else:
+                self._hide_splitter_warning()
+            set_combo_value(
+                self.splitter_row,
+                NO_MODEL if self._splitter_write_gated else self._stored_splitter,
+            )
         finally:
             self._syncing = False
 
@@ -228,19 +296,30 @@ class VocalSplitRow(Adw.ExpanderRow):
         A collapsed row is invalidated but not repopulated -- resolving the list
         hashes checkpoints, and the next expand will do it.
         """
-        if self._populator.ready:
+        if self._populator.ready and not self._splitter_write_gated:
             self._stored_splitter = get_combo_value(self.splitter_row) or NO_MODEL
         self._populator.invalidate()
+        # Inventory invalidation must resolve a currently selected splitter
+        # even while collapsed so a removed model blocks immediately.  With
+        # no selection there is nothing to validate, so preserve lazy loading.
+        if not self._populator.ready and self._stored_splitter not in (
+            NO_MODEL,
+            None,
+            "",
+        ):
+            self._populator._populate_now()
 
     def _on_row_changed(self, *_args: typing.Any) -> None:
         if self._syncing:
             return
         self._sync_dependents()
         if self._settings is not None:
-            if self._populator.ready:
-                self._stored_splitter = (
-                    get_combo_value(self.splitter_row) or NO_MODEL
-                )
+            source = _args[0] if _args else None
+            if self._populator.ready and source is self.splitter_row:
+                self._stored_splitter = get_combo_value(self.splitter_row) or NO_MODEL
+                self._splitter_write_gated = False
+                self._splitter_gated_value = None
+                self._hide_splitter_warning()
             self.persist_to_settings(self._settings)
             self.refresh_summary()
         self._on_changed()

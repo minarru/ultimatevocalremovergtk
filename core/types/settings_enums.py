@@ -118,10 +118,17 @@ class ColorScheme(str, Enum):
     DARK = "dark"
 
 
+class DiagnosticLevel(str, Enum):
+    ERRORS = "errors"
+    DEBUG = "debug"
+    TRACE = "trace"
+
+
 __all__ = [
     "AlignPhaseOption",
     "AudioTool",
     "ColorScheme",
+    "DiagnosticLevel",
     "DbAnalysis",
     "DeverbVocalOpt",
     "FlacBitDepth",

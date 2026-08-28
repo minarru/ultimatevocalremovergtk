@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import threading
 import time
 import urllib.error
 import urllib.request
 from typing import Any, Callable, Mapping, Optional
 
-from .access_policy import AccessPolicy
+from .access_policy import AccessPolicy, access_policy
 from .catalogue_types import (
     ADAPTER_SCHEMA,
     ENVELOPE_SCHEMA,
@@ -152,7 +151,7 @@ class RemoteJsonSource:
         if not dest:
             return None
         filename = self.cache_filename or os.path.basename(dest)
-        if policy.allow_metadata_writes:
+        if policy.allow_cache_writes:
             from . import paths
 
             return paths.migrate_cache_file(filename, dest)
@@ -281,12 +280,22 @@ class RemoteJsonSource:
         captured = AccessPolicy(
             allow_network=policy.allow_network,
             allow_metadata_writes=policy.allow_metadata_writes,
+            allow_cache_writes=policy.allow_cache_writes,
         )
 
         def run() -> None:
             try:
-                self._fetch(captured, force=False)
-                self._notify_update()
+                # Context variables do not cross thread boundaries. Keep the
+                # source's captured policy active through its coordinator
+                # callback so derived-cache reads during publication inherit
+                # the same write restrictions as the fetch itself.
+                with access_policy(
+                    allow_network=captured.allow_network,
+                    allow_metadata_writes=captured.allow_metadata_writes,
+                    allow_cache_writes=captured.allow_cache_writes,
+                ):
+                    self._fetch(captured, force=False)
+                    self._notify_update()
             except Exception as exc:
                 debug(
                     "download",
@@ -376,6 +385,7 @@ class RemoteJsonSource:
                 disk_policy = AccessPolicy(
                     allow_network=False,
                     allow_metadata_writes=False,
+                    allow_cache_writes=False,
                 )
                 self._read_disk(disk_policy, now)
             return self.state
@@ -389,7 +399,7 @@ class RemoteJsonSource:
             return self.state
         with self._lock:
             self._publish_content(content, now, from_network=True)
-        if policy.allow_metadata_writes:
+        if policy.allow_cache_writes:
             self._write_disk(content, policy)
         return self.state
 
@@ -530,7 +540,7 @@ class RemoteJsonSource:
             status.backoff_until = now + delay
 
     def _write_disk(self, content: SourceContent, policy: AccessPolicy) -> None:
-        if not policy.allow_metadata_writes or not self._cache_path:
+        if not policy.allow_cache_writes or not self._cache_path:
             return
         path = self._cache_file(policy)
         if not path:
@@ -575,11 +585,6 @@ def _read_envelope(path: str) -> Optional[dict[str, Any]]:
         return payload
     # Bare catalogue JSON (bundled-style) is treated as data with unknown age.
     return {"fetched_at": 0.0, "data": payload}
-
-
-def copy_without_write(src: str, dest: str) -> None:
-    """Unused helper kept for tests that patch shutil copy/move."""
-    shutil.copy2(src, dest)
 
 
 __all__ = ["RemoteJsonSource", "inspect_cache_path"]

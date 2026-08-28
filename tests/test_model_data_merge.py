@@ -7,7 +7,6 @@ from unittest.mock import patch
 
 from bundled.constants import MDX_ARCH_TYPE
 from core import paths
-from core.downloads import DownloadManager
 from core.mdx_c_registry import compute_checkpoint_hash
 from core.model_config import ModelConfig
 from core.model_repository import ModelRepository
@@ -29,6 +28,7 @@ class ModelDataMergeTests(unittest.TestCase):
 
             model_data = ModelConfig.__new__(ModelConfig)
             model_data.model_hash = model_hash
+            model_data.process_method = MDX_ARCH_TYPE
             model_data.is_dry_check = True
             model_data.is_get_hash_dir_only = False
             model_data.repo = None
@@ -52,7 +52,8 @@ class ModelDataMergeTests(unittest.TestCase):
             with open(checkpoint, "wb") as handle:
                 handle.write(b"catalog fallback checkpoint")
             shutil.copyfile(
-                os.path.join(paths.MDX_C_CONFIG_PATH, yaml_name), os.path.join(config_dir, yaml_name)
+                os.path.join(paths.MDX_C_CONFIG_PATH, yaml_name),
+                os.path.join(config_dir, yaml_name),
             )
 
             original_hash_dir = paths.MDX_HASH_DIR

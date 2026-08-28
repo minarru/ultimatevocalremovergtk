@@ -10,11 +10,12 @@ from types import MappingProxyType
 from typing import Any, Mapping, Sequence
 
 ENVELOPE_SCHEMA = 1
-ADAPTER_SCHEMA = 1
+ADAPTER_SCHEMA = 2
 
 UPSTREAM_VR_KEYS = ("vr_download_list",)
 UPSTREAM_VR_VIP_KEYS = ("vr_download_vip_list",)
 UPSTREAM_DEMUCS_KEYS = ("demucs_download_list",)
+UPSTREAM_DEMUCS_VIP_KEYS = ("demucs_download_vip_list",)
 UPSTREAM_MDX_KEYS = (
     "mdx_download_list",
     "mdx23_download_list",
@@ -85,7 +86,9 @@ def files_mapping(files: Sequence[tuple[str, str]]) -> dict[str, str]:
     return {name: ref for name, ref in files}
 
 
-def ordered_payload_items(payload: Mapping[str, Any]) -> tuple[tuple[str, str, tuple[tuple[str, str], ...]], ...]:
+def ordered_payload_items(
+    payload: Mapping[str, Any],
+) -> tuple[tuple[str, str, tuple[tuple[str, str], ...]], ...]:
     items: list[tuple[str, str, tuple[tuple[str, str], ...]]] = []
     for key, catalogue in payload.items():
         if not isinstance(catalogue, dict) or str(key).startswith("_"):
@@ -95,16 +98,12 @@ def ordered_payload_items(payload: Mapping[str, Any]) -> tuple[tuple[str, str, t
     return tuple(items)
 
 
-def semantic_digest(
-    payload: Mapping[str, Any], *, adapter_schema: int = ADAPTER_SCHEMA
-) -> str:
+def semantic_digest(payload: Mapping[str, Any], *, adapter_schema: int = ADAPTER_SCHEMA) -> str:
     """Hash ordered canonical entries; insertion order is part of identity."""
     hasher = hashlib.sha256()
     hasher.update(f"{int(adapter_schema)}\n".encode("utf-8"))
     for item in ordered_payload_items(payload):
-        hasher.update(
-            json.dumps(item, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
-        )
+        hasher.update(json.dumps(item, separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
         hasher.update(b"\n")
     return hasher.hexdigest()
 
@@ -116,6 +115,74 @@ def readonly_mapping(value: Mapping[str, Any] | None) -> Mapping[str, Any]:
 
 
 @dataclass(frozen=True)
+class StemSemanticRoute:
+    """JSON-safe presentation of one exact semantic output route.
+
+    ``native`` is always the backend key.  ``role``, ``display`` and
+    ``filename_tag`` are one-way reviewed presentation data; callers must not
+    feed any of them back into model resolution.
+    """
+
+    native: str | None
+    role: str | None
+    display: str
+    filename_tag: str
+    production: str
+    logical_primary: bool
+    derived_from: tuple[str, ...] = ()
+    complement_of: str | None = None
+    selected_by_default: bool = True
+    logical_secondary: bool = False
+
+    def as_dict(self) -> dict[str, Any]:
+        result = {
+            "native": self.native,
+            "role": self.role,
+            "display": self.display,
+            "filename_tag": self.filename_tag,
+            "production": self.production,
+            "logical_primary": self.logical_primary,
+            "logical_secondary": self.logical_secondary,
+        }
+        if self.derived_from:
+            result["derived_from"] = list(self.derived_from)
+        if self.complement_of is not None:
+            result["complement_of"] = self.complement_of
+        result["selected_by_default"] = self.selected_by_default
+        return result
+
+
+@dataclass(frozen=True)
+class StemSemanticProjection:
+    """Consumer-safe view of raw backend values beside reviewed semantics."""
+
+    backend_primary_stem: str | None
+    backend_target_stem: str | None
+    logical_primary_role: str | None
+    logical_secondary_role: str | None
+    status: str
+    context: str
+    routes: tuple[StemSemanticRoute, ...]
+    canonical_roles: tuple[str, ...] = ()
+    evidence: str = ""
+    warning: str = ""
+
+    def as_dict(self) -> dict[str, Any]:
+        result = {
+            "backend_primary_stem": self.backend_primary_stem,
+            "backend_target_stem": self.backend_target_stem,
+            "logical_primary_role": self.logical_primary_role,
+            "logical_secondary_role": self.logical_secondary_role,
+            "stem_semantics_status": self.status,
+            "stem_context": self.context,
+            "stem_routes": [route.as_dict() for route in self.routes],
+        }
+        if self.warning:
+            result["stem_semantics_warning"] = self.warning
+        return result
+
+
+@dataclass(frozen=True)
 class CatalogueEntry:
     source_id: SourceId
     entry_id: str
@@ -123,6 +190,7 @@ class CatalogueEntry:
     label: str
     files: tuple[tuple[str, str], ...]
     list_key: str = ""
+    stem_semantics: StemSemanticProjection | None = None
 
 
 @dataclass(frozen=True)
@@ -169,7 +237,6 @@ class RevisionVector:
     mvsepless: str = ""
     identity: str = ""
     adapter_schema: int = ADAPTER_SCHEMA
-    vip: bool = False
 
     def digest(self) -> str:
         return "|".join(
@@ -180,7 +247,6 @@ class RevisionVector:
                 self.mvsepless,
                 self.identity,
                 str(self.adapter_schema),
-                "vip" if self.vip else "locked",
             )
         )
 
@@ -240,6 +306,7 @@ __all__ = [
     "SourceState",
     "SourceStatus",
     "UPSTREAM_DEMUCS_KEYS",
+    "UPSTREAM_DEMUCS_VIP_KEYS",
     "UPSTREAM_MDX_KEYS",
     "UPSTREAM_MDX_VIP_KEYS",
     "UPSTREAM_VR_KEYS",

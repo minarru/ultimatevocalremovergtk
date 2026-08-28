@@ -567,7 +567,6 @@ ENSEMBLE_MEMBER_MODEL_OPTIONS_HINT = (
 # --- Preferences / download / inputs ---
 
 REMOVE_PROFILE_HINT = "Remove profile"
-VIP_DOWNLOAD_CODE_HINT = "Enter VIP download code"
 ADD_INPUT_FILES_HINT = "Add input files"
 CLEAR_ALL_INPUTS_HINT = "Clear all inputs"
 REMOVE_INPUT_HINT = "Remove this input"

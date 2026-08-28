@@ -64,8 +64,12 @@ class EntryMetaTests(unittest.TestCase):
         with _with_supplements(_NO_SUPPLEMENTS):
             merged = catalog_sources.merged_catalogues(
                 vr={},
-                mdx={"Roformer Model: Mel-Band Roformer | Inst v2 by Unwa":
-                     {"mbr_inst2_unwa.ckpt": "u", "mbr_inst2_unwa.yaml": "c"}},
+                mdx={
+                    "Roformer Model: Mel-Band Roformer | Inst v2 by Unwa": {
+                        "mbr_inst2_unwa.ckpt": "u",
+                        "mbr_inst2_unwa.yaml": "c",
+                    }
+                },
                 demucs={},
             )
         meta = merged.meta["Roformer Model: Mel-Band Roformer | Inst v2 by Unwa"]
@@ -75,10 +79,18 @@ class EntryMetaTests(unittest.TestCase):
 
     def test_mvsepless_metadata_reaches_meta(self) -> None:
         with _with_supplements(
-            ({}, {"M": {"m.ckpt": "u", "m.yaml": "c"}}, {},
-             {"M": {"stems": ["Vocals", "other"],
-                    "target_instrument": "Vocals",
-                    "intent": "vocals"}})
+            (
+                {},
+                {"M": {"m.ckpt": "u", "m.yaml": "c"}},
+                {},
+                {
+                    "M": {
+                        "stems": ["Vocals", "other"],
+                        "target_instrument": "Vocals",
+                        "intent": "vocals",
+                    }
+                },
+            )
         ):
             merged = catalog_sources.merged_catalogues(vr={}, mdx={}, demucs={})
         meta = merged.meta["M"]
@@ -176,6 +188,265 @@ class CatalogueIntentOverlayTests(unittest.TestCase):
             merged = catalog_sources.merged_catalogues(vr={}, mdx={}, demucs={})
         self.assertEqual(merged.meta["Wind"].intent, "specialty_stem")
 
+    def test_exact_manifest_intent_overrides_guessed_catalogue_intent(self) -> None:
+        """A reviewed identity wins presentation without rewriting audit evidence."""
+        label = "Deliberately misleading catalogue label"
+        with _with_supplements(
+            (
+                {},
+                {
+                    label: {
+                        "bs_neo_inst_beta.ckpt": "https://example.test/model.ckpt",
+                        "bs_neo_inst_beta_config.yaml": "https://example.test/model.yaml",
+                    }
+                },
+                {},
+                {
+                    label: {
+                        # Training inventory retains the complement even though
+                        # target_instrument makes the runtime emit only other.
+                        "stems": ["vocals", "other"],
+                        "primary_stem": "other",
+                        "target_instrument": "other",
+                        "intent": "special_fx",
+                    }
+                },
+            )
+        ):
+            merged = catalog_sources.merged_catalogues(vr={}, mdx={}, demucs={})
+
+        meta = merged.meta[label]
+        self.assertEqual(meta.intent, "instrumental")
+        self.assertEqual(meta.guessed_intent, "instrumental")
+        self.assertEqual(meta.stem_semantics.status, "reviewed")
+        self.assertEqual(meta.stem_semantics.logical_primary_role, "mix.instrumental")
+        self.assertEqual(meta.stem_semantics.canonical_roles, ("vocal.vocals", "mix.instrumental"))
+        self.assertIsNone(meta.stem_semantics.routes[0].native)
+        self.assertEqual(meta.stem_semantics.routes[0].display, "Vocals")
+        self.assertEqual(meta.stem_semantics.routes[0].production, "derived")
+        self.assertEqual(meta.stem_semantics.routes[0].complement_of, "mix.instrumental")
+        self.assertTrue(meta.stem_semantics.routes[1].logical_primary)
+        self.assertIn("catalogue_id=mdx:bs_neo_inst_beta", meta.stem_semantics.evidence)
+
+    def test_exact_reviewed_vocal_models_do_not_depend_on_two_stem_guessing(self) -> None:
+        labels = {
+            "VR Arch Single Model v5: 3_HP-Vocal-UVR": "3_HP-Vocal-UVR.pth",
+            "VR Arch Single Model v5: 4_HP-Vocal-UVR": "4_HP-Vocal-UVR.pth",
+        }
+        mdx_label = "MDX23 Model: MDX23C_D1581"
+        metadata = {
+            label: {
+                "stems": ["Instrumental", "Vocals"],
+                "primary_stem": "Vocals",
+                "intent": "vocals",
+            }
+            for label in (*labels, mdx_label)
+        }
+        with _with_supplements(({}, {}, {}, metadata)):
+            merged = catalog_sources.merged_catalogues(
+                vr=labels,
+                mdx={mdx_label: {"MDX23C_D1581.ckpt": "https://example.test/model.ckpt"}},
+                demucs={},
+            )
+
+        for label in (*labels, mdx_label):
+            with self.subTest(label=label):
+                projection = merged.meta[label].stem_semantics
+                self.assertEqual(projection.status, "reviewed")
+                self.assertEqual(merged.meta[label].intent, "vocals")
+                self.assertEqual(projection.logical_primary_role, "vocal.vocals")
+                self.assertEqual(
+                    projection.canonical_roles,
+                    ("mix.instrumental", "vocal.vocals"),
+                )
+
+    def test_classic_karaoke_2_uses_exact_runtime_sources_for_semantics(self) -> None:
+        label = "MDX-Net Model: UVR-MDX-NET Karaoke 2"
+        with _with_supplements(
+            (
+                {},
+                {label: {"UVR_MDXNET_KARA_2.onnx": "https://example.test/model.onnx"}},
+                {},
+                {
+                    label: {
+                        "stems": ["other", "vocals"],
+                        "primary_stem": "Instrumental",
+                        "target_instrument": "other",
+                        "intent": "karaoke",
+                    }
+                },
+            )
+        ):
+            merged = catalog_sources.merged_catalogues(vr={}, mdx={}, demucs={})
+
+        meta = merged.meta[label]
+        self.assertEqual(meta.stems, ["other", "vocals"])
+        self.assertEqual(meta.stem_semantics.status, "reviewed")
+        self.assertEqual(
+            [(route.native, route.role) for route in meta.stem_semantics.routes],
+            [
+                ("Instrumental", "mix.instrumental_with_backing_vocals"),
+                ("Vocals", "vocal.lead"),
+            ],
+        )
+
+    def test_exact_runtime_contract_promotes_missing_catalogue_inventory(self) -> None:
+        label = "Known waived metadata-only model"
+        with _with_supplements(
+            (
+                {},
+                {label: {"Kim_Inst.onnx": "https://example.test/Kim_Inst.onnx"}},
+                {},
+                {label: {"primary_stem": "Instrumental", "intent": "vocals"}},
+            )
+        ):
+            merged = catalog_sources.merged_catalogues(vr={}, mdx={}, demucs={})
+
+        meta = merged.meta[label]
+        self.assertEqual(meta.stem_semantics.status, "reviewed")
+        self.assertEqual(meta.stem_semantics.logical_primary_role, "mix.instrumental")
+        self.assertEqual(
+            [(route.native, route.role) for route in meta.stem_semantics.routes],
+            [
+                ("Instrumental", "mix.instrumental"),
+                ("Vocals", "vocal.vocals"),
+            ],
+        )
+        self.assertIn(
+            "runtime_contract=model_runtime_stem_contracts.json", meta.stem_semantics.evidence
+        )
+
+    def test_runtime_contract_warning_fails_live_projection_raw(self) -> None:
+        from core.mdx_runtime_contract import ReconciledMdxRuntimeSignature
+
+        label = "Exact artifact with unavailable runtime contract"
+        with (
+            _with_supplements(
+                (
+                    {},
+                    {label: {"Kim_Inst.onnx": "https://example.test/Kim_Inst.onnx"}},
+                    {},
+                    {label: {"primary_stem": "Instrumental"}},
+                )
+            ),
+            unittest.mock.patch.object(
+                catalog_sources,
+                "reconcile_catalogue_mdx_runtime_signature",
+                return_value=ReconciledMdxRuntimeSignature(
+                    ("Installed key",),
+                    None,
+                    False,
+                    "runtime-contract-unavailable error=test",
+                ),
+            ),
+        ):
+            merged = catalog_sources.merged_catalogues(vr={}, mdx={}, demucs={})
+
+        projection = merged.meta[label].stem_semantics
+        self.assertEqual(projection.status, "raw")
+        self.assertEqual(projection.routes[0].native, "Installed key")
+        self.assertEqual(
+            projection.warning,
+            "runtime-contract-unavailable error=test",
+        )
+
+    def test_all_28_promoted_ids_transition_to_reviewed_from_exact_config_cache(self) -> None:
+        from core.catalogue_stem_cache import StemCacheHit
+        from core.mdx_runtime_contract import load_bundled_mdx_runtime_contracts
+
+        contracts = {
+            model_id: contract
+            for model_id, contract in load_bundled_mdx_runtime_contracts().contracts.items()
+            if model_id != "mdx:UVR_MDXNET_KARA_2"
+        }
+        self.assertEqual(len(contracts), 28)
+        catalogue = {}
+        metadata = {}
+        model_id_by_label = {}
+        hits_by_url = {}
+        for index, (model_id, contract) in enumerate(contracts.items()):
+            basename = model_id.removeprefix("mdx:")
+            label = f"runtime-contract-{index:02d}"
+            extension = ".onnx" if contract.backend == "classic_onnx" else ".ckpt"
+            files = {f"{basename}{extension}": f"https://example.test/{basename}{extension}"}
+            if contract.config_yamls:
+                config_name = contract.config_yamls[0]
+                config_url = f"https://example.test/config/{index}/{config_name}"
+                files[config_name] = config_url
+                evidence = contract.config_evidence[config_name]
+                source_stems = list(evidence.training_instruments)
+                source_target = evidence.target_instrument or ""
+                hits_by_url[config_url] = StemCacheHit(
+                    stems=evidence.training_instruments,
+                    target_instrument=source_target,
+                    ok=True,
+                    content_sha256=evidence.content_sha256,
+                )
+            else:
+                source_stems = list(contract.native_signature)
+                source_target = ""
+            catalogue[label] = files
+            metadata[label] = {
+                "stems": source_stems,
+                "primary_stem": contract.primary_native,
+                "target_instrument": source_target,
+            }
+            model_id_by_label[label] = model_id
+
+        with (
+            _with_supplements(({}, catalogue, {}, metadata)),
+            unittest.mock.patch("core.catalogue_stem_cache.lookup_stems", return_value=None),
+        ):
+            uncached = catalog_sources.merged_catalogues(vr={}, mdx={}, demucs={})
+
+        self.assertEqual(
+            {
+                status: sum(
+                    uncached.meta[label].stem_semantics.status == status
+                    for label in model_id_by_label
+                )
+                for status in ("reviewed", "raw")
+            },
+            {"reviewed": 20, "raw": 8},
+        )
+
+        catalog_sources.invalidate_catalogue_merge()
+        with (
+            _with_supplements(({}, catalogue, {}, metadata)),
+            unittest.mock.patch(
+                "core.catalogue_stem_cache.lookup_stems",
+                side_effect=lambda url: hits_by_url.get(url),
+            ),
+        ):
+            merged = catalog_sources.merged_catalogues(vr={}, mdx={}, demucs={})
+
+        self.assertEqual(
+            set(merged.meta),
+            set(model_id_by_label)
+            | {
+                "Apollo Model: EDM Restoration Big by essid",
+                "Apollo Model: EDM Restoration by essid",
+            },
+        )
+        for label, model_id in model_id_by_label.items():
+            with self.subTest(model_id=model_id):
+                projection = merged.meta[label].stem_semantics
+                self.assertEqual(projection.status, "reviewed")
+                self.assertIn(
+                    "runtime_contract=model_runtime_stem_contracts.json",
+                    projection.evidence,
+                )
+        self.assertEqual(
+            {
+                status: sum(
+                    merged.meta[label].stem_semantics.status == status
+                    for label in model_id_by_label
+                )
+                for status in ("reviewed", "raw")
+            },
+            {"reviewed": 28, "raw": 0},
+        )
+
 
 @_STEM_CACHE_OFF
 class MergeCacheTests(unittest.TestCase):
@@ -186,7 +457,8 @@ class MergeCacheTests(unittest.TestCase):
         supplements = ({}, {"New": {"new.ckpt": "https://x/new.ckpt"}}, {}, {})
         with _with_supplements(supplements):
             with unittest.mock.patch.object(
-                catalog_sources, "dedupe_download_catalogue",
+                catalog_sources,
+                "dedupe_download_catalogue",
                 wraps=catalog_sources.dedupe_download_catalogue,
             ) as dedupe:
                 first = catalog_sources.merged_catalogues(vr={}, mdx={}, demucs={})
@@ -200,7 +472,8 @@ class MergeCacheTests(unittest.TestCase):
         supplements = ({}, {"New": {"new.ckpt": "https://x/new.ckpt"}}, {}, {})
         with _with_supplements(supplements):
             with unittest.mock.patch.object(
-                catalog_sources, "dedupe_download_catalogue",
+                catalog_sources,
+                "dedupe_download_catalogue",
                 wraps=catalog_sources.dedupe_download_catalogue,
             ) as dedupe:
                 catalog_sources.merged_catalogues(vr={}, mdx={}, demucs={})
@@ -234,13 +507,8 @@ class MergePriorityDedupeTests(unittest.TestCase):
     def test_extras_hyperace_wins_over_mvsepless_same_etag(self) -> None:
         # Simulate post-supplement catalogue order: extras label first, then
         # mvsepless alias — content_ids make them collide.
-        extras_label = (
-            "Roformer Model: BandSplit Roformer | HyperACE v2 Instrumental by Unwa"
-        )
-        mv_label = (
-            "BS Roformer Instrumental HyperACE v2 "
-            "(finetuned anvuew vocal model) by Unwa"
-        )
+        extras_label = "Roformer Model: BandSplit Roformer | HyperACE v2 Instrumental by Unwa"
+        mv_label = "BS Roformer Instrumental HyperACE v2 (finetuned anvuew vocal model) by Unwa"
         mdx = {
             extras_label: {
                 "bs_roformer_inst_hyperacev2.ckpt": "https://pcunwa/v2_inst.ckpt",

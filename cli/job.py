@@ -5,8 +5,10 @@ from __future__ import annotations
 import argparse
 import os
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any, Mapping, Optional
 
+from core.input_discovery import discover_inputs
+from core.model_identity import ModelIdentityService, ModelRecord
 from core.model_repository import ModelRepository
 from core.settings import Settings
 from core.settings.job_resolution import (
@@ -16,13 +18,12 @@ from core.settings.job_resolution import (
 )
 from core.stem_selection import apply_stem_selection
 
-from core.input_discovery import discover_inputs
-from core.model_identity import ModelIdentityService, ModelRecord, resolve_model_id
+from .model_identity import CliModelLookup
 from .process_flags import collect_overrides
 from .profiles import (
     IDENTITY_SETTING_PATHS,
-    LoadedProfile,
     MODEL_REFERENCE_SETTING_PATHS,
+    LoadedProfile,
     apply_profile_values,
     load_profile,
 )
@@ -41,7 +42,9 @@ def _resolved_settings(
     model_source: str | None = None,
 ) -> tuple[Settings, dict[str, str]]:
     settings, sources = SettingsResolver().resolve(
-        base, export_path=output, method=method,
+        base,
+        export_path=output,
+        method=method,
         base_provenance=base_provenance,
     )
     if model is not None:
@@ -51,7 +54,9 @@ def _resolved_settings(
         apply_stem_selection(settings, stems)
         for path in (
             "process.stem_focus",
-            "mdx.stems", "mdx.stems_selected", "demucs.stems",
+            "mdx.stems",
+            "mdx.stems_selected",
+            "demucs.stems",
         ):
             sources[path] = "cli"
     if long_chunk_seconds is not None:
@@ -76,6 +81,10 @@ class ResolvedJob:
     plan: dict[str, Any] = field(default_factory=dict)
     identity_inherited: bool = False
     resolved: Any = None
+    #: Stage-1 (syntax) plus stage-2 (repository-bound) stored-identity
+    #: warnings. Preserved illegal values are otherwise invisible.
+    validation_warnings: list[str] = field(default_factory=list)
+    repo: ModelRepository | None = field(default=None, repr=False, compare=False)
 
 
 def add_job_input_args(parser: argparse.ArgumentParser) -> None:
@@ -134,9 +143,7 @@ def _device_override(value: Optional[str]) -> list[tuple[str, Any]]:
     return resolve_device_request(value)
 
 
-def _profile_provenance(
-    settings: Settings, profile: LoadedProfile
-) -> dict[str, str]:
+def _profile_provenance(settings: Settings, profile: LoadedProfile) -> dict[str, str]:
     if profile.source == "gui":
         return {
             f"{section}.{name}": "gui"
@@ -147,7 +154,9 @@ def _profile_provenance(
     return {path: profile.source for path in profile.settings}
 
 
-def _device_pairs(args: argparse.Namespace, profile: LoadedProfile) -> tuple[list[tuple[str, Any]], bool]:
+def _device_pairs(
+    args: argparse.Namespace, profile: LoadedProfile
+) -> tuple[list[tuple[str, Any]], bool]:
     device_paths = {"process.use_gpu", "process.device", "process.use_directml"}
     if args.device is None and device_paths.intersection(profile.settings):
         return [], False
@@ -166,6 +175,46 @@ def _base_resolve(args: argparse.Namespace) -> tuple[Settings, LoadedProfile, li
     return settings, profile, inputs, output
 
 
+def stored_identity_warnings(
+    settings: Settings, repo: ModelRepository, profile: LoadedProfile
+) -> list[str]:
+    """Stage-2 validation of every stored model reference, once per command.
+
+    Stage 1 (canonical syntax) runs in the settings reader; this is the half
+    that needs the repository -- exact record existence, installed state,
+    identity completeness and per-path family eligibility. Index construction
+    is offline, and a repository that cannot publish one yields the stage-1
+    warnings unchanged rather than failing the command.
+    """
+    warnings = list(profile.validation_warnings)
+    try:
+        index = ModelIdentityService(repo).index
+    except (OSError, ValueError):
+        return warnings
+    seen = {_warning_key(item) for item in warnings}
+    for item in settings.validate_model_references(index):
+        key = _warning_key(item)
+        if key in seen:
+            # The sparse-profile reader already reported this path's syntax,
+            # with its own lookup hint; do not say it twice.
+            continue
+        seen.add(key)
+        warnings.append(item)
+    return warnings
+
+
+def _warning_key(item: str) -> tuple[str, str]:
+    """Identity of a validation warning: its settings path and its kind.
+
+    The two readers word the syntax complaint slightly differently for the same
+    value, so compare the kind rather than the whole sentence.
+    """
+    path, _separator, body = str(item).partition(": ")
+    if body.startswith("expected canonical model ID"):
+        return (path, "syntax")
+    return (path, body)
+
+
 def _validate_job_overrides(overrides: list[tuple[str, Any]]) -> None:
     prohibited = [path for path, _value in overrides if path in IDENTITY_SETTING_PATHS]
     if prohibited:
@@ -175,7 +224,10 @@ def _validate_job_overrides(overrides: list[tuple[str, Any]]) -> None:
 
 
 def _canonicalize_model_references(
-    settings: Settings, repo: ModelRepository
+    settings: Settings,
+    repo: ModelRepository,
+    *,
+    models: CliModelLookup | None = None,
 ) -> dict[str, dict[str, str]]:
     from core.settings.access import get_path, set_path
     from core.settings.coerce import enum_value
@@ -184,7 +236,9 @@ def _canonicalize_model_references(
     identities: dict[str, dict[str, str]] = {}
     sentinels = {"", "none", "no model selected", "choose model"}
     family_by_path = {
-        "vr.model": "vr", "mdx.model": "mdx", "demucs.model": "demucs",
+        "vr.model": "vr",
+        "mdx.model": "mdx",
+        "demucs.model": "demucs",
         "audio_tools.apollo_model": "apollo",
     }
     allowed_by_path = {
@@ -199,9 +253,8 @@ def _canonicalize_model_references(
         ProcessMethod.DEMUCS.value: "demucs",
         ProcessMethod.APOLLO.value: "apollo",
     }.get(method_value)
-    service = ModelIdentityService(repo)
+    models = models or CliModelLookup(repo)
     for path in MODEL_REFERENCE_SETTING_PATHS | frozenset(family_by_path):
-        section_name = path.split(".", 1)[0]
         active = True
         if path in family_by_path:
             # Only the job's own family primary is load-bearing; stale GUI
@@ -212,25 +265,24 @@ def _canonicalize_model_references(
         elif path == "demucs.pre_proc_model":
             active = settings.demucs.is_pre_proc_model_activate
         elif "secondary_model" in path:
-            active = bool(
-                getattr(getattr(settings, section_name), "is_secondary_model_activate")
-            )
-        raw = str(get_path(settings, path, "") or "").strip()
+            # The applicable secondary slot is a property of the assembled
+            # primary's native stem, which is not known at this presentation
+            # boundary. Canonicalize records that exist, but let JobResolver
+            # validate only the topology path it plans and digests.
+            active = False
+        raw = str(get_path(settings, path, "") or "")
         if raw.casefold() in sentinels:
             continue
         try:
-            if path in family_by_path:
-                record = service.resolve(raw, family=family_by_path[path], fuzzy=False)
-            elif path in allowed_by_path:
-                record = service.resolve(
-                    raw, allowed_families=allowed_by_path[path], fuzzy=False
-                )
-            elif "secondary_model" in path:
-                record = service.resolve(
-                    raw, allowed_families=("vr", "mdx", "demucs"), fuzzy=False
-                )
-            else:
-                record = service.resolve(raw, fuzzy=False)
+            required_family = family_by_path.get(path)
+            eligible = allowed_by_path.get(path)
+            if "secondary_model" in path:
+                eligible = ("vr", "mdx", "demucs")
+            record = models.lookup(
+                raw,
+                family=required_family,
+                allowed_families=eligible,
+            )
         except ValueError:
             if active:
                 raise
@@ -241,19 +293,24 @@ def _canonicalize_model_references(
     return identities
 
 
-def resolve_separate_job(
-    args: argparse.Namespace, *, validation_level: Any = None
-) -> ResolvedJob:
+def resolve_separate_job(args: argparse.Namespace, *, validation_level: Any = None) -> ResolvedJob:
     base, profile, inputs, output = _base_resolve(args)
     repo = ModelRepository()
+    persisted_settings = Settings.load()
+    repo.bind_model_hash_table(lambda: persisted_settings.process.model_hash_table)
+    models = CliModelLookup(repo)
     inherited = not bool(args.model) and bool(profile.model)
     model_query = args.model or profile.model
     if not model_query:
         raise ValueError("separate requires --model or a profile containing a model")
-    record = resolve_model_id(model_query, repo)
+    record = models.lookup(model_query)
     settings, sources = _resolved_settings(
-        base, output=output, method=record.family, model=record,
-        stems=args.stems, long_chunk_seconds=args.long_chunk_seconds,
+        base,
+        output=output,
+        method=record.family,
+        model=record,
+        stems=args.stems,
+        long_chunk_seconds=args.long_chunk_seconds,
         long_chunk_overlap=args.long_chunk_overlap,
         base_provenance=_profile_provenance(base, profile),
         model_source="cli" if args.model else profile.source,
@@ -262,7 +319,7 @@ def resolve_separate_job(
     split_record = None
     if getattr(args, "vocal_split", None):
         splitter_id = resolve_splitter_identity(args.vocal_split, settings, repo)
-        split_record = resolve_model_id(splitter_id, repo)
+        split_record = models.lookup(splitter_id)
         resolved_splitter = split_record.id
     overrides = collect_overrides(args, resolved_vocal_splitter=resolved_splitter)
     _validate_job_overrides(overrides)
@@ -274,7 +331,7 @@ def resolve_separate_job(
         layers=layers,
         base_provenance=sources,
     )
-    model_chains = _canonicalize_model_references(settings, repo)
+    model_chains = _canonicalize_model_references(settings, repo, models=models)
     from core.job_plan import JobResolver, JobSpec, ValidationLevel
 
     level = validation_level or ValidationLevel.MODEL
@@ -284,7 +341,10 @@ def resolve_separate_job(
     sources["runtime.backend"] = "derived"
     effective = JobResolver(repo).resolve(
         JobSpec(
-            "separate", settings, tuple(inputs), output,
+            "separate",
+            settings,
+            tuple(inputs),
+            output,
             sources,
             {
                 "profile": profile.to_dict(),
@@ -295,6 +355,7 @@ def resolve_separate_job(
             },
         ),
         level,
+        allow_network=not getattr(args, "offline", False),
     )
     errors = [item.message for item in effective.diagnostics if item.severity == "error"]
     if errors:
@@ -310,19 +371,22 @@ def resolve_separate_job(
         plan=effective.to_dict(),
         identity_inherited=inherited,
         resolved=effective,
+        validation_warnings=stored_identity_warnings(settings, repo, profile),
+        repo=repo,
     )
 
 
-def resolve_ensemble_job(
-    args: argparse.Namespace, *, validation_level: Any = None
-) -> ResolvedJob:
+def resolve_ensemble_job(args: argparse.Namespace, *, validation_level: Any = None) -> ResolvedJob:
     from bundled.constants import ENSEMBLE_ALGORITHMS
     from core.ensemble_algorithms import format_ensemble_type
     from core.ensemble_service import EnsembleService
-    from core.stems import EnsemblePair
+    from core.stem_pairs import normalize_stem_pair_id
 
     base, profile, inputs, output = _base_resolve(args)
     repo = ModelRepository()
+    persisted_settings = Settings.load()
+    repo.bind_model_hash_table(lambda: persisted_settings.process.model_hash_table)
+    models = CliModelLookup(repo)
     explicit_identity = bool(args.ensemble or args.models)
     member_tokens = list(args.models or []) if explicit_identity else list(profile.members)
     preset = args.ensemble if explicit_identity else profile.ensemble
@@ -337,20 +401,31 @@ def resolve_ensemble_job(
     ):
         raise ValueError("an ad-hoc ensemble requires --main-stem")
     settings, sources = _resolved_settings(
-        base, output=output, method="ensemble", stems=args.stems,
+        base,
+        output=output,
+        method="ensemble",
+        stems=args.stems,
         long_chunk_seconds=args.long_chunk_seconds,
         long_chunk_overlap=args.long_chunk_overlap,
         base_provenance=_profile_provenance(base, profile),
     )
     records: list[ModelRecord] = []
     preset_paths: set[str] = set()
+    preset_validation_warnings: list[str] = []
     if preset:
-        EnsembleService(repo).apply(settings, preset)
-        preset_paths.update({
-            "ensemble.chosen_ensemble", "ensemble.main_stem",
-            "ensemble.type", "ensemble.selected_models",
-            "ensemble.wav_ensemble", "ensemble.save_all_outputs",
-        })
+        resolved_preset = EnsembleService(repo).apply(settings, preset)
+        preset_validation_warnings.extend(resolved_preset.validation_warnings)
+        _log_preset_persistence_resets(preset_validation_warnings)
+        preset_paths.update(
+            {
+                "ensemble.chosen_ensemble",
+                "ensemble.main_stem",
+                "ensemble.type",
+                "ensemble.selected_models",
+                "ensemble.wav_ensemble",
+                "ensemble.save_all_outputs",
+            }
+        )
         sources.update({path: "preset" for path in preset_paths})
         # Presets sit below explicit profile settings in the precedence
         # chain, so restore the sparse profile layer after preset loading.
@@ -359,15 +434,16 @@ def resolve_ensemble_job(
     if member_tokens:
         from bundled.constants import CHOOSE_ENSEMBLE_OPTION
 
-        records = [resolve_model_id(token, repo) for token in member_tokens]
+        records = [models.lookup(token) for token in member_tokens]
         settings.ensemble.selected_models = [item.id for item in records]
         settings.ensemble.chosen_ensemble = CHOOSE_ENSEMBLE_OPTION
-        sources["ensemble.selected_models"] = (
-            "cli" if args.models else profile.source
-        )
+        sources["ensemble.selected_models"] = "cli" if args.models else profile.source
         sources["ensemble.chosen_ensemble"] = "derived"
     if args.main_stem:
-        settings.ensemble.main_stem = EnsemblePair(args.main_stem)
+        pair_id = normalize_stem_pair_id(args.main_stem)
+        if not pair_id:
+            raise ValueError("--main-stem must use a current pair.* or mode.* ID")
+        settings.ensemble.main_stem = pair_id
         sources["ensemble.main_stem"] = "cli"
     if args.algorithm:
         primary, sep, secondary = args.algorithm.partition("/")
@@ -378,9 +454,7 @@ def resolve_ensemble_job(
                 f"unknown ensemble algorithm {invalid[0]!r}; expected one of: "
                 + ", ".join(ENSEMBLE_ALGORITHMS)
             )
-        settings.ensemble.type = format_ensemble_type(
-            *atoms
-        )
+        settings.ensemble.type = format_ensemble_type(*atoms)
         sources["ensemble.type"] = "cli"
     if args.wav_ensemble is not None:
         settings.ensemble.wav_ensemble = bool(args.wav_ensemble)
@@ -398,11 +472,11 @@ def resolve_ensemble_job(
         layers=layers,
         base_provenance=sources,
     )
-    model_chains = _canonicalize_model_references(settings, repo)
+    model_chains = _canonicalize_model_references(settings, repo, models=models)
     if not records:
         # Resolve preset tags back to canonical records for reports/manifests.
         for tag in settings.ensemble.selected_models:
-            records.append(resolve_model_id(tag, repo))
+            records.append(models.lookup(tag))
     if len(records) < 2:
         raise ValueError("an ensemble needs at least two members")
     if not explicit_identity and profile.members:
@@ -414,7 +488,10 @@ def resolve_ensemble_job(
 
     effective = JobResolver(repo).resolve(
         JobSpec(
-            "ensemble", settings, tuple(inputs), output,
+            "ensemble",
+            settings,
+            tuple(inputs),
+            output,
             sources,
             {
                 "profile": profile.to_dict(),
@@ -425,10 +502,15 @@ def resolve_ensemble_job(
             },
         ),
         level,
+        allow_network=not getattr(args, "offline", False),
     )
     errors = [item.message for item in effective.diagnostics if item.severity == "error"]
     if errors:
         raise ValueError(errors[0])
+    validation_warnings = stored_identity_warnings(settings, repo, profile)
+    for warning in preset_validation_warnings:
+        if warning not in validation_warnings:
+            validation_warnings.append(warning)
     return ResolvedJob(
         command="ensemble",
         settings=effective.settings,
@@ -440,7 +522,28 @@ def resolve_ensemble_job(
         plan=effective.to_dict(),
         identity_inherited=inherited,
         resolved=effective,
+        validation_warnings=validation_warnings,
+        repo=repo,
     )
+
+
+def _log_preset_persistence_resets(warnings: list[str]) -> None:
+    """Log a saved-preset reset without exposing its name, path, or payload."""
+    from core.debug_log import log_event
+
+    for warning in warnings:
+        if not warning.startswith("ensemble_main_stem:"):
+            continue
+        reset = (
+            "unsupported_schema" if "schema is unsupported" in warning else "invalid_semantic_pair"
+        )
+        log_event(
+            "ensemble",
+            "preset_persistence_reset",
+            level="warning",
+            field="ensemble_main_stem",
+            reset=reset,
+        )
 
 
 def format_effective_plan(plan: dict[str, Any]) -> str:
@@ -453,8 +556,13 @@ def format_effective_plan(plan: dict[str, Any]) -> str:
             lines.append(
                 f"  checkpoint: {model['checkpoint']} ({model.get('checkpoint_hash') or 'unverified'})"
             )
+        _append_model_stem_semantics(lines, model)
     elif models:
-        lines.append("  models: " + ", ".join(str(item.get("id")) for item in models))
+        lines.append(
+            "  models: " + ", ".join(f"{item.get('display')} [{item.get('id')}]" for item in models)
+        )
+        for model in models:
+            _append_model_stem_semantics(lines, model, prefix="  model stem")
     metadata = plan.get("metadata") or {}
     if metadata.get("preset"):
         lines.append(f"  ensemble: {metadata['preset']}")
@@ -465,8 +573,7 @@ def format_effective_plan(plan: dict[str, Any]) -> str:
     stem_mode = process.get("stem_focus") or "both"
     lines.append(f"  stems: {stem_mode}")
     lines.append(
-        f"  normalize: {process.get('normalization')}  "
-        f"mix-match: {process.get('match_mix_level')}"
+        f"  normalize: {process.get('normalization')}  mix-match: {process.get('match_mix_level')}"
     )
     lines.append(f"  device: {plan.get('device')}")
     lines.append(f"  autocast: {process.get('autocast')}")
@@ -476,7 +583,10 @@ def format_effective_plan(plan: dict[str, Any]) -> str:
         f"{process.get('long_file_chunk_overlap_seconds')}s"
     )
     if process.get("vocal_splitter_enabled"):
-        lines.append(f"  vocal splitter: {process.get('vocal_splitter')}")
+        splitter = metadata.get("vocal_splitter") or {}
+        splitter_id = splitter.get("id") or process.get("vocal_splitter")
+        splitter_display = splitter.get("display") or splitter_id
+        lines.append(f"  vocal splitter: {splitter_display} [{splitter_id}]")
     lines.append(
         f"  naming: model-folders={process.get('create_model_folder')} "
         f"model-name={process.get('add_model_name')}"
@@ -488,3 +598,27 @@ def format_effective_plan(plan: dict[str, Any]) -> str:
     for diagnostic in plan.get("diagnostics") or []:
         lines.append(f"  {diagnostic.get('severity')}: {diagnostic.get('message')}")
     return "\n".join(lines)
+
+
+def _append_model_stem_semantics(
+    lines: list[str], model: Mapping[str, Any], *, prefix: str = "  logical primary"
+) -> None:
+    """Show reviewed labels while keeping native backend values visible."""
+    routes = model.get("stem_routes")
+    if not isinstance(routes, list):
+        return
+    primary = next(
+        (route for route in routes if isinstance(route, Mapping) and route.get("logical_primary")),
+        None,
+    )
+    if not isinstance(primary, Mapping):
+        return
+    role = model.get("logical_primary_role") or primary.get("role")
+    label = primary.get("display") or primary.get("native")
+    if not label or not role:
+        return
+    lines.append(
+        f"{prefix}: {label} [{role}] (native: {primary.get('native')}; "
+        f"context: {model.get('stem_context')}; "
+        f"status: {model.get('stem_semantics_status')})"
+    )

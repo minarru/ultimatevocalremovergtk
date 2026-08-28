@@ -12,9 +12,9 @@ headlessly. They live at the ``ui/`` root rather than under
 """
 
 from __future__ import annotations
-import typing
 
-from typing import List, Tuple
+import typing
+from typing import List
 
 from bundled.constants import (
     ALL_STEMS,
@@ -23,7 +23,10 @@ from bundled.constants import (
     NO_MODEL,
 )
 from core.model_display import parse_model_tag
-from core.stems import EnsemblePair, coerce_ensemble_pair, ui_label
+from core.model_identity import ModelIdentityService
+from core.model_stem_manifest import load_bundled_stem_semantics
+from core.stem_pairs import normalize_stem_pair_id
+from core.stem_roles import StemRoleId
 
 from .settings_bind import enum_value, get_flat
 
@@ -35,18 +38,34 @@ ON_NO_MODEL = "On — no model selected"
 #: Joins the parts of a multi-part summary.
 _SEP = " · "
 
-#: ``(slot, label)`` for the secondary-model stem pairs, matching the order of
-#: ``ui.views.base._SECONDARY_SLOTS``. Only the first entry applies unless the
-#: run uses four sources -- see :func:`four_stem_secondaries_apply`.
-_SECONDARY_PAIRS: Tuple[Tuple[str, str], ...] = (
-    ("voc_inst", ui_label(EnsemblePair.VOCALS_INSTRUMENTAL)),
-    ("other", ui_label(EnsemblePair.OTHER)),
-    ("bass", ui_label(EnsemblePair.BASS)),
-    ("drums", ui_label(EnsemblePair.DRUMS)),
-)
+_SECONDARY_SLOTS = ("voc_inst", "other", "bass", "drums")
+_SECONDARY_PRIMARY_ROLES = {
+    "other": StemRoleId("residual.other"),
+    "bass": StemRoleId("instrument.bass"),
+    "drums": StemRoleId("instrument.drums"),
+}
 
 
-def _model_label(tag: typing.Any) -> str:
+def secondary_stem_pair_label(slot: str) -> str:
+    """Project one secondary-pass label from exact manifest presentation."""
+    registry = load_bundled_stem_semantics()
+    if slot == "voc_inst":
+        definition = registry.pairs.get("pair.vocals_instrumental")
+        if definition is None:
+            raise ValueError("missing pair.vocals_instrumental manifest definition")
+        return definition.display
+    primary_role = _SECONDARY_PRIMARY_ROLES.get(slot)
+    if primary_role is None:
+        raise ValueError(f"unknown secondary stem slot {slot!r}")
+    primary = registry.roles.get(primary_role)
+    if primary is None:
+        raise ValueError(f"missing manifest role {primary_role.value!r}")
+    removed = registry.roles.get(StemRoleId(f"{primary_role.value}.removed"))
+    secondary_display = removed.display if removed is not None else f"Mix minus {primary.display}"
+    return f"{primary.display}/{secondary_display}"
+
+
+def _model_label(tag: typing.Any, repo: typing.Any = None) -> str:
     """Return the display/basename half of a stored model reference.
 
     Accepts canonical ids (``mdx:basename``) and leftover ``Arch: Display``
@@ -55,6 +74,11 @@ def _model_label(tag: typing.Any) -> str:
     """
     if not tag or tag == NO_MODEL:
         return ""
+    if repo is not None:
+        try:
+            return ModelIdentityService(repo).display_label(str(tag))
+        except (TypeError, ValueError):
+            pass
     _arch, name = parse_model_tag(str(tag))
     return name or str(tag)
 
@@ -71,14 +95,18 @@ def four_stem_secondaries_apply(settings: typing.Any, process_method: str) -> bo
     """
     is_demucs = process_method == DEMUCS_ARCH_TYPE
     if settings.process.method == ENSEMBLE_MODE:
-        pair = coerce_ensemble_pair(settings.ensemble.main_stem)
-        return pair is EnsemblePair.FOUR_STEM or (
-            pair is EnsemblePair.MULTI_STEM and is_demucs
-        )
+        pair_id = normalize_stem_pair_id(settings.ensemble.main_stem)
+        return pair_id == "mode.four_stem" or (pair_id == "mode.multi_stem" and is_demucs)
     return is_demucs and settings.demucs.stems == ALL_STEMS
 
 
-def secondary_models_summary(settings: typing.Any, prefix: str, *, four_stem: bool) -> str:
+def secondary_models_summary(
+    settings: typing.Any,
+    prefix: str,
+    *,
+    four_stem: bool,
+    repo: typing.Any = None,
+) -> str:
     """One-line state of the per-architecture secondary-model section.
 
     ``four_stem`` must match what the section actually shows (see
@@ -88,12 +116,11 @@ def secondary_models_summary(settings: typing.Any, prefix: str, *, four_stem: bo
     if not get_flat(settings, f"{prefix}_is_secondary_model_activate"):
         return OFF
 
-    pairs = _SECONDARY_PAIRS if four_stem else _SECONDARY_PAIRS[:1]
+    slots = _SECONDARY_SLOTS if four_stem else _SECONDARY_SLOTS[:1]
     parts: List[str] = []
-    for slot, label in pairs:
-        name = _model_label(
-            get_flat(settings, f"{prefix}_{slot}_secondary_model", NO_MODEL)
-        )
+    for slot in slots:
+        label = secondary_stem_pair_label(slot)
+        name = _model_label(get_flat(settings, f"{prefix}_{slot}_secondary_model", NO_MODEL), repo)
         if not name:
             continue
         scale = get_flat(settings, f"{prefix}_{slot}_secondary_model_scale", 0.9)
@@ -106,11 +133,11 @@ def secondary_models_summary(settings: typing.Any, prefix: str, *, four_stem: bo
     return _SEP.join(parts) if parts else ON_NO_MODEL
 
 
-def preproc_summary(settings: typing.Any) -> str:
+def preproc_summary(settings: typing.Any, repo: typing.Any = None) -> str:
     """One-line state of the Demucs pre-process-model section."""
     if not settings.demucs.is_pre_proc_model_activate:
         return OFF
-    name = _model_label(settings.demucs.pre_proc_model or NO_MODEL)
+    name = _model_label(settings.demucs.pre_proc_model or NO_MODEL, repo)
     if not name:
         return ON_NO_MODEL
     if settings.demucs.is_pre_proc_model_inst_mix:
@@ -118,7 +145,7 @@ def preproc_summary(settings: typing.Any) -> str:
     return name
 
 
-def vocal_split_summary(settings: typing.Any) -> str:
+def vocal_split_summary(settings: typing.Any, repo: typing.Any = None) -> str:
     """One-line state of the vocal-splitter and deverb section.
 
     This section holds two independent switches, so it is ``OFF`` only when both
@@ -131,7 +158,7 @@ def vocal_split_summary(settings: typing.Any) -> str:
 
     parts: List[str] = []
     if split_on:
-        name = _model_label(settings.process.vocal_splitter or NO_MODEL)
+        name = _model_label(settings.process.vocal_splitter or NO_MODEL, repo)
         parts.append(name if name else ON_NO_MODEL)
     if deverb_on:
         parts.append(f"deverb: {enum_value(settings.process.deverb_vocal_opt)}")

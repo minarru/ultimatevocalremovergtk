@@ -17,7 +17,7 @@ Concept names select that stem even when it is not the checkpoint primary:
 | `vocals` | The Vocals concept (`process.stem_focus=Vocals`) |
 | `instrumental` | The Instrumental concept |
 | `bass`, `drums`, `other` | That MUSDB stem |
-| `primary`, `secondary` | Positional sides of the pair; **clears** `process.stem_focus` |
+| `primary`, `secondary` | Positional sides of the pair; persist the literal `primary` / `secondary` sentinel in `process.stem_focus` |
 | `both` / `all` | Every stem; clears `process.stem_focus` |
 
 `--stems vocals` on an instrumental-primary 2-stem model exports vocals, not the primary. `--set process.stem_focus=vocals` is the same exclusive pick (`vocals` ≡ `Vocals`).
@@ -36,12 +36,14 @@ selection warns and falls back to all viable outputs.
 
 GTK Save stems persist the same `process.stem_focus` field. `--profile gui` inherits it; pass `--stems primary|secondary|both` when you want a positional override instead.
 
-`--vocal-split` is still a model id. Splitter filenames stay Lead / Backing Vocals. `--main-stem` is still an ensemble pair id (`vocals_instrumental`, `karaoke`, …).
+`--vocal-split` is still a model id. Splitter filenames stay Lead / Backing Vocals. `--main-stem` accepts these exact ensemble pair/mode IDs: `pair.vocals_instrumental`, `pair.karaoke`, `pair.backing_vocals`, `pair.center_side`, `mode.four_stem`, and `mode.multi_stem`.
 
 ## Models
 
-`uvr models list` prints **installed** checkpoints (filesystem inventory). Catalogue-only aliases used for saved-reference resolution are omitted unless you pass `--all-known`.
+`uvr models list` prints **installed** checkpoints (filesystem inventory). Catalogue-only records that are not installed are omitted unless you pass `--all-known`.
 
 `uvr models catalog` / `download` share one command-scoped catalogue coordinator and close it on exit. If a live refresh fails, they continue with the last good mixed-age snapshot and print a stale/partial warning (human stderr, `catalogue_status` in JSONL). They fail only when no usable snapshot or requested entry exists.
 
 `uvr models list` / `show` JSON keeps native yaml/hash `primary_stem` keys. The human table pretty-prints known aliases.
+
+`uvr models show` JSON reports the canonical identity fields from `ModelRecord.to_dict()` — `id`, `family`, `basename`, `display`, `backend_name` (the value the legacy engine layer consumes; there is no `engine_name` field) — plus artifact filenames and `identity_complete`/`identity_error`. Model identity lookup for `--model`, `models show`, and `models configure` is exact `family:basename`; only `uvr models download` keeps a catalogue-only fuzzy match (exact catalogue ID, selectable, or display, then a unique substring) — see [models.md](models.md).

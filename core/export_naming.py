@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from bundled.constants import WAV
+
 from .settings import Settings
 
 # Characters unsafe in a single path component on common platforms.
@@ -58,20 +59,14 @@ def build_output_naming_context(
     track_base = format_track_base(
         track=track,
         model=model_label if settings.process.add_model_name or force_model_label else None,
-        ensemble=(
-            ensemble_label
-            if settings.process.add_model_name or force_ensemble_label
-            else None
-        ),
+        ensemble=ensemble_label if force_ensemble_label else None,
         file_index=file_index,
         file_total=file_total,
         timestamp=timestamp,
     )
     directory = export_path
     if settings.process.create_model_folder and model_label:
-        directory = os.path.join(
-            export_path, sanitize_filename_component(model_label), track
-        )
+        directory = os.path.join(export_path, sanitize_filename_component(model_label), track)
     extension = str(getattr(settings.process.save_format, "value", "wav") or "wav").lower()
     return OutputNamingContext(
         input_path=input_path,
@@ -116,6 +111,19 @@ def sanitize_filename_component(text: str | None) -> str:
     cleaned = cleaned.replace("\n", " ").replace("\r", " ").replace("\t", " ")
     cleaned = _MULTI_SPACE.sub(" ", cleaned).strip(" .")
     return cleaned
+
+
+def portable_stem_filename_label(text: str | None) -> str:
+    """One-way presentation of a stem label as a portable path component.
+
+    A slash is meaningful in reviewed display text (``Drum/Bass``), but is a
+    path separator. Present it as a hyphen before the ordinary component
+    sanitizer. This helper is output-only and must never participate in stem
+    identity or source lookup.
+    """
+    if text is None:
+        return ""
+    return sanitize_filename_component(str(text).replace("/", "-"))
 
 
 def ensemble_name_for_export(chosen: str | None) -> str:
@@ -165,7 +173,7 @@ def format_track_base(
 def format_stem_basename(track_base: str, stem: str) -> str:
     """``{track_base} ({stem})`` with a sanitized human-readable stem label."""
     base = (track_base or "").rstrip()
-    stem_part = sanitize_filename_component(stem) or "Stem"
+    stem_part = portable_stem_filename_label(stem) or "Stem"
     if not base:
         return f"({stem_part})"
     return f"{base} ({stem_part})"

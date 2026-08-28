@@ -1,57 +1,44 @@
 from __future__ import annotations
-import typing
-from typing import Any, cast, TYPE_CHECKING
 
-import gc
 import gzip
-import math
 import os
-from pathlib import Path
-
-import librosa
-import numpy as np
-import onnxruntime as ort
-import pydub
-import soundfile as sf
-import torch
-import torch.nn as nn
+import typing
 import warnings
-from onnx import load
-from onnx2pytorch import ConvertModel
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, cast
+
+import numpy as np
+import torch
 
 from bundled.constants import *
 from bundled.error_handling import *
-from core.debug_log import debug, trace_phase
+from core.debug_log import trace_phase
 from core.demucs_models import demucs_pretrained_load_name
+from core.demucs_registry import validate_demucs_inference_layouts
 from core.stems import (
-    StemBucket,
     StemRouteKind,
     exports_named_stem,
     route_matches_stem,
     run_export_routes,
-    stem_concept,
 )
 from core.torch_checkpoint import load_torch_checkpoint
 from ml import spec_utils
-import ml.mdxnet as MdxnetSet
 
 from .base import SeperateAttributes
-from .mix import prepare_mix, gather_sources, rerun_mp3
-from .vr_utils import vr_denoiser, loading_mix
+from .mix import prepare_mix
 
 if TYPE_CHECKING:
-    from core.model_config import ModelConfig
     from engines.stem_writer import ExportPlan
 
 cpu = torch.device('cpu')
 warnings.filterwarnings("ignore")
 
-from vendor.demucs.apply import apply_model, demucs_segments
-from vendor.demucs.hdemucs import HDemucs
-from vendor.demucs.model_v2 import auto_load_demucs_model_v2
-from vendor.demucs.pretrained import get_model as _gm
-from vendor.demucs.utils import apply_model_v1, apply_model_v2
-from .orchestration import process_secondary_model
+from vendor.demucs.apply import apply_model, demucs_segments  # noqa: E402
+from vendor.demucs.model_v2 import auto_load_demucs_model_v2  # noqa: E402
+from vendor.demucs.pretrained import get_model as _gm  # noqa: E402
+from vendor.demucs.utils import apply_model_v1, apply_model_v2  # noqa: E402
+
+from .orchestration import process_secondary_model  # noqa: E402
 
 
 def secondary_4_stem_slot(
@@ -99,7 +86,7 @@ class SeperateDemucs(SeperateAttributes):
         is_no_cache = False
 
         if (
-            self.primary_model_name == self.model_basename
+            self.primary_model_name == self.model_cache_key
             and isinstance(self.primary_sources, np.ndarray)
             and not self.pre_proc_model
         ):
@@ -118,7 +105,7 @@ class SeperateDemucs(SeperateAttributes):
                 "separate",
                 "seperate",
                 engine="SeperateDemucs",
-                model=self.model_basename,
+                model=self.model_display_label,
                 version=self.demucs_version,
             ):
                 self.write_to_console(LOADING_MODEL)
@@ -143,9 +130,7 @@ class SeperateDemucs(SeperateAttributes):
                     checkpoint_source: Any = self.model_path
                     if str(checkpoint_source).endswith(".gz"):
                         checkpoint_source = gzip.open(self.model_path, "rb")
-                    klass, args, kwargs, state = load_torch_checkpoint(
-                        checkpoint_source
-                    )
+                    klass, args, kwargs, state = load_torch_checkpoint(checkpoint_source)
                     self.demucs = klass(*args, **kwargs)
                     self.demucs.to(self.device)
                     self.demucs.load_state_dict(state)
@@ -191,7 +176,7 @@ class SeperateDemucs(SeperateAttributes):
                 ) if not self.pre_proc_model else None
 
                 if (
-                    self.primary_model_name == self.model_basename
+                    self.primary_model_name == self.model_cache_key
                     and isinstance(self.primary_sources, np.ndarray)
                     and self.pre_proc_model
                 ):
@@ -200,6 +185,19 @@ class SeperateDemucs(SeperateAttributes):
                     source = self.demix_demucs(mix)
 
                 self.write_to_console(DONE, base_text="")
+
+        if isinstance(source, np.ndarray):
+            self.demucs_source_map = validate_demucs_inference_layouts(
+                expected_count=self.demucs_stem_count,
+                model_label=(
+                    self.model_display_label
+                    or self.model_name
+                    or self.model_basename
+                    or "Demucs model"
+                ),
+                source=source,
+                inst_source=inst_source if isinstance(inst_source, np.ndarray) else None,
+            )
 
         if isinstance(inst_source, np.ndarray):
             # Graft the pre-proc vocals slot into the main demix.
@@ -211,39 +209,32 @@ class SeperateDemucs(SeperateAttributes):
             source = inst_source
 
         if isinstance(source, np.ndarray):
-            if len(source) == 2:
-                self.demucs_source_map = DEMUCS_2_SOURCE_MAPPER
-            else:
-                self.demucs_source_map = (
-                    DEMUCS_6_SOURCE_MAPPER if len(source) == 6 else DEMUCS_4_SOURCE_MAPPER
-                )
-
-                if (
-                    len(source) == 6
-                    and self.process_data.is_ensemble_master
-                    or len(source) == 6
-                    and self.is_secondary_model
-                ):
-                    is_no_piano_guitar = True
-                    six_stem_other_source = list(source)
-                    six_stem_other_source = [
-                        i
-                        for n, i in enumerate(source)
-                        if n
-                        in [
-                            self.demucs_source_map[OTHER_STEM],
-                            self.demucs_source_map[GUITAR_STEM],
-                            self.demucs_source_map[PIANO_STEM],
-                        ]
+            if (
+                len(source) == 6
+                and self.process_data.is_ensemble_master
+                or len(source) == 6
+                and self.is_secondary_model
+            ):
+                is_no_piano_guitar = True
+                six_stem_other_source = list(source)
+                six_stem_other_source = [
+                    i
+                    for n, i in enumerate(source)
+                    if n
+                    in [
+                        self.demucs_source_map[OTHER_STEM],
+                        self.demucs_source_map[GUITAR_STEM],
+                        self.demucs_source_map[PIANO_STEM],
                     ]
-                    other_source = np.zeros_like(six_stem_other_source[0])
-                    for i in six_stem_other_source:
-                        other_source += i
-                    source_reshape = spec_utils.reshape_sources(
-                        source[self.demucs_source_map[OTHER_STEM]],
-                        other_source,
-                    )
-                    source[self.demucs_source_map[OTHER_STEM]] = source_reshape
+                ]
+                other_source = np.zeros_like(six_stem_other_source[0])
+                for i in six_stem_other_source:
+                    other_source += i
+                source_reshape = spec_utils.reshape_sources(
+                    source[self.demucs_source_map[OTHER_STEM]],
+                    other_source,
+                )
+                source[self.demucs_source_map[OTHER_STEM]] = source_reshape
 
         if not self.is_vocal_split_model:
             self.cache_source(source)
@@ -262,14 +253,13 @@ class SeperateDemucs(SeperateAttributes):
 
         if native_export:
             write_all_sources = (
-                (len(native_export) == len(self.demucs_source_map) and not self.process_data.is_ensemble_master)
-                or (self.is_4_stem_ensemble and not self.is_return_dual)
-            )
+                len(native_export) == len(self.demucs_source_map)
+                and not self.process_data.is_ensemble_master
+            ) or (self.is_4_stem_ensemble and not self.is_return_dual)
         else:
             write_all_sources = (
-                (self.demucs_stems == ALL_STEMS and not self.process_data.is_ensemble_master)
-                or (self.is_4_stem_ensemble and not self.is_return_dual)
-            )
+                self.demucs_stems == ALL_STEMS and not self.process_data.is_ensemble_master
+            ) or (self.is_4_stem_ensemble and not self.is_return_dual)
 
         # ---------------------------------------------------------------------
         # Write-all mode: build a full native-keyed, channel-last sources map.
@@ -297,11 +287,7 @@ class SeperateDemucs(SeperateAttributes):
                 )
 
                 stem_source_secondary = None
-                if (
-                    self.is_secondary_model_activated
-                    and not self.is_secondary_model
-                    and slot_model
-                ):
+                if self.is_secondary_model_activated and not self.is_secondary_model and slot_model:
                     stem_source_secondary = process_secondary_model(
                         slot_model,
                         self.process_data,
@@ -395,9 +381,7 @@ class SeperateDemucs(SeperateAttributes):
             else self.primary_stem
         )
         primary_map_key = (
-            _demucs_map_key(primary_key)
-            or _demucs_map_key(self.primary_stem)
-            or self.primary_stem
+            _demucs_map_key(primary_key) or _demucs_map_key(self.primary_stem) or self.primary_stem
         )
 
         def _derive_secondary_source(
@@ -456,9 +440,7 @@ class SeperateDemucs(SeperateAttributes):
             )
 
             derived = _derive_secondary_source(raw_mixture=mix, is_inst_mixture=False)
-            blended = self.process_secondary_stem(
-                derived, secondary_source_secondary
-            )
+            blended = self.process_secondary_stem(derived, secondary_source_secondary)
             secondary_source_map[self.secondary_stem] = blended
             dual_export_sources[derived_label] = blended
             dual_export_sources[self.secondary_stem] = blended
@@ -470,26 +452,20 @@ class SeperateDemucs(SeperateAttributes):
                 )
 
         for route in native_export:
-            if write_secondary and route_matches_stem(
-                route, self.secondary_stem, self
-            ):
+            if write_secondary and route_matches_stem(route, self.secondary_stem, self):
                 continue
             native_raw = route.native.raw if route.native is not None else self.primary_stem
             map_key = _demucs_map_key(native_raw)
             if map_key is None:
                 continue
             primary_source = source[self.demucs_source_map[map_key]].T
-            blended = self.process_secondary_stem(
-                primary_source, secondary_source_primary
-            )
+            blended = self.process_secondary_stem(primary_source, secondary_source_primary)
             primary_source_map[map_key] = blended
             dual_export_sources[map_key] = blended
 
         if not native_export and exports_named_stem(self, self.primary_stem):
             primary_source = source[self.demucs_source_map[primary_map_key]].T
-            blended = self.process_secondary_stem(
-                primary_source, secondary_source_primary
-            )
+            blended = self.process_secondary_stem(primary_source, secondary_source_primary)
             primary_source_map[self.primary_stem] = blended
             dual_export_sources[self.primary_stem] = blended
 
@@ -506,9 +482,11 @@ class SeperateDemucs(SeperateAttributes):
         if self.is_secondary_model or self.is_pre_proc_model:
             plan.return_sources = secondary_sources
         return plan
-    
+
     def demix_demucs(self, mix: typing.Any):
-        with trace_phase("separate", "demix_demucs", engine="SeperateDemucs", model=self.model_basename):
+        with trace_phase(
+            "separate", "demix_demucs", engine="SeperateDemucs", model=self.model_display_label
+        ):
             org_mix = mix
             sources: Any = None
             # See SeperateMDX.demix: bound unconditionally, reassigned and read
@@ -516,7 +494,9 @@ class SeperateDemucs(SeperateAttributes):
             sr_pitched = 44100
 
             if self.is_pitch_change:
-                mix, sr_pitched = spec_utils.change_pitch_semitones(mix, 44100, semitone_shift=-self.semitone_shift)
+                mix, sr_pitched = spec_utils.change_pitch_semitones(
+                    mix, 44100, semitone_shift=-self.semitone_shift
+                )
 
             mix = torch.as_tensor(mix, dtype=torch.float32, device=self.device)
             ref = mix.mean(0)
@@ -544,16 +524,19 @@ class SeperateDemucs(SeperateAttributes):
                         set_progress_bar=self.set_progress_bar,
                     )
                 else:
-                    sources = cast(Any, apply_model(
-                        self.demucs,
-                        mix_infer[None],
-                        self.shifts,
-                        self.is_split_mode,
-                        self.overlap,
-                        static_shifts=1 if self.shifts == 0 else self.shifts,
-                        set_progress_bar=self.set_progress_bar,
-                        device=self.device,
-                    ))[0]
+                    sources = cast(
+                        Any,
+                        apply_model(
+                            self.demucs,
+                            mix_infer[None],
+                            self.shifts,
+                            self.is_split_mode,
+                            self.overlap,
+                            static_shifts=1 if self.shifts == 0 else self.shifts,
+                            set_progress_bar=self.set_progress_bar,
+                            device=self.device,
+                        ),
+                    )[0]
 
             sources = (sources.float() * ref.std() + ref.mean()).cpu().numpy()
             sources[[0, 1]] = sources[[1, 0]]

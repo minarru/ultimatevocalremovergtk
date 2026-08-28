@@ -232,7 +232,8 @@ and each is a small, separate, reviewable change.
 `ensemble_stem_bucket` already has solid table-driven tests *given correct
 flags* (`tests/test_ensemble_stem_buckets.py`). What's never been verified
 is how often `is_karaoke`'s guessed branch actually fires correctly across
-the real catalogue. New script, `scripts/stem_semantics_audit.py`, mirroring
+the real catalogue. Optional generator mode,
+`scripts/generate_models_catalogue.py --audit-stem-confidence`, mirroring
 the house style of `scripts/model_probe.py`:
 
 - Walks the mvsepless + curated catalogue (matching `model_probe.py --sweep`
@@ -283,9 +284,9 @@ Stdlib unittest, no network, no GTK (all pure functions):
 - `resolve_karaoke_confidence` — curated-metadata case returns
   `(True, True)`; guessed case returns `(guess, False)`; `resolve_is_karaoke`
   still returns a plain `bool` matching its existing three call sites.
-- `scripts/stem_semantics_audit.py` gets the same lightweight CLI tests as
-  `model_probe.py` (arg parsing, JSON output shape) — its *findings* are for
-  human review, not asserted in CI.
+- The generator's `--audit-stem-confidence` mode gets the same lightweight
+  CLI tests as `model_probe.py` (arg parsing, JSON output shape) — its
+  *findings* are for human review, not asserted in CI.
 
 ## Out of scope
 

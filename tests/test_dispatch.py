@@ -1,5 +1,7 @@
 import typing
 import unittest
+import tempfile
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from ui.dispatch import gtk_job_callbacks, idle_on_main, latest_main_thread, main_thread
@@ -30,6 +32,24 @@ class DispatchTests(unittest.TestCase):
         wrapped = main_thread(lambda value: seen.append(value))
         wrapped("ok")
         self.assertEqual(seen, ["ok"])
+
+    @patch("ui.dispatch.GLib.idle_add")
+    def test_dispatch_scheduling_is_trace_only(self, idle_add: typing.Any) -> None:
+        from core import debug_log
+
+        idle_add.side_effect = lambda func: func()
+        with tempfile.TemporaryDirectory() as tmp:
+            log_path = Path(tmp) / "uvr.log"
+            debug_log.configure(level="debug", log_file=str(log_path))
+            self.addCleanup(debug_log.configure, level="errors", log_file="")
+            main_thread(lambda: None)()
+            self.assertFalse(log_path.exists())
+
+            debug_log.configure(level="trace", log_file=str(log_path))
+            main_thread(lambda: None)()
+            diagnostic = log_path.read_text(encoding="utf-8")
+            self.assertIn("event=dispatch_scheduled", diagnostic)
+            self.assertIn("event=dispatch_invoked", diagnostic)
 
     @patch("ui.dispatch.GLib.idle_add")
     def test_latest_main_thread_bounds_pending_work_and_delivers_newest(

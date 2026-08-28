@@ -84,6 +84,8 @@ DEMUCS_2_SOURCE = ["instrumental", "vocals"]
 
 DEMUCS_4_SOURCE = ["drums", "bass", "other", "vocals"]
 
+DEMUCS_6_SOURCE = ["drums", "bass", "other", "vocals", "guitar", "piano"]
+
 DEMUCS_2_SOURCE_MAPPER = {
                         INST_STEM: 0,
                         VOCAL_STEM: 1}

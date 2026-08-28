@@ -1,0 +1,2 @@
+# Waiver rows retain three schema-required empty terminal TSV fields.
+docs/model_stem_semantics_reference.tsv whitespace=-blank-at-eol

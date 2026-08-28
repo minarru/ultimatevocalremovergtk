@@ -5,12 +5,18 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Optional, Tuple
 
+from ..model_identity import ModelArtifacts
+from ..stem_roles import ModelStemSemantics
 from ..stems import StemRoute
 
 
 @dataclass
 class ModelIdentity:
     model_name: str = ""
+    canonical_id: str = ""
+    model_display_label: str = ""
+    backend_name: str = ""
+    model_artifacts: Optional[ModelArtifacts] = None
     process_method: str = ""
     model_path: Optional[str] = None
     model_basename: Optional[str] = None
@@ -64,6 +70,8 @@ class StemRouting:
     demucs_source_list: Tuple[str, ...] = ()
     available_routes: Tuple[StemRoute, ...] = ()
     selected_routes: Tuple[StemRoute, ...] = ()
+    semantics: ModelStemSemantics | None = None
+    selected_routes_explicit: bool = False
 
 
 @dataclass
@@ -73,9 +81,7 @@ class SecondaryChain:
     secondary_model: Any = None
     secondary_model_scale: Optional[float] = None
     secondary_model_4_stem: Tuple[Any, ...] = field(default_factory=tuple)
-    secondary_model_4_stem_scale: Tuple[Optional[float], ...] = field(
-        default_factory=tuple
-    )
+    secondary_model_4_stem_scale: Tuple[Optional[float], ...] = field(default_factory=tuple)
     pre_proc_model: Any = None
     vocal_split_model: Any = None
     is_secondary_model_activated: bool = False

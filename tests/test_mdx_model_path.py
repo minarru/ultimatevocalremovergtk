@@ -31,10 +31,8 @@ class MdxModelPathTests(unittest.TestCase):
         self.assertFalse(model_data.model_path.endswith(ONNX))
 
     def test_auto_registered_onnx_mapper_key_does_not_double_extension(self) -> None:
-        # register_mdx_display_name (core/mdx_c_registry.py) writes mapper
-        # keys that already include the file extension, unlike bundled
-        # catalogue mapper keys. get_mdx_model_path must not append the
-        # extension again for a mapper key that already ends with it.
+        # Some mapper keys include the file extension, unlike bundled catalogue
+        # keys. get_mdx_model_path must not append the extension again.
         class _FakeRepo:
             mdx_name_select_MAPPER = {"some_checkpoint.onnx": "Some Friendly Name"}
 

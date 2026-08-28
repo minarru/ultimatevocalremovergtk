@@ -7,8 +7,7 @@ import os
 import pickle
 from typing import Any
 
-from core import glib_log
-from core.debug_log import debug
+from core.debug_log import debug, log_event
 from core.paths import (
     SETTINGS_JSON_FILE,
     SETTINGS_PICKLE_BAK,
@@ -37,30 +36,38 @@ def _preserve_unreadable(path: str, exc: Exception) -> None:
                 target = candidate
                 break
         else:
-            glib_log.emit(
-                "uvr-settings",
-                f"settings file unreadable ({type(exc).__name__}: {exc}); "
-                f"{_MAX_PRESERVED} copies already preserved, leaving {path} in place",
+            log_event(
+                "settings",
+                "settings_preservation_skipped",
                 level="warning",
+                source_path=path,
+                preserved_count=_MAX_PRESERVED,
+                error_type=type(exc).__name__,
+                error=str(exc),
             )
             return
 
     try:
         os.rename(path, target)
     except OSError as rename_exc:
-        glib_log.emit(
-            "uvr-settings",
-            f"settings file unreadable ({type(exc).__name__}: {exc}) and could not "
-            f"be preserved ({rename_exc}); continuing with defaults",
+        log_event(
+            "settings",
+            "settings_preservation_failed",
             level="warning",
+            source_path=path,
+            error_type=type(rename_exc).__name__,
+            error=str(rename_exc),
         )
         return
 
-    glib_log.emit(
-        "uvr-settings",
-        f"settings file unreadable ({type(exc).__name__}: {exc}); "
-        f"preserved as {target}, continuing with defaults",
+    log_event(
+        "settings",
+        "settings_file_preserved",
         level="warning",
+        source_path=path,
+        archive_path=target,
+        error_type=type(exc).__name__,
+        error=str(exc),
     )
 
 
@@ -111,6 +118,9 @@ def _apply_autocast_default(settings: Settings, *, had_autocast: bool) -> None:
 
 def load_settings(path: str | None = None) -> Settings:
     """Load settings from JSON, importing legacy pickle once when needed."""
+    from core.access_policy import current_access_policy
+
+    allow_metadata_writes = current_access_policy().allow_metadata_writes
     if path and path.endswith(".pkl"):
         json_sibling = path[:-4] + ".json"
         # Prefer JSON sibling once migration has already written it.
@@ -122,15 +132,16 @@ def load_settings(path: str | None = None) -> Settings:
             settings = Settings.from_flat(flat)
             settings.path = json_sibling
             _apply_autocast_default(settings, had_autocast=had_autocast)
-            save_settings(settings, json_sibling)
-            backup_path = f"{path}.bak"
-            if path == SETTINGS_PICKLE_FILE and not os.path.exists(SETTINGS_PICKLE_BAK):
-                os.rename(path, SETTINGS_PICKLE_BAK)
-            elif not os.path.exists(backup_path) and os.path.isfile(path):
-                try:
-                    os.rename(path, backup_path)
-                except OSError:
-                    pass
+            if allow_metadata_writes:
+                save_settings(settings, json_sibling)
+                backup_path = f"{path}.bak"
+                if path == SETTINGS_PICKLE_FILE and not os.path.exists(SETTINGS_PICKLE_BAK):
+                    os.rename(path, SETTINGS_PICKLE_BAK)
+                elif not os.path.exists(backup_path) and os.path.isfile(path):
+                    try:
+                        os.rename(path, backup_path)
+                    except OSError:
+                        pass
             return settings
         settings = Settings.defaults()
         settings.path = json_sibling
@@ -150,11 +161,17 @@ def load_settings(path: str | None = None) -> Settings:
             debug("settings", f"load_settings source=json path={json_path}")
             return settings
         except (OSError, ValueError, json.JSONDecodeError) as exc:
-            debug(
+            log_event(
                 "settings",
-                f"load_settings json failed error={type(exc).__name__}: {exc}",
+                "settings_load_failed",
+                level="error",
+                source="json",
+                source_path=json_path,
+                error_type=type(exc).__name__,
+                error=str(exc),
             )
-            _preserve_unreadable(json_path, exc)
+            if allow_metadata_writes:
+                _preserve_unreadable(json_path, exc)
 
     pkl_path = SETTINGS_PICKLE_FILE
     if os.path.isfile(pkl_path):
@@ -164,15 +181,21 @@ def load_settings(path: str | None = None) -> Settings:
             settings = Settings.from_flat(flat)
             settings.path = json_path
             _apply_autocast_default(settings, had_autocast=had_autocast)
-            save_settings(settings, json_path)
-            if not os.path.exists(SETTINGS_PICKLE_BAK):
-                os.rename(pkl_path, SETTINGS_PICKLE_BAK)
+            if allow_metadata_writes:
+                save_settings(settings, json_path)
+                if not os.path.exists(SETTINGS_PICKLE_BAK):
+                    os.rename(pkl_path, SETTINGS_PICKLE_BAK)
             debug("settings", f"load_settings source=pickle-import path={json_path}")
             return settings
         except (OSError, ValueError, pickle.UnpicklingError, EOFError) as exc:
-            debug(
+            log_event(
                 "settings",
-                f"load_settings pickle failed error={type(exc).__name__}: {exc}",
+                "settings_load_failed",
+                level="error",
+                source="pickle",
+                source_path=pkl_path,
+                error_type=type(exc).__name__,
+                error=str(exc),
             )
 
     settings = Settings.defaults()

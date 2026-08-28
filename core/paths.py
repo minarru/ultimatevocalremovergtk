@@ -30,7 +30,7 @@ import os
 import shutil
 import time
 
-from .platform import user_cache_dir, user_data_dir
+from .platform import registry_data_dir, user_cache_dir, user_data_dir
 
 BASE_PATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -55,6 +55,7 @@ def _resolve_data_dir() -> str:
 
 # --- Writable runtime data ---------------------------------------------------
 DATA_DIR = _resolve_data_dir()
+RUNTIME_STATE_DIR = registry_data_dir(BASE_PATH, DATA_DIR)
 
 # OS cache dir for download/catalog JSON caches (not portable settings/models).
 CACHE_DIR = user_cache_dir()
@@ -72,6 +73,7 @@ MDX_HASH_JSON = os.path.join(MDX_HASH_DIR, "model_data.json")
 MDX_C_CONFIG_PATH = os.path.join(MDX_HASH_DIR, "mdx_c_configs")
 
 DEMUCS_MODEL_NAME_SELECT = os.path.join(DEMUCS_MODELS_DIR, "model_data", "model_name_mapper.json")
+DEMUCS_MODEL_SPECS = os.path.join(DEMUCS_MODELS_DIR, "model_data", "model_specs.json")
 MDX_MODEL_NAME_SELECT = os.path.join(MDX_MODELS_DIR, "model_data", "model_name_mapper.json")
 
 # Apollo restoration models. Like the other model trees these are writable /
@@ -81,7 +83,8 @@ APOLLO_MODELS_DIR = os.path.join(MODELS_DIR, "Apollo_Models")
 APOLLO_CONFIG_PATH = os.path.join(APOLLO_MODELS_DIR, "model_configs")
 APOLLO_HASH_DIR = os.path.join(APOLLO_MODELS_DIR, "model_data")
 APOLLO_HASH_JSON = os.path.join(APOLLO_HASH_DIR, "model_data.json")
-REGISTERED_MODEL_INDEX = os.path.join(DATA_DIR, "registered_models.json")
+LEGACY_REGISTERED_MODEL_INDEX = os.path.join(BASE_PATH, "registered_models.json")
+REGISTERED_MODEL_INDEX = os.path.join(RUNTIME_STATE_DIR, "registered_models.json")
 
 DENOISER_MODEL_PATH = os.path.join(VR_MODELS_DIR, "UVR-DeNoise-Lite.pth")
 DEVERBER_MODEL_PATH = os.path.join(VR_MODELS_DIR, "UVR-DeEcho-DeReverb.pth")
@@ -219,6 +222,7 @@ def ensure_data_dir() -> None:
         ENSEMBLE_TEMP_PATH,
         ENSEMBLE_CACHE_DIR,
         SETTINGS_CACHE_DIR,
+        RUNTIME_STATE_DIR,
     ):
         os.makedirs(directory, exist_ok=True)
 
@@ -243,6 +247,10 @@ def ensure_data_dir() -> None:
     _seed_bundled_file(
         os.path.join(BUNDLED_MODELS_DIR, "Demucs_Models", "model_data", "model_name_mapper.json"),
         DEMUCS_MODEL_NAME_SELECT,
+    )
+    _seed_bundled_file(
+        os.path.join(BUNDLED_MODELS_DIR, "Demucs_Models", "model_data", "model_specs.json"),
+        DEMUCS_MODEL_SPECS,
     )
 
     # Seed the bundled MDX-C config YAMLs.

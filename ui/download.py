@@ -1,4 +1,4 @@
-"""Download Center entry point, VIP / manual dialogs, and shared download services."""
+"""Download Center entry point, manual dialog, and shared download services."""
 
 from __future__ import annotations
 import typing
@@ -10,8 +10,6 @@ from gi.repository import Adw, GLib, Gtk
 
 from bundled.constants import (
     DEMUCS_ARCH_TYPE,
-    DONATE_LINK_BMAC,
-    DONATE_LINK_PATREON,
     MDX_ARCH_TYPE,
     VR_ARCH_TYPE,
 )
@@ -25,7 +23,6 @@ from core.download_status import (
     STATUS_FAILED,
 )
 from core.downloads import DownloadManager
-from core.model_naming import canonical_display_name
 
 from .dispatch import idle_on_main, latest_main_thread
 from .dialogs.utils import configure_dialog_width, fill_dialog_width, present_modal_dialog, set_dialog_content
@@ -37,7 +34,6 @@ from .notifications import (
     NOTIFY_DOWNLOAD_FAILED,
     send_desktop_notification,
 )
-from .spacing import inset_md
 from .download_center import DownloadCenterWindow
 from .widgets.download_queue_indicator import DownloadQueueIndicator
 
@@ -136,8 +132,13 @@ def _send_download_notifications(
         )
 
 
-def init_download_queue_ui(main_window: typing.Any, app_context: typing.Any, *, on_models_changed: typing.Any=None) -> DownloadQueueIndicator:
-    """Wire the header download indicator and app-level queue callbacks."""
+def init_download_queue_ui(main_window: typing.Any, app_context: typing.Any) -> DownloadQueueIndicator:
+    """Wire the header download indicator and app-level queue callbacks.
+
+    Batch completion is aggregate UI only. Model publication is per item, owned
+    by the queue's finalizer, and reaches the widgets through the repository
+    event -- a batch-level refresh callback here would repaint late and once.
+    """
     manager = _get_manager(app_context)
     queue = _get_queue(app_context, manager)
     indicator = getattr(main_window, "_download_queue_indicator", None)
@@ -175,8 +176,6 @@ def init_download_queue_ui(main_window: typing.Any, app_context: typing.Any, *, 
         center = getattr(app_context, "_download_center_window", None)
         if center is not None:
             center.refresh_after_downloads()
-        if on_models_changed is not None:
-            on_models_changed()
         message, needs_attention = download_batch_message(batch_items)
         toast = Adw.Toast.new(message)
         if needs_attention:
@@ -374,9 +373,6 @@ def start_download_size_cache_warmup(app_context: typing.Any) -> None:
 
     def worker() -> None:
         manager = _get_manager(app_context)
-        code = app_context.settings.process.user_code
-        if code:
-            manager.validate_vip_code(code)
         if manager.ensure_catalogues():
             manager.schedule_size_cache_warmup()
         else:
@@ -386,7 +382,7 @@ def start_download_size_cache_warmup(app_context: typing.Any) -> None:
     threading.Thread(target=worker, daemon=True).start()
 
 
-def open_download_center(parent_window: typing.Any, app_context: typing.Any, on_models_changed: typing.Any=None):
+def open_download_center(parent_window: typing.Any, app_context: typing.Any):
     """Open or raise the Download Center utility window."""
     start_download_size_cache_warmup(app_context)
     center = getattr(app_context, "_download_center_window", None)
@@ -401,92 +397,10 @@ def open_download_center(parent_window: typing.Any, app_context: typing.Any, on_
         app_context,
         manager,
         queue,
-        on_models_changed=on_models_changed,
     )
     app_context._download_center_window = center
     center.present()
     return center
-
-
-# ---------------------------------------------------------------------------
-# VIP code dialog
-# ---------------------------------------------------------------------------
-
-def open_vip_code_dialog(parent: typing.Any, app_context: typing.Any, on_validated: typing.Any=None):
-    manager = _get_manager(app_context)
-    settings = app_context.settings
-
-    dialog = Adw.Dialog()
-    dialog.set_title("Unlock VIP models")
-    configure_dialog_width(dialog, parent, fallback=520)
-
-    toast_overlay = Adw.ToastOverlay()
-    fill_dialog_width(toast_overlay)
-
-    page = Adw.PreferencesPage()
-    group = Adw.PreferencesGroup(
-        title="Download code",
-        description=(
-            "Obtain a code from the links below. Donations are appreciated but not required."
-        ),
-    )
-    page.add(group)
-
-    code_row = Adw.EntryRow(title="Code")
-    code_row.set_text(settings.process.user_code)
-    group.add(code_row)
-
-    def toast(message: str) -> None:
-        toast_overlay.add_toast(Adw.Toast.new(message))
-
-    def on_confirm(_button: typing.Any):
-        code = code_row.get_text().strip()
-        unlocked = manager.validate_vip_code(code)
-        if unlocked:
-            settings.process.user_code = code
-            error = app_context.try_save_settings(trigger="vip")
-            if error:
-                toast(error)
-            else:
-                toast("VIP models unlocked")
-        else:
-            toast("Incorrect code")
-        debug("download", f"ui vip_code_confirm unlocked={unlocked}")
-        if on_validated is not None:
-            on_validated(unlocked)
-
-    confirm_button = Gtk.Button(label="_Unlock", use_underline=True, valign=Gtk.Align.CENTER)
-    confirm_button.add_css_class("suggested-action")
-    confirm_button.connect("clicked", on_confirm)
-    code_row.add_suffix(confirm_button)
-
-    links_group = Adw.PreferencesGroup(title="Support UVR")
-    for title, link in (
-        ("Patreon", DONATE_LINK_PATREON),
-        ("Buy Me a Coffee", DONATE_LINK_BMAC),
-    ):
-        row = Adw.ActionRow(title=title)
-        button = Gtk.Button(icon_name="adw-external-link-symbolic", valign=Gtk.Align.CENTER)
-        set_icon_button_a11y(button, f"Open {title} in default browser")
-        button.connect(
-            "clicked",
-            lambda _b, url=link: open_uri_in_browser(parent, url, on_error=toast),
-        )
-        row.add_suffix(button)
-        row.set_activatable_widget(button)
-        links_group.add(row)
-    page.add(links_group)
-
-    content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-    inset_md(content)
-    fill_dialog_width(content)
-    fill_dialog_width(page)
-    content.append(page)
-
-    toast_overlay.set_child(content)
-    set_dialog_content(dialog, toast_overlay)
-    present_modal_dialog(dialog, parent)
-    return dialog
 
 
 # ---------------------------------------------------------------------------
@@ -495,7 +409,7 @@ def open_vip_code_dialog(parent: typing.Any, app_context: typing.Any, on_validat
 
 def open_manual_downloads(parent: typing.Any, app_context: typing.Any):
     manager = _get_manager(app_context)
-    data = manager.manual_download_data()
+    data = manager.manual_download_rows()
 
     dialog = Adw.Dialog()
     dialog.set_title("Manual downloads")
@@ -514,13 +428,12 @@ def open_manual_downloads(parent: typing.Any, app_context: typing.Any):
         if not models:
             continue
         group = Adw.PreferencesGroup(title=group_title)
-        for selectable, model in models.items():
+        for manual_row in models:
+            selectable = manual_row.selection
             row = Adw.ExpanderRow()
             row.set_use_markup(False)
-            # Canonical name for display; ``selectable`` stays the raw catalogue
-            # label that manual_links resolves against.
-            row.set_title(canonical_display_name(selectable))
-            links = DownloadManager.manual_links(arch, model)
+            row.set_title(manual_row.display)
+            links = manual_row.resolve_links()
             for label, url in links:
                 link_row = Adw.ActionRow()
                 link_row.set_use_markup(False)

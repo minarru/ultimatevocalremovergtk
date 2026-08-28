@@ -1,14 +1,13 @@
 """Pre-run workload hints and live separation ETA tracking."""
 
 from __future__ import annotations
-import typing
 
+import typing
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any, List, Optional, Sequence, Tuple
 
 from bundled.constants import (
-    ALL_STEMS,
     DEMUCS_ARCH_TYPE,
     DENOISE_M,
     DENOISE_S,
@@ -18,7 +17,7 @@ from bundled.constants import (
     VR_ARCH_PM,
     VR_ARCH_TYPE,
 )
-from core.stems import EnsemblePair, coerce_ensemble_pair
+from core.stem_pairs import normalize_stem_pair_id
 
 if TYPE_CHECKING:
     from .settings import Settings
@@ -130,10 +129,7 @@ def _resolved_mdx_is_classic(
             models = assemble_model(settings, repo, name, method_key)
     except (ValueError, NotImplementedError, TypeError, AttributeError):
         return None
-    mdx_models = [
-        m for m in (models or [])
-        if getattr(m, "process_method", None) == MDX_ARCH_TYPE
-    ]
+    mdx_models = [m for m in (models or []) if getattr(m, "process_method", None) == MDX_ARCH_TYPE]
     if not mdx_models:
         return None
     return any(
@@ -197,9 +193,7 @@ def cost_factor_hints(
         if _denoise_should_count(
             settings,
             method_key,
-            is_classic_mdx=_resolved_mdx_is_classic(
-                settings, method_key, repo, model_name
-            ),
+            is_classic_mdx=_resolved_mdx_is_classic(settings, method_key, repo, model_name),
         ):
             hints.append("Denoise")
     if include_demucs:
@@ -255,9 +249,7 @@ def compute_run_cost_units(
         if _denoise_should_count(
             settings,
             method_key,
-            is_classic_mdx=_resolved_mdx_is_classic(
-                settings, method_key, repo, model_name
-            ),
+            is_classic_mdx=_resolved_mdx_is_classic(settings, method_key, repo, model_name),
         ):
             units += 1
     return units
@@ -277,11 +269,7 @@ def count_inference_passes_from_models(models: Sequence[Any]) -> int:
         2 if getattr(m, "pre_proc_model_activated", False) else 0 for m in models
     )
     base = sum(2 if getattr(m, "is_secondary_model_activated", False) else 1 for m in models)
-    voc_split = (
-        1
-        if any(getattr(m, "is_vocal_split_model_activated", False) for m in models)
-        else 0
-    )
+    voc_split = 1 if any(getattr(m, "is_vocal_split_model_activated", False) for m in models) else 0
     return base + true_model_4_stem_count + true_model_pre_proc_model_count + voc_split
 
 
@@ -289,7 +277,7 @@ def count_inference_passes(
     settings: typing.Any,
     *,
     method_key: str,
-    repo: typing.Any=None,
+    repo: typing.Any = None,
     model_name: Optional[str] = None,
 ) -> int:
     """Return expected inference passes for the current method settings."""
@@ -333,15 +321,12 @@ def _count_inference_passes_light(settings: typing.Any, method_key: str) -> int:
         passes += 1
     if _vocal_splitter_active(settings):
         passes += 1
-    if (
-        method_key == DEMUCS_ARCH_TYPE
-        and settings.demucs.is_pre_proc_model_activate
-    ):
+    if method_key == DEMUCS_ARCH_TYPE and settings.demucs.is_pre_proc_model_activate:
         passes += 2
     return passes
 
 
-def _multi_stem_base_outputs(settings: typing.Any, repo: typing.Any=None) -> int:
+def _multi_stem_base_outputs(settings: typing.Any, repo: typing.Any = None) -> int:
     """Stem file count for Multi-stem Ensemble (at least 4)."""
     if repo is None:
         return 4
@@ -362,12 +347,12 @@ def _multi_stem_base_outputs(settings: typing.Any, repo: typing.Any=None) -> int
     return 4
 
 
-def ensemble_export_summary(settings: typing.Any, repo: typing.Any=None) -> str:
+def ensemble_export_summary(settings: typing.Any, repo: typing.Any = None) -> str:
     """Short export line for ensemble modes without dual-stem Save stems toggles."""
-    pair = coerce_ensemble_pair(settings.ensemble.main_stem)
-    if pair is EnsemblePair.FOUR_STEM:
+    pair_id = normalize_stem_pair_id(settings.ensemble.main_stem)
+    if pair_id == "mode.four_stem":
         label = "4 stem outputs"
-    elif pair is EnsemblePair.MULTI_STEM:
+    elif pair_id == "mode.multi_stem":
         count = _multi_stem_base_outputs(settings, repo)
         label = f"{count} stem outputs"
     else:
@@ -380,11 +365,11 @@ def ensemble_export_summary(settings: typing.Any, repo: typing.Any=None) -> str:
 
 
 def count_expected_outputs(
-    save_stems: typing.Any=None,
+    save_stems: typing.Any = None,
     *,
-    settings: typing.Any=None,
+    settings: typing.Any = None,
     method_key: Optional[str] = None,
-    repo: typing.Any=None,
+    repo: typing.Any = None,
     output_count: Optional[int] = None,
 ) -> int:
     """Expected on-disk files for the current Save stems / ensemble configuration."""
@@ -393,10 +378,10 @@ def count_expected_outputs(
 
     base = 0
     if method_key == ENSEMBLE_MODE and settings is not None:
-        pair = coerce_ensemble_pair(settings.ensemble.main_stem)
-        if pair is EnsemblePair.FOUR_STEM:
+        pair_id = normalize_stem_pair_id(settings.ensemble.main_stem)
+        if pair_id == "mode.four_stem":
             base = 4
-        elif pair is EnsemblePair.MULTI_STEM:
+        elif pair_id == "mode.multi_stem":
             base = _multi_stem_base_outputs(settings, repo)
         elif save_stems is not None and getattr(save_stems, "mode", None) != "hidden":
             base = int(save_stems.expected_output_count())
@@ -419,8 +404,8 @@ def estimate_workload(
     settings: typing.Any,
     *,
     method_key: str,
-    save_stems: typing.Any=None,
-    repo: typing.Any=None,
+    save_stems: typing.Any = None,
+    repo: typing.Any = None,
     model_name: Optional[str] = None,
     has_model: bool = True,
     output_count: Optional[int] = None,
@@ -462,9 +447,7 @@ def estimate_workload(
         sample_seconds=int(settings.process.sample_mode_duration or 30),
         export_tier=classify_export_tier(counted),
         run_tier=classify_run_tier(run_units),
-        hints=cost_factor_hints(
-            settings, method_key, repo=repo, model_name=model_name
-        ),
+        hints=cost_factor_hints(settings, method_key, repo=repo, model_name=model_name),
     )
 
 

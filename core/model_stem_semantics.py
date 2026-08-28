@@ -5,25 +5,28 @@ Derives display-label overrides and export intent from resolved model metadata
 """
 
 from __future__ import annotations
-import typing
 
-from typing import Dict, List, Mapping, Optional, Sequence, Set, Tuple
+import typing
+from dataclasses import replace
+from typing import Dict, List, Mapping, Optional, Sequence, Tuple
 
 from bundled.constants import (
     ALL_STEMS,
     BV_VOCAL_STEM,
     BV_VOCAL_STEM_LABEL,
     INST_STEM,
-    INST_WITH_BACKING_VOCALS_STEM,
-    INST_WITH_LEAD_VOCALS_STEM,
-    LEAD_VOCAL_STEM,
-    LEAD_VOCAL_STEM_LABEL,
-    NO_BASS_STEM,
-    NO_DRUM_STEM,
     NO_OTHER_STEM,
     NO_STEM,
     OTHER_STEM,
     VOCAL_STEM,
+)
+
+from .catalogue_types import StemSemanticProjection, StemSemanticRoute
+from .stem_roles import (
+    ModelStemSemantics,
+    StemProcessingContext,
+    StemReviewStatus,
+    StemRoleId,
 )
 
 # Catalogue / runtime intent labels (stable strings).
@@ -36,6 +39,152 @@ INTENT_SPECIALTY_STEM = "specialty_stem"
 INTENT_INSTRUMENTAL = "instrumental"
 INTENT_VOCALS = "vocals"
 INTENT_UNKNOWN = "unknown"
+MODEL_STEM_INTENTS = frozenset(
+    {
+        INTENT_KARAOKE,
+        INTENT_DRUM_BASS_SEP,
+        INTENT_DUAL_VOC_INST,
+        INTENT_MULTI_STEM,
+        INTENT_SPECIAL_FX,
+        INTENT_SPECIALTY_STEM,
+        INTENT_INSTRUMENTAL,
+        INTENT_VOCALS,
+        INTENT_UNKNOWN,
+    }
+)
+
+
+def resolve_catalogue_stem_semantics(
+    model_id: str,
+    *,
+    native_stems: Sequence[str],
+    backend_primary: str = "",
+    backend_target: str = "",
+    context: StemProcessingContext = StemProcessingContext.FULL_MIX,
+    runtime_warning: str = "",
+    registry: typing.Any = None,
+) -> ModelStemSemantics:
+    """Resolve a catalogue row through exact declarations or an exact waiver.
+
+    Catalogue name/category guesses deliberately do not take part in this
+    lookup.  A waiver is audit evidence for an exact canonical identity, not a
+    declaration of output membership, so it carries no routes.
+    """
+    from .model_stem_manifest import (
+        StemSemanticsRegistry,
+        load_bundled_stem_semantics,
+        resolve_model_stem_semantics,
+    )
+
+    selected_registry = registry if registry is not None else load_bundled_stem_semantics()
+    semantics = resolve_model_stem_semantics(
+        model_id,
+        native_stems=native_stems,
+        backend_primary=backend_primary,
+        backend_target=backend_target,
+        context=context,
+        registry=StemSemanticsRegistry.empty() if runtime_warning else selected_registry,
+    )
+    if runtime_warning:
+        return replace(semantics, warning=runtime_warning)
+    waiver = selected_registry.waivers.get(model_id)
+    if waiver is not None and semantics.status is StemReviewStatus.RAW:
+        return ModelStemSemantics(
+            model_id=model_id,
+            context=context,
+            intent="",
+            outputs=(),
+            status=StemReviewStatus.WAIVED,
+            evidence=waiver,
+        )
+    return semantics
+
+
+def stem_semantics_projection(
+    semantics: ModelStemSemantics | None,
+    *,
+    backend_primary: str | None = None,
+    backend_target: str | None = None,
+) -> StemSemanticProjection:
+    """Render exact semantics for catalogue, plan, CLI, and diagnostics.
+
+    The result intentionally keeps raw backend primary/target fields adjacent
+    to reviewed display data.  It has no display-to-identity path and never
+    derives a role from a native spelling.
+    """
+    primary = None if backend_primary is None else str(backend_primary)
+    target = None if backend_target is None else str(backend_target)
+    if semantics is None:
+        return StemSemanticProjection(
+            backend_primary_stem=primary,
+            backend_target_stem=target,
+            logical_primary_role=None,
+            logical_secondary_role=None,
+            status=StemReviewStatus.RAW.value,
+            context=StemProcessingContext.FULL_MIX.value,
+            routes=(),
+        )
+
+    from .model_stem_manifest import load_bundled_stem_semantics
+
+    registry = load_bundled_stem_semantics()
+    routes: list[StemSemanticRoute] = []
+    roles: list[str] = []
+    logical_primary_role: str | None = None
+    logical_secondary_role = (
+        semantics.logical_secondary_role.value
+        if isinstance(semantics.logical_secondary_role, StemRoleId)
+        else (
+            f"raw:{semantics.logical_secondary_role.tag.strip().casefold()}"
+            if semantics.logical_secondary_role is not None
+            else None
+        )
+    )
+    # ``outputs`` preserves the exact reviewed manifest/native declaration
+    # order. Logical route markers are metadata, never an ordering rule.
+    for output in semantics.outputs:
+        native = output.native.raw if output.native is not None else None
+        if isinstance(output.role, StemRoleId):
+            definition = registry.roles.get(output.role)
+            role = output.role.value
+            display = definition.display if definition is not None else (native or role)
+            filename_tag = definition.filename_tag if definition is not None else display
+            roles.append(role)
+            if output.logical_primary:
+                logical_primary_role = role
+        else:
+            role = None
+            display = native or output.role.tag
+            filename_tag = display
+        routes.append(
+            StemSemanticRoute(
+                native=native,
+                role=role,
+                display=display,
+                filename_tag=filename_tag,
+                production=output.production.value,
+                logical_primary=output.logical_primary,
+                logical_secondary=output.logical_secondary,
+                derived_from=tuple(item.value for item in output.derived_from),
+                complement_of=(
+                    output.complement_of.value if output.complement_of is not None else None
+                ),
+                selected_by_default=output.selected_by_default,
+            )
+        )
+    return StemSemanticProjection(
+        backend_primary_stem=primary,
+        backend_target_stem=target,
+        logical_primary_role=logical_primary_role,
+        logical_secondary_role=logical_secondary_role,
+        status=semantics.status.value,
+        context=semantics.context.value,
+        routes=tuple(routes),
+        canonical_roles=tuple(roles),
+        evidence=semantics.evidence,
+        warning=semantics.warning,
+    )
+
 
 # Weight basenames where both 2-stem exports are first-class (backend primary is arbitrary).
 DUAL_STEM_WEIGHTS = frozenset(
@@ -55,6 +204,7 @@ def is_dual_stem_weight(weight_basename: str) -> bool:
         return True
     stem = low[:-5] if low.endswith(".onnx") else low
     return stem in DUAL_STEM_WEIGHTS or f"{stem}.onnx" in DUAL_STEM_WEIGHTS
+
 
 _DUAL_VOC_INST_LABELS = (
     "mdx-net main",
@@ -329,9 +479,7 @@ def infer_is_karaoke_from_hints(
     weight_basename: str = "",
 ) -> bool:
     """Infer karaoke intent from catalogue label, config name, or weight basename."""
-    text = " ".join(
-        part for part in (model_name, config_yaml, weight_basename) if part
-    ).lower()
+    text = " ".join(part for part in (model_name, config_yaml, weight_basename) if part).lower()
     return "karaoke" in text
 
 
@@ -422,7 +570,7 @@ def is_specialty_instrument_pair(instruments: Sequence[str]) -> bool:
 
 
 def describe_special_fx_stem(stem: str) -> str:
-    """Human-readable best-result line for FX / subtraction primaries."""
+    """Catalogue audit formatter; never a runtime role declaration."""
     if not stem:
         return "Post-processing stem export"
     low = str(stem).lower().strip()
@@ -492,7 +640,11 @@ def export_intent_from_fields(
     weight_basename: str = "",
     catalogue_label: str = "",
 ) -> str:
-    """Infer export intent from model metadata fields."""
+    """Infer catalogue-only audit intent from non-manifest metadata fields.
+
+    This preserves source evidence for catalogue review. It must not assign
+    runtime roles or presentation labels; those come from exact semantics.
+    """
     instruments = list(instruments or [])
     if is_dual_stem_weight(weight_basename):
         return INTENT_DUAL_VOC_INST
@@ -555,7 +707,7 @@ def resolve_catalogue_intent(
     catalogue_label: str = "",
     category_intent: str = INTENT_UNKNOWN,
 ) -> str:
-    """Yaml/hash fields win; the mvsepless shop category only fills ``unknown``."""
+    """Return catalogue audit intent; never a runtime role declaration."""
     from_fields = export_intent_from_fields(
         primary_stem=primary_stem,
         target=target,
@@ -572,13 +724,50 @@ def resolve_catalogue_intent(
 
 
 def export_intent_from_model(model: typing.Any) -> str:
-    """Infer export intent from a resolved :class:`ModelConfig` instance."""
+    """Return an exact reviewed intent for a resolved runtime model.
+
+    Unknown, waived, and signature-mismatched models remain ``unknown``. A
+    model name or an ``other`` backend key is not enough to promote an output
+    to a canonical runtime role.
+    """
+    semantics = _model_semantics_projection_source(model)
+    if semantics is not None:
+        return semantics.intent if semantics.status is StemReviewStatus.REVIEWED else INTENT_UNKNOWN
+    if _legacy_identity_unavailable(model):
+        return _legacy_export_intent_from_model(model)
+    return INTENT_UNKNOWN
+
+
+def _model_semantics_projection_source(
+    model: typing.Any,
+) -> ModelStemSemantics | None:
+    """Obtain the cached exact runtime projection without display fallbacks."""
     if model is None:
-        return INTENT_UNKNOWN
+        return None
+    from .stems import model_stem_routes
+
+    # The shared route adapter performs exact canonical-ID/signature matching
+    # and caches the immutable result on the assembled model.
+    model_stem_routes(model)
+    semantics = getattr(model, "stem_semantics", None)
+    return semantics if isinstance(semantics, ModelStemSemantics) else None
+
+
+def _legacy_identity_unavailable(model: typing.Any) -> bool:
+    """Compatibility boundary for callers that cannot provide a runtime ID.
+
+    Assembled runtime models always carry ``canonical_id`` and consequently
+    use the exact projection above. This narrow fallback retains the legacy
+    non-runtime inspection API without allowing a raw resolved model to infer
+    a reviewed role from a spelling.
+    """
+    return model is not None and not str(getattr(model, "canonical_id", "") or "")
+
+
+def _legacy_export_intent_from_model(model: typing.Any) -> str:
+    """Compatibility-only audit-style intent for identity-free callers."""
     model_data = getattr(model, "model_data", None)
-    config_yaml = ""
-    if model_data:
-        config_yaml = str(model_data.get("config_yaml") or "")
+    config_yaml = str(model_data.get("config_yaml") or "") if model_data else ""
     is_karaoke = bool(getattr(model, "is_karaoke", False)) or resolve_is_karaoke(
         model_data=model_data,
         model_name=str(getattr(model, "model_name", None) or ""),
@@ -596,22 +785,38 @@ def export_intent_from_model(model: typing.Any) -> str:
 
 
 def stem_display_overrides(model: typing.Any) -> Optional[Dict[str, str]]:
-    """Return per-stem display-label overrides for Save stems UI."""
-    if model is None:
-        return None
-    from core.stems import karaoke_bv_export_labels
+    """Return reviewed native-key -> display overrides for the Save stems UI."""
+    semantics = _model_semantics_projection_source(model)
+    if semantics is None or semantics.status is not StemReviewStatus.REVIEWED:
+        if not _legacy_identity_unavailable(model):
+            return None
+        overrides: Dict[str, str] = {}
+        instruments = training_instruments(model)
+        if len(instruments) == 2 and is_vocals_other_pair(instruments):
+            overrides.update(VOCALS_OTHER_DISPLAY_OVERRIDES)
+        from .stems import karaoke_bv_export_labels
 
-    overrides: Dict[str, str] = {}
-    instruments = training_instruments(model)
-    if len(instruments) == 2 and is_vocals_other_pair(instruments):
-        overrides.update(VOCALS_OTHER_DISPLAY_OVERRIDES)
-    karaoke_bv = karaoke_bv_export_labels(model)
-    if karaoke_bv:
-        # UI keys stay Vocals/Instrumental; only those display overrides matter.
-        overrides[VOCAL_STEM] = karaoke_bv[VOCAL_STEM]
-        overrides[INST_STEM] = karaoke_bv[INST_STEM]
-        overrides["vocals"] = karaoke_bv[VOCAL_STEM]
-        overrides["instrumental"] = karaoke_bv[INST_STEM]
+        karaoke_bv = karaoke_bv_export_labels(model)
+        if karaoke_bv:
+            overrides.update(
+                {
+                    VOCAL_STEM: karaoke_bv[VOCAL_STEM],
+                    INST_STEM: karaoke_bv[INST_STEM],
+                    "vocals": karaoke_bv[VOCAL_STEM],
+                    "instrumental": karaoke_bv[INST_STEM],
+                }
+            )
+        return overrides or None
+    projection = stem_semantics_projection(
+        semantics,
+        backend_primary=getattr(model, "primary_stem", None),
+        backend_target=getattr(model, "target_instrument", None),
+    )
+    overrides = {
+        route.native: route.display
+        for route in projection.routes
+        if route.native is not None and route.role is not None
+    }
     return overrides or None
 
 
@@ -630,24 +835,35 @@ def shows_voc_inst_quick_export(model: typing.Any, stems: Sequence[str]) -> bool
     """Whether the All / Vocals / Instrumental quick-export row applies."""
     if not model or not stems:
         return False
-    intent = export_intent_from_model(model)
-    if intent in (
-        INTENT_SPECIALTY_STEM,
-        INTENT_SPECIAL_FX,
-        INTENT_MULTI_STEM,
-        INTENT_DRUM_BASS_SEP,
-    ):
-        return False
-    return any(is_vocal_target(stem) or stem == VOCAL_STEM for stem in stems)
+    semantics = _model_semantics_projection_source(model)
+    if semantics is None or semantics.status is not StemReviewStatus.REVIEWED:
+        if not _legacy_identity_unavailable(model):
+            return False
+        return _legacy_shows_voc_inst_quick_export(model, stems)
+    roles = {
+        output.role.value for output in semantics.outputs if isinstance(output.role, StemRoleId)
+    }
+    return bool(
+        any(role.startswith("vocal.") for role in roles)
+        and any(role.startswith("mix.instrumental") for role in roles)
+    )
 
 
 def preferred_quick_export_mode(model: typing.Any) -> Optional[str]:
     """Default quick-export mode for subset UI, or ``None`` to keep user settings."""
-    if export_intent_from_model(model) != INTENT_KARAOKE:
+    semantics = _model_semantics_projection_source(model)
+    if semantics is None or semantics.status is not StemReviewStatus.REVIEWED:
+        if not _legacy_identity_unavailable(model):
+            return None
+        return _legacy_preferred_quick_export_mode(model)
+    if semantics.intent != INTENT_KARAOKE:
         return None
-    primary = str(getattr(model, "primary_stem", "") or "")
-    target = target_instrument(model)
-    if is_vocal_target(primary) or is_vocal_target(target):
+    if any(
+        output.logical_primary
+        and isinstance(output.role, StemRoleId)
+        and output.role.value.startswith("mix.instrumental")
+        for output in semantics.outputs
+    ):
         return "instrumental"
     return None
 
@@ -679,16 +895,53 @@ def apply_karaoke_quick_export_default(
     vocal = vocal_stem_key(model, stems)
     settings.set(selected_key, [vocal])
     settings.set(stems_key, vocal)
-    from core.stems import StemBucket
-
     if process is not None:
-        process.stem_focus = StemBucket.INSTRUMENTAL.value
+        process.stem_focus = "mix.instrumental_with_backing_vocals"
     return True
 
 
 def recommended_export_note(model: typing.Any) -> str:
-    """Short UX hint for Save stems when intent differs from a single primary stem."""
-    intent = export_intent_from_model(model)
+    """Short reviewed-route hint for Save stems; raw models receive no guess."""
+    semantics = _model_semantics_projection_source(model)
+    if semantics is None or semantics.status is not StemReviewStatus.REVIEWED:
+        return _legacy_recommended_export_note(model) if _legacy_identity_unavailable(model) else ""
+    projection = stem_semantics_projection(
+        semantics,
+        backend_primary=getattr(model, "primary_stem", None),
+        backend_target=getattr(model, "target_instrument", None),
+    )
+    primary = next((route for route in projection.routes if route.logical_primary), None)
+    if primary is None or primary.role is None:
+        return ""
+    labels = " / ".join(route.display for route in projection.routes)
+    return f"Reviewed stem routing: {labels}. Logical primary: {primary.display} [{primary.role}]."
+
+
+def _legacy_shows_voc_inst_quick_export(model: typing.Any, stems: Sequence[str]) -> bool:
+    """Compatibility-only quick-export decision for identity-free callers."""
+    intent = _legacy_export_intent_from_model(model)
+    if intent in (
+        INTENT_SPECIALTY_STEM,
+        INTENT_SPECIAL_FX,
+        INTENT_MULTI_STEM,
+        INTENT_DRUM_BASS_SEP,
+    ):
+        return False
+    return any(is_vocal_target(stem) or stem == VOCAL_STEM for stem in stems)
+
+
+def _legacy_preferred_quick_export_mode(model: typing.Any) -> Optional[str]:
+    """Compatibility-only default for identity-free callers."""
+    if _legacy_export_intent_from_model(model) != INTENT_KARAOKE:
+        return None
+    primary = str(getattr(model, "primary_stem", "") or "")
+    target = target_instrument(model)
+    return "instrumental" if is_vocal_target(primary) or is_vocal_target(target) else None
+
+
+def _legacy_recommended_export_note(model: typing.Any) -> str:
+    """Compatibility-only note for identity-free callers."""
+    intent = _legacy_export_intent_from_model(model)
     if intent == INTENT_DUAL_VOC_INST:
         if is_dual_stem_weight(model_weight_basename(model)):
             return "Both Vocals and Instrumental are first-class exports for this model"
@@ -756,8 +1009,20 @@ def infer_name_intent_from_label(label: str) -> str:
     if any(pattern in text for pattern in _DUAL_VOC_INST_LABELS) and "inst main" not in text:
         return INTENT_DUAL_VOC_INST
     multi_hints = (
-        "4-stem", "4 stem", "4stems", "scnet", "kuielab", "demucs", "bandit",
-        "drums", "bass", "speech", "music", "effects", "sfx", "ensemble",
+        "4-stem",
+        "4 stem",
+        "4stems",
+        "scnet",
+        "kuielab",
+        "demucs",
+        "bandit",
+        "drums",
+        "bass",
+        "speech",
+        "music",
+        "effects",
+        "sfx",
+        "ensemble",
     )
     if any(h in text for h in multi_hints):
         return INTENT_MULTI_STEM
@@ -766,15 +1031,38 @@ def infer_name_intent_from_label(label: str) -> str:
     if any(h in text for h in _SPECIALTY_LABEL_HINTS):
         return INTENT_SPECIALTY_STEM
     inst_hints = (
-        "inst", "instrumental", "instr", "hp-uvr", "hp2-uvr", "hp uvr",
-        "fno", "metal", "drumsep", "drum sep",
-        "instvoc", "mgm", "sp-uvr", "sp_uvr", "bleed suppressor",
+        "inst",
+        "instrumental",
+        "instr",
+        "hp-uvr",
+        "hp2-uvr",
+        "hp uvr",
+        "fno",
+        "metal",
+        "drumsep",
+        "drum sep",
+        "instvoc",
+        "mgm",
+        "sp-uvr",
+        "sp_uvr",
+        "bleed suppressor",
     )
     vocal_hints = (
-        "vocal", "voc ", " voc", "syhft",
-        "bleedless", "fullness", "revive", "resurrection vocals",
-        "big beta", "big syhft",
-        " kim | ft", "| ft ", "sdr 1143", "sdr 1296", "sdr 1297",
+        "vocal",
+        "voc ",
+        " voc",
+        "syhft",
+        "bleedless",
+        "fullness",
+        "revive",
+        "resurrection vocals",
+        "big beta",
+        "big syhft",
+        " kim | ft",
+        "| ft ",
+        "sdr 1143",
+        "sdr 1296",
+        "sdr 1297",
     )
     if "instrumental" in text:
         vocal_hints = tuple(h for h in vocal_hints if h != "bleedless")

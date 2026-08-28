@@ -1,9 +1,10 @@
 """Pure settings-to-subtitle summaries for collapsible option sections."""
 
 from __future__ import annotations
-import typing
 
+import typing
 import unittest
+from unittest.mock import patch
 
 from bundled.constants import (
     ALL_STEMS,
@@ -12,7 +13,6 @@ from bundled.constants import (
     MDX_ARCH_TYPE,
     NO_MODEL,
 )
-from core.stems import EnsemblePair
 from core.settings import Settings
 from ui.option_summaries import (
     OFF,
@@ -47,7 +47,7 @@ class FourStemApplicabilityTests(unittest.TestCase):
     def test_four_stem_ensemble_applies_to_every_architecture(self):
         settings = _Settings(
             chosen_process_method=ENSEMBLE_MODE,
-            ensemble_main_stem=EnsemblePair.FOUR_STEM.value,
+            ensemble_main_stem="mode.four_stem",
         )
         self.assertTrue(four_stem_secondaries_apply(settings, MDX_ARCH_TYPE))
         self.assertTrue(four_stem_secondaries_apply(settings, DEMUCS_ARCH_TYPE))
@@ -55,7 +55,7 @@ class FourStemApplicabilityTests(unittest.TestCase):
     def test_multi_stem_ensemble_applies_to_demucs_only(self):
         settings = _Settings(
             chosen_process_method=ENSEMBLE_MODE,
-            ensemble_main_stem=EnsemblePair.MULTI_STEM.value,
+            ensemble_main_stem="mode.multi_stem",
         )
         self.assertTrue(four_stem_secondaries_apply(settings, DEMUCS_ARCH_TYPE))
         self.assertFalse(four_stem_secondaries_apply(settings, MDX_ARCH_TYPE))
@@ -66,7 +66,7 @@ class FourStemApplicabilityTests(unittest.TestCase):
         reach the four-slot path even with demucs_stems set to ALL_STEMS."""
         settings = _Settings(
             chosen_process_method=ENSEMBLE_MODE,
-            ensemble_main_stem=EnsemblePair.VOCALS_INSTRUMENTAL.value,
+            ensemble_main_stem="pair.vocals_instrumental",
             demucs_stems=ALL_STEMS,
         )
         self.assertFalse(four_stem_secondaries_apply(settings, DEMUCS_ARCH_TYPE))
@@ -75,18 +75,14 @@ class FourStemApplicabilityTests(unittest.TestCase):
 class SecondaryModelsSummaryTests(unittest.TestCase):
     def test_off_when_not_activated(self):
         settings = _Settings(mdx_is_secondary_model_activate=False)
-        self.assertEqual(
-            secondary_models_summary(settings, "mdx", four_stem=False), OFF
-        )
+        self.assertEqual(secondary_models_summary(settings, "mdx", four_stem=False), OFF)
 
     def test_on_but_unset_reports_no_model(self):
         settings = _Settings(
             mdx_is_secondary_model_activate=True,
             mdx_voc_inst_secondary_model=NO_MODEL,
         )
-        self.assertEqual(
-            secondary_models_summary(settings, "mdx", four_stem=False), ON_NO_MODEL
-        )
+        self.assertEqual(secondary_models_summary(settings, "mdx", four_stem=False), ON_NO_MODEL)
 
     def test_describes_the_configured_pair(self):
         settings = _Settings(
@@ -109,6 +105,20 @@ class SecondaryModelsSummaryTests(unittest.TestCase):
         self.assertIn("UVR-MDX-NET-Inst_HQ_3", summary)
         self.assertNotIn("mdx:", summary)
 
+    @patch("ui.option_summaries.ModelIdentityService")
+    def test_canonical_id_uses_the_installed_record_display(self, service: typing.Any) -> None:
+        service.return_value.display_label.return_value = "Inst HQ 3"
+        settings = _Settings(
+            mdx_is_secondary_model_activate=True,
+            mdx_voc_inst_secondary_model="mdx:UVR-MDX-NET-Inst_HQ_3",
+            mdx_voc_inst_secondary_model_scale=0.9,
+        )
+
+        summary = secondary_models_summary(settings, "mdx", four_stem=False, repo=object())
+
+        self.assertIn("Inst HQ 3", summary)
+        self.assertNotIn("UVR-MDX-NET-Inst_HQ_3", summary)
+
     def test_two_stem_ignores_other_bass_drums(self):
         settings = _Settings(
             demucs_is_secondary_model_activate=True,
@@ -116,9 +126,7 @@ class SecondaryModelsSummaryTests(unittest.TestCase):
             demucs_bass_secondary_model="VR Arc: 1_HP-UVR",
             demucs_bass_secondary_model_scale=0.5,
         )
-        self.assertEqual(
-            secondary_models_summary(settings, "demucs", four_stem=False), ON_NO_MODEL
-        )
+        self.assertEqual(secondary_models_summary(settings, "demucs", four_stem=False), ON_NO_MODEL)
 
     def test_four_stem_includes_other_bass_drums(self):
         settings = _Settings(
@@ -144,9 +152,7 @@ class SecondaryModelsSummaryTests(unittest.TestCase):
 
 class PreprocSummaryTests(unittest.TestCase):
     def test_off_when_not_activated(self):
-        self.assertEqual(
-            preproc_summary(_Settings(is_demucs_pre_proc_model_activate=False)), OFF
-        )
+        self.assertEqual(preproc_summary(_Settings(is_demucs_pre_proc_model_activate=False)), OFF)
 
     def test_on_but_unset_reports_no_model(self):
         settings = _Settings(
@@ -184,6 +190,17 @@ class VocalSplitSummaryTests(unittest.TestCase):
         )
         self.assertEqual(vocal_split_summary(settings), "UVR-BVE-4B")
 
+    @patch("ui.option_summaries.ModelIdentityService")
+    def test_splitter_uses_the_installed_record_display(self, service: typing.Any) -> None:
+        service.return_value.display_label.return_value = "BV 4B"
+        settings = _Settings(
+            is_set_vocal_splitter=True,
+            set_vocal_splitter="vr:UVR-BVE-4B",
+            is_deverb_vocals=False,
+        )
+
+        self.assertEqual(vocal_split_summary(settings, repo=object()), "BV 4B")
+
     def test_splitter_on_without_model_reports_no_model(self):
         settings = _Settings(
             is_set_vocal_splitter=True,
@@ -207,9 +224,7 @@ class VocalSplitSummaryTests(unittest.TestCase):
             is_deverb_vocals=True,
             deverb_vocal_opt="All Vocal Types",
         )
-        self.assertEqual(
-            vocal_split_summary(settings), "UVR-BVE-4B · deverb: All Vocal Types"
-        )
+        self.assertEqual(vocal_split_summary(settings), "UVR-BVE-4B · deverb: All Vocal Types")
 
     def test_missing_keys_degrade_to_off(self):
         self.assertEqual(vocal_split_summary(_Settings()), OFF)

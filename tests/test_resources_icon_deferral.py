@@ -7,7 +7,10 @@ name only Adw.AboutDialog ever consumes.
 from __future__ import annotations
 
 import os
+import subprocess
+import sys
 import unittest
+from pathlib import Path
 from unittest import mock
 
 
@@ -43,6 +46,33 @@ class IconDeferralTests(unittest.TestCase):
             self.assertTrue(resources.ensure_application_icon())
         icon.assert_called_once()
 
+    def test_bundled_stylesheet_matches_source_and_parses_without_gtk_warnings(self) -> None:
+        stylesheet = Path(__file__).resolve().parents[1] / "resources" / "style.css"
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                (
+                    "import gi, sys; "
+                    "gi.require_version('Gtk', '4.0'); "
+                    "from gi.repository import Gio, Gtk; "
+                    "import ui.resources as resources; "
+                    "assert resources.register_gresources(); "
+                    "bundled = Gio.resources_lookup_data("
+                    "resources.STYLE_CSS_RESOURCE, Gio.ResourceLookupFlags.NONE"
+                    ").get_data(); "
+                    "assert bundled == open(sys.argv[1], 'rb').read(); "
+                    "Gtk.CssProvider().load_from_resource(resources.STYLE_CSS_RESOURCE)"
+                ),
+                str(stylesheet),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertNotIn("Theme parser error", result.stderr)
+
     def test_about_calls_ensure_icon_before_dialog_construction(self) -> None:
         """Verify that ensure_application_icon is called *before* the dialog is built.
 
@@ -53,7 +83,6 @@ class IconDeferralTests(unittest.TestCase):
 
         import ui.about as about
         import ui.resources as resources
-        from gi.repository import Adw
 
         call_sequence: list[str] = []
 

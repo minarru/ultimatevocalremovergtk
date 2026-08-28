@@ -181,7 +181,9 @@ def log_error(process_method: str, exception: BaseException, *, context: str = "
     formatted text. When a prior error is already stored, the new report is
     appended rather than replacing it.
     """
-    from core.debug_log import debug, preview_text
+    import traceback
+
+    from core.debug_log import log_event
 
     if not context:
         from core.error_context import format_error_context
@@ -189,9 +191,19 @@ def log_error(process_method: str, exception: BaseException, *, context: str = "
         context = format_error_context()
     formatted = error_text(process_method, exception, context=context)
     append_error_log(formatted)
-    debug(
+    log_event(
         "error",
-        f"log_error method={process_method!r} error={type(exception).__name__}: {exception}",
+        "ui_error",
+        level="error",
+        process_method=process_method,
+        context=context,
+        error_type=type(exception).__name__,
+        error=str(exception),
+        traceback="".join(
+            traceback.format_exception(
+                type(exception), exception, exception.__traceback__
+            )
+        ),
     )
     return formatted
 

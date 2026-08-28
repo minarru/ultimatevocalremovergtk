@@ -1,8 +1,10 @@
 """JobRunner separator lifecycle."""
 import typing
+import types
 
 import unittest
 from unittest import mock
+from types import SimpleNamespace
 
 from core.job_runner import JobRunner
 from core.separator_run import run_separator
@@ -10,31 +12,49 @@ from core.settings import Settings
 
 
 class JobRunnerSeperatorTests(unittest.TestCase):
-    @mock.patch("engines.stem_writer.finish_export")
-    @mock.patch("core.separator_run.release_separator")
-    def test_run_seperator_releases_in_finally(
-        self, release_mock: mock.MagicMock, finish_mock: mock.MagicMock
-    ) -> None:
-        from engines.stem_writer import ExportPlan
+    @staticmethod
+    def _stem_writer_module(*, finish_result: typing.Any) -> types.ModuleType:
+        module = types.ModuleType("engines.stem_writer")
+        module_any = typing.cast(typing.Any, module)
+
+        class ExportPlan:
+            def __init__(self, sources: typing.Any=None) -> None:
+                self.sources = sources or {}
+
+        module_any.ExportPlan = ExportPlan
+        module_any.finish_export = mock.MagicMock(return_value=finish_result)
+        return module
+
+    def test_run_seperator_releases_in_finally(self) -> None:
+        module = self._stem_writer_module(finish_result={})
 
         runner = JobRunner(Settings.defaults())
         separator = mock.MagicMock()
-        plan = ExportPlan()
+        plan = module.ExportPlan()
         separator.seperate.return_value = plan
-        finish_mock.return_value = {}
-        run_separator(runner, separator)
+
+        with (
+            mock.patch.dict("sys.modules", {"engines.stem_writer": module}),
+            mock.patch("core.separator_run.release_separator") as release_mock,
+        ):
+            run_separator(runner, separator)
+
         separator.seperate.assert_called_once_with()
-        finish_mock.assert_called_once_with(separator, plan)
+        module.finish_export.assert_called_once_with(separator, plan)
         release_mock.assert_called_once_with(separator)
         self.assertIsNone(runner._active_separator)
 
-    @mock.patch("core.separator_run.release_separator")
-    def test_run_seperator_releases_after_exception(self, release_mock: mock.MagicMock) -> None:
+    def test_run_seperator_releases_after_exception(self) -> None:
+        module = self._stem_writer_module(finish_result={})
         runner = JobRunner(Settings.defaults())
         separator = mock.MagicMock()
         separator.seperate.side_effect = ValueError("fail")
-        with self.assertRaises(ValueError):
-            run_separator(runner, separator)
+        with (
+            mock.patch.dict("sys.modules", {"engines.stem_writer": module}),
+            mock.patch("core.separator_run.release_separator") as release_mock,
+        ):
+            with self.assertRaises(ValueError):
+                run_separator(runner, separator)
         release_mock.assert_called_once_with(separator)
         self.assertIsNone(runner._active_separator)
 
@@ -54,6 +74,43 @@ class JobRunnerSeperatorTests(unittest.TestCase):
         model_name, sources = runner._cached_source_callback("MDX-Net", "other")
         self.assertIsNone(model_name)
         self.assertIsNone(sources)
+
+    def test_build_all_models_uses_backend_names_for_cache_identity(self) -> None:
+        from bundled.constants import DEMUCS_ARCH_TYPE
+
+        runner = JobRunner(Settings.defaults())
+        model = typing.cast(
+            typing.Any,
+            SimpleNamespace(
+                model_basename="shared",
+                backend_name="shared.onnx",
+                is_secondary_model_activated=True,
+                secondary_model=SimpleNamespace(
+                    model_basename="shared",
+                    backend_name="shared_secondary.ckpt",
+                ),
+                pre_proc_model=SimpleNamespace(
+                    model_basename="shared",
+                    backend_name="shared_pre_proc.yaml",
+                ),
+                process_method=DEMUCS_ARCH_TYPE,
+                is_demucs_4_stem_secondaries=True,
+                secondary_model_4_stem_model_names_list=["slot_a.onnx", "slot_b.onnx"],
+            ),
+        )
+
+        runner._build_all_models([model])
+
+        self.assertEqual(
+            runner.all_models,
+            [
+                "shared.onnx",
+                "shared_secondary.ckpt",
+                "shared_pre_proc.yaml",
+                "slot_a.onnx",
+                "slot_b.onnx",
+            ],
+        )
 
     def test_start_does_not_prepare_on_caller_thread(self) -> None:
         """``prepare_input_paths`` must not run before the worker starts."""

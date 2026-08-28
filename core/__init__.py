@@ -35,7 +35,15 @@ from .job_runner import JobRunner
 from .paths import DATA_DIR, ENSEMBLE_CACHE_DIR, ensure_data_dir
 from .process_data import ProcessData
 from .settings import Settings
-from .model_identity import ModelId, ModelIdentityService, ModelRecord
+from .model_identity import (
+    CatalogueRef,
+    DemucsSpec,
+    MdxSpec,
+    ModelArtifacts,
+    ModelId,
+    ModelIdentityService,
+    ModelRecord,
+)
 from .job_plan import (
     Diagnostic,
     JobResolver,
@@ -75,6 +83,10 @@ __all__ = [
     "available_cuda_devices",
     "list_gpu_devices",
     "ModelId",
+    "ModelArtifacts",
+    "DemucsSpec",
+    "MdxSpec",
+    "CatalogueRef",
     "ModelRecord",
     "ModelIdentityService",
     "JobSpec",

@@ -4,12 +4,28 @@ import re
 import unittest
 
 from core.export_naming import format_stem_basename
-from core.stems import StemBucket, bucket_for_model_stem, concept_is, filename_tag
+from core.stem_pairs import stem_pair_definition
+from core.stem_roles import StemLiteral, StemRoleId
+from core.stems import (
+    StemBucket,
+    StemId,
+    StemRoute,
+    bucket_for_model_stem,
+    concept_is,
+    filename_tag,
+    routes_for_ensemble_pair,
+)
 
 _ALL_BUCKETS = (
-    StemBucket.VOCALS, StemBucket.INSTRUMENTAL, StemBucket.OTHER, StemBucket.DRUMS,
-    StemBucket.BASS, StemBucket.LEAD_VOCALS, StemBucket.BACKING_VOCALS,
-    StemBucket.INST_WITH_BV, StemBucket.INST_WITH_LEAD,
+    StemBucket.VOCALS,
+    StemBucket.INSTRUMENTAL,
+    StemBucket.OTHER,
+    StemBucket.DRUMS,
+    StemBucket.BASS,
+    StemBucket.LEAD_VOCALS,
+    StemBucket.BACKING_VOCALS,
+    StemBucket.INST_WITH_BV,
+    StemBucket.INST_WITH_LEAD,
 )
 
 
@@ -28,6 +44,39 @@ class OtherOverloadTests(unittest.TestCase):
             bucket_for_model_stem("Instrumental", stem_count=2, is_karaoke=True),
             StemBucket.INST_WITH_BV,
         )
+
+
+class ExactReviewedPairTests(unittest.TestCase):
+    def test_pair_requires_its_complete_role_ids_not_raw_native_words(self) -> None:
+        pair = stem_pair_definition("pair.center_side")
+        assert pair is not None
+        routes = (
+            StemRoute(
+                StemId("Similarity"),
+                StemRoleId("spatial.center"),
+                "Center",
+                "Center",
+            ),
+            StemRoute(
+                StemId("Difference"),
+                StemRoleId("spatial.side"),
+                "Side",
+                "Side",
+            ),
+            StemRoute(StemId("center"), StemLiteral("center"), "center", "center"),
+        )
+
+        self.assertEqual(routes_for_ensemble_pair(routes, pair), routes[:2])
+
+    def test_raw_center_side_spelling_cannot_satisfy_the_reviewed_pair(self) -> None:
+        pair = stem_pair_definition("pair.center_side")
+        assert pair is not None
+        raw_routes = (
+            StemRoute(StemId("center"), StemLiteral("center"), "center", "center"),
+            StemRoute(StemId("wide"), StemLiteral("wide"), "wide", "wide"),
+        )
+
+        self.assertEqual(routes_for_ensemble_pair(raw_routes, pair), ())
         self.assertEqual(
             bucket_for_model_stem("other", stem_count=2, is_karaoke=True),
             StemBucket.INST_WITH_BV,
@@ -45,7 +94,8 @@ class KaraokeAndBvTests(unittest.TestCase):
             bucket_for_model_stem("Vocals", stem_count=1, is_bv=True), StemBucket.BACKING_VOCALS
         )
         self.assertEqual(
-            bucket_for_model_stem("Instrumental", stem_count=2, is_bv=True), StemBucket.INST_WITH_LEAD
+            bucket_for_model_stem("Instrumental", stem_count=2, is_bv=True),
+            StemBucket.INST_WITH_LEAD,
         )
 
 
@@ -83,10 +133,18 @@ class IdentityCodeTests(unittest.TestCase):
         self.assertEqual(bucket_for_model_stem("Lead Vocals", stem_count=2), StemBucket.LEAD_VOCALS)
 
     def test_backing_only_resolves_without_the_bv_flag(self) -> None:
-        self.assertEqual(bucket_for_model_stem("backing_only", stem_count=2), StemBucket.BACKING_VOCALS)
-        self.assertEqual(bucket_for_model_stem("Backing Vocals", stem_count=2), StemBucket.BACKING_VOCALS)
-        self.assertEqual(bucket_for_model_stem("backing_vocal", stem_count=3), StemBucket.BACKING_VOCALS)
-        self.assertEqual(bucket_for_model_stem("backing_vocals", stem_count=3), StemBucket.BACKING_VOCALS)
+        self.assertEqual(
+            bucket_for_model_stem("backing_only", stem_count=2), StemBucket.BACKING_VOCALS
+        )
+        self.assertEqual(
+            bucket_for_model_stem("Backing Vocals", stem_count=2), StemBucket.BACKING_VOCALS
+        )
+        self.assertEqual(
+            bucket_for_model_stem("backing_vocal", stem_count=3), StemBucket.BACKING_VOCALS
+        )
+        self.assertEqual(
+            bucket_for_model_stem("backing_vocals", stem_count=3), StemBucket.BACKING_VOCALS
+        )
 
     def test_identity_code_is_not_folded_into_plain_vocals(self) -> None:
         self.assertNotEqual(bucket_for_model_stem("lead_only", stem_count=2), StemBucket.VOCALS)
@@ -124,9 +182,7 @@ class ThirdVocabularyConsolidationTests(unittest.TestCase):
     behavior-identical for every token the old private sets recognized."""
 
     def test_instrument_alias_resolves_to_instrumental_bucket(self) -> None:
-        self.assertEqual(
-            bucket_for_model_stem("instrument", stem_count=1), StemBucket.INSTRUMENTAL
-        )
+        self.assertEqual(bucket_for_model_stem("instrument", stem_count=1), StemBucket.INSTRUMENTAL)
 
     def test_voc_alias_resolves_to_vocals_bucket(self) -> None:
         self.assertEqual(bucket_for_model_stem("voc", stem_count=2), StemBucket.VOCALS)
@@ -147,15 +203,11 @@ class VocalSplitRoleTests(unittest.TestCase):
         for raw in ("Instrumental", "other", "instrument"):
             with self.subTest(raw=raw):
                 self.assertEqual(
-                    bucket_for_model_stem(
-                        raw, stem_count=2, is_karaoke=True, is_vocal_split=True
-                    ),
+                    bucket_for_model_stem(raw, stem_count=2, is_karaoke=True, is_vocal_split=True),
                     StemBucket.BACKING_VOCALS,
                 )
                 self.assertNotEqual(
-                    bucket_for_model_stem(
-                        raw, stem_count=2, is_karaoke=True, is_vocal_split=True
-                    ),
+                    bucket_for_model_stem(raw, stem_count=2, is_karaoke=True, is_vocal_split=True),
                     StemBucket.INST_WITH_BV,
                 )
 
@@ -189,13 +241,9 @@ class VocalSplitRoleTests(unittest.TestCase):
 
     def test_concept_is_matches_yaml_vocals_to_vocals_bucket(self) -> None:
         self.assertTrue(concept_is("vocals", StemBucket.VOCALS, stem_count=2))
-        self.assertFalse(
-            concept_is("vocals", StemBucket.VOCALS, stem_count=2, is_vocal_split=True)
-        )
+        self.assertFalse(concept_is("vocals", StemBucket.VOCALS, stem_count=2, is_vocal_split=True))
         self.assertTrue(
-            concept_is(
-                "vocals", StemBucket.LEAD_VOCALS, stem_count=2, is_vocal_split=True
-            )
+            concept_is("vocals", StemBucket.LEAD_VOCALS, stem_count=2, is_vocal_split=True)
         )
 
 
@@ -204,9 +252,7 @@ class FinalEnsembleFilterTests(unittest.TestCase):
         from core.ensembler import _filter_final_ensemble_stems
 
         self.assertEqual(
-            _filter_final_ensemble_stems(
-                ["Bass", "Drums", "Other", "Vocals"], "Bass"
-            ),
+            _filter_final_ensemble_stems(["Bass", "Drums", "Other", "Vocals"], "Bass"),
             ["Bass"],
         )
 
@@ -263,15 +309,9 @@ class StemFocusMatchTests(unittest.TestCase):
 
         self.assertEqual(normalize_stem_focus("other"), StemBucket.OTHER.value)
         self.assertEqual(normalize_stem_focus("Other"), StemBucket.OTHER.value)
-        self.assertTrue(
-            focus_matches_stem(StemBucket.OTHER.value, "other", stem_count=2)
-        )
-        self.assertTrue(
-            focus_matches_stem(StemBucket.OTHER.value, "other", stem_count=4)
-        )
-        self.assertFalse(
-            focus_matches_stem(StemBucket.OTHER.value, "vocals", stem_count=4)
-        )
+        self.assertTrue(focus_matches_stem(StemBucket.OTHER.value, "other", stem_count=2))
+        self.assertTrue(focus_matches_stem(StemBucket.OTHER.value, "other", stem_count=4))
+        self.assertFalse(focus_matches_stem(StemBucket.OTHER.value, "vocals", stem_count=4))
 
     def test_export_labels_canonicalize_community_yaml_spellings(self) -> None:
         """Export filenames read the concept, so a community yaml's ``vocals``/
@@ -320,60 +360,47 @@ class StemFocusMatchTests(unittest.TestCase):
         """Already-remapped pair halves must still family-match ``--stems vocals``."""
         from core.stems import focus_matches_stem
 
-        self.assertTrue(
-            focus_matches_stem(StemBucket.VOCALS.value, "Lead Vocals", stem_count=2)
-        )
+        self.assertTrue(focus_matches_stem(StemBucket.VOCALS.value, "Lead Vocals", stem_count=2))
         self.assertFalse(
-            focus_matches_stem(
-                StemBucket.INSTRUMENTAL.value, "Lead Vocals", stem_count=2
-            )
+            focus_matches_stem(StemBucket.INSTRUMENTAL.value, "Lead Vocals", stem_count=2)
         )
 
     def test_pair_flags_karaoke_vocals_picks_lead_only(self) -> None:
-        from core.stems import EnsemblePair, exclusive_flags_for_pair
+        from core.stem_pairs import exclusive_flags_for_stem_pair
 
         self.assertEqual(
-            exclusive_flags_for_pair(StemBucket.VOCALS.value, EnsemblePair.KARAOKE),
-            (True, False),
+            exclusive_flags_for_stem_pair("vocal.lead", "pair.karaoke"),
+            (False, True),
         )
 
-    def test_pair_flags_other_is_not_instrumental(self) -> None:
-        """Ensemble Other halves must not go through stem_count=2 (that
-        resolves native ``other`` as Instrumental)."""
-        from core.stems import EnsemblePair, exclusive_flags_for_pair
+    def test_pair_flags_do_not_parse_display_or_native_spelling(self) -> None:
+        from core.stem_pairs import exclusive_flags_for_stem_pair
 
         self.assertEqual(
-            exclusive_flags_for_pair(
-                StemBucket.INSTRUMENTAL.value, EnsemblePair.OTHER
-            ),
-            (False, False),
+            exclusive_flags_for_stem_pair("Lead Vocals", "pair.karaoke"), (False, False)
         )
-        self.assertEqual(
-            exclusive_flags_for_pair(StemBucket.OTHER.value, EnsemblePair.OTHER),
-            (True, False),
-        )
+        self.assertEqual(exclusive_flags_for_stem_pair("vocals", "pair.karaoke"), (False, False))
 
     def test_pair_flags_empty_focus_returns_none(self) -> None:
-        from core.stems import EnsemblePair, exclusive_flags_for_pair
+        from core.stem_pairs import exclusive_flags_for_stem_pair
 
-        self.assertIsNone(exclusive_flags_for_pair("", EnsemblePair.VOCALS_INSTRUMENTAL))
+        self.assertIsNone(exclusive_flags_for_stem_pair("", "pair.vocals_instrumental"))
 
     def test_exclusive_flags_for_pair_positional_sentinels(self) -> None:
+        from core.stem_pairs import exclusive_flags_for_stem_pair
         from core.stems import (
-            EnsemblePair,
             FOCUS_PRIMARY,
             FOCUS_SECONDARY,
             exclusive_flags_for_focus,
-            exclusive_flags_for_pair,
         )
 
         self.assertEqual(
-            exclusive_flags_for_pair(FOCUS_PRIMARY, EnsemblePair.VOCALS_INSTRUMENTAL),
+            exclusive_flags_for_stem_pair(FOCUS_PRIMARY, "pair.vocals_instrumental"),
             (True, False),
         )
         self.assertEqual(
-            exclusive_flags_for_pair(FOCUS_SECONDARY, EnsemblePair.FOUR_STEM),
-            (False, True),
+            exclusive_flags_for_stem_pair(FOCUS_SECONDARY, "mode.four_stem"),
+            (False, False),
         )
         self.assertEqual(
             exclusive_flags_for_focus(

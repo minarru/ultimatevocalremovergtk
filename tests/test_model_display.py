@@ -13,6 +13,7 @@ from core.model_display import (
     format_tag_subtitle,
     format_tag_title,
     lookup_mapper_display,
+    lookup_mapper_display_exact,
     map_basenames_to_display,
     parse_model_tag,
     resolve_mapper_basename,
@@ -90,6 +91,67 @@ class MapperLookupTests(unittest.TestCase):
     def test_exact_stem_match(self) -> None:
         mapper = {"model.ckpt": "Display Name"}
         self.assertEqual(lookup_mapper_display("model", mapper), "Display Name")
+
+
+class ExactMapperLookupTests(unittest.TestCase):
+    """`lookup_mapper_display_exact` maps basename -> display, exactly."""
+
+    def test_exact_mapper_lookup_accepts_basename_and_known_extension(self) -> None:
+        mapper = {
+            "model.ckpt": "Friendly CKPT",
+            "other": "Other",
+        }
+        self.assertEqual(
+            lookup_mapper_display_exact("model", mapper),
+            "Friendly CKPT",
+        )
+
+    def test_exact_mapper_lookup_rejects_substring_candidate(self) -> None:
+        self.assertIsNone(
+            lookup_mapper_display_exact(
+                "model",
+                {"model_v2.ckpt": "Wrong model"},
+            )
+        )
+
+    def test_bare_basename_key(self) -> None:
+        self.assertEqual(
+            lookup_mapper_display_exact("Kim_Vocal_1", {"Kim_Vocal_1": "Kim Vocal 1"}),
+            "Kim Vocal 1",
+        )
+
+    def test_every_recognized_extension(self) -> None:
+        for ext in (".ckpt", ".pth", ".onnx", ".yaml", ".th", ".gz"):
+            with self.subTest(extension=ext):
+                self.assertEqual(
+                    lookup_mapper_display_exact("model", {f"model{ext}": "Friendly"}),
+                    "Friendly",
+                )
+
+    def test_unrecognized_extension_is_ignored(self) -> None:
+        self.assertIsNone(
+            lookup_mapper_display_exact("model", {"model.bin": "Friendly"})
+        )
+
+    def test_empty_and_malformed_mappers(self) -> None:
+        self.assertIsNone(lookup_mapper_display_exact("model", None))
+        self.assertIsNone(lookup_mapper_display_exact("model", {}))
+        self.assertIsNone(lookup_mapper_display_exact("", {"model": "Friendly"}))
+
+    def test_prefers_bare_key_over_extension_key(self) -> None:
+        mapper = {"model": "Bare", "model.ckpt": "Extended"}
+        self.assertEqual(lookup_mapper_display_exact("model", mapper), "Bare")
+
+    def test_returns_str_for_non_str_value(self) -> None:
+        self.assertEqual(
+            lookup_mapper_display_exact("model", {"model": 5}),  # type: ignore[dict-item]
+            "5",
+        )
+
+    def test_does_not_perform_casefold_matching(self) -> None:
+        self.assertIsNone(
+            lookup_mapper_display_exact("MODEL", {"model.ckpt": "Friendly"})
+        )
 
 
 class VrDisplayIndexTests(unittest.TestCase):

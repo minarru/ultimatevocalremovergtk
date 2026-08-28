@@ -61,7 +61,12 @@ class AudioTools:
     dispatches to.
     """
 
-    def __init__(self, settings: Settings):
+    def __init__(
+        self,
+        settings: Settings,
+        *,
+        apollo_backend_name: str | None = None,
+    ):
         self.settings = settings
         time_stamp = round(time.time())
         process = settings.process
@@ -96,10 +101,13 @@ class AudioTools:
         # convention used by separate.py / model_data.py.
         from core import paths
 
-        self.apollo_model = audio_tools.apollo_model
+        self.apollo_model = apollo_backend_name
         self.apollo_overlap_val = int(audio_tools.apollo_overlap)
         self.apollo_chunk_val = int(audio_tools.apollo_chunk_size)
-        self.apollo_model_location = os.path.join(paths.APOLLO_MODELS_DIR, self.apollo_model or "")
+        self.apollo_model_location = (
+            os.path.join(paths.APOLLO_MODELS_DIR, self.apollo_model)
+            if self.apollo_model else ""
+        )
         self.use_gpu = bool(process.use_gpu)
         self.is_gpu_conversion = self.use_gpu  # back-compat alias
         self.is_use_directml = bool(process.use_directml)
@@ -265,6 +273,10 @@ class AudioTools:
         config: Optional[dict],
         set_progress_bar: Callable[[float, float], None],
     ) -> None:
+        if not self.apollo_model_location:
+            raise ValueError(
+                "A resolved Apollo backend checkpoint is required for inference."
+            )
         import soundfile as sf
 
         # ``apollo_inference`` pulls in torch; import it lazily so ``core``
@@ -326,8 +338,14 @@ class AudioToolRunner:
     callbacks so they execute on the main loop.
     """
 
-    def __init__(self, settings: Settings):
+    def __init__(
+        self,
+        settings: Settings,
+        *,
+        apollo_backend_name: str | None = None,
+    ):
         self.settings = settings
+        self.apollo_backend_name = apollo_backend_name
         self._thread = None
         self._is_stopped = False
         self._is_paused = False
@@ -345,16 +363,26 @@ class AudioToolRunner:
         callbacks: JobCallbacks,
         apollo_params: Optional[dict] = None,
         output_name: str | None = None,
+        operation_id: str | None = None,
     ) -> None:
         if self.is_running():
             return
+        if tool == APOLLO_RESTORE and not self.apollo_backend_name:
+            raise ValueError(
+                "A resolved Apollo backend checkpoint is required before start."
+            )
         from kthread import KThread
 
-        from .debug_log import debug
+        from .debug_log import current_operation_id, log_event
 
-        debug(
+        worker_operation_id = operation_id or current_operation_id()
+        log_event(
             "audio",
-            f"start tool={tool!r} singles={len(single_inputs)} pairs={len(dual_pairs)}",
+            "audio_worker_started",
+            operation_id=worker_operation_id,
+            tool=tool,
+            single_count=len(single_inputs),
+            pair_count=len(dual_pairs),
         )
         self._is_stopped = False
         self._is_paused = False
@@ -364,7 +392,13 @@ class AudioToolRunner:
         self._output_name = output_name
         self._thread = KThread(
             target=self._run,
-            args=(tool, list(single_inputs), [tuple(p) for p in dual_pairs], callbacks),
+            args=(
+                tool,
+                list(single_inputs),
+                [tuple(p) for p in dual_pairs],
+                callbacks,
+                worker_operation_id,
+            ),
         )
         self._thread.start()
 
@@ -413,10 +447,12 @@ class AudioToolRunner:
         single_inputs: List[str],
         dual_pairs: List[Tuple[str, str]],
         callbacks: JobCallbacks,
+        operation_id: str | None = None,
     ) -> None:
-        from .debug_log import debug, debug_elapsed
+        from .debug_log import log_event, set_operation_id
 
-        debug("audio", f"_run entered tool={tool!r}")
+        set_operation_id(operation_id)
+        log_event("audio", "audio_worker_entered", tool=tool)
         stime = time.perf_counter()
         time_elapsed = lambda: f'Time Elapsed: {time.strftime("%H:%M:%S", time.gmtime(int(time.perf_counter() - stime)))}'
 
@@ -425,7 +461,10 @@ class AudioToolRunner:
             if not export_path or not os.path.isdir(export_path):
                 raise ValueError("A valid output folder is required.")
 
-            audio_tool = AudioTools(self.settings)
+            audio_tool = AudioTools(
+                self.settings,
+                apollo_backend_name=self.apollo_backend_name,
+            )
 
             if tool == MANUAL_ENSEMBLE:
                 self._run_manual_ensemble(audio_tool, single_inputs, callbacks)
@@ -441,26 +480,36 @@ class AudioToolRunner:
             callbacks.progress(1.0)
             callbacks.console(f"\nProcess complete\n{time_elapsed()}\n")
             callbacks.complete()
+            log_event("audio", "audio_worker_completed", tool=tool)
         except ProcessStopped:
-            debug("audio", "_run ProcessStopped")
+            log_event("audio", "audio_worker_stopped", tool=tool)
             callbacks.console(PROCESS_STOPPED_BY_USER)
             self._finish_active_unit(callbacks, ProcessStopped())
             callbacks.stopped()
             _release_inference_resources(self)
         except Exception as exc:  # noqa: BLE001 - surfaced through the callback
             if self._is_stopped:
-                debug("audio", "_run stopped during error")
+                log_event("audio", "audio_worker_stopped", tool=tool, stage="error")
                 callbacks.console(PROCESS_STOPPED_BY_USER)
                 callbacks.stopped()
                 _release_inference_resources(self)
                 return
-            debug("audio", f"_run failed {type(exc).__name__}: {exc}")
+            log_event(
+                "audio",
+                "audio_worker_failed",
+                level="error",
+                tool=tool,
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
             self._finish_active_unit(callbacks, exc)
             callbacks.console(f"\nProcess failed\n{time_elapsed()}\n")
             callbacks.error(exc)
             _release_inference_resources(self, park_weights=True)
         else:
             _release_inference_resources(self)
+        finally:
+            set_operation_id(None)
 
     def _start_unit(
         self, callbacks: JobCallbacks, paths: typing.Sequence[str], output: typing.Any

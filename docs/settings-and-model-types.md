@@ -1,35 +1,30 @@
 # Settings and model types
 
-Design note for the typed settings / `ModelConfig` rewrite (`rewrite/typed-settings-model`).
-
-## Cutover status
-
-The typed API cutover landed in Phase 6. New code imports `Settings`,
-`ModelConfig`, `assemble_model`, and `ProcessData`; the legacy public
-`SettingsModel`, `ModelData`, and `assemble_model_data` names were removed.
-`data.pkl` remains read-only migration input, while all settings writes use
-`settings.json`.
+`settings.json` is the current nested, typed settings document. New code uses
+`Settings`, `ModelConfig`, `assemble_model`, and `ProcessData`; the removed
+legacy public names `SettingsModel`, `ModelData`, and `assemble_model_data`
+are not compatibility APIs.
 
 ## Module layout
 
 | Path | Role |
 |------|------|
-| `core/types/enums.py` | `Stem`, `EnsembleAlgorithm`, `ProcessMethod`, `SaveFormat` (`str, Enum`; values = current English labels) |
-| `core/types/settings_enums.py` | Closed combo vocabularies (wav/mp3/flac, denoise, color, audio tools, …) |
-| `core/settings/model.py` | Nested `Settings` dataclasses |
-| `core/settings/defaults.py` | Nested defaults + `SETTINGS_SCHEMA_VERSION` |
-| `core/settings/coerce.py` | JSON / flat-dict coerce helpers |
-| `core/settings/flat_map.py` | Legacy flat key ↔ nested field map (pickle / old profiles) |
-| `core/settings/io.py` | `settings.json` load/save + one-shot `data.pkl` import |
-| `core/settings/__init__.py` | Public `Settings` API |
-| `core/process_data.py` | `ProcessData` run payload |
-| `core/model_config/` | `ModelConfig` hierarchy + `assemble_model` |
+| `core/types/enums.py` | `Stem`, `EnsembleAlgorithm`, `ProcessMethod`, `SaveFormat` (`str, Enum`; values are current English labels) |
+| `core/types/settings_enums.py` | Closed combo vocabularies (wav/mp3/flac, denoise, colour, audio tools, diagnostics, …) |
+| `core/settings/model.py` | Nested `Settings` dataclasses, including plain-string `EnsembleSettings.main_stem` and persistent `DiagnosticsSettings` |
+| `core/settings/defaults.py` | Nested defaults and `SETTINGS_SCHEMA_VERSION` (currently 5) |
+| `core/settings/coerce.py` | JSON and flat-dict coercion, including pair/mode normalization |
+| `core/settings/flat_map.py` | Legacy flat-key to nested-field bridge for older input only |
+| `core/settings/io.py` | `settings.json` load/save and one-shot `data.pkl` import |
+| `core/stem_pairs.py` | Exact `ensemble.main_stem` validation and display choices |
+| `bundled/model_stem_manifest.json` | Data-defined pair roles and namespaced pair IDs |
+| `core/model_config/` | `ModelConfig` hierarchy and `assemble_model` |
 
-## JSON document shape
+## Current JSON shape
 
 ```json
 {
-  "schema_version": 3,
+  "schema_version": 5,
   "process": {
     "device": null,
     "semitone_shift": 0.0,
@@ -44,35 +39,70 @@ The typed API cutover landed in Phase 6. New code imports `Settings`,
   },
   "demucs": { "segment": null },
   "ensemble": {
-    "main_stem": "choose",
+    "main_stem": "pair.vocals_instrumental",
     "type": "Max Spec/Min Spec",
     "selected_models": [],
     "chosen_ensemble": "Choose Ensemble"
   },
   "audio_tools": {},
-  "ui": { "color_scheme": "auto" }
+  "ui": { "color_scheme": "auto" },
+  "diagnostics": {
+    "level": "errors",
+    "include_sensitive": false
+  }
 }
 ```
 
-Nested on disk. Flat key access is not the persistence API.
+Nested JSON is the persistence format; flat key access is a legacy bridge, not
+the persistence API.
 
-**v2 breaking change:** `ensemble.main_stem` persists stable :class:`~core.stems.EnsemblePair` ids only (`choose`, `vocals_instrumental`, `karaoke`, `other`, `drums`, `bass`, `four_stem`, `multi_stem`). Legacy display strings (e.g. `Vocals/Instrumental`) are not migrated — they coerce to `choose` and the pair must be re-selected once.
+## Schema and migration behavior
 
-**v3 soft migrate:** `Default` / `Auto` sentinels become JSON `null` (`None` in Python) for batch size, overlap, compensate, chunks, Demucs segment, and GPU device. Chunks `"Full"` persists as `"full"`. Closed combo fields are label-equal `str, Enum`s; unknown enum values fail-soft to the field default. Numeric-as-string fields (`semitone_shift`, `overlap_mdx23`, Apollo spins) load as `float`/`int`.
+The runtime writes schema 5. Schema 4 added persistent diagnostic level and
+sensitive-detail policy under `diagnostics`. Schema 5 made
+`ensemble.main_stem` a reviewed namespaced semantic ID and deliberately
+requires a repick from every older schema.
 
-Migration is unconditional — `coerce_json_dict` runs over every payload regardless of its `schema_version` — so `Settings.from_json_dict` stamps `SETTINGS_SCHEMA_VERSION`, never the number it read. A loaded file always reports the current version because its contents have already been migrated to it.
+`ensemble.main_stem` is a plain string, normalized by
+`core.stem_pairs.normalize_stem_pair_id` against the manifest-defined pair IDs
+and the two mode IDs:
+
+- `pair.vocals_instrumental`
+- `pair.karaoke`
+- `pair.backing_vocals`
+- `pair.center_side`
+- `mode.four_stem`
+- `mode.multi_stem`
+
+The empty string means “Choose Stem Pair.” An unknown ID from a schema-5 file
+also normalizes to empty and records a warning. When a file predates schema 5,
+loading clears `ensemble.main_stem`, records a repick warning, and writes the
+current schema on the next save; it does not retain aliases for old display or
+unnamespaced values.
+
+Coercion runs over every payload before `Settings.from_json_dict` stamps the
+current schema version. `Default`/`Auto` sentinels become JSON `null` for typed
+optional fields; chunks `"Full"` persists as `"full"`; numeric strings such as
+`semitone_shift`, `overlap_mdx23`, and Apollo spins load as numbers. Unknown
+closed-enum values fail soft to their field defaults.
 
 ## Persistence rules
 
-1. Writes go only to `settings.json` (atomic `.tmp` + replace).
-2. Load order: `settings.json` → else import `data.pkl` → write JSON → rename pickle to `data.pkl.bak`.
-3. Profiles use the same coerce/serialize path as `settings.json` (accept legacy flat profile dicts once).
+1. Writes go only to `settings.json` (atomic `.tmp` plus replace).
+2. Load order is `settings.json`, otherwise a one-shot `data.pkl` import that
+   writes JSON and renames the pickle to `data.pkl.bak`.
+3. Profiles use the same coerce/serialize path and accept legacy flat profile
+   dictionaries once.
+4. Stored model references are strict `family:basename` values; malformed or
+   unavailable values remain stored until the user repicks them.
 
-## Locked decisions
+## Invariants
 
 - Enum `.value` strings stay current UI labels (`Stem.VOCALS == "Vocals"`).
-- Sentinels `DEF_OPT` / `AUTO_SELECT` / `"Default"` / `"Auto"` become `null` in typed optional fields (UI still shows Default/Auto labels).
-- `use_gpu: bool` end-to-end (no `0`/`-1`).
-- Ensemble keys (`selected_models`, `main_stem`, `type`, `chosen_ensemble`) are first-class in the schema; `main_stem` is an `EnsemblePair` id (not a UI label).
-- Paths, model tags, and open stem lists stay `str`.
-- Export toggles (`normalization`, `match_mix_level`, `prevent_export_clipping`, `amplification_threshold`) live under `process`.
+- `use_gpu` remains `bool` end to end (never `0` or `-1`).
+- Ensemble keys (`selected_models`, `main_stem`, `type`, and
+  `chosen_ensemble`) are first-class settings fields.
+- Paths, model tags, and open stem lists remain strings.
+- Export toggles (`normalization`, `match_mix_level`,
+  `prevent_export_clipping`, and `amplification_threshold`) live under
+  `process`.

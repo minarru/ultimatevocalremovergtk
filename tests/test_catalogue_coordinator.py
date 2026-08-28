@@ -1,4 +1,4 @@
-"""Coordinator snapshot, VIP, refresh-report, and delta tests."""
+"""Coordinator snapshot, refresh-report, and delta tests."""
 
 from __future__ import annotations
 
@@ -94,19 +94,204 @@ class CatalogueCoordinatorTests(unittest.TestCase):
         self.assertEqual(coordinator.builds, 1)
         coordinator.close()
 
-    def test_vip_is_a_projection_not_source_state(self) -> None:
+    def test_snapshot_records_exact_winning_source_for_each_entry(self) -> None:
+        coordinator = self._coordinator()
+        snapshot = coordinator.snapshot(
+            mode=RefreshMode.OFFLINE,
+            policy=AccessPolicy(allow_network=False, allow_metadata_writes=False),
+        )
+
+        self.assertEqual(snapshot.entry_sources["mdx"]["Kept"], "upstream")
+        coordinator.close()
+
+    def test_public_projection_includes_every_legacy_vip_list(self) -> None:
         payload = {
-            "mdx_download_list": {"Public": {"p.ckpt": "https://u/p.ckpt"}},
-            "mdx_download_vip_list": {"VIP Only": {"v.ckpt": "https://u/v.ckpt"}},
+            "vr_download_list": {"VR Public": "public.pth"},
+            "vr_download_vip_list": {"VR VIP: Added": "added.pth"},
+            "mdx_download_list": {"MDX Public": "public.onnx"},
+            "mdx_download_vip_list": {"MDX-Net Model VIP: Added MDX": "mdx.onnx"},
+            "mdx23_download_vip_list": {"MDX23 Model VIP: Added MDX23": {"23.ckpt": "23.yaml"}},
+            "mdx23c_download_vip_list": {
+                "MDX23C Model VIP: Added MDX23C": {"23c.ckpt": "23c.yaml"}
+            },
+            "roformer_download_vip_list": {
+                "Roformer Model VIP: Added Roformer": {"r.ckpt": "r.yaml"}
+            },
+            "scnet_download_vip_list": {"SCNet Model VIP: Added": {"s.ckpt": "s.yaml"}},
+            "bandit_download_vip_list": {"Bandit Model VIP: Added": {"b.ckpt": "b.yaml"}},
+            "demucs_download_list": {},
+            "demucs_download_vip_list": {"Demucs Model VIP: Added": "demucs.yaml"},
         }
         coordinator = self._coordinator(payload)
         policy = AccessPolicy(allow_network=False, allow_metadata_writes=False)
-        locked = coordinator.snapshot(vip=False, mode=RefreshMode.OFFLINE, policy=policy)
-        unlocked = coordinator.snapshot(vip=True, mode=RefreshMode.OFFLINE, policy=policy)
-        self.assertIn("Public", locked.mdx)
-        self.assertNotIn("VIP Only", locked.mdx)
-        self.assertIn("VIP Only", unlocked.mdx)
+        snapshot = coordinator.snapshot(mode=RefreshMode.OFFLINE, policy=policy)
+        self.assertEqual(set(snapshot.vr), {"VR Public", "VR VIP: Added"})
+        self.assertEqual(
+            set(snapshot.mdx),
+            {
+                "MDX Public",
+                "MDX-Net Model VIP: Added MDX",
+                "MDX23 Model VIP: Added MDX23",
+                "MDX23C Model VIP: Added MDX23C",
+                "Roformer Model VIP: Added Roformer",
+                "SCNet Model VIP: Added",
+                "Bandit Model VIP: Added",
+            },
+        )
+        self.assertEqual(set(snapshot.demucs), {"Demucs Model VIP: Added"})
+        self.assertEqual(coordinator.builds, 1)
         coordinator.close()
+
+    def test_compact_exact_config_url_enriches_metadata_only_before_build(self) -> None:
+        checkpoint = "model_bs_roformer_ep_317_sdr_12.9755.ckpt"
+        config = "model_bs_roformer_ep_317_sdr_12.9755.yaml"
+        config_url = f"https://configs.test/{config}"
+        selectable = "Roformer Model: Exact Compact"
+        evidence_only = "Roformer Evidence: Exact Compact"
+        mismatch = "Roformer Model: Mismatch"
+        nested = "Roformer Model: Nested"
+        payload = {
+            "roformer_download_list": {
+                selectable: {checkpoint: config},
+                mismatch: {"mismatch.ckpt": "mismatch.yaml"},
+                nested: {"nested.ckpt": "configs/nested.yaml"},
+            },
+            "other_network_list": {
+                evidence_only: {
+                    checkpoint: f"https://weights.test/{checkpoint}",
+                    config: config_url,
+                },
+                mismatch: {
+                    "different.ckpt": "https://weights.test/different.ckpt",
+                    "mismatch.yaml": "https://configs.test/mismatch.yaml",
+                },
+            },
+        }
+        coordinator = self._coordinator(payload)
+        policy = AccessPolicy(allow_network=False, allow_metadata_writes=False)
+        with mock.patch("core.catalogue_stem_cache.lookup_stems", return_value=None):
+            snapshot = coordinator.snapshot(mode=RefreshMode.OFFLINE, policy=policy)
+        self.addCleanup(coordinator.close)
+
+        self.assertEqual(snapshot.mdx[selectable], {checkpoint: config})
+        self.assertNotIn(evidence_only, snapshot.mdx)
+        self.assertEqual(
+            snapshot.meta[selectable].files,
+            {checkpoint: config, config: config_url},
+        )
+        self.assertEqual(
+            snapshot.meta[mismatch].files,
+            {"mismatch.ckpt": "mismatch.yaml", "mismatch.yaml": "mismatch.yaml"},
+        )
+        self.assertEqual(snapshot.meta[nested].files, {"nested.ckpt": "configs/nested.yaml"})
+
+    def test_all_ten_compact_rows_have_exact_live_reviewed_semantics(self) -> None:
+        from core.catalogue_stem_cache import StemCacheHit
+        from core.mdx_runtime_contract import load_bundled_mdx_runtime_contracts
+
+        rows = (
+            ("MDX23C-8KFFT-InstVoc_HQ.ckpt", "model_2_stem_full_band_8k.yaml"),
+            ("MDX23C-8KFFT-InstVoc_HQ_2.ckpt", "model_2_stem_full_band_8k.yaml"),
+            ("melband_roformer_inst_v1.ckpt", "config_melbandroformer_inst.yaml"),
+            ("melband_roformer_inst_v2.ckpt", "config_melbandroformer_inst_v2.yaml"),
+            (
+                "melband_roformer_instvoc_duality_v1.ckpt",
+                "config_melbandroformer_instvoc_duality.yaml",
+            ),
+            (
+                "melband_roformer_instvox_duality_v2.ckpt",
+                "config_melbandroformer_instvoc_duality.yaml",
+            ),
+            (
+                "model_bs_roformer_ep_317_sdr_12.9755.ckpt",
+                "model_bs_roformer_ep_317_sdr_12.9755.yaml",
+            ),
+            (
+                "model_bs_roformer_ep_368_sdr_12.9628.ckpt",
+                "model_bs_roformer_ep_368_sdr_12.9628.yaml",
+            ),
+            (
+                "model_bs_roformer_ep_937_sdr_10.5309.ckpt",
+                "model_bs_roformer_ep_937_sdr_10.5309.yaml",
+            ),
+            (
+                "model_mel_band_roformer_ep_3005_sdr_11.4360.ckpt",
+                "model_mel_band_roformer_ep_3005_sdr_11.4360.yaml",
+            ),
+        )
+        contracts = load_bundled_mdx_runtime_contracts()
+        self.assertEqual(contracts.warning, "")
+        payload: dict[str, dict[str, object]] = {
+            "mdx23c_download_list": {},
+            "roformer_download_list": {},
+            "other_network_list": {},
+        }
+        hits_by_url: dict[str, StemCacheHit] = {}
+        expected_ref: dict[str, str] = {}
+        for checkpoint, config in rows:
+            label = f"Compact: {checkpoint}"
+            list_key = (
+                "mdx23c_download_list"
+                if checkpoint.startswith("MDX23C-")
+                else "roformer_download_list"
+            )
+            payload[list_key][label] = {checkpoint: config}
+            model_id = f"mdx:{os.path.splitext(checkpoint)[0]}"
+            evidence = contracts.contracts[model_id].config_evidence[config]
+            remote_url = (
+                ""
+                if checkpoint.startswith("MDX23C-")
+                else next(
+                    (source for source in evidence.sources if source.startswith("https://")),
+                    "",
+                )
+            )
+            expected_ref[label] = remote_url or config
+            if remote_url:
+                payload["other_network_list"][label] = {
+                    checkpoint: f"https://weights.test/{checkpoint}",
+                    config: remote_url,
+                }
+                hits_by_url[remote_url] = StemCacheHit(
+                    stems=evidence.training_instruments,
+                    target_instrument=evidence.target_instrument or "",
+                    ok=True,
+                    content_sha256=evidence.content_sha256,
+                )
+
+        coordinator = self._coordinator(payload)
+        policy = AccessPolicy(allow_network=False, allow_metadata_writes=False)
+        with mock.patch(
+            "core.catalogue_stem_cache.lookup_stems",
+            side_effect=lambda url: hits_by_url.get(url),
+        ) as lookup:
+            snapshot = coordinator.snapshot(mode=RefreshMode.OFFLINE, policy=policy)
+        self.addCleanup(coordinator.close)
+
+        compact_lookups = tuple(
+            call.args[0]
+            for call in lookup.call_args_list
+            if call.args and call.args[0] in hits_by_url
+        )
+        self.assertEqual(len(compact_lookups), 8)
+        for checkpoint, config in rows:
+            label = f"Compact: {checkpoint}"
+            model_id = f"mdx:{os.path.splitext(checkpoint)[0]}"
+            evidence = contracts.contracts[model_id].config_evidence[config]
+            with self.subTest(model_id=model_id):
+                self.assertEqual(snapshot.mdx[label], {checkpoint: config})
+                meta = snapshot.meta[label]
+                self.assertEqual(
+                    meta.files,
+                    {checkpoint: config, config: expected_ref[label]},
+                )
+                self.assertEqual(meta.stems, list(evidence.training_instruments))
+                self.assertEqual(
+                    str(meta.target_instrument or ""),
+                    str(evidence.target_instrument or ""),
+                )
+                self.assertEqual(meta.config_sha256, evidence.content_sha256)
+                self.assertEqual(meta.stem_semantics.status, "reviewed")
 
     def test_close_is_idempotent(self) -> None:
         coordinator = self._coordinator()
@@ -123,6 +308,21 @@ class CatalogueCoordinatorTests(unittest.TestCase):
         coordinator.subscribe_delta(lambda delta: calls.append(delta))
         coordinator.snapshot(mode=RefreshMode.OFFLINE, policy=policy)
         self.assertEqual(calls, [])
+        coordinator.close()
+
+    def test_offline_refresh_records_start_and_snapshot_counts(self) -> None:
+        coordinator = self._coordinator()
+        policy = AccessPolicy(allow_network=False, allow_metadata_writes=False)
+        with mock.patch("core.catalogue_coordinator.log_event") as event:
+            coordinator.refresh(mode=RefreshMode.OFFLINE, policy=policy)
+
+        names = [call.args[1] for call in event.call_args_list]
+        self.assertIn("catalogue_refresh_started", names)
+        self.assertIn("catalogue_refresh_completed", names)
+        completed = next(
+            call for call in event.call_args_list if call.args[1] == "catalogue_refresh_completed"
+        )
+        self.assertEqual(completed.kwargs["mdx_count"], 1)
         coordinator.close()
 
     def test_identity_removal_uses_identity_kind(self) -> None:
@@ -206,7 +406,7 @@ class CatalogueCoordinatorTests(unittest.TestCase):
         coordinator = self._coordinator()
         policy = AccessPolicy(allow_network=True, allow_metadata_writes=False)
         returned = coordinator.refresh(mode=RefreshMode.FORCE, policy=policy)
-        snap = coordinator.ensure(vip=False, policy=policy)
+        snap = coordinator.ensure(policy=policy)
         self.assertTrue(snap.mdx)
         self.assertTrue(returned.usable)
         report = snap.report
@@ -234,9 +434,7 @@ class CatalogueCoordinatorTests(unittest.TestCase):
             clock=clock,
         )
 
-    def _swr_coordinator(
-        self, sources: dict[SourceId, RemoteJsonSource]
-    ) -> CatalogueCoordinator:
+    def _swr_coordinator(self, sources: dict[SourceId, RemoteJsonSource]) -> CatalogueCoordinator:
         mapping = {
             SourceId.UPSTREAM: _disabled(SourceId.UPSTREAM),
             SourceId.POLITREES: _disabled(SourceId.POLITREES),
@@ -287,17 +485,14 @@ class CatalogueCoordinatorTests(unittest.TestCase):
         deltas: list = []
         coordinator.subscribe_delta(lambda delta: deltas.append(delta))
         policy = AccessPolicy(allow_network=True, allow_metadata_writes=True)
-        stale = coordinator.refresh(
-            mode=RefreshMode.STALE_WHILE_REVALIDATE, policy=policy
-        )
+        stale = coordinator.refresh(mode=RefreshMode.STALE_WHILE_REVALIDATE, policy=policy)
         self.assertTrue(stale.usable)
         self.assertIn("Old", coordinator._latest.mdx if coordinator._latest else {})
         self.assertTrue(fetched.wait(timeout=2))
         release.set()
         self.assertTrue(
             _wait_until(
-                lambda: coordinator._latest is not None
-                and "New" in coordinator._latest.mdx
+                lambda: coordinator._latest is not None and "New" in coordinator._latest.mdx
             )
         )
         latest = coordinator._latest
@@ -342,9 +537,7 @@ class CatalogueCoordinatorTests(unittest.TestCase):
                     clock=clock,
                     opener=_gated_opener(
                         {
-                            "mdx_download_list": {
-                                "New": {"n.ckpt": "https://u/n.ckpt"}
-                            },
+                            "mdx_download_list": {"New": {"n.ckpt": "https://u/n.ckpt"}},
                             "vr_download_list": {},
                             "demucs_download_list": {},
                         },
@@ -358,11 +551,7 @@ class CatalogueCoordinatorTests(unittest.TestCase):
                     path=po_path,
                     clock=clock,
                     opener=_gated_opener(
-                        {
-                            "mdx_download_list": {
-                                "P-new": {"pn.ckpt": "https://p/pn.ckpt"}
-                            }
-                        },
+                        {"mdx_download_list": {"P-new": {"pn.ckpt": "https://p/pn.ckpt"}}},
                         po_fetched,
                         po_release,
                     ),
@@ -371,9 +560,7 @@ class CatalogueCoordinatorTests(unittest.TestCase):
             }
         )
         policy = AccessPolicy(allow_network=True, allow_metadata_writes=True)
-        stale = coordinator.refresh(
-            mode=RefreshMode.STALE_WHILE_REVALIDATE, policy=policy
-        )
+        stale = coordinator.refresh(mode=RefreshMode.STALE_WHILE_REVALIDATE, policy=policy)
         self.assertTrue(stale.usable)
         latest = coordinator._latest
         self.assertIsNotNone(latest)
@@ -393,9 +580,11 @@ class CatalogueCoordinatorTests(unittest.TestCase):
             up_release.set()
         self.assertTrue(
             _wait_until(
-                lambda: coordinator._latest is not None
-                and "New" in coordinator._latest.mdx
-                and "P-new" in coordinator._latest.mdx
+                lambda: (
+                    coordinator._latest is not None
+                    and "New" in coordinator._latest.mdx
+                    and "P-new" in coordinator._latest.mdx
+                )
             )
         )
         final = coordinator._latest
@@ -438,15 +627,12 @@ class CatalogueCoordinatorTests(unittest.TestCase):
             }
         )
         policy = AccessPolicy(allow_network=True, allow_metadata_writes=True)
-        stale = coordinator.refresh(
-            mode=RefreshMode.STALE_WHILE_REVALIDATE, policy=policy
-        )
+        stale = coordinator.refresh(mode=RefreshMode.STALE_WHILE_REVALIDATE, policy=policy)
         self.assertTrue(stale.usable)
         self.assertTrue(fetched.wait(timeout=2))
         self.assertTrue(
             _wait_until(
-                lambda: coordinator.source(SourceId.UPSTREAM).state.status.error
-                is not None
+                lambda: coordinator.source(SourceId.UPSTREAM).state.status.error is not None
             )
         )
         latest = coordinator._latest
@@ -495,9 +681,7 @@ class CatalogueCoordinatorTests(unittest.TestCase):
             }
         )
         policy = AccessPolicy(allow_network=True, allow_metadata_writes=True)
-        stale = coordinator.refresh(
-            mode=RefreshMode.STALE_WHILE_REVALIDATE, policy=policy
-        )
+        stale = coordinator.refresh(mode=RefreshMode.STALE_WHILE_REVALIDATE, policy=policy)
         self.assertTrue(stale.usable)
         disk_payload = coordinator.source(SourceId.UPSTREAM).state.content
         self.assertIsNotNone(disk_payload)

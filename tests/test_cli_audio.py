@@ -3,19 +3,77 @@ from __future__ import annotations
 import io
 import json
 import os
+import argparse
 import tempfile
 import unittest
+from types import SimpleNamespace
 from contextlib import redirect_stdout
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from cli.main import build_parser, main
-from bundled.constants import CHANGE_PITCH
+from bundled.constants import APOLLO_RESTORE, CHANGE_PITCH
 from core.audio_plan import AudioJobResolver, AudioJobSpec
 from core.job_plan import ValidationLevel
 from core.settings import Settings
 
 
 class AudioCliSurfaceTests(unittest.TestCase):
+    def test_restore_execution_hands_backend_filename_to_runtime(self) -> None:
+        from cli.audio import _run_audio
+        from core.job_plan import ModelDescriptor
+        from core.model_identity import ModelArtifacts
+
+        with tempfile.TemporaryDirectory() as root:
+            source = os.path.join(root, "song.wav")
+            open(source, "wb").close()
+            output = os.path.join(root, "out")
+            settings = Settings.defaults()
+            settings.audio_tools.apollo_model = "apollo:restorer"
+            plan = SimpleNamespace(
+                tool=APOLLO_RESTORE,
+                output=output,
+                settings=settings,
+                units=(SimpleNamespace(inputs=(source,), outputs=()),),
+                model=ModelDescriptor(
+                    id="apollo:restorer",
+                    family="apollo",
+                    basename="restorer",
+                    display="Restorer",
+                    backend_name="restorer.ckpt",
+                    artifacts=ModelArtifacts("restorer.ckpt"),
+                ),
+            )
+            args = argparse.Namespace(
+                on_exists="fail", quiet=True, fail_fast=True,
+                job_id="apollo-handoff", report="text",
+            )
+            runner = Mock()
+            runner.start = Mock()
+            with (
+                patch("cli.audio.AudioToolRunner", return_value=runner) as runner_cls,
+                patch("core.apollo.ApolloModelData") as model_data,
+                patch(
+                    "cli.audio.run_runner_cli",
+                    return_value=SimpleNamespace(
+                        interrupted=False,
+                        stopped=False,
+                        error=RuntimeError("stop"),
+                        elapsed_s=0.0,
+                    ),
+                ),
+            ):
+                _run_audio(args, plan)
+
+        runner_cls.assert_called_once()
+        self.assertEqual(
+            runner_cls.call_args.kwargs["apollo_backend_name"], "restorer.ckpt"
+        )
+        self.assertEqual(
+            runner_cls.call_args.args[0].audio_tools.apollo_model,
+            "apollo:restorer",
+        )
+        model_data.assert_called_once_with("restorer.ckpt", is_dry_check=True)
+
     def test_all_audio_commands_and_validation_parse(self) -> None:
         parser = build_parser()
         commands = {

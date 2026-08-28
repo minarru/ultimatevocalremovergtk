@@ -20,6 +20,26 @@ class DemucsImportAliasTests(unittest.TestCase):
         mod = importlib.import_module("demucs.hdemucs")
         self.assertEqual(mod.__name__, "vendor.demucs.hdemucs")
 
+    def test_missing_aliases_are_repaired_after_initial_install(self):
+        import core.torch_checkpoint as checkpoint
+
+        with patch.object(checkpoint, "_DEMUCS_ALIASES_INSTALLED", False):
+            ensure_demucs_import_aliases()
+            aliases = (
+                "demucs",
+                *(f"demucs.{sub}" for sub in checkpoint._DEMUCS_ALIAS_SUBMODULES),
+            )
+            expected = {alias: sys.modules[alias] for alias in aliases}
+
+            with patch.dict(sys.modules):
+                for alias in expected:
+                    sys.modules.pop(alias, None)
+
+                ensure_demucs_import_aliases()
+
+                for alias, module in expected.items():
+                    self.assertIs(sys.modules.get(alias), module, alias)
+
 
 class OptionalCheckpointStubTests(unittest.TestCase):
     def test_stubs_bitsandbytes_adamw8bit_when_missing(self):

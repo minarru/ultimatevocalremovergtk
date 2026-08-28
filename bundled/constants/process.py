@@ -1,7 +1,20 @@
 from .platform_info import OPERATING_SYSTEM
-from .stems import BASS_STEM, CHOOSE_STEM_PAIR, DRUM_STEM, INST_STEM, INST_WITH_BACKING_VOCALS_STEM, LEAD_VOCAL_STEM_LABEL, NO_BASS_STEM, NO_DRUM_STEM, NO_OTHER_STEM, NO_WIND_INST_STEM, OTHER_STEM, VOCAL_STEM
+from .stems import (
+    BASS_STEM,
+    CHOOSE_STEM_PAIR,
+    DRUM_STEM,
+    INST_STEM,
+    INST_WITH_BACKING_VOCALS_STEM,
+    LEAD_VOCAL_STEM_LABEL,
+    NO_BASS_STEM,
+    NO_DRUM_STEM,
+    NO_OTHER_STEM,
+    NO_WIND_INST_STEM,
+    OTHER_STEM,
+    VOCAL_STEM,
+)
 
-#Model Types
+# Model Types
 VR_ARCH_TYPE = 'VR Arc'
 
 MDX_ARCH_TYPE = 'MDX-Net'
@@ -46,10 +59,11 @@ DEMUCS_V3_TAG = 'v3 | '
 DEMUCS_V4_TAG = 'v4 | '
 
 DEMUCS_VERSION_MAPPER = {
-            DEMUCS_V1:DEMUCS_V1_TAG,
-            DEMUCS_V2:DEMUCS_V2_TAG,
-            DEMUCS_V3:DEMUCS_V3_TAG,
-            DEMUCS_V4:DEMUCS_V4_TAG}
+    DEMUCS_V1: DEMUCS_V1_TAG,
+    DEMUCS_V2: DEMUCS_V2_TAG,
+    DEMUCS_V3: DEMUCS_V3_TAG,
+    DEMUCS_V4: DEMUCS_V4_TAG,
+}
 
 ENSEMBLE_PARTITION = ': '
 
@@ -57,11 +71,11 @@ IS_KARAOKEE = "is_karaoke"
 
 IS_BV_MODEL = "is_bv_model"
 
-#Menu Options
+# Menu Options
 
 AUTO_SELECT = 'Auto'
 
-#Menu Dropdowns
+# Menu Dropdowns
 
 VOCAL_PAIR = f'{VOCAL_STEM}/{INST_STEM}'
 
@@ -79,12 +93,21 @@ MULTI_STEM_ENSEMBLE = 'Multi-stem Ensemble'
 #: vocals, which is not the same quantity as a clean instrumental. They get
 #: their own pair so they ensemble with each other instead of contaminating
 #: Vocals/Instrumental. Display labels here; buckets come from
-#: :meth:`core.stems.EnsemblePair.buckets`.
+#: reviewed role pairs in ``bundled/model_stem_manifest.json``.
 KARAOKE_PAIR = f'{LEAD_VOCAL_STEM_LABEL}/{INST_WITH_BACKING_VOCALS_STEM}'
 
-# Display-label tuple only (legacy / docs). Persist EnsemblePair ids via
-# :func:`core.stems.ensemble_pair_choices` — do not store these strings.
-ENSEMBLE_MAIN_STEM = (CHOOSE_STEM_PAIR, VOCAL_PAIR, KARAOKE_PAIR, OTHER_PAIR, DRUM_PAIR, BASS_PAIR, FOUR_STEM_ENSEMBLE, MULTI_STEM_ENSEMBLE)
+# Display-label tuple only (legacy / docs). Persist exact pair IDs from
+# :func:`core.stem_pairs.ensemble_pair_choices` — do not store these strings.
+ENSEMBLE_MAIN_STEM = (
+    CHOOSE_STEM_PAIR,
+    VOCAL_PAIR,
+    KARAOKE_PAIR,
+    OTHER_PAIR,
+    DRUM_PAIR,
+    BASS_PAIR,
+    FOUR_STEM_ENSEMBLE,
+    MULTI_STEM_ENSEMBLE,
+)
 
 MIN_SPEC = 'Min Spec'
 
@@ -138,13 +161,32 @@ ENSEMBLE_TYPE_4_STEM = ENSEMBLE_ALGORITHMS
 
 DEF_OPT = 'Default'
 
-CHUNKS = (AUTO_SELECT, '1', '5', '10', '15', '20', 
-          '25', '30', '35', '40', '45', '50', 
-          '55', '60', '65', '70', '75', '80', 
-          '85', '90', '95', 'Full')
+CHUNKS = (
+    AUTO_SELECT,
+    '1',
+    '5',
+    '10',
+    '15',
+    '20',
+    '25',
+    '30',
+    '35',
+    '40',
+    '45',
+    '50',
+    '55',
+    '60',
+    '65',
+    '70',
+    '75',
+    '80',
+    '85',
+    '90',
+    '95',
+    'Full',
+)
 
-BATCH_SIZE = (DEF_OPT, '2', '3', '4', '5', 
-          '6', '7', '8', '9', '10')
+BATCH_SIZE = (DEF_OPT, '2', '3', '4', '5', '6', '7', '8', '9', '10')
 
 VOL_COMPENSATION = (AUTO_SELECT, '1.035', '1.08')
 
@@ -162,22 +204,46 @@ APOLLO_RESTORE = 'Apollo Restore'
 
 COMBINE_INPUTS = 'Combine Inputs'
 
-if OPERATING_SYSTEM == 'Windows' or OPERATING_SYSTEM == 'Darwin':  
-   AUDIO_TOOL_OPTIONS = (MANUAL_ENSEMBLE, TIME_STRETCH, CHANGE_PITCH, ALIGN_INPUTS, MATCH_INPUTS, APOLLO_RESTORE)
+if OPERATING_SYSTEM == 'Windows' or OPERATING_SYSTEM == 'Darwin':
+    AUDIO_TOOL_OPTIONS = (
+        MANUAL_ENSEMBLE,
+        TIME_STRETCH,
+        CHANGE_PITCH,
+        ALIGN_INPUTS,
+        MATCH_INPUTS,
+        APOLLO_RESTORE,
+    )
 else:
-   AUDIO_TOOL_OPTIONS = (MANUAL_ENSEMBLE, ALIGN_INPUTS, MATCH_INPUTS, APOLLO_RESTORE)
+    AUDIO_TOOL_OPTIONS = (MANUAL_ENSEMBLE, ALIGN_INPUTS, MATCH_INPUTS, APOLLO_RESTORE)
 
 MANUAL_ENSEMBLE_OPTIONS = ENSEMBLE_ALGORITHMS + (COMBINE_INPUTS,)
 
-DEMUCS_SEGMENTS = (DEF_OPT, '1', '5', '10', '15', '20', 
-                  '25', '30', '35', '40', '45', '50', 
-                  '55', '60', '65', '70', '75', '80', 
-                  '85', '90', '95', '100')
+DEMUCS_SEGMENTS = (
+    DEF_OPT,
+    '1',
+    '5',
+    '10',
+    '15',
+    '20',
+    '25',
+    '30',
+    '35',
+    '40',
+    '45',
+    '50',
+    '55',
+    '60',
+    '65',
+    '70',
+    '75',
+    '80',
+    '85',
+    '90',
+    '95',
+    '100',
+)
 
-DEMUCS_SHIFTS = (0, 1, 2, 3, 4, 5, 
-                 6, 7, 8, 9, 10, 11, 
-                 12, 13, 14, 15, 16, 17, 
-                 18, 19, 20)
+DEMUCS_SHIFTS = (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20)
 
 NOUT_SEL = (8, 16, 32, 48, 64)
 
@@ -192,37 +258,38 @@ MDX23_OVERLAP = range(2, 51)
 VR_AGGRESSION = range(0, 51)
 
 TIME_WINDOW_MAPPER = {
-            "None": None,
-            "1": [0.0625],
-            "2": [0.125],
-            "3": [0.25],
-            "4": [0.5],
-            "5": [0.75],
-            "6": [1],
-            "7": [2],
-            "Shifts: Low": [0.0625, 0.5],
-            "Shifts: Medium": [0.0625, 0.125, 0.5],
-            "Shifts: High": [0.0625, 0.125, 0.25, 0.5]
-            #"Shifts: Very High": [0.0625, 0.125, 0.25, 0.5, 0.75, 1],
+    "None": None,
+    "1": [0.0625],
+    "2": [0.125],
+    "3": [0.25],
+    "4": [0.5],
+    "5": [0.75],
+    "6": [1],
+    "7": [2],
+    "Shifts: Low": [0.0625, 0.5],
+    "Shifts: Medium": [0.0625, 0.125, 0.5],
+    "Shifts: High": [0.0625, 0.125, 0.25, 0.5],
+    # "Shifts: Very High": [0.0625, 0.125, 0.25, 0.5, 0.75, 1],
 }
 
 INTRO_MAPPER = {
-            "Default": [10],
-            "1": [8],
-            "2": [6],
-            "3": [4],
-            "4": [2],
-            "Shifts: Low": [1, 10],
-            "Shifts: Medium": [1, 10, 8],
-            "Shifts: High": [1, 10, 8, 6, 4]
-            }
+    "Default": [10],
+    "1": [8],
+    "2": [6],
+    "3": [4],
+    "4": [2],
+    "Shifts: Low": [1, 10],
+    "Shifts: Medium": [1, 10, 8],
+    "Shifts: High": [1, 10, 8, 6, 4],
+}
 
 VOLUME_MAPPER = {
-            "None": (0, [0]),
-            "Low": (-4, range(0, 8)),
-            "Medium": (-6, range(0, 12)),
-            "High": (-6, [x * 0.5 for x in range(0, 25)]),
-            "Very High": (-10, [x * 0.5 for x in range(0, 41)])}
+    "None": (0, [0]),
+    "Low": (-4, range(0, 8)),
+    "Medium": (-6, range(0, 12)),
+    "High": (-6, [x * 0.5 for x in range(0, 25)]),
+    "Very High": (-10, [x * 0.5 for x in range(0, 41)]),
+}
 
 NONE_P = "None"
 
@@ -239,15 +306,16 @@ VHIGH_P = "Shifts: Very High"
 VMAX_P = "Shifts: Maximum"
 
 PHASE_SHIFTS_OPT = {
-                     NONE_P:190,
-                     VLOW_P:180,
-                     LOW_P:90,
-                     MED_P:45,
-                     HIGH_P:20,
-                     VHIGH_P:10,
-                     VMAX_P:1,}
+    NONE_P: 190,
+    VLOW_P: 180,
+    LOW_P: 90,
+    MED_P: 45,
+    HIGH_P: 20,
+    VHIGH_P: 10,
+    VMAX_P: 1,
+}
 
-VR_WINDOW = ('320', '512','1024')
+VR_WINDOW = ('320', '512', '1024')
 
 VR_CROP = ('256', '512', '1024')
 
@@ -261,7 +329,7 @@ DENOISE_NONE, DENOISE_S, DENOISE_M = 'None', 'Standard', 'Denoise Model'
 
 MDX_DENOISE_OPTION = [DENOISE_NONE, DENOISE_S, DENOISE_M]
 
-MDX_SEGMENTS = list(range(32, 4000+1, 32))
+MDX_SEGMENTS = list(range(32, 4000 + 1, 32))
 
 CHOOSE_ENSEMBLE_OPTION = 'Choose Option'
 
@@ -281,13 +349,10 @@ OFF_PHASE = "Native Phase"
 
 ALIGN_PHASE_OPTIONS = [AUTO_PHASE, POSITIVE_PHASE, NEGATIVE_PHASE, OFF_PHASE]
 
-SAMPLE_MODE_CHECKBOX = lambda v:f'Sample Mode ({v}s)'
+SAMPLE_MODE_CHECKBOX = lambda v: f'Sample Mode ({v}s)'  # noqa: E731 - public callback constant
 
 GPU_DEVICE_NUM_OPTS = (DEFAULT, '0', '1', '2', '3', '4', '5', '6', '7', '8')
 
 WOOD_INST_MODEL_HASH = '0ec76fd9e65f81d8b4fbd13af4826ed8'
 
-WOOD_INST_PARAMS = {
-    "vr_model_param": "4band_v3",
-    "primary_stem": NO_WIND_INST_STEM
-}
+WOOD_INST_PARAMS = {"vr_model_param": "4band_v3", "primary_stem": NO_WIND_INST_STEM}

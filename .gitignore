@@ -3,6 +3,7 @@ __pycache__/
 *.py[cod]
 *.pyo
 .Python
+.ruff_cache/
 
 # Virtual environments
 .venv
@@ -34,6 +35,7 @@ models/Demucs_Models/*
 !models/Demucs_Models/model_data/
 models/Demucs_Models/model_data/*
 !models/Demucs_Models/model_data/model_name_mapper.json
+!models/Demucs_Models/model_data/model_specs.json
 !models/Demucs_Models/v3_v4_repo/
 models/Demucs_Models/v3_v4_repo/*
 !models/Demucs_Models/v3_v4_repo/demucs_models.txt
@@ -71,6 +73,8 @@ models/VR_Models/model_data/*
 !models/VR_Models/UVR-DeNoise-Lite.pth
 
 # Runtime / portable-mode artifacts (see core/paths.py)
+/.uvr-runtime/
+/registered_models.json
 data.pkl
 data.pkl.bak
 settings.json
@@ -96,7 +100,6 @@ scripts/*
 !scripts/model_sweep.py
 !scripts/model_probe.py
 !scripts/model_tool_support.py
-!scripts/stem_semantics_audit.py
 
 # Machine-readable sidecar for docs/models-catalogue.md. Regenerated with the
 # document and tied to it by digest, so a checked-in copy would only ever go

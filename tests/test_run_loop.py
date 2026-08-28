@@ -13,7 +13,7 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 
-from core.run_loop import run_models_on_files
+from core.run_loop import _progress_detail, run_models_on_files
 
 _REPO = Path(__file__).resolve().parents[1]
 
@@ -89,6 +89,23 @@ def _runner(*, true_model_count: int = 1) -> SimpleNamespace:
 def _callbacks() -> tuple[SimpleNamespace, list[str]]:
     console: list[str] = []
     return SimpleNamespace(console=console.append, progress=lambda *a, **k: None), console
+
+
+class ProgressDetailDisplayTests(unittest.TestCase):
+    def test_progress_prefers_the_carried_identity_display(self) -> None:
+        model = _model("raw-checkpoint")
+        model.model_display_label = "MelBand Roformer — Karaoke · becruily"
+
+        with patch("core.run_loop.display_name_for_model", return_value="stale mapper label"):
+            detail = _progress_detail(
+                file_num=1,
+                file_total=1,
+                model=model,
+                model_num=1,
+                model_count=1,
+            )
+
+        self.assertEqual(detail, model.model_display_label)
 
 
 class RunLoopMissingFileTests(unittest.TestCase):
@@ -174,15 +191,13 @@ class RunLoopLazyDecodeTests(unittest.TestCase):
 
 class RunLoopEngineTupleTests(unittest.TestCase):
     def test_run_models_on_files_has_no_engines_parameter(self) -> None:
-        self.assertNotIn(
-            "engines", inspect.signature(run_models_on_files).parameters
-        )
+        self.assertNotIn("engines", inspect.signature(run_models_on_files).parameters)
 
     def test_run_loop_imports_canonical_helpers(self) -> None:
         source = (_REPO / "core" / "run_loop.py").read_text(encoding="utf-8")
         self.assertNotIn("engines.separate", source)
         self.assertIn("from engines.gpu_cache import clear_gpu_cache", source)
-        self.assertIn("from core.audio_io import save_format", source)
+        self.assertRegex(source, r"from core\.audio_io import [^\n]*\bsave_format\b")
 
     @patch("engines.gpu_cache.clear_gpu_cache")
     @patch("core.run_loop.snapshot_worker_file")
@@ -241,4 +256,3 @@ class RunLoopEngineTupleTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

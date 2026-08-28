@@ -20,7 +20,7 @@ Merge priority (earlier wins on label and every dedupe key):
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 from bundled.constants import (
@@ -35,13 +35,21 @@ from .catalog_dedupe import (
     normalize_catalogue_label,
     primary_checkpoint_url,
 )
+from .catalogue_types import StemSemanticProjection
 from .debug_log import debug
 from .extra_catalog import apollo_download_list, merge_extra_catalogues
+from .mdx_runtime_contract import (
+    local_catalogue_mdx_config_evidence,
+    reconcile_catalogue_mdx_runtime_signature,
+)
+from .model_identity import ModelId
 from .model_naming import canonical_display_name
 from .model_stem_semantics import (
     INTENT_UNKNOWN,
     resolve_catalogue_intent,
+    resolve_catalogue_stem_semantics,
     resolve_is_karaoke,
+    stem_semantics_projection,
 )
 from .mvsepless_catalog import merge_mvsepless_catalogues, mvsepless_metadata
 from .politrees_catalog import (
@@ -69,7 +77,70 @@ class EntryMeta:
     checkpoint: Optional[str] = None
     stems: List[str] = field(default_factory=list)
     target_instrument: Optional[str] = None
+    config_sha256: str = ""
     intent: str = INTENT_UNKNOWN
+    #: Name/category inference retained strictly as inspectable audit evidence.
+    guessed_intent: str = INTENT_UNKNOWN
+    stem_semantics: StemSemanticProjection = field(
+        default_factory=lambda: StemSemanticProjection(
+            backend_primary_stem=None,
+            backend_target_stem=None,
+            logical_primary_role=None,
+            logical_secondary_role=None,
+            status="raw",
+            context="full_mix",
+            routes=(),
+        )
+    )
+
+
+def with_catalogue_config_evidence(
+    meta: EntryMeta,
+    *,
+    stems: List[str],
+    target_instrument: Optional[str],
+    config_sha256: str,
+) -> EntryMeta:
+    """Reconcile newly parsed live YAML evidence through the shared boundary."""
+    target = meta.target_instrument or target_instrument
+    backend_target = str(target or "")
+    backend_primary = str(meta.stem_semantics.backend_primary_stem or "")
+    config_yaml = next(
+        (
+            os.path.basename(str(name))
+            for name in meta.files
+            if str(name).casefold().endswith((".yaml", ".yml"))
+        ),
+        "",
+    )
+    model_id = _catalogue_model_id(meta.arch, meta.checkpoint)
+    reconciled = reconcile_catalogue_mdx_runtime_signature(
+        model_id,
+        stems,
+        target_instrument=backend_target,
+        config_yaml=config_yaml,
+        config_sha256=config_sha256,
+    )
+    semantics = resolve_catalogue_stem_semantics(
+        model_id,
+        native_stems=reconciled.native_signature,
+        backend_primary=backend_primary,
+        backend_target=backend_target,
+        runtime_warning=reconciled.warning,
+    )
+    projection = stem_semantics_projection(
+        semantics,
+        backend_primary=backend_primary,
+        backend_target=backend_target,
+    )
+    return replace(
+        meta,
+        stems=stems,
+        target_instrument=target,
+        config_sha256=config_sha256,
+        intent=(semantics.intent if semantics.status.value == "reviewed" else meta.guessed_intent),
+        stem_semantics=projection,
+    )
 
 
 @dataclass(frozen=True)
@@ -79,7 +150,6 @@ class MergedCatalogues:
     demucs: Dict[str, Any]
     apollo: Dict[str, Any]
     meta: Dict[str, EntryMeta]
-
 
 
 def invalidate_catalogue_merge() -> None:
@@ -103,9 +173,9 @@ def _upstream_fingerprint(
     return (one(vr), one(mdx), one(demucs))
 
 
-def _collect_supplemental_sources(*, allow_network: bool) -> Tuple[
-    Dict[str, Any], Dict[str, Any], Dict[str, Any], Dict[str, Any]
-]:
+def _collect_supplemental_sources(
+    *, allow_network: bool
+) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
     """Collect politrees + extras + mvsepless entries, **without** any base.
 
     Each merge helper is called with empty bases, so what comes back is the
@@ -121,18 +191,18 @@ def _collect_supplemental_sources(*, allow_network: bool) -> Tuple[
     if politrees:
         vr, mdx, demucs = merge_politrees_catalogues(vr, mdx, demucs, politrees)
     vr, mdx, demucs = merge_extra_catalogues(vr, mdx, demucs)
-    vr, mdx, demucs = merge_mvsepless_catalogues(
-        vr, mdx, demucs, allow_network=allow_network
-    )
+    vr, mdx, demucs = merge_mvsepless_catalogues(vr, mdx, demucs, allow_network=allow_network)
     return (
-        dict(vr), dict(mdx), dict(demucs),
+        dict(vr),
+        dict(mdx),
+        dict(demucs),
         mvsepless_metadata(allow_network=allow_network),
     )
 
 
-def _supplemental_sources(*, allow_network: bool) -> Tuple[
-    Dict[str, Any], Dict[str, Any], Dict[str, Any], Dict[str, Any]
-]:
+def _supplemental_sources(
+    *, allow_network: bool
+) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
     """Cached wrapper around :func:`_collect_supplemental_sources`."""
     gen = _merge_generation
     cached = _supp_cache.get(allow_network)
@@ -155,11 +225,31 @@ def _primary_checkpoint(files: Mapping[str, str]) -> Optional[str]:
 
 def _yaml_config_url(files: Mapping[str, str]) -> Optional[str]:
     for name, ref in files.items():
-        if str(name).endswith((".yaml", ".yml")) and str(ref).startswith(
-            ("http://", "https://")
-        ):
+        if str(name).endswith((".yaml", ".yml")) and str(ref).startswith(("http://", "https://")):
             return str(ref).split("?", 1)[0]
     return None
+
+
+def _needs_catalogue_config_evidence(meta: EntryMeta) -> bool:
+    """Whether one raw YAML-backed row still lacks parsed config bytes."""
+    return meta.stem_semantics.status != "reviewed" and not meta.config_sha256
+
+
+def _catalogue_model_id(arch: str, checkpoint: str | None) -> str:
+    """Return an exact canonical ID for a listed artifact, if it has one."""
+    family = {
+        VR_ARCH_TYPE: "vr",
+        MDX_ARCH_TYPE: "mdx",
+        DEMUCS_ARCH_TYPE: "demucs",
+        APOLLO_ARCH_TYPE: "apollo",
+    }.get(arch)
+    if family is None or not checkpoint:
+        return ""
+    basename = os.path.splitext(os.path.basename(checkpoint))[0]
+    try:
+        return ModelId(family, basename).value
+    except ValueError:
+        return ""
 
 
 def _build_meta(
@@ -178,37 +268,79 @@ def _build_meta(
             else {str(model): ""}
         )
         source_meta = (
-            extra_meta.get(label)
-            or alias_meta.get(normalize_catalogue_label(label))
-            or {}
+            extra_meta.get(label) or alias_meta.get(normalize_catalogue_label(label)) or {}
+        )
+        checkpoint = _primary_checkpoint(files)
+        model_id = _catalogue_model_id(arch, checkpoint)
+        config_yaml = next(
+            (
+                os.path.basename(str(name))
+                for name in files
+                if str(name).casefold().endswith((".yaml", ".yml"))
+            ),
+            "",
         )
         stems_raw = source_meta.get("stems")
         stems = list(stems_raw) if isinstance(stems_raw, list) else []
         target = source_meta.get("target_instrument") or None
-        if not stems:
-            yaml_url = _yaml_config_url(files)
-            if yaml_url:
-                hit = lookup_stems(yaml_url)
-                if hit is not None and hit.ok and hit.stems:
+        config_sha256 = ""
+        local_evidence = local_catalogue_mdx_config_evidence(model_id, config_yaml)
+        if local_evidence is not None:
+            if not stems:
+                stems = list(local_evidence.training_instruments)
+            if not target:
+                target = local_evidence.target_instrument
+            config_sha256 = local_evidence.content_sha256
+        yaml_url = _yaml_config_url(files)
+        if yaml_url:
+            hit = lookup_stems(yaml_url)
+            if hit is not None and hit.ok and hit.stems:
+                if not stems:
                     stems = list(hit.stems)
-                    if not target:
-                        target = hit.target_instrument
+                config_sha256 = hit.content_sha256 or config_sha256
+                if not target:
+                    target = hit.target_instrument
+        backend_primary = str(source_meta.get("primary_stem") or "")
+        backend_target = str(target or "")
+        reconciled = reconcile_catalogue_mdx_runtime_signature(
+            model_id,
+            stems,
+            target_instrument=backend_target,
+            config_yaml=config_yaml,
+            config_sha256=config_sha256,
+        )
+        semantics = resolve_catalogue_stem_semantics(
+            model_id,
+            native_stems=reconciled.native_signature,
+            backend_primary=backend_primary,
+            backend_target=backend_target,
+            runtime_warning=reconciled.warning,
+        )
+        projection = stem_semantics_projection(
+            semantics,
+            backend_primary=backend_primary,
+            backend_target=backend_target,
+        )
+        guessed_intent = resolve_catalogue_intent(
+            target=backend_target,
+            instruments=stems,
+            is_karaoke=resolve_is_karaoke(model_name=label),
+            weight_basename=str(checkpoint or ""),
+            catalogue_label=label,
+            category_intent=str(source_meta.get("intent") or INTENT_UNKNOWN),
+        )
         out[label] = EntryMeta(
             label=label,
             display=canonical_display_name(label),
             arch=arch,
             files=files,
-            checkpoint=_primary_checkpoint(files),
+            checkpoint=checkpoint,
             stems=stems,
             target_instrument=target,
-            intent=resolve_catalogue_intent(
-                target=str(target or ""),
-                instruments=stems,
-                is_karaoke=resolve_is_karaoke(model_name=label),
-                weight_basename=str(_primary_checkpoint(files) or ""),
-                catalogue_label=label,
-                category_intent=str(source_meta.get("intent") or INTENT_UNKNOWN),
-            ),
+            config_sha256=config_sha256,
+            intent=(semantics.intent if semantics.status.value == "reviewed" else guessed_intent),
+            guessed_intent=guessed_intent,
+            stem_semantics=projection,
         )
     return out
 
@@ -216,25 +348,25 @@ def _build_meta(
 def _metadata_alias_index(
     metadata: Mapping[str, Mapping[str, Any]],
 ) -> Dict[str, Mapping[str, Any]]:
-    """Index the richest metadata record under each logical label identity."""
-    aliases: Dict[str, Mapping[str, Any]] = {}
+    """Index metadata aliases only when their normalized identity is unique.
 
-    def richness(value: Mapping[str, Any]) -> Tuple[int, int, int]:
-        stems = value.get("stems")
-        intent = str(value.get("intent") or INTENT_UNKNOWN)
-        return (
-            len(stems) if isinstance(stems, list) else 0,
-            1 if value.get("target_instrument") else 0,
-            1 if intent != INTENT_UNKNOWN else 0,
-        )
+    Exact labels are resolved by :func:`_build_meta` before this fallback.  A
+    normalized alias spanning multiple records is ambiguous and must not select
+    one record by payload insertion order or metadata richness.
+    """
+    aliases: Dict[str, Mapping[str, Any]] = {}
+    ambiguous: set[str] = set()
 
     for label, value in metadata.items():
         identity = normalize_catalogue_label(label)
-        if not identity:
+        if not identity or identity in ambiguous:
             continue
         current = aliases.get(identity)
-        if current is None or richness(value) > richness(current):
+        if current is None:
             aliases[identity] = value
+        else:
+            aliases.pop(identity)
+            ambiguous.add(identity)
     return aliases
 
 
@@ -258,9 +390,7 @@ def merged_catalogues(
 ) -> MergedCatalogues:
     """Merge every source over the supplied upstream catalogues, then dedupe."""
     gen_at_start = _merge_generation
-    supp_vr, supp_mdx, supp_demucs, extra_meta = _supplemental_sources(
-        allow_network=allow_network
-    )
+    supp_vr, supp_mdx, supp_demucs, extra_meta = _supplemental_sources(allow_network=allow_network)
     cache_key = (
         gen_at_start,
         allow_network,
@@ -297,9 +427,7 @@ def merged_catalogues(
 
     from .download_sizes import content_ids_from_cache
 
-    content_ids = content_ids_from_cache(
-        _checkpoint_urls(vr_all, mdx_all, apollo_all)
-    )
+    content_ids = content_ids_from_cache(_checkpoint_urls(vr_all, mdx_all, apollo_all))
 
     before = len(vr_all) + len(mdx_all) + len(demucs_all) + len(apollo_all)
     vr_out = dedupe_download_catalogue(vr_all, content_ids=content_ids)

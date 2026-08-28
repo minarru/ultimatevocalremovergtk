@@ -23,9 +23,9 @@ Error Log and the input viewer are all reachable through window
 actions wired in :meth:`MainWindow._install_actions`, with keyboard accelerators
 and help-hint tooltips installed from :mod:`ui.hints`.
 """
-import typing
 
 import os
+import typing
 from typing import Optional
 
 from gi.repository import Adw, Gdk, Gio, Gtk
@@ -37,30 +37,36 @@ from bundled.constants import (
     VR_ARCH_PM,
     VR_ARCH_TYPE,
 )
+from core.debug_log import debug
+from core.types import ProcessMethod
 
 from . import APP_TITLE
 from .audio_tools import AudioToolsPage
 from .context import AppContext
+from .dispatch import idle_on_main
+from .download import init_download_queue_ui
 from .ensemble import EnsemblePage
+from .files import open_folder_in_file_manager
 from .help_text import (
     MAIN_MENU_HINT,
     MODEL_OPTIONS_ROW_HINT,
     VIEW_INPUTS_BUTTON_HINT,
 )
-from .model_options import OPEN_CONTEXT_AUDIO_TOOLS, OPEN_CONTEXT_ENSEMBLE, OPEN_CONTEXT_SEPARATION, open_model_options_sheet
 from .hints import (
-    HelpHintManager,
     SHARED_HINTS,
+    HelpHintManager,
     apply_accelerators,
     install_view_tab_tooltips,
     set_icon_button_a11y,
     set_tooltip,
 )
-from .dispatch import idle_on_main
-from .files import open_folder_in_file_manager
+from .model_options import (
+    OPEN_CONTEXT_AUDIO_TOOLS,
+    OPEN_CONTEXT_ENSEMBLE,
+    OPEN_CONTEXT_SEPARATION,
+    open_model_options_sheet,
+)
 from .run_control import RunController
-from core.debug_log import debug
-from core.types import ProcessMethod
 from .shared_settings import (
     SAMPLE_MODE_TITLE,
     apply_sample_mode_label,
@@ -78,13 +84,12 @@ from .widgets.columns import (
     set_options_bottom_clearance,
     wrap_options_scroller,
 )
+from .widgets.download_queue_indicator import DownloadQueueIndicator
 from .widgets.file_chooser import InputFilesRow, OutputFolderRow
 from .widgets.format_row import OutputFormatRow
 from .widgets.log_panel import OVERLAY_MARGIN_BOTTOM, LogPanel
 from .widgets.rows import get_combo_value, make_combo_row, make_switch_row, set_combo_value
-from .widgets.download_queue_indicator import DownloadQueueIndicator
 from .widgets.vocal_split_row import VocalSplitRow
-from .download import init_download_queue_ui
 
 #: Cadence (ms) and step of the indeterminate progress pulse shown before the
 #: first real fractional update arrives.
@@ -97,6 +102,7 @@ _LOG_COPIED_TOAST = "Log copied"
 #: Blocking-reason strings toasted from the shared Start dispatch when a
 #: required field is missing.
 _REASON_MODEL = "Choose a model"
+_REASON_STEM_REPICK = "Choose a stem again after the model refresh"
 
 # Tk / legacy settings may store the short process-method label instead of the
 # Gtk view key (e.g. ``VR Arc`` vs ``VR Architecture``).
@@ -120,7 +126,9 @@ def data_dir_banner_state(data_dir: str) -> tuple[bool, str]:
     return revealed, _DATA_DIR_BANNER_TITLE.format(path=data_dir)
 
 
-def drop_target_row_name(tab_name: typing.Any, tool: typing.Any, dual_tools: typing.Any) -> Optional[str]:
+def drop_target_row_name(
+    tab_name: typing.Any, tool: typing.Any, dual_tools: typing.Any
+) -> Optional[str]:
     """Return which page's input row should receive a window-level file drop.
 
     Dual-input audio tools pair files positionally (left/right), so a drop with
@@ -208,7 +216,9 @@ class MainWindow(Adw.ApplicationWindow):
         if self.settings.ui.window_maximized:
             self.maximize()
 
-        self._views = [view_cls(self.context, self._on_settings_changed) for view_cls in METHOD_VIEWS]
+        self._views = [
+            view_cls(self.context, self._on_settings_changed) for view_cls in METHOD_VIEWS
+        ]
         self._views_by_stack = {view.stack_name: view for view in self._views}
         self._views_by_method = {view.method_key: view for view in self._views}
         self._views_by_title = {view.title: view for view in self._views}
@@ -283,7 +293,7 @@ class MainWindow(Adw.ApplicationWindow):
         self.set_content(self.toast_overlay)
         self._reveal_data_dir_banner_if_needed()
 
-        init_download_queue_ui(self, self.context, on_models_changed=self._refresh_models)
+        init_download_queue_ui(self, self.context)
 
         # Collapse the two option columns into a single column when the window
         # is narrow. ``set_orientation`` is driven from the apply/unapply
@@ -304,42 +314,11 @@ class MainWindow(Adw.ApplicationWindow):
         # the download worker thread. Subscribing here closes that gap; the
         # handler marshals to the main loop itself.
         self._model_refresh_armed = False
-        self.context.repo.subscribe_models_changed(self._on_models_changed)
-        self._identity_migration_started = False
+        self._subscribe_model_events()
         self.connect("map", self._on_window_mapped)
         self.connect("close-request", self._on_close_request)
 
     # -- Construction -----------------------------------------------------------
-
-    def _on_identity_migration_complete(
-        self, result: typing.Any
-    ) -> None:
-        applied, conflicts, save_error = self.context.apply_identity_migration(result)
-        if applied:
-            self._load_from_settings()
-        if result.files_changed or result.cleared or result.failures or conflicts or save_error:
-            message = (
-                f"Updated stored model references: {result.converted} converted, "
-                f"{result.cleared} cleared"
-            )
-            if conflicts:
-                message += f", {conflicts} live edit(s) preserved"
-            if result.failures:
-                message += f", {len(result.failures)} file(s) could not be updated"
-            if save_error:
-                message += ", settings could not be saved"
-            self.toast(message)
-
-    def start_identity_migration(self) -> None:
-        """Start the one-shot repository-aware migration for a real app session."""
-        if self._identity_migration_started:
-            return
-        self._identity_migration_started = True
-        self.context.start_identity_migration(
-            lambda result: idle_on_main(
-                lambda: self._on_identity_migration_complete(result)
-            )
-        )
 
     def _build_header(self) -> Adw.HeaderBar:
         self._header = Adw.HeaderBar()
@@ -435,7 +414,10 @@ class MainWindow(Adw.ApplicationWindow):
             self._ensemble_page.widget, "ensemble", "Ensemble", "media-playlist-shuffle-symbolic"
         )
         self.content_stack.add_titled_with_icon(
-            self._audio_tools_page.widget, "audio_tools", "Audio Tools", "applications-utilities-symbolic"
+            self._audio_tools_page.widget,
+            "audio_tools",
+            "Audio Tools",
+            "applications-utilities-symbolic",
         )
 
         # Every page's columns_box is flipped together by the responsive
@@ -750,14 +732,16 @@ class MainWindow(Adw.ApplicationWindow):
         self.gpu_row.set_active(bool(self.settings.process.use_gpu))
         self.autocast_row.set_active(bool(self.settings.process.autocast))
         self._sync_gpu_dependent_rows()
-        apply_sample_mode_label(
-            self.sample_row, self.settings.process.sample_mode_duration
-        )
+        apply_sample_mode_label(self.sample_row, self.settings.process.sample_mode_duration)
         self.sample_row.set_active(bool(self.settings.process.sample_mode))
 
         method = self.settings.process.method or MDX_ARCH_TYPE
         method = _METHOD_SETTING_ALIASES.get(method, method)
-        view = self._views_by_method.get(method) or self._views_by_method.get(MDX_ARCH_TYPE) or self._views[0]
+        view = (
+            self._views_by_method.get(method)
+            or self._views_by_method.get(MDX_ARCH_TYPE)
+            or self._views[0]
+        )
         self._syncing_method_combo = True
         try:
             set_combo_value(self.method_row, view.title)
@@ -840,9 +824,7 @@ class MainWindow(Adw.ApplicationWindow):
         if target is None:
             return
         if name != "ensemble":
-            self.settings.process.method = ProcessMethod(
-                self._active_view().method_key
-            )
+            self.settings.process.method = ProcessMethod(self._active_view().method_key)
         self._run_target = target
         self._sync_narrow_window_title(name)
         self._sync_model_options_action(name)
@@ -957,9 +939,7 @@ class MainWindow(Adw.ApplicationWindow):
 
     def _sync_gpu_dependent_rows(self) -> None:
         """Dim GPU-only options while GPU conversion is off."""
-        self.autocast_row.set_sensitive(
-            gpu_dependent_enabled(self.gpu_row.get_active())
-        )
+        self.autocast_row.set_sensitive(gpu_dependent_enabled(self.gpu_row.get_active()))
 
     def _on_close_request(self, *_args: typing.Any) -> bool:
         return self._run_controller.handle_close_request(self._finalize_close)
@@ -967,7 +947,7 @@ class MainWindow(Adw.ApplicationWindow):
     def _finalize_close(self, deferred: bool) -> None:
         # The repository outlives this window (it hangs off AppContext), so a
         # live subscription would keep calling into a dead widget tree.
-        self.context.repo.unsubscribe_models_changed(self._on_models_changed)
+        self._unsubscribe_model_events()
         self._flush_settings()
         self._save_geometry()
         self._handle_settings_error(self.context.try_save_settings(trigger="close"))
@@ -1028,6 +1008,12 @@ class MainWindow(Adw.ApplicationWindow):
             return output_reason
         if not self._active_view().has_model():
             return _REASON_MODEL
+        splitter = getattr(self, "vocal_split_row", None)
+        splitter_reason = splitter.blocked_reason() if splitter is not None else None
+        if splitter_reason:
+            return splitter_reason
+        if self._active_view().save_stems.repick_required:
+            return _REASON_STEM_REPICK
         return None
 
     def _refresh_start_readiness(self) -> Optional[str]:
@@ -1053,15 +1039,16 @@ class MainWindow(Adw.ApplicationWindow):
         self.begin_run(self._separation_target)
 
         try:
-            self._handle_settings_error(
-                self.context.try_save_settings(trigger="start")
-            )
+            self._handle_settings_error(self.context.try_save_settings(trigger="start"))
             debug("ui", f"runner.start files={len(input_paths)}")
             self.context.runner.start(
                 input_paths,
                 callbacks,
                 planned=planned,
                 planned_output_root=planned_output_root,
+                model_dependencies=(
+                    plan.model_dependencies if isinstance(plan, ResolvedJob) else None
+                ),
             )
         except Exception as exc:  # noqa: BLE001 - surfaced to the user
             self.fail_to_start(f"Unable to start separation: {exc}", exc)
@@ -1124,19 +1111,17 @@ class MainWindow(Adw.ApplicationWindow):
         debug("ui", "open download_center")
         from .download import open_download_center
 
-        open_download_center(self, self.context, on_models_changed=self._refresh_models)
+        open_download_center(self, self.context)
 
     def _refresh_models(self, *, source: str = "download_center") -> None:
-        from core.debug_log import debug
+        """Repaint every model-list consumer. Never invalidates.
 
-        if source != "repository":
-            # Cache invalidation is the event source. Its repository
-            # notification owns the single UI repaint; repainting here as well
-            # would duplicate the work, and invalidating from the repaint path
-            # creates an endless idle-callback feedback loop.
-            debug("ui", f"refresh_models invalidate source={source}")
-            self.context.repo.invalidate_models()
-            return
+        Invalidation belongs to core, before the notification that schedules
+        this repaint: a download publishes through the shared finalizer, and a
+        catalogue refinement through the presentation event. Invalidating from
+        the repaint path created an endless idle-callback feedback loop.
+        """
+        from core.debug_log import debug
 
         controller = getattr(self, "_run_controller", None)
         if controller is not None and controller.is_running():
@@ -1175,15 +1160,34 @@ class MainWindow(Adw.ApplicationWindow):
             model_count = len(getattr(view, "list_models", lambda: [])())
             debug("model", f"refresh_models view={method} models={model_count}")
         self._update_sep_banner()
+        self._refresh_start_readiness()
         self._deferred_model_refresh = None
 
     # -- Repository-driven refresh ----------------------------------------------
 
+    def _subscribe_model_events(self) -> None:
+        """One handler for both repository events.
+
+        `models_changed` means the installed set changed;
+        `model_presentation_changed` means only labels did. Both repaint the
+        same widgets, so they share one callback and one coalescer rather than
+        opening a second idle path.
+        """
+        repo = self.context.repo
+        repo.subscribe_models_changed(self._on_models_changed)
+        repo.subscribe_model_presentation_changed(self._on_models_changed)
+
+    def _unsubscribe_model_events(self) -> None:
+        repo = self.context.repo
+        repo.unsubscribe_models_changed(self._on_models_changed)
+        repo.unsubscribe_model_presentation_changed(self._on_models_changed)
+
     def _on_models_changed(self) -> None:
         """``ModelRepository`` invalidated: fired from a worker thread.
 
-        Coalesced, because a download batch invalidates once per registered
-        model and a full refresh per file would be wasteful.
+        Serves both the inventory and presentation events. Coalesced, because a
+        download batch publishes once per model and a catalogue refresh can emit
+        alongside it -- a full repaint per event would be wasteful.
         """
         if self._model_refresh_armed:
             return
@@ -1220,9 +1224,7 @@ class MainWindow(Adw.ApplicationWindow):
     def _on_mock_oom_dialog(self, _action: Gio.SimpleAction, _param: typing.Any) -> None:
         self._present_mock_oom_dialog(separation=False)
 
-    def _on_mock_oom_dialog_separation(
-        self, _action: Gio.SimpleAction, _param: typing.Any
-    ) -> None:
+    def _on_mock_oom_dialog_separation(self, _action: Gio.SimpleAction, _param: typing.Any) -> None:
         self._present_mock_oom_dialog(separation=True)
 
     def _present_mock_oom_dialog(self, *, separation: bool) -> None:
@@ -1247,11 +1249,7 @@ class MainWindow(Adw.ApplicationWindow):
         from core.audio_tools import DUAL_INPUT_TOOLS
 
         tab = self.content_stack.get_visible_child_name()
-        tool = (
-            self._audio_tools_page._current_tool()
-            if tab == "audio_tools"
-            else None
-        )
+        tool = self._audio_tools_page._current_tool() if tab == "audio_tools" else None
         name = drop_target_row_name(tab, tool, DUAL_INPUT_TOOLS)
         if name == "separation":
             return self.input_row
@@ -1261,7 +1259,9 @@ class MainWindow(Adw.ApplicationWindow):
             return self._audio_tools_page.inputs_row
         return None
 
-    def _on_window_drop(self, _target: typing.Any, value: typing.Any, _x: typing.Any, _y: typing.Any) -> bool:
+    def _on_window_drop(
+        self, _target: typing.Any, value: typing.Any, _x: typing.Any, _y: typing.Any
+    ) -> bool:
         row = self._input_row_for_drop()
         if row is None:
             return False
@@ -1284,7 +1284,9 @@ class MainWindow(Adw.ApplicationWindow):
     def _on_model_options(self, _action: Gio.SimpleAction, _param: typing.Any) -> None:
         self._open_model_options()
 
-    def _open_model_options(self, *, initial_stack: Optional[str] = None, context: Optional[str] = None) -> None:
+    def _open_model_options(
+        self, *, initial_stack: Optional[str] = None, context: Optional[str] = None
+    ) -> None:
         tab = self.content_stack.get_visible_child_name()
         if context is None:
             if tab == "ensemble":
@@ -1298,9 +1300,7 @@ class MainWindow(Adw.ApplicationWindow):
             return
 
         selected_models = (
-            self.settings.ensemble.selected_models or []
-            if context == OPEN_CONTEXT_ENSEMBLE
-            else []
+            self.settings.ensemble.selected_models or [] if context == OPEN_CONTEXT_ENSEMBLE else []
         )
         self._model_options_sheet = open_model_options_sheet(
             self,

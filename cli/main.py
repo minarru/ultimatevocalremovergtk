@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
 from types import SimpleNamespace
 from typing import NoReturn, Optional, Sequence
 
 from __version__ import VERSION
 
-from .bench import add_bench_args, cmd_bench
 from .audio import add_audio_parser, add_audio_validation_parser
+from .bench import add_bench_args, cmd_bench
 from .discovery import (
     add_completion_parser,
     add_devices_parser,
@@ -20,10 +21,10 @@ from .discovery import (
 )
 from .ensemble import add_ensemble_args, cmd_ensemble
 from .replay import add_run_args, cmd_run
-from .reporting import REPORT_CHOICES, fail
+from .reporting import REPORT_CHOICES, ensure_job_id, fail
 from .separate import add_separate_args, cmd_separate
-from .validate import add_validation_level, cmd_validate
 from .update import add_update_parser
+from .validate import add_validation_level, cmd_validate
 
 
 class UsageError(ValueError):
@@ -41,7 +42,7 @@ def cmd_gui(_args: argparse.Namespace) -> int:
     normalize_g_messages_debug_env()
     from ui.application import main as gui_main
 
-    return int(gui_main())
+    return int(gui_main(argv=sys.argv[:1], configure_diagnostics=False))
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -53,6 +54,31 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--report", choices=REPORT_CHOICES, dest="global_report")
     parser.add_argument("--quiet", action="store_true", dest="global_quiet")
     parser.add_argument("--verbose", action="store_true", dest="global_verbose")
+    diagnostics = parser.add_mutually_exclusive_group()
+    diagnostics.add_argument(
+        "--debug",
+        action="store_true",
+        dest="global_debug",
+        help="Record structured debug diagnostics",
+    )
+    diagnostics.add_argument(
+        "--trace",
+        action="store_true",
+        dest="global_trace",
+        help="Record high-frequency structured trace diagnostics",
+    )
+    parser.add_argument(
+        "--debug-sensitive",
+        action="store_true",
+        dest="global_debug_sensitive",
+        help="Include local and URL paths; credentials and queries stay redacted",
+    )
+    parser.add_argument(
+        "--log-file",
+        dest="global_log_file",
+        metavar="PATH",
+        help="Write diagnostics to PATH instead of the rotating cache log",
+    )
     sub = parser.add_subparsers(dest="command", required=True, parser_class=UvrArgumentParser)
 
     gui = sub.add_parser("gui", help="Launch the GTK application")
@@ -108,7 +134,42 @@ def _report_hint(argv: Sequence[str]) -> str:
     return "human"
 
 
+def _configure_diagnostics(args: argparse.Namespace) -> None:
+    from core.debug_log import configure_from_settings
+    from core.settings import Settings
+
+    if getattr(args, "trace", False):
+        level = "trace"
+    elif getattr(args, "debug", False):
+        level = "debug"
+    elif getattr(args, "global_trace", False):
+        level = "trace"
+    elif getattr(args, "global_debug", False):
+        level = "debug"
+    else:
+        level = None
+    include_sensitive = (
+        True
+        if getattr(args, "debug_sensitive", False)
+        or getattr(args, "global_debug_sensitive", False)
+        else None
+    )
+    log_file = getattr(args, "log_file", None) or getattr(
+        args, "global_log_file", None
+    )
+    configure_from_settings(
+        Settings.load(),
+        level=level,
+        include_sensitive_details=include_sensitive,
+        log_file=log_file,
+    )
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    from core.debug_log import configure_bootstrap, install_runtime_hooks
+
+    configure_bootstrap()
+    install_runtime_hooks()
     values = list(argv) if argv is not None else sys.argv[1:]
     parser = build_parser()
     try:
@@ -122,10 +183,42 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         args.quiet = True
     if args.global_verbose:
         args.verbose = True
+    _configure_diagnostics(args)
     args.original_argv = list(values)
+    from core.debug_log import log_event, set_operation_id
+
+    operation_id = ensure_job_id(args)
+    started = time.perf_counter()
+    set_operation_id(operation_id)
     try:
-        return int(args.func(args))
-    except KeyboardInterrupt:
-        return fail(args, "interrupted", exit_code=130, extra={"stopped": True}, kind="runtime")
-    except (OSError, ValueError) as exc:
-        return fail(args, str(exc), exit_code=2, exc=exc)
+        log_event(
+            "cli",
+            "command_started",
+            operation_id=operation_id,
+            command=getattr(args, "command", ""),
+            report=getattr(args, "report", "human"),
+            quiet=bool(getattr(args, "quiet", False)),
+        )
+        try:
+            status = int(args.func(args))
+        except KeyboardInterrupt:
+            return fail(
+                args,
+                "interrupted",
+                exit_code=130,
+                extra={"stopped": True},
+                kind="runtime",
+            )
+        except (OSError, ValueError) as exc:
+            return fail(args, str(exc), exit_code=2, exc=exc)
+        log_event(
+            "cli",
+            "command_completed",
+            operation_id=operation_id,
+            command=getattr(args, "command", ""),
+            status=status,
+            elapsed_s=round(time.perf_counter() - started, 6),
+        )
+        return status
+    finally:
+        set_operation_id(None)
