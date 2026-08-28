@@ -10,7 +10,7 @@ Report bugs and open pull requests on **GitHub**. The former Codeberg repo is ar
 
 ## About
 
-This application uses source-separation models to split audio into stems (vocals, instrumental, drums, bass, and more). UVR's core developers trained most of the models in the ecosystem (Demucs v3/v4 weights come from Meta's research release).
+This application uses source-separation models to split audio into stems (vocals, instrumental, drums, bass, and more). A shared catalogue and model-inventory layer keeps downloadable entries, installed models, human-readable names, and executable model identities aligned across the GTK interface and CLI. UVR's core developers trained most of the models in the ecosystem (Demucs v3/v4 weights come from Meta's research release).
 
 Supported separation backends in this port:
 
@@ -138,6 +138,8 @@ always works directly from the checkout.
 
 ```bash
 uvr models list --family mdx
+uvr models catalog --family mdx --query karaoke
+uvr models download "MelBand Roformer — Karaoke · Gabox"
 uvr separate song.wav -o ~/stems --model mdx:UVR-MDX-NET-Inst_HQ_4
 uvr separate ~/Music -o ~/stems --recursive --include '*.flac' --dry-run
 uvr ensemble song.wav -o ~/stems --ensemble "Curated: Vocal Clean"
@@ -146,9 +148,10 @@ uvr ensemble song.wav -o ~/stems --model mdx:model-a \
 uvr audio inspect song.wav
 uvr audio stretch song.wav -o ~/processed --rate 1.1 --dry-run
 uvr audio restore song.wav -o ~/processed --model apollo:apollo_edm_by_essid
-uvr models catalog --family apollo --query restoration
 uvr ensembles create my-mix --member mdx:model-a --member demucs:model-b \
   --main-stem pair.vocals_instrumental --algorithm 'Max Spec/Min Spec'
+uvr --trace --log-file /tmp/uvr-trace.log separate song.wav -o ~/stems \
+  --model mdx:UVR-MDX-NET-Inst_HQ_4
 uvr update check
 ```
 
@@ -167,6 +170,9 @@ completion, and A/B benchmarking are described in
 [docs/environment.md](docs/environment.md#command-line-interface).
 That section also documents migration from the earlier experimental CLI;
 compatibility aliases are intentionally not shipped before release.
+See [docs/cli.md](docs/cli.md) for shared stem-selection behavior and
+[docs/environment.md](docs/environment.md#logging-and-debug) for diagnostic
+levels, privacy, and log locations.
 
 ## Upgrading
 
@@ -181,7 +187,45 @@ git pull
 
 Check [Releases](https://github.com/minarru/ultimatevocalremovergtk/releases) for release notes. The app’s **Application Version** dialog (Settings menu) compares your running version against `packaging/release.json` on GitHub.
 
-## Models
+## Models and stems
+
+The **Download Center** presents one public catalogue assembled from the
+official TRvlvr listings, community sources, and bundled compatibility
+metadata. It shows friendly names, intended outputs, download size, support
+status, and installed state. Use its **Refresh** button for a current network
+snapshot; **Preferences → General → Maintenance → Refresh catalogue cache**
+also refreshes installed-model presentation evidence.
+
+Model presentation is separate from execution identity:
+
+- Pickers, Download Center rows, progress labels, Model Test, ensembles, and
+  human CLI output use the same reviewed display names.
+- Saved selections and execution use canonical IDs such as
+  `mdx:UVR-MDX-NET-Inst_HQ_4`; checkpoint basenames, configuration files, and
+  backend-specific names remain unchanged.
+- A manually added model with no exact catalogue or local metadata match keeps
+  its raw basename instead of being assigned a guessed identity or author.
+
+Reviewed catalogue models also carry curated stem semantics. Native names such
+as `other`, `instrument`, `No dry`, or model-specific YAML labels are mapped to
+consistent user-facing concepts before export and ensemble matching. This lets
+models with equivalent outputs participate together even when their backends
+spell those outputs differently. In particular:
+
+- Karaoke models use **Instrumental with Backing Vocals** as the primary output
+  and **Lead Vocals** as its complement. Only reviewed karaoke/BV models appear
+  in the Vocal Splitter picker.
+- Vocals/Instrumental, Center/Side, Four Stem, and Multi Stem ensembles use
+  reviewed semantic pair or mode IDs rather than display-label matching.
+- Multi-output models retain distinct concepts such as Drums, Bass, Guitar,
+  Speech, Music, and Effects instead of collapsing them into a generic
+  `Other` stem.
+
+See [docs/models.md](docs/models.md) for catalogue behavior, canonical model
+identity, supported architectures, and unknown-model handling. See
+[docs/cli.md](docs/cli.md) for exact stem and ensemble-selection syntax.
+
+### Model files
 
 Most model **weights are not stored in git** (they are large binary files). The repository ships only bundled metadata and one small VR model:
 
@@ -251,8 +295,11 @@ confirmation dialog.
 | `gi` / GTK import errors | Install distro GTK4, libadwaita, and `python3-gi`; recreate the venv with `./install_packages.sh` |
 | `cannot import name 'InferenceSession' from 'onnxruntime'` | Leftover CUDA overlay in `.venv`. Rerun `./install_packages.sh --cuda` (it now uninstalls both CPU and GPU wheels and verifies the import). |
 | Out-of-memory during separation | Lower segment or window size in model settings |
-| No models in a dropdown | Open **Download Center** and fetch models for that process method |
-| Errors during processing | Open **Error Log** from the menu or press `Ctrl+E`; details are also shown in the log panel |
+| No models in a dropdown | Open **Download Center**, download a supported model for that process method, then return to the picker |
+| Catalogue entries or installed names look stale | Use **Refresh** in Download Center, or **Preferences → General → Maintenance → Refresh catalogue cache**. Unknown custom models intentionally retain their basenames. |
+| A model is marked Unsupported | Open its Download Center row for the reason; the catalogue can list published models whose architecture is not yet runnable in this build. See [docs/models.md](docs/models.md). |
+| A model is missing from Vocal Splitter | The picker intentionally includes only installed models with reviewed karaoke/BV metadata |
+| Errors during processing | Open **Error Log** from the menu or press `Ctrl+E`. For more detail, select Debug or Trace under **Preferences → General → Diagnostics**, or launch with `uvr --debug gui`. |
 
 For shared dependency questions (FFmpeg, Rubber Band, etc.), upstream [GitHub Issues](https://github.com/Anjok07/ultimatevocalremovergui/issues) may still be useful.
 
