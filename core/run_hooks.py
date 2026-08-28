@@ -212,24 +212,28 @@ class _EnsembleRunHooks:
             scratch["ensemble_stems"][collected.group_key] = collected
             scratch["ensemble_contributors"].setdefault(collected.group_key, set()).add(member_id)
 
+        for tag, path in paths.items():
+            collected = planned.get(tag)
+            if collected is None:
+                continue
+            key = collected.group_key
+            scratch["member_paths"][key] = path
+            if os.path.isfile(path):
+                retained = scratch["ensemble_stem_paths"].setdefault(key, [])
+                if path not in retained:
+                    retained.append(path)
+
         def collect(tag: str, value: Any) -> None:
             collected = planned.get(tag)
             if collected is None:
                 return
             scratch["ensemble_stem_arrays"].setdefault(collected.group_key, []).append(value)
-            if tag in paths:
-                path = paths[tag]
-                scratch["member_paths"][collected.group_key] = path
-                if os.path.isfile(path):
-                    scratch["ensemble_stem_paths"].setdefault(collected.group_key, []).append(path)
 
         if chunked:
             for stem_tag, arr in stems.items():
                 collected = planned.get(stem_tag)
                 if collected is not None:
                     scratch["member_stem_parts"].setdefault(collected, []).append(arr)
-                    if stem_tag in paths:
-                        scratch["member_paths"][collected.group_key] = paths[stem_tag]
             return
         for stem_tag, arr in stems.items():
             collect(stem_tag, arr)

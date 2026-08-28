@@ -12,6 +12,7 @@ from __future__ import annotations
 import os
 import tempfile
 import unittest
+from dataclasses import FrozenInstanceError
 from types import SimpleNamespace
 from typing import Any
 from unittest import mock
@@ -508,7 +509,14 @@ class PairedMdxCIntegrationTests(_Base):
         paths.MDX_C_CONFIG_PATH = config_dir
         paths.MDX_MODELS_DIR = models_dir
         try:
-            result = finalize_downloaded_model(
+            first = finalize_downloaded_model(
+                repo=repo,
+                family="mdx",
+                selection="MDX23C Model: SCNet",
+                jobs=jobs,
+                transfer_result="exists",
+            )
+            second = finalize_downloaded_model(
                 repo=repo,
                 family="mdx",
                 selection="MDX23C Model: SCNet",
@@ -518,8 +526,11 @@ class PairedMdxCIntegrationTests(_Base):
         finally:
             paths.MDX_HASH_DIR, paths.MDX_C_CONFIG_PATH, paths.MDX_MODELS_DIR = originals
 
-        self.assertTrue(result.ready)
-        self.assertTrue(result.published)
+        self.assertTrue(first.ready)
+        self.assertTrue(first.published)
+        self.assertTrue(second.ready)
+        self.assertFalse(second.metadata_changed)
+        self.assertFalse(second.published)
         self.assertEqual(repo.invalidations, 1)
 
 
@@ -561,7 +572,7 @@ class ResultContractTests(unittest.TestCase):
     def test_result_is_immutable(self) -> None:
         result = ModelInstallResult(ready=True, published=False)
 
-        with self.assertRaises(Exception):
+        with self.assertRaises(FrozenInstanceError):
             result.ready = False  # type: ignore[misc]
 
     def test_defaults(self) -> None:

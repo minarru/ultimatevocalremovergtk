@@ -133,11 +133,22 @@ class VocalSplitRow(Adw.ExpanderRow):
             self.deverb_switch.set_active(bool(process.deverb_vocals))
             set_combo_value(self.deverb_row, process.deverb_vocal_opt or _DEFAULT_DEVERB)
             if not self._populator.ready:
-                seed = (
-                    [NO_MODEL]
-                    if self._stored_splitter == NO_MODEL
-                    else [NO_MODEL, self._stored_splitter]
-                )
+                stored_item: typing.Any = self._stored_splitter
+                if self._stored_splitter not in (NO_MODEL, None, ""):
+                    try:
+                        from core.model_identity import (
+                            ModelIdentityService,
+                            resolve_model_record,
+                        )
+
+                        record = resolve_model_record(
+                            str(self._stored_splitter),
+                            ModelIdentityService(self._repo).records(),
+                        )
+                        stored_item = (record.id, record.display)
+                    except ValueError:
+                        pass
+                seed = [NO_MODEL] if self._stored_splitter == NO_MODEL else [NO_MODEL, stored_item]
                 set_combo_tag_values(self.splitter_row, seed)
             if not getattr(self, "_splitter_write_gated", False):
                 self._splitter_write_gated = bool(

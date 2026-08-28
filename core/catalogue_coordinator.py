@@ -243,6 +243,11 @@ class CatalogueCoordinator:
                 allow_metadata_writes=captured.allow_metadata_writes,
                 allow_cache_writes=captured.allow_cache_writes,
             )
+        if not captured.allow_network:
+            with self._lock:
+                cached = self._latest
+            if cached is not None:
+                return cached
         mode = RefreshMode.STALE_WHILE_REVALIDATE if captured.allow_network else RefreshMode.OFFLINE
         return self.snapshot(mode=mode, policy=captured)
 

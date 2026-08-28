@@ -1,9 +1,8 @@
 """Tests for the background download queue."""
-import typing
-
 import os
 import tempfile
 import threading
+import typing
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -48,6 +47,43 @@ class DownloadQueueTests(unittest.TestCase):
     def test_enqueue_many(self) -> None:
         ids = self.queue.enqueue_many([("A", "VR Arch"), ("B", "MDX-Net")])
         self.assertEqual(len(ids), 2)
+
+    def test_enqueue_rejects_same_model_while_download_is_active(self) -> None:
+        started = threading.Event()
+        release = threading.Event()
+
+        def blocking_download(jobs: typing.Any, **kwargs: typing.Any) -> str:
+            started.set()
+            release.wait(timeout=5)
+            return "complete"
+
+        self.manager.download.side_effect = blocking_download
+        first_id = self.queue.enqueue("Same Model", "MDX-Net")
+        self.assertTrue(started.wait(timeout=5))
+
+        duplicate_id = self.queue.enqueue("Same Model", "MDX-Net")
+
+        self.assertIsNotNone(first_id)
+        self.assertIsNone(duplicate_id)
+        self.assertEqual(len(self.queue.items()), 1)
+        release.set()
+
+    def test_enqueue_allows_same_model_after_terminal_completion(self) -> None:
+        first_id = self.queue.enqueue("Same Model", "MDX-Net")
+        self.assertIsNotNone(first_id)
+        for _ in range(100):
+            if self.queue.active_count() == 0:
+                break
+            threading.Event().wait(0.01)
+
+        second_id = self.queue.enqueue("Same Model", "MDX-Net")
+
+        self.assertIsNotNone(second_id)
+        self.assertNotEqual(second_id, first_id)
+        for _ in range(100):
+            if self.queue.active_count() == 0:
+                break
+            threading.Event().wait(0.01)
 
     def test_cancel_queued_item_keeps_terminal_detail(self) -> None:
         from core.download_status import STATUS_CANCELLED, default_detail_for_status
@@ -202,6 +238,52 @@ class QueuePublicationTests(unittest.TestCase):
             operation = f"operation=download-{item.item_id}"
             self.assertIn(operation, started)
             self.assertIn(operation, completed)
+
+    def test_download_progress_and_byte_status_traces_are_sampled(self) -> None:
+        from core import debug_log
+        from core.download_queue import DownloadQueue
+        from core.model_install import ModelInstallResult
+
+        manager = mock.MagicMock()
+
+        def download(
+            _jobs: list,
+            *,
+            on_progress: typing.Callable[[float], None],
+            on_info: typing.Callable[[str], None],
+            **_kwargs: typing.Any,
+        ) -> str:
+            for fraction, detail in (
+                (0.0, "0 MB / 100 MB"),
+                (0.01, "1 MB / 100 MB"),
+                (0.02, "2 MB / 100 MB"),
+                (0.049, "4.9 MB / 100 MB"),
+                (0.05, "5 MB / 100 MB"),
+                (0.051, "5.1 MB / 100 MB"),
+                (1.0, "100 MB / 100 MB"),
+            ):
+                on_progress(fraction)
+                on_info(detail)
+            return "complete"
+
+        manager.download.side_effect = download
+        queue = DownloadQueue(manager, repo=mock.MagicMock())
+        item = self._item(queue)
+        with tempfile.TemporaryDirectory() as tmp:
+            log_path = Path(tmp) / "uvr.log"
+            debug_log.configure(level="trace", log_file=str(log_path))
+            self.addCleanup(debug_log.configure, level="errors", log_file="")
+            with mock.patch(
+                "core.model_install.finalize_downloaded_model",
+                return_value=ModelInstallResult(ready=True, published=True),
+            ):
+                DownloadQueue._process_item(queue, item)
+            diagnostic = log_path.read_text(encoding="utf-8")
+
+        self.assertEqual(diagnostic.count("event=download_progress"), 3)
+        self.assertEqual(diagnostic.count("event=download_status_changed"), 3)
+        self.assertIn("fraction=1.0", diagnostic)
+        self.assertIn("detail='100 MB / 100 MB'", diagnostic)
 
     def test_each_of_two_items_gets_its_own_publication(self) -> None:
         from core.download_queue import DownloadQueue

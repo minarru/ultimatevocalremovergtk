@@ -379,6 +379,7 @@ class ComposedPublicJourneyTests(unittest.TestCase):
         win.manager = self.manager
         _seed_row(win, MDX_ARCH_TYPE, label, checked=True)
         win.queue = mock.MagicMock()
+        win.queue.active_item_id.return_value = None
         win.queue.enqueue.return_value = "item-1"
         win._toast = mock.MagicMock()
         win._update_download_button = mock.MagicMock()
@@ -397,6 +398,49 @@ class ComposedPublicJourneyTests(unittest.TestCase):
             "https://github.com/Anjok0109/ai_magic/releases/download/v5/added.onnx",
         )
         win._toast.assert_called_once()
+        win._update_download_button.assert_called_once_with()
+
+    def test_enqueue_selected_retains_the_row_display_label_in_the_real_queue(self) -> None:
+        from core.download_queue import DownloadQueue
+        from ui.download_center import DownloadCenterWindow
+        from ui.widget_state import stash
+
+        selection = "MDX-Net Model VIP: Added"
+        display = "MDX-Net — Added"
+        win = _bare_window()
+        win.manager = self.manager
+        action = _seed_row(win, MDX_ARCH_TYPE, selection, checked=True)
+        stash(action, "_uvr_display_name", display)
+        win.queue = DownloadQueue(self.manager)
+        win.queue._ensure_worker = mock.MagicMock()
+        win._toast = mock.MagicMock()
+        win._update_download_button = mock.MagicMock()
+        DownloadCenterWindow._pin_current_snapshot(win)
+
+        DownloadCenterWindow._enqueue_selected(win)
+
+        [item] = win.queue.items()
+        self.assertEqual(item.selection, selection)
+        self.assertEqual(item.label, display)
+
+    def test_enqueue_selected_reports_model_that_is_already_active(self) -> None:
+        from ui.download_center import DownloadCenterWindow
+
+        label = "MDX-Net Model VIP: Added"
+        win = _bare_window()
+        win.manager = self.manager
+        _seed_row(win, MDX_ARCH_TYPE, label, checked=True)
+        win.queue = mock.MagicMock()
+        win.queue.active_item_id.return_value = "active-item"
+        win._toast = mock.MagicMock()
+        win._update_download_button = mock.MagicMock()
+        DownloadCenterWindow._pin_current_snapshot(win)
+
+        DownloadCenterWindow._enqueue_selected(win)
+
+        win.queue.enqueue.assert_not_called()
+        win._toast.assert_called_once_with("1 download already queued")
+        win._row_checks[(MDX_ARCH_TYPE, label)].set_active.assert_called_once_with(False)
         win._update_download_button.assert_called_once_with()
 
 

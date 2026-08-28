@@ -1257,12 +1257,27 @@ class DownloadCenterWindow:
         if not entries:
             return
         ids: list[str] = []
+        already_queued = 0
         for name, arch in entries:
+            if self.queue.active_item_id(name, arch) is not None:
+                already_queued += 1
+                continue
             jobs = self._resolve_pinned(name, arch)
-            item_id = self.queue.enqueue(name, arch, jobs=jobs)
+            action = self._row_actions.get((arch, name))
+            display = fetch(action, "_uvr_display_name", name) if action is not None else name
+            item_id = self.queue.enqueue(name, arch, jobs=jobs, label=str(display or name))
             if item_id:
                 ids.append(item_id)
         if not ids:
+            if already_queued:
+                for name, arch in entries:
+                    check = self._row_checks.get((arch, name))
+                    if check is not None:
+                        check.set_active(False)
+                self._update_download_button()
+                noun = "download" if already_queued == 1 else "downloads"
+                self._toast(f"{already_queued} {noun} already queued")
+                return
             self._toast("Nothing to download for the current selection")
             return
         for arch, name in [(a, n) for n, a in entries]:
@@ -1270,7 +1285,10 @@ class DownloadCenterWindow:
             if check is not None:
                 check.set_active(False)
         self._update_download_button()
-        self._toast(f"Queued {len(ids)} download(s)")
+        message = f"Queued {len(ids)} download(s)"
+        if already_queued:
+            message += f"; {already_queued} already queued"
+        self._toast(message)
 
     def refresh_after_downloads(self) -> None:
         """Remove newly installed rows without disturbing catalogue state."""

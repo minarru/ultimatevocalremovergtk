@@ -94,6 +94,47 @@ class CatalogueCoordinatorTests(unittest.TestCase):
         self.assertEqual(coordinator.builds, 1)
         coordinator.close()
 
+    def test_cache_only_ensure_reuses_an_already_published_snapshot(self) -> None:
+        from core import debug_log
+
+        loads = 0
+
+        def load_upstream() -> dict:
+            nonlocal loads
+            loads += 1
+            return {
+                "mdx_download_list": {"Kept": {"kept.ckpt": "https://u/kept.ckpt"}},
+                "vr_download_list": {},
+                "demucs_download_list": {},
+            }
+
+        coordinator = CatalogueCoordinator(
+            sources={
+                SourceId.UPSTREAM: RemoteJsonSource(
+                    source_id=SourceId.UPSTREAM,
+                    local_loader=load_upstream,
+                ),
+                SourceId.POLITREES: _disabled(SourceId.POLITREES),
+                SourceId.EXTRAS: _disabled(SourceId.EXTRAS),
+                SourceId.MVSEPLESS: _disabled(SourceId.MVSEPLESS),
+            }
+        )
+        policy = AccessPolicy(allow_network=False, allow_metadata_writes=False)
+        with tempfile.TemporaryDirectory() as tmp:
+            log_path = os.path.join(tmp, "uvr.log")
+            debug_log.configure(level="debug", log_file=log_path)
+            self.addCleanup(debug_log.configure, level="errors", log_file="")
+            first = coordinator.snapshot(mode=RefreshMode.OFFLINE, policy=policy)
+
+            second = coordinator.ensure(allow_network=False, policy=policy)
+
+            with open(log_path, encoding="utf-8") as handle:
+                diagnostic = handle.read()
+        self.assertIs(second, first)
+        self.assertEqual(loads, 1)
+        self.assertEqual(diagnostic.count("event=catalogue_refresh_started"), 1)
+        coordinator.close()
+
     def test_snapshot_records_exact_winning_source_for_each_entry(self) -> None:
         coordinator = self._coordinator()
         snapshot = coordinator.snapshot(

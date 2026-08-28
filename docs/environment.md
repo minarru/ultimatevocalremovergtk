@@ -89,8 +89,10 @@ The GUI and CLI share one structured diagnostic pipeline. It defaults to
 - **Debug:** lifecycle boundaries and compact decisions for startup, settings,
   planning, model inventory, execution, exports, catalogue refresh (including
   recoverable source warnings), and model downloads.
-- **Trace:** Debug plus high-frequency progress, console-chunk, GTK-dispatch,
-  and polling events.
+- **Trace:** Debug plus sampled progress, console-chunk, GTK-dispatch, and
+  polling events. Progress traces retain semantic transitions, completion, 5%
+  boundaries, and a five-second heartbeat; UI and CLI progress callbacks remain
+  full fidelity.
 
 Each line carries a UTC timestamp, level, component, process-session ID, event
 name, and—where applicable—an operation ID shared by CLI commands, UI runs,
