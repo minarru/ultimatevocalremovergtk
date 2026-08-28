@@ -27,9 +27,7 @@ class SheetConstantsTests(unittest.TestCase):
             "_start_width_tracking",
             "_stop_width_tracking",
         ):
-            self.assertFalse(
-                hasattr(sheet.ModelOptionsSheet, name), f"{name} should be removed"
-            )
+            self.assertFalse(hasattr(sheet.ModelOptionsSheet, name), f"{name} should be removed")
 
     def test_the_sheet_no_longer_reaches_parent_window_width(self):
         import inspect
@@ -89,9 +87,7 @@ class SheetLayoutTests(unittest.TestCase):
                 view.secondary_group,
                 view.maintenance_group,
             ):
-                self.assertIsNotNone(
-                    group.get_parent(), f"{stack_name}: group not placed"
-                )
+                self.assertIsNotNone(group.get_parent(), f"{stack_name}: group not placed")
 
     def test_maintenance_sits_below_secondary_in_the_end_column(self):
         _sheet, window = self._sheet()
@@ -133,15 +129,21 @@ class SheetLayoutTests(unittest.TestCase):
                 context.iteration(False)
 
     def _presented_sheet(self, parent_width: int):
-        sheet, window = self._sheet()
-        window.set_application(self._app)
-        window.set_default_size(parent_width, 480)
-        window.present()
-        sheet.present(
-            context="separation", active_method_key="MDX-Net", selected_models=[]
-        )
+        from gi.repository import Adw
+
+        sheet, _window = self._sheet()
+        # MainWindow's minimum width varies with the runner's font metrics and
+        # can exceed the requested narrow size. Present the real sheet against
+        # an otherwise empty host so the test controls the available width.
+        host = Adw.ApplicationWindow(application=self._app)
+        host.set_default_size(parent_width, 480)
+        host.set_size_request(parent_width, 480)
+        host.present()
         self._pump()
-        return sheet, window
+        sheet._parent = host
+        sheet.present(context="separation", active_method_key="MDX-Net", selected_models=[])
+        self._pump()
+        return sheet, host
 
     def test_narrow_parent_stacks_the_columns(self):
         from gi.repository import Gtk

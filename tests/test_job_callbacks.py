@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import unittest
 import tempfile
+import unittest
 from pathlib import Path
 
 _REPO = Path(__file__).resolve().parents[1]
@@ -54,3 +54,45 @@ class JobCallbacksDiagnosticsTests(unittest.TestCase):
             diagnostic = log_path.read_text(encoding="utf-8")
             self.assertIn("level=TRACE", diagnostic)
             self.assertIn("event=console_chunk", diagnostic)
+
+    def test_processing_progress_trace_is_sampled_without_dropping_callbacks(self) -> None:
+        from core import debug_log
+        from core.job_callbacks import JobCallbacks
+
+        received: list[float] = []
+        with tempfile.TemporaryDirectory() as tmp:
+            log_path = Path(tmp) / "uvr.log"
+            debug_log.configure(level="trace", log_file=str(log_path))
+            self.addCleanup(debug_log.configure, level="errors", log_file="")
+            callbacks = JobCallbacks(on_progress=lambda fraction, **_kw: received.append(fraction))
+
+            for fraction, detail in (
+                (0.0, "Model A"),
+                (0.01, "Model A"),
+                (0.02, "Model B"),
+                (0.049, "Model B"),
+                (0.05, "Model B"),
+                (0.051, "Model B"),
+                (1.0, "Model B"),
+            ):
+                callbacks.progress(fraction, detail=detail)
+
+            diagnostic = log_path.read_text(encoding="utf-8")
+
+        self.assertEqual(received, [0.0, 0.01, 0.02, 0.049, 0.05, 0.051, 1.0])
+        self.assertEqual(diagnostic.count("event=progress_update"), 4)
+        self.assertIn("fraction=1.0", diagnostic)
+
+
+class ProgressTraceSamplerTests(unittest.TestCase):
+    def test_slow_progress_emits_a_five_second_heartbeat(self) -> None:
+        from core.progress_trace import ProgressTraceSampler
+
+        now = 100.0
+        sampler = ProgressTraceSampler(clock=lambda: now)
+
+        self.assertTrue(sampler.should_emit(0.01))
+        now = 104.99
+        self.assertFalse(sampler.should_emit(0.011))
+        now = 105.0
+        self.assertTrue(sampler.should_emit(0.012))

@@ -40,6 +40,18 @@ class SecondarySlotVisibilityTests(unittest.TestCase):
     def _view(self, window: typing.Any, stack_name: typing.Any):
         return window._views_by_stack[stack_name]
 
+    def _select_installed_model(self, window: typing.Any, view: typing.Any, model_id: str) -> None:
+        from core.model_identity import ModelIdentityService
+        from ui.widgets.rows import set_combo_value
+
+        record = ModelIdentityService(window.context.repo).lookup(model_id)
+        if not record.installed:
+            self.skipTest(f"{record.id} not installed")
+        self.assertTrue(
+            set_combo_value(view.model_row, record.id),
+            f"installed picker item missing: {record.id!r} ({record.display!r})",
+        )
+
     def test_mdx_hides_other_bass_drums_by_default(self):
         window = self._window()
         view = self._view(window, "mdx")
@@ -117,8 +129,7 @@ class SecondarySlotVisibilityTests(unittest.TestCase):
 
         # Pick a real installed-metadata Demucs model so the stem-focus combo
         # is populated (``configure_demucs`` only runs once a model resolves).
-        if not set_combo_value(view.model_row, "v4 | hdemucs_mmi"):
-            self.skipTest("v4 | hdemucs_mmi not installed (downloaded weights only)")
+        self._select_installed_model(window, view, "demucs:hdemucs_mmi")
         self.assertEqual(view.save_stems.mode, "demucs")
         self.assertEqual(window.settings.get("demucs_stems"), ALL_STEMS)
         for slot in ("other", "bass", "drums"):
@@ -126,8 +137,8 @@ class SecondarySlotVisibilityTests(unittest.TestCase):
                 self.assertTrue(row.get_visible(), f"{slot} should start visible")
 
         focus_row = view.save_stems._demucs_focus_row
-        self.assertTrue(set_combo_value(focus_row, "focus_vocals"))
-        self.assertEqual(window.settings.get("demucs_stems"), "Vocals")
+        self.assertTrue(set_combo_value(focus_row, "vocal.vocals"))
+        self.assertEqual(window.settings.get("demucs_stems"), "vocals")
         for slot in ("other", "bass", "drums"):
             for row in view._secondary_slot_rows[slot]:
                 self.assertFalse(

@@ -5,11 +5,30 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+from yaml.constructor import ConstructorError
+
 from bundled.constants import DEFAULT, ENSEMBLE_MODE, MDX_ARCH_TYPE, VR_ARCH_TYPE
 from core.model_config import ModelConfig, assemble_model
 from core.model_identity import IdentityIndex, ModelArtifacts, ModelRecord
 from core.settings import Settings
 from core.types.enums import ProcessMethod
+
+
+class MdxCYamlLoaderTests(unittest.TestCase):
+    def test_in_memory_loader_allows_only_reviewed_python_tuple_extension(self) -> None:
+        from core.model_data import load_mdx_c_config_data
+
+        parsed = load_mdx_c_config_data(
+            b"training:\n  instruments: !!python/tuple [Vocals, Instrumental]\n"
+            b"  target_instrument: Vocals\n"
+        )
+
+        self.assertEqual(parsed["training"]["instruments"], ("Vocals", "Instrumental"))
+        self.assertEqual(parsed["training"]["target_instrument"], "Vocals")
+        with self.assertRaises(ConstructorError):
+            load_mdx_c_config_data(
+                b"training: !!python/object/apply:os.system ['echo must-not-run']\n"
+            )
 
 
 class OverlapMdxDefaultTests(unittest.TestCase):

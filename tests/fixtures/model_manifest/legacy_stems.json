@@ -1,0 +1,59 @@
+{
+  "schema_version": 2,
+  "roles": {
+    "vocal.vocals": {"display": "Vocals", "filename_tag": "Vocals", "family": "vocal"},
+    "mix.instrumental": {"display": "Instrumental", "filename_tag": "Instrumental", "family": "mix"},
+    "instrument.guitar": {"display": "Guitar", "filename_tag": "Guitar", "family": "instrument"},
+    "instrument.guitar.removed": {"display": "Guitar Removed", "filename_tag": "Guitar_Removed", "family": "instrument", "removed_of": "instrument.guitar"}
+  },
+  "pairs": {
+    "pair.vocals_instrumental": {"display": "Vocals/Instrumental", "roles": ["vocal.vocals", "mix.instrumental"]}
+  },
+  "models": {
+    "mdx:BS_Inst_EXP_VRL": {
+      "native_signature": ["Instrumental"],
+      "intent": "instrumental",
+      "contexts": {
+        "full_mix": {
+          "logical_primary": "mix.instrumental",
+          "outputs": [
+            {"native": null, "role": "vocal.vocals", "production": "derived", "complement_of": "mix.instrumental"},
+            {"native": "Instrumental", "role": "mix.instrumental"}
+          ]
+        }
+      },
+      "evidence": "catalogue_id=mdx:BS_Inst_EXP_VRL; source=Politrees; metadata_source=bundled_yaml:config_bs_roformer_inst_exp_vrl.yaml; native_signature=Instrumental; backend_primary=Instrumental; backend_target=Instrumental; reviewed_contexts=full_mix"
+    },
+    "mdx:MDX23C-8KFFT-InstVoc_HQ": {
+      "native_signature": ["Vocals", "Instrumental"],
+      "intent": "dual_voc_inst",
+      "contexts": {
+        "full_mix": {
+          "logical_primary": "vocal.vocals",
+          "outputs": [
+            {"native": "Vocals", "role": "vocal.vocals", "production": "native", "selected_by_default": true},
+            {"native": "Instrumental", "role": "mix.instrumental", "production": "native", "selected_by_default": true}
+          ]
+        }
+      },
+      "evidence": "catalogue_id=mdx:MDX23C-8KFFT-InstVoc_HQ; source=TRvlvr; metadata_source=community_models.txt; backend_primary=Vocals; backend_target=; native_signature=Vocals|Instrumental; runtime_contract=model_runtime_stem_contracts.json"
+    },
+    "mdx:mbr_guitar_becruily": {
+      "native_signature": ["Guitar"],
+      "intent": "specialty_stem",
+      "contexts": {
+        "full_mix": {
+          "logical_primary": "instrument.guitar",
+          "outputs": [
+            {"native": "Guitar", "role": "instrument.guitar"},
+            {"native": null, "role": "instrument.guitar.removed", "production": "derived", "complement_of": "instrument.guitar"}
+          ]
+        }
+      },
+      "evidence": "catalogue_id=mdx:mbr_guitar_becruily; source=mvsepless; metadata_source=bundled_yaml:mbr_guitar_becruily_config.yaml; native_signature=Guitar; backend_primary=Guitar; backend_target=Guitar; reviewed_contexts=full_mix"
+    }
+  },
+  "waivers": {
+    "apollo:apollo_edm_big_by_essid": "no native inventory: catalogue_id=apollo:apollo_edm_big_by_essid; source=extras; metadata_source=bundled_yaml:apollo_edm_big_by_essid.yaml; backend_primary=; backend_target="
+  }
+}

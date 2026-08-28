@@ -1,18 +1,16 @@
 """Background model download queue (runs independently of Download Center UI)."""
 
 from __future__ import annotations
-import typing
 
+import re
 import threading
 import time
+import typing
 import uuid
 from dataclasses import dataclass, field
 from typing import Callable, List, Optional
 
 from core.debug_log import debug, log_event, operation
-
-# Cap queue UI refresh rate while a download reports per-chunk progress.
-_PROGRESS_NOTIFY_INTERVAL_S = 0.1
 from core.download_status import (
     ACTIVE_STATUSES,
     RESULT_COMPLETE,
@@ -25,6 +23,15 @@ from core.download_status import (
     STATUS_QUEUED,
     default_detail_for_status,
     map_download_result,
+)
+from core.progress_trace import ProgressTraceSampler
+
+# Cap queue UI refresh rate while a download reports per-chunk progress.
+_PROGRESS_NOTIFY_INTERVAL_S = 0.1
+_TRANSFER_STATUS_RE = re.compile(
+    r"^\d+(?:\.\d+)?\s+(?:B|KB|MB|GB|TB)\s+/\s+"
+    r"\d+(?:\.\d+)?\s+(?:B|KB|MB|GB|TB)$",
+    re.IGNORECASE,
 )
 
 
@@ -67,18 +74,46 @@ class DownloadQueue:
         with self._lock:
             return sum(1 for item in self._items if item.status in ACTIVE_STATUSES)
 
-    def enqueue(self, selection: str, arch_type: str, jobs: Optional[list] = None) -> Optional[str]:
+    def active_item_id(self, selection: str, arch_type: str) -> Optional[str]:
+        """Return the matching queued/downloading item, if one exists."""
+        with self._lock:
+            return self._active_item_id_unlocked(selection, arch_type)
+
+    def _active_item_id_unlocked(self, selection: str, arch_type: str) -> Optional[str]:
+        for item in self._items:
+            if (
+                item.status in ACTIVE_STATUSES
+                and item.selection == selection
+                and item.arch_type == arch_type
+            ):
+                return item.item_id
+        return None
+
+    def enqueue(
+        self,
+        selection: str,
+        arch_type: str,
+        jobs: Optional[list] = None,
+        *,
+        label: Optional[str] = None,
+    ) -> Optional[str]:
+        if self.active_item_id(selection, arch_type) is not None:
+            debug("download", f"queue skip active selection={selection!r}")
+            return None
         resolved = jobs if jobs is not None else self.manager.resolve(selection, arch_type)
         if not resolved:
             return None
-        item = DownloadQueueItem(
-            item_id=uuid.uuid4().hex,
-            selection=selection,
-            arch_type=arch_type,
-            label=selection,
-            jobs=list(resolved),
-        )
         with self._lock:
+            if self._active_item_id_unlocked(selection, arch_type) is not None:
+                debug("download", f"queue skip active selection={selection!r}")
+                return None
+            item = DownloadQueueItem(
+                item_id=uuid.uuid4().hex,
+                selection=selection,
+                arch_type=arch_type,
+                label=str(label or selection),
+                jobs=list(resolved),
+            )
             self._items.append(item)
         debug("download", f"queue enqueue id={item.item_id} selection={selection!r}")
         self._notify()
@@ -230,15 +265,18 @@ class DownloadQueue:
             return False
 
         last_progress_notify = 0.0
+        progress_trace = ProgressTraceSampler()
+        status_trace = ProgressTraceSampler()
 
         def on_progress(fraction: float) -> None:
             item.progress = max(0.0, min(1.0, fraction))
-            log_event(
-                "download",
-                "download_progress",
-                level="trace",
-                fraction=round(item.progress, 6),
-            )
+            if progress_trace.should_emit(item.progress):
+                log_event(
+                    "download",
+                    "download_progress",
+                    level="trace",
+                    fraction=round(item.progress, 6),
+                )
             nonlocal last_progress_notify
             now = time.monotonic()
             if fraction >= 1.0 or now - last_progress_notify >= _PROGRESS_NOTIFY_INTERVAL_S:
@@ -249,12 +287,14 @@ class DownloadQueue:
             if item.detail == text:
                 return
             item.detail = text
-            log_event(
-                "download",
-                "download_status_changed",
-                level="trace",
-                detail=text,
-            )
+            trace_context = "transfer-bytes" if _TRANSFER_STATUS_RE.fullmatch(text) else text
+            if status_trace.should_emit(item.progress, context=trace_context):
+                log_event(
+                    "download",
+                    "download_status_changed",
+                    level="trace",
+                    detail=text,
+                )
             self._notify()
 
         try:

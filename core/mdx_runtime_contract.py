@@ -20,14 +20,10 @@ from urllib.parse import urlsplit
 
 from .debug_log import log_event
 from .model_identity import parse_stored_model_id
-from .model_stem_manifest import (
-    BUNDLED_MANIFEST_PATH,
-    StemSemanticsRegistry,
-    load_stem_manifest,
-)
+from .model_stem_manifest import StemSemanticsRegistry
 from .paths import BASE_PATH, BUNDLED_DATA_DIR
 
-BUNDLED_MDX_RUNTIME_CONTRACT_PATH = Path(BUNDLED_DATA_DIR) / "model_runtime_stem_contracts.json"
+BUNDLED_MDX_RUNTIME_CONTRACT_PATH = Path(BUNDLED_DATA_DIR) / "model_manifest.json"
 REVIEWED_MDX_HASH_RECORD_SOURCE = "models/MDX_Net_Models/model_data/model_data.json"
 REVIEWED_MDX_HASH_RECORD_PATH = Path(BASE_PATH) / REVIEWED_MDX_HASH_RECORD_SOURCE
 
@@ -579,33 +575,27 @@ def load_mdx_runtime_contracts(
     *,
     registry: StemSemanticsRegistry | None = None,
 ) -> MdxRuntimeContractRegistry:
-    """Read and strictly validate the exact runtime-contract supplement."""
+    """Return the MDX runtime-contract view from one unified manifest.
+
+    ``registry`` remains accepted for source compatibility; the unified loader
+    owns cross-domain validation and therefore does not consume a second view.
+    """
+    from .model_manifest import ModelManifestError, load_model_manifest
+
     try:
-        document = json.loads(
-            path.read_text(encoding="utf-8"),
-            object_pairs_hook=_duplicate_aware_mapping,
-        )
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
-        raise _error(("runtime_contract",), f"could not read runtime contract: {error}") from error
-    if registry is not None:
-        semantic_registry = registry
-    else:
-        try:
-            semantic_registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)
-        except ValueError as error:
-            raise _error(
-                ("semantic_manifest",),
-                f"could not validate semantic manifest parity: {error}",
-            ) from error
-    return load_mdx_runtime_contract_document(document, registry=semantic_registry)
+        return load_model_manifest(path).runtime
+    except ModelManifestError as error:
+        raise _error(error.path, error.message) from error
 
 
 @lru_cache(maxsize=1)
 def load_bundled_mdx_runtime_contracts() -> MdxRuntimeContractRegistry:
     """Application boundary: log one failure and install an empty supplement."""
+    from .model_manifest import ModelManifestError
+
     try:
         return load_mdx_runtime_contracts(BUNDLED_MDX_RUNTIME_CONTRACT_PATH)
-    except MdxRuntimeContractError as error:
+    except (MdxRuntimeContractError, ModelManifestError) as error:
         warning = f"runtime-contract-unavailable error={error}"
         log_event("model", "mdx_runtime_contract_invalid", level="error", error=str(error))
         return MdxRuntimeContractRegistry.empty(warning)

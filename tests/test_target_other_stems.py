@@ -7,15 +7,20 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import MagicMock, patch
 
-from bundled.constants import INST_STEM, VOCAL_STEM
+from bundled.constants import INST_STEM, MDX_ARCH_TYPE, VOCAL_STEM
 from core import Settings
 from core.model_config import ModelConfig
-from core.model_identity import MdxSpec, ModelArtifacts, ModelRecord
+from core.model_identity import (
+    MdxSpec,
+    ModelArtifacts,
+    ModelIdentityService,
+    ModelRecord,
+)
 from core.model_repository import ModelRepository
 from core.stem_roles import StemRoleId
 from core.stems import StemRouteKind, export_stem_label
 
-_TARGET_OTHER_TAGS = (
+_TARGET_OTHER_IDS = (
     "mdx:model_BandSplit-Roformer_Resurrection_Instrumental_by-Unwa",
     "mdx:mbr_inst2_unwa",
     "mdx:melband_roformer_inst_v1e_plus",
@@ -28,23 +33,31 @@ class TargetOtherStemTests(unittest.TestCase):
         cls.settings = Settings()
         cls.repo = ModelRepository()
 
-    def _dry(self, tag: str) -> ModelConfig | None:
+    def _dry_installed(self, model_id: str) -> ModelConfig | None:
         try:
-            model = ModelConfig(self.settings, self.repo, tag, is_dry_check=True)
-        except Exception:
+            record = ModelIdentityService(self.repo).lookup(model_id)
+        except ValueError:
             return None
-        if not model.model_status:
+        if not record.installed:
             return None
+
+        model = self.repo.resolve_model_dry(self.settings, MDX_ARCH_TYPE, record.id)
+        self.assertIsNotNone(
+            model,
+            f"installed model {record.id!r} did not resolve through the repository",
+        )
+        assert model is not None
+        self.assertTrue(model.model_status, f"installed model {record.id!r} is invalid")
         return model
 
     def test_installed_target_other_models_are_voc_inst(self) -> None:
         found = 0
-        for tag in _TARGET_OTHER_TAGS:
-            model = self._dry(tag)
+        for model_id in _TARGET_OTHER_IDS:
+            model = self._dry_installed(model_id)
             if model is None:
                 continue
             found += 1
-            with self.subTest(tag=tag):
+            with self.subTest(model_id=model_id):
                 self.assertTrue(model.is_target_instrument)
                 self.assertEqual(model.primary_stem, INST_STEM)
                 self.assertEqual(model.secondary_stem, VOCAL_STEM)
@@ -140,14 +153,14 @@ inference:
         )
         eligible_other = set(self.repo.ensemble_model_list(self.settings, "other"))
         found = 0
-        for tag in _TARGET_OTHER_TAGS:
-            model = self._dry(tag)
+        for model_id in _TARGET_OTHER_IDS:
+            model = self._dry_installed(model_id)
             if model is None:
                 continue
             found += 1
-            with self.subTest(tag=tag):
-                self.assertIn(tag, eligible_vocal)
-                self.assertNotIn(tag, eligible_other)
+            with self.subTest(model_id=model_id):
+                self.assertIn(model_id, eligible_vocal)
+                self.assertNotIn(model_id, eligible_other)
         if found == 0:
             self.skipTest("no target-other Unwa models installed")
 

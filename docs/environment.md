@@ -15,6 +15,38 @@ see also `core/debug_log.py`.
 
 ---
 
+## GTK display-backend testing
+
+Choose one display flow for a run; they are deliberately non-overlapping.
+
+1. **Codex sandbox-native GTK tests:** use the existing
+   `testing-gtk-headless` private-Mutter runner
+   (`scripts/run-private-wayland.sh` in that skill). It creates a private
+   `WAYLAND_DISPLAY` and runs GTK with `GDK_BACKEND=wayland`; do not add
+   `xvfb-run` inside that Wayland session.
+2. **Outside-sandbox headless local tests and CI:** pin GTK to X11 and strip
+   inherited host display/session endpoints before starting Xvfb:
+
+   ```bash
+   env -u DISPLAY -u WAYLAND_DISPLAY -u DBUS_SESSION_BUS_ADDRESS \
+     -u DBUS_SYSTEM_BUS_ADDRESS -u XDG_RUNTIME_DIR -u XAUTHORITY \
+     -u SESSION_MANAGER GDK_BACKEND=x11 GSK_RENDERER=cairo \
+     xvfb-run -a .venv/bin/python -m unittest discover -s tests -t . -v
+   ```
+
+   Xvfb is an X11 virtual display, not a Wayland dependency.
+3. **Host-realistic manual UI testing:** use the active host Wayland session
+   with the repository venv or `./uvr`. Do not inject private-display
+   variables or Xvfb into that session.
+
+Every automated private-display flow must strip host `DISPLAY`,
+`WAYLAND_DISPLAY`, D-Bus/session, and XDG runtime endpoints before creating
+its own display. The private-Mutter runner is the current command source for
+that isolation; use it rather than rebuilding those environment settings by
+hand.
+
+---
+
 ## Runtime data paths
 
 | Variable | Default | Purpose |
@@ -57,8 +89,10 @@ The GUI and CLI share one structured diagnostic pipeline. It defaults to
 - **Debug:** lifecycle boundaries and compact decisions for startup, settings,
   planning, model inventory, execution, exports, catalogue refresh (including
   recoverable source warnings), and model downloads.
-- **Trace:** Debug plus high-frequency progress, console-chunk, GTK-dispatch,
-  and polling events.
+- **Trace:** Debug plus sampled progress, console-chunk, GTK-dispatch, and
+  polling events. Progress traces retain semantic transitions, completion, 5%
+  boundaries, and a five-second heartbeat; UI and CLI progress callbacks remain
+  full fidelity.
 
 Each line carries a UTC timestamp, level, component, process-session ID, event
 name, and—where applicable—an operation ID shared by CLI commands, UI runs,

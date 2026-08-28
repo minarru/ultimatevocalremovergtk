@@ -14,7 +14,7 @@ from unittest import mock
 
 from core.access_policy import AccessPolicy
 from core.catalogue_coordinator import CatalogueCoordinator
-from core.catalogue_types import DeltaKind, RefreshMode, SourceId
+from core.catalogue_types import CatalogueDelta, DeltaKind, RefreshMode, SourceId
 from core.remote_catalog_cache import RemoteJsonSource
 
 
@@ -92,6 +92,47 @@ class CatalogueCoordinatorTests(unittest.TestCase):
         second = coordinator.snapshot(mode=RefreshMode.OFFLINE, policy=policy)
         self.assertIs(first, second)
         self.assertEqual(coordinator.builds, 1)
+        coordinator.close()
+
+    def test_cache_only_ensure_reuses_an_already_published_snapshot(self) -> None:
+        from core import debug_log
+
+        loads = 0
+
+        def load_upstream() -> dict:
+            nonlocal loads
+            loads += 1
+            return {
+                "mdx_download_list": {"Kept": {"kept.ckpt": "https://u/kept.ckpt"}},
+                "vr_download_list": {},
+                "demucs_download_list": {},
+            }
+
+        coordinator = CatalogueCoordinator(
+            sources={
+                SourceId.UPSTREAM: RemoteJsonSource(
+                    source_id=SourceId.UPSTREAM,
+                    local_loader=load_upstream,
+                ),
+                SourceId.POLITREES: _disabled(SourceId.POLITREES),
+                SourceId.EXTRAS: _disabled(SourceId.EXTRAS),
+                SourceId.MVSEPLESS: _disabled(SourceId.MVSEPLESS),
+            }
+        )
+        policy = AccessPolicy(allow_network=False, allow_metadata_writes=False)
+        with tempfile.TemporaryDirectory() as tmp:
+            log_path = os.path.join(tmp, "uvr.log")
+            debug_log.configure(level="debug", log_file=log_path)
+            self.addCleanup(debug_log.configure, level="errors", log_file="")
+            first = coordinator.snapshot(mode=RefreshMode.OFFLINE, policy=policy)
+
+            second = coordinator.ensure(allow_network=False, policy=policy)
+
+            with open(log_path, encoding="utf-8") as handle:
+                diagnostic = handle.read()
+        self.assertIs(second, first)
+        self.assertEqual(loads, 1)
+        self.assertEqual(diagnostic.count("event=catalogue_refresh_started"), 1)
         coordinator.close()
 
     def test_snapshot_records_exact_winning_source_for_each_entry(self) -> None:
@@ -310,6 +351,26 @@ class CatalogueCoordinatorTests(unittest.TestCase):
         self.assertEqual(calls, [])
         coordinator.close()
 
+    def test_subscriber_exception_is_logged_with_type_and_kind(self) -> None:
+        coordinator = self._coordinator()
+
+        def broken(_delta: CatalogueDelta) -> None:
+            raise RuntimeError("broken subscriber")
+
+        coordinator.subscribe_delta(broken)
+        with mock.patch("core.catalogue_coordinator.log_event") as event:
+            coordinator.notify_metadata({"mdx": ("Kept",)})
+
+        event.assert_called_once_with(
+            "download",
+            "catalogue_subscriber_failed",
+            level="warning",
+            subscriber_kind="delta",
+            error_type="RuntimeError",
+            message="broken subscriber",
+        )
+        coordinator.close()
+
     def test_offline_refresh_records_start_and_snapshot_counts(self) -> None:
         coordinator = self._coordinator()
         policy = AccessPolicy(allow_network=False, allow_metadata_writes=False)
@@ -395,6 +456,97 @@ class CatalogueCoordinatorTests(unittest.TestCase):
         snap = coordinator.snapshot(mode=RefreshMode.OFFLINE, policy=policy)
         self.assertTrue(report.usable or "Bundled" in snap.mdx)
         coordinator.close()
+
+    def test_failed_force_with_cold_disk_lkg_is_reported_failed_and_stale(self) -> None:
+        """Loading an LKG after a failed fetch must not erase the fetch failure."""
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = os.path.join(tmp.name, "upstream.json")
+        _write_envelope(
+            path,
+            50.0,
+            {
+                "mdx_download_list": {"Old": {"o.ckpt": "https://u/o.ckpt"}},
+                "vr_download_list": {},
+                "demucs_download_list": {},
+            },
+        )
+        source = RemoteJsonSource(
+            source_id=SourceId.UPSTREAM,
+            url="https://example.test/upstream.json",
+            cache_filename="upstream.json",
+            cache_path=path,
+            ttl_seconds=60,
+            opener=mock.Mock(side_effect=OSError("offline")),
+            clock=_Clock(),
+        )
+        coordinator = CatalogueCoordinator(
+            sources={
+                SourceId.UPSTREAM: source,
+                SourceId.POLITREES: _disabled(SourceId.POLITREES),
+                SourceId.EXTRAS: _disabled(SourceId.EXTRAS),
+                SourceId.MVSEPLESS: _disabled(SourceId.MVSEPLESS),
+            }
+        )
+        self.addCleanup(coordinator.close)
+
+        report = coordinator.refresh(
+            mode=RefreshMode.FORCE,
+            policy=AccessPolicy(allow_network=True, allow_metadata_writes=False),
+        )
+
+        self.assertIn((SourceId.UPSTREAM, "fetch failed"), report.failed)
+        self.assertIn(SourceId.UPSTREAM, report.stale)
+        self.assertNotIn(SourceId.UPSTREAM, report.succeeded)
+        self.assertTrue(report.mixed_age)
+        self.assertFalse(report.upstream_live)
+        self.assertTrue(report.usable)
+
+    def test_successful_force_revalidation_is_not_stale_provenance(self) -> None:
+        """A conditional live validation refreshes age even when bytes are unchanged."""
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = os.path.join(tmp.name, "upstream.json")
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(
+                {
+                    "fetched_at": 50.0,
+                    "etag": '"same"',
+                    "data": {
+                        "mdx_download_list": {"Same": {"s.ckpt": "https://u/s.ckpt"}},
+                        "vr_download_list": {},
+                        "demucs_download_list": {},
+                    },
+                },
+                handle,
+            )
+        source = RemoteJsonSource(
+            source_id=SourceId.UPSTREAM,
+            url="https://example.test/upstream.json",
+            cache_filename="upstream.json",
+            cache_path=path,
+            ttl_seconds=60,
+            opener=lambda _target: _Response({}, status=304),
+            clock=_Clock(),
+        )
+        coordinator = CatalogueCoordinator(
+            sources={
+                SourceId.UPSTREAM: source,
+                SourceId.POLITREES: _disabled(SourceId.POLITREES),
+                SourceId.EXTRAS: _disabled(SourceId.EXTRAS),
+                SourceId.MVSEPLESS: _disabled(SourceId.MVSEPLESS),
+            }
+        )
+        self.addCleanup(coordinator.close)
+        policy = AccessPolicy(allow_network=True, allow_metadata_writes=False)
+        source.load(mode=RefreshMode.OFFLINE, policy=policy)
+
+        report = coordinator.refresh(mode=RefreshMode.FORCE, policy=policy)
+
+        self.assertIn(SourceId.UPSTREAM, report.succeeded)
+        self.assertNotIn(SourceId.UPSTREAM, report.stale)
+        self.assertFalse(report.mixed_age)
+        self.assertTrue(report.upstream_live)
 
     def test_force_then_ensure_keeps_usable_report_on_snapshot(self) -> None:
         """The catalogue writer does refresh(FORCE) then ensure(SWR).

@@ -53,6 +53,7 @@ class VocalSplitRowTests(unittest.TestCase):
         # Mutable so a test can install a model mid-session, the way a download
         # does, and count how often the (expensive) list is resolved.
         self.karaoke_models = ["vr:UVR-BVE-4B"]
+        self.model_displays: dict[str, str] = {}
         self.karaoke_calls = 0
 
         def patched_karaoke(settings: typing.Any):
@@ -67,7 +68,7 @@ class VocalSplitRowTests(unittest.TestCase):
                     id=model_id,
                     family="vr",
                     basename=model_id.partition(":")[2],
-                    display=model_id.partition(":")[2],
+                    display=self.model_displays.get(model_id, model_id.partition(":")[2]),
                     backend_name=model_id.partition(":")[2],
                     artifacts=ModelArtifacts(model_id.partition(":")[2]),
                     installed=True,
@@ -170,6 +171,21 @@ class VocalSplitRowTests(unittest.TestCase):
         row.apply_from_settings(settings)
         row.persist_to_settings(settings)
         self.assertEqual(settings.get("set_vocal_splitter"), "VR Arc: UVR-BVE-4B")
+
+    def test_lazy_seed_shows_friendly_display_but_retains_canonical_id(self):
+        from ui.widgets.rows import combo_values, get_combo_value
+
+        model_id = "vr:UVR-BVE-4B"
+        display = "VR v5 — BVE 4-Band"
+        row = self._row()
+        self.model_displays[model_id] = display
+
+        row.apply_from_settings(self._settings(set_vocal_splitter=model_id))
+
+        self.assertEqual(self.karaoke_calls, 0, "lazy seed must not resolve eligibility")
+        self.assertIn(display, combo_values(row.splitter_row))
+        self.assertNotIn(model_id, combo_values(row.splitter_row))
+        self.assertEqual(get_combo_value(row.splitter_row), model_id)
 
     def test_persist_keeps_a_missing_stored_tag_gated_until_repick(self):
         """A deleted model stays visible as a blocker until explicit repick."""

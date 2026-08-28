@@ -1,10 +1,9 @@
 """Tests for MDX-C catalogue auto-registration."""
-import typing
-
 import json
 import os
 import shutil
 import tempfile
+import typing
 import unittest
 from unittest.mock import patch
 
@@ -20,13 +19,13 @@ from core.mdx_c_registry import (
     try_register_from_catalog,
     yaml_for_checkpoint,
 )
+from core.model_config import ModelConfig
 from core.model_display import (
     build_checkpoint_display_index,
     display_name_for_basename,
     resolve_mdx_model_basename,
     sanitize_catalogue_label,
 )
-from core.model_config import ModelConfig
 
 
 class SanitizeCatalogueLabelTests(unittest.TestCase):
@@ -282,6 +281,7 @@ class RegisterFromDownloadJobsTests(unittest.TestCase):
                     return_value={"batch_model": "Friendly Batch Model"},
                 ):
                     self.assertTrue(register_mdx_c_from_download_jobs(jobs))
+                    self.assertFalse(register_mdx_c_from_download_jobs(jobs))
                 model_hash = compute_checkpoint_hash(checkpoint)
                 assert model_hash is not None
                 self.assertTrue(os.path.isfile(os.path.join(hash_dir, f"{model_hash}.json")))

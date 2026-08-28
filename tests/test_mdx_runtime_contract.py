@@ -344,21 +344,12 @@ class MdxRuntimeContractValidationTests(_ContractTestCase):
                 with self.assertRaisesRegex(Exception, "duplicate key"):
                     load_mdx_runtime_contracts(path, registry=self.semantic_registry)
 
-    def test_semantic_manifest_parity_failure_is_wrapped_as_contract_error(self) -> None:
+    def test_unified_manifest_failure_is_wrapped_as_contract_error(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             malformed_manifest = Path(directory) / "manifest.json"
             malformed_manifest.write_text("{}", encoding="utf-8")
-            with (
-                mock.patch(
-                    "core.mdx_runtime_contract.BUNDLED_MANIFEST_PATH",
-                    malformed_manifest,
-                ),
-                self.assertRaisesRegex(
-                    MdxRuntimeContractError,
-                    "semantic_manifest.*semantic manifest parity",
-                ),
-            ):
-                load_mdx_runtime_contracts(BUNDLED_MDX_RUNTIME_CONTRACT_PATH)
+            with self.assertRaisesRegex(MdxRuntimeContractError, "author_aliases"):
+                load_mdx_runtime_contracts(malformed_manifest)
 
     def test_unknown_fields_are_rejected_at_every_closed_object_level(self) -> None:
         cases: list[tuple[str, dict[str, object]]] = []
@@ -591,21 +582,25 @@ class MdxRuntimeContractValidationTests(_ContractTestCase):
 
 class BundledMdxRuntimeContractTests(_ContractTestCase):
     def test_checked_in_config_content_and_semantics_are_revalidated(self) -> None:
+        from core.model_manifest import load_model_manifest_document
+
         document = json.loads(BUNDLED_MDX_RUNTIME_CONTRACT_PATH.read_text(encoding="utf-8"))
-        config = document["contracts"]["mdx:MDX23C-8KFFT-InstVoc_HQ"]["config_evidence"][
+        config = document["models"]["mdx:MDX23C-8KFFT-InstVoc_HQ"]["config_evidence"][
             "model_2_stem_full_band_8k.yaml"
         ]
         config["content_sha256"] = "a" * 64
 
-        with self.assertRaisesRegex(MdxRuntimeContractError, "local source bytes"):
-            self.load(document)
+        with self.assertRaisesRegex(ValueError, "local source bytes"):
+            load_model_manifest_document(document)
 
     def test_bundled_local_evidence_sources_exist_in_a_fresh_checkout(self) -> None:
         document = json.loads(BUNDLED_MDX_RUNTIME_CONTRACT_PATH.read_text(encoding="utf-8"))
-        contracts = document["contracts"]
-        for model_id, contract in contracts.items():
+        for model_id, model in document["models"].items():
+            contract = model.get("runtime_contract")
+            if contract is None:
+                continue
             sources = list(contract["evidence"]["runtime_metadata_sources"])
-            for config in contract["config_evidence"].values():
+            for config in model.get("config_evidence", {}).values():
                 sources.extend(config["sources"])
             for source in sources:
                 if source.startswith(("https://", "cache:", "checked-in:")):
@@ -1000,6 +995,30 @@ class BundledMdxRuntimeContractTests(_ContractTestCase):
                         for item in context.unavailable_supplemental_evidence
                     )
                 )
+
+
+class CurrentCatalogueTargetRuntimeTests(unittest.TestCase):
+    def test_invert_clean_training_other_is_not_a_native_runtime_output(self) -> None:
+        from core.model_manifest.runtime import bundled_catalogue_config_evidence
+
+        model_id = "mdx:mbr_invert_clean_becruily"
+        config_yaml = "mbr_invert_clean_becruily_config.yaml"
+        evidence = bundled_catalogue_config_evidence(model_id, config_yaml)
+        self.assertIsNotNone(evidence)
+        assert evidence is not None
+        self.assertEqual(evidence.training_instruments, ("Vocals", "Other"))
+        self.assertEqual(evidence.target_instrument, "Vocals")
+
+        projected = reconcile_catalogue_mdx_runtime_signature(
+            model_id,
+            evidence.training_instruments,
+            target_instrument=evidence.target_instrument or "",
+            config_yaml=config_yaml,
+            config_sha256=evidence.content_sha256,
+        )
+        self.assertIsNone(projected.contract)
+        self.assertEqual(projected.native_signature, ("Vocals",))
+        self.assertNotIn("Other", projected.native_signature)
 
 
 if __name__ == "__main__":

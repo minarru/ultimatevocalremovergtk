@@ -1036,10 +1036,9 @@
               "selected_by_default": true
             },
             {
-              "native": null,
+              "native": "No dry",
               "role": "effect.reverb",
-              "production": "derived",
-              "complement_of": "effect.reverb.removed",
+              "production": "native",
               "selected_by_default": true
             }
           ]

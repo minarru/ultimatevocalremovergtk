@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "model_aliases": {
+    "mdx:BS_Inst_EXP_VRL": "BandSplit Roformer — Instrumental EXP Value Residual · Unwa [BS_Inst_EXP_VRL]",
+    "mdx:MDX23C-8KFFT-InstVoc_HQ": "MDX23C — 8K FFT Instrumental/Vocals HQ",
+    "mdx:mbr_guitar_becruily": "MelBand Roformer — Instrumental · Becruily [mbr_guitar_becruily]"
+  },
+  "author_aliases": {
+    "viperx": "ViperX"
+  },
+  "waivers": {
+    "mdx:BS_Inst_EXP_VRL": {
+      "embedded-id": "The bracketed exact backend ID distinguishes the Politrees artifact from the same-title MVSep model.",
+      "underscore": "The underscore is part of the reviewed bracketed backend ID retained for collision safety."
+    }
+  }
+}

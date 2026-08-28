@@ -1,11 +1,16 @@
 """Tests for unified model display naming."""
 
+import importlib
+import json
 import os
+import time
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from unittest import mock
 from unittest.mock import MagicMock
 
 from bundled.constants import DEMUCS_ARCH_TYPE, MDX_ARCH_TYPE, VR_ARCH_TYPE
-
 from core.model_display import (
     build_demucs_display_index,
     build_vr_display_index,
@@ -129,9 +134,7 @@ class ExactMapperLookupTests(unittest.TestCase):
                 )
 
     def test_unrecognized_extension_is_ignored(self) -> None:
-        self.assertIsNone(
-            lookup_mapper_display_exact("model", {"model.bin": "Friendly"})
-        )
+        self.assertIsNone(lookup_mapper_display_exact("model", {"model.bin": "Friendly"}))
 
     def test_empty_and_malformed_mappers(self) -> None:
         self.assertIsNone(lookup_mapper_display_exact("model", None))
@@ -149,9 +152,7 @@ class ExactMapperLookupTests(unittest.TestCase):
         )
 
     def test_does_not_perform_casefold_matching(self) -> None:
-        self.assertIsNone(
-            lookup_mapper_display_exact("MODEL", {"model.ckpt": "Friendly"})
-        )
+        self.assertIsNone(lookup_mapper_display_exact("MODEL", {"model.ckpt": "Friendly"}))
 
 
 class VrDisplayIndexTests(unittest.TestCase):
@@ -207,6 +208,28 @@ class FormatTagTitleTests(unittest.TestCase):
         self.assertEqual(canonical, "Kim Vocal 2")
 
 
+class InvalidUnifiedManifestPresentationTests(unittest.TestCase):
+    def test_module_reload_falls_back_to_raw_when_unified_manifest_is_invalid(self) -> None:
+        import core.model_naming as naming
+        from core.model_manifest import ModelManifestError
+
+        try:
+            with mock.patch(
+                "core.model_manifest.load_model_manifest",
+                side_effect=ModelManifestError(
+                    ("author_aliases",),
+                    "missing required field",
+                ),
+            ):
+                reloaded = importlib.reload(naming)
+                self.assertEqual(
+                    reloaded.project_model_display("mdx:unknown_custom_model"),
+                    "unknown_custom_model",
+                )
+        finally:
+            importlib.reload(naming)
+
+
 class ResolveVrModelBasenameTests(unittest.TestCase):
     def test_resolves_sanitized_display(self) -> None:
         index = {"1_HP-UVR": "v5: 1_HP-UVR"}
@@ -253,9 +276,7 @@ class DisplayNameForBasenameTests(unittest.TestCase):
         mapper = {"MDX23C_D1581.ckpt": "MDX23C-InstVoc D1581"}
         catalogue = {"MDX23C_D1581": "MDX23C_D1581"}
         self.assertEqual(
-            display_name_for_basename(
-                "MDX23C_D1581", mapper, catalogue_index=catalogue
-            ),
+            display_name_for_basename("MDX23C_D1581", mapper, catalogue_index=catalogue),
             "MDX23C-InstVoc D1581",
         )
 
@@ -278,10 +299,8 @@ class MvseplessAndExtrasDisplayTests(unittest.TestCase):
     Politrees, so anything added by the two newest catalogue sources fell back
     to its on-disk basename in the method pickers.
 
-    CI has no live catalogues. Extras are bundled, so those names are asserted
-    offline. Mvsepless names skip unless a disk cache is already present —
-    ``load_converted_mvsepless()`` FORCE-fetches on an empty cache, and
-    ``BlockedNetworkAccess`` is a ``BaseException``, which aborts ``setUpClass``.
+    CI has no live catalogues. Extras are bundled, while the mvsepless test
+    enables that source explicitly and seeds its own private on-disk cache.
     """
 
     EXTRAS_BEFORE = (
@@ -295,10 +314,58 @@ class MvseplessAndExtrasDisplayTests(unittest.TestCase):
     )
 
     @classmethod
+    def _mvsepless_fixture(cls) -> dict[str, dict[str, object]]:
+        def entry(
+            model_id: str,
+            *,
+            model_type: str,
+            full_name: str,
+            stems: list[str],
+            target: str,
+        ) -> dict[str, object]:
+            base = "https://example.invalid/mvsepless"
+            return {
+                "category": "Instrumental",
+                "checkpoint_url": f"{base}/{model_id}.ckpt",
+                "config_url": f"{base}/{model_id}_config.yaml",
+                "full_name": full_name,
+                "id": model_id,
+                "model_type": model_type,
+                "stems": stems,
+                "target_instrument": target,
+            }
+
+        return {
+            "bs_inst_hyperace2_unwa": entry(
+                "bs_inst_hyperace2_unwa",
+                model_type="bs_roformer",
+                full_name=(
+                    "BS Roformer Instrumental HyperACE v2 (finetuned anvuew vocal model) by Unwa"
+                ),
+                stems=["instrument", "vocals"],
+                target="instrument",
+            ),
+            "mbr_inst2_unwa": entry(
+                "mbr_inst2_unwa",
+                model_type="mel_band_roformer",
+                full_name="Mel-Band Roformer Instrumental v2 by Unwa",
+                stems=["other", "vocals"],
+                target="other",
+            ),
+            "mbr_instfvx_gabox": entry(
+                "mbr_instfvx_gabox",
+                model_type="mel_band_roformer",
+                full_name="Mel-Band Roformer Instrumental FvX by GaboxR67",
+                stems=["Instrumental", "Vocals"],
+                target="Instrumental",
+            ),
+        }
+
+    @classmethod
     def setUpClass(cls) -> None:
+        from core.catalog_sources import invalidate_catalogue_merge
         from core.extra_catalog import clear_extra_catalog_cache
         from core.model_display import clear_display_cache
-        from core.catalog_sources import invalidate_catalogue_merge
 
         os.environ.pop("UVR_DISABLE_EXTRA_MODELS", None)
         clear_extra_catalog_cache()
@@ -316,16 +383,47 @@ class MvseplessAndExtrasDisplayTests(unittest.TestCase):
         self.assertNotIn("SCnet:", display)
 
     def test_previously_raw_mvsepless_basenames_now_resolve(self) -> None:
+        import core.mvsepless_catalog as mvsepless_catalog
         from core.model_display import load_mdx_catalog_display_index
-        from core.mvsepless_catalog import load_converted_mvsepless
 
-        converted = load_converted_mvsepless(allow_network=False) or {}
-        blob = str(converted)
-        if not all(name in blob for name in self.MVSEPLESS_BEFORE):
-            raise unittest.SkipTest(
-                "mvsepless disk cache does not include the pre-unification names"
+        with TemporaryDirectory() as directory:
+            cache_path = Path(directory, "mvsepless_models.json")
+            cache_path.write_text(
+                json.dumps(
+                    {
+                        "fetched_at": time.time(),
+                        "data": self._mvsepless_fixture(),
+                    }
+                ),
+                encoding="utf-8",
             )
-        index = load_mdx_catalog_display_index(allow_network=False)
+            with (
+                mock.patch.dict(
+                    os.environ,
+                    {
+                        "UVR_DISABLE_EXTRA_MODELS": "0",
+                        "UVR_DISABLE_MVSEPLESS": "0",
+                        "UVR_DISABLE_POLITREES": "1",
+                    },
+                ),
+                mock.patch.object(
+                    mvsepless_catalog,
+                    "_cache_path",
+                    return_value=str(cache_path),
+                ),
+                mock.patch.object(
+                    mvsepless_catalog,
+                    "_urlopen",
+                    side_effect=AssertionError("hermetic display test attempted network"),
+                ) as opener,
+            ):
+                mvsepless_catalog.clear_mvsepless_cache()
+                try:
+                    index = load_mdx_catalog_display_index(allow_network=False)
+                finally:
+                    mvsepless_catalog.clear_mvsepless_cache()
+                opener.assert_not_called()
+
         missing = [name for name in self.MVSEPLESS_BEFORE if name not in index]
         self.assertEqual(missing, [], f"still unnamed: {missing}")
         display = index["mbr_inst2_unwa"]

@@ -33,7 +33,7 @@ from .catalogue_types import (
     SourceContent,
     SourceId,
 )
-from .debug_log import debug, log_event
+from .debug_log import log_event
 from .remote_catalog_cache import RemoteJsonSource
 
 DeltaCallback = Callable[[CatalogueDelta], None]
@@ -243,6 +243,11 @@ class CatalogueCoordinator:
                 allow_metadata_writes=captured.allow_metadata_writes,
                 allow_cache_writes=captured.allow_cache_writes,
             )
+        if not captured.allow_network:
+            with self._lock:
+                cached = self._latest
+            if cached is not None:
+                return cached
         mode = RefreshMode.STALE_WHILE_REVALIDATE if captured.allow_network else RefreshMode.OFFLINE
         return self.snapshot(mode=mode, policy=captured)
 
@@ -683,14 +688,28 @@ class CatalogueCoordinator:
         for callback in typed:
             try:
                 callback(delta)
-            except Exception:
-                debug("download", "catalogue delta subscriber raised")
+            except Exception as exc:
+                log_event(
+                    "download",
+                    "catalogue_subscriber_failed",
+                    level="warning",
+                    subscriber_kind="delta",
+                    error_type=type(exc).__name__,
+                    message=str(exc),
+                )
         if delta.removal_only:
             for callback in identity:
                 try:
                     callback()
-                except Exception:
-                    debug("download", "catalogue identity subscriber raised")
+                except Exception as exc:
+                    log_event(
+                        "download",
+                        "catalogue_subscriber_failed",
+                        level="warning",
+                        subscriber_kind="identity",
+                        error_type=type(exc).__name__,
+                        message=str(exc),
+                    )
 
 
 def _basename_index(meta: Mapping[str, Any], arch: str) -> dict[str, str]:

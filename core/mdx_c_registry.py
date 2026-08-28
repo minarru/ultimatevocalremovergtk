@@ -195,18 +195,35 @@ def register_mdx_c_checkpoint(
     write: bool = True,
 ) -> Optional[Dict[str, object]]:
     """Register MDX-C params for a checkpoint; write ``<hash>.json`` if missing."""
+    params, _changed = _register_mdx_c_checkpoint(
+        checkpoint_path,
+        yaml_name,
+        model_hash=model_hash,
+        write=write,
+    )
+    return params
+
+
+def _register_mdx_c_checkpoint(
+    checkpoint_path: str,
+    yaml_name: str,
+    *,
+    model_hash: Optional[str] = None,
+    write: bool = True,
+) -> tuple[Optional[Dict[str, object]], bool]:
+    """Return resolved params and whether this call repaired registry state."""
     if not _is_checkpoint_name(checkpoint_path):
-        return None
+        return None, False
     params = params_from_config_yaml(yaml_name)
     if not params:
-        return None
+        return None, False
 
     if not ensure_mdx_c_config(yaml_name):
-        return None
+        return None, False
 
     resolved_hash = model_hash or compute_checkpoint_hash(checkpoint_path)
     if not resolved_hash:
-        return None
+        return None, False
 
     json_path = _hash_json_path(resolved_hash)
     if os.path.isfile(json_path):
@@ -214,7 +231,7 @@ def register_mdx_c_checkpoint(
             with open(json_path, "r", encoding="utf-8") as handle:
                 existing = json.load(handle)
             if isinstance(existing, dict):
-                return existing
+                return existing, False
         except (OSError, ValueError, TypeError):
             pass
 
@@ -224,8 +241,9 @@ def register_mdx_c_checkpoint(
         os.makedirs(paths.MDX_HASH_DIR, exist_ok=True)
         with open(json_path, "w", encoding="utf-8") as handle:
             handle.write(json.dumps(params, indent=4))
+        return params, True
 
-    return params
+    return params, False
 
 
 def try_register_from_catalog(
@@ -277,6 +295,7 @@ def register_mdx_c_from_download_jobs(
         return False
     registered = False
     for checkpoint_path, yaml_name in pairs:
-        if register_mdx_c_checkpoint(checkpoint_path, yaml_name):
+        _params, changed = _register_mdx_c_checkpoint(checkpoint_path, yaml_name)
+        if changed:
             registered = True
     return registered

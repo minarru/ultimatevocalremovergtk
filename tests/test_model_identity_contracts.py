@@ -34,6 +34,10 @@ from core.model_identity import (
 )
 from core.remote_catalog_cache import RemoteJsonSource
 
+_CURRENT_DEMUCS_BAGS_FIXTURE = (
+    Path(__file__).parent / "fixtures" / "catalogue" / "current_demucs_bags.json"
+)
+
 
 def _empty_repo(**overrides: Any):
     values = {
@@ -61,9 +65,7 @@ def _coordinator_for_payload(payload: dict[str, Any]) -> CatalogueCoordinator:
         SourceId.EXTRAS,
         SourceId.MVSEPLESS,
     ):
-        sources[source_id] = RemoteJsonSource(
-            source_id=source_id, enabled=lambda: False
-        )
+        sources[source_id] = RemoteJsonSource(source_id=source_id, enabled=lambda: False)
     return CatalogueCoordinator(sources=sources)
 
 
@@ -86,9 +88,7 @@ def _snapshot(
     }
     return SimpleNamespace(
         **families,
-        meta_by_family={
-            family: dict((meta or {}).get(family, {})) for family in families
-        },
+        meta_by_family={family: dict((meta or {}).get(family, {})) for family in families},
         unsupported={},
         display_index_vr=dict(display_vr or {}),
         display_index_mdx=dict(display_mdx or {}),
@@ -112,9 +112,7 @@ def _fake_mdx_pair():
         files=files,
         checkpoint="model.ckpt",
     )
-    return _empty_repo(), _snapshot(
-        mdx={selectable: files}, meta={"mdx": {selectable: entry}}
-    )
+    return _empty_repo(), _snapshot(mdx={selectable: files}, meta={"mdx": {selectable: entry}})
 
 
 def _fake_demucs_bag():
@@ -132,7 +130,7 @@ def _fake_demucs_bag():
         display="v4 — htdemucs_ft",
         arch=DEMUCS_ARCH_TYPE,
         files=files,
-        checkpoint="htdemucs_ft.yaml",
+        checkpoint="f7e0c4bc-ba3fe64a.th",
     )
     return _empty_repo(), _snapshot(
         demucs={selectable: files}, meta={"demucs": {selectable: entry}}
@@ -145,9 +143,7 @@ def _fake_demucs_root_ckpt():
 
 def _fake_mdx_extension_collision():
     return _empty_repo(
-        _model_artifact_files=lambda family: (
-            ["foo.onnx", "foo.ckpt"] if family == "mdx" else []
-        ),
+        _model_artifact_files=lambda family: ["foo.onnx", "foo.ckpt"] if family == "mdx" else [],
     ), _snapshot()
 
 
@@ -251,17 +247,35 @@ class InventoryCardinalityTests(unittest.TestCase):
         self.assertEqual([record.id for record in demucs], ["demucs:htdemucs_ft"])
         self.assertTrue(demucs[0].artifacts.supporting_filenames)
 
+    def test_hash_named_catalogue_demucs_uses_the_shared_manifest_id(self) -> None:
+        """Inventory IDs must not be reconstructed from a bag member filename."""
+        from core.catalog_sources import EntryMeta
+        from core.model_inventory import build_identity_index
+
+        label = "Demucs v4: htdemucs_ft"
+        files = {"f7e0c4bc-ba3fe64a.th": "https://example.invalid/member"}
+        entry = EntryMeta(
+            label=label,
+            display="v4 — htdemucs_ft",
+            arch=DEMUCS_ARCH_TYPE,
+            files=files,
+            checkpoint="f7e0c4bc-ba3fe64a.th",
+            stems=["drums", "bass", "other", "vocals"],
+        )
+        snapshot = _snapshot(demucs={label: files}, meta={"demucs": {label: entry}})
+
+        index = build_identity_index(_empty_repo(), snapshot=snapshot)
+        record = index.lookup("demucs:htdemucs_ft")
+        self.assertEqual(record.artifacts.primary_filename, "f7e0c4bc-ba3fe64a.th")
+        self.assertNotIn("demucs:f7e0c4bc-ba3fe64a", [item.id for item in index.records()])
+
     def test_bundled_demucs_spec_enriches_installed_bag(self) -> None:
         from core.model_inventory import build_identity_index
 
         repo = _empty_repo(
-            _model_artifact_files=lambda family: (
-                ["htdemucs_6s.yaml"] if family == "demucs" else []
-            ),
+            _model_artifact_files=lambda family: ["htdemucs_6s.yaml"] if family == "demucs" else [],
         )
-        record = build_identity_index(repo, snapshot=_snapshot()).lookup(
-            "demucs:htdemucs_6s"
-        )
+        record = build_identity_index(repo, snapshot=_snapshot()).lookup("demucs:htdemucs_6s")
         self.assertEqual(record.demucs, DemucsSpec("v4", "6_stem"))
         self.assertTrue(record.identity_complete)
 
@@ -295,10 +309,17 @@ class InventoryCardinalityTests(unittest.TestCase):
         bad_files = {"../escape.pth": "http://example.invalid/escape.pth"}
         entries = {
             "VR: Good": EntryMeta(
-                label="VR: Good", display="Good", arch=VR_ARCH_TYPE, files=good_files,
+                label="VR: Good",
+                display="Good",
+                arch=VR_ARCH_TYPE,
+                files=good_files,
+                checkpoint="good.pth",
             ),
             "VR: Bad": EntryMeta(
-                label="VR: Bad", display="Bad", arch=VR_ARCH_TYPE, files=bad_files,
+                label="VR: Bad",
+                display="Bad",
+                arch=VR_ARCH_TYPE,
+                files=bad_files,
             ),
         }
         snapshot = _snapshot(
@@ -329,8 +350,11 @@ class InventoryCardinalityTests(unittest.TestCase):
         repo = _empty_repo(
             _model_artifact_files=lambda family: (
                 [
-                    ".pth", "bad:name.pth", "model .pth",
-                    "nested/stray.pth", "valid.pth",
+                    ".pth",
+                    "bad:name.pth",
+                    "model .pth",
+                    "nested/stray.pth",
+                    "valid.pth",
                 ]
                 if family == "vr"
                 else []
@@ -362,11 +386,7 @@ class InventoryCardinalityTests(unittest.TestCase):
                     json.dump({"models": signatures}, handle)
                 repo = _empty_repo(
                     _model_artifact_files=lambda family, rows=demucs_files: (
-                        ["good.pth"]
-                        if family == "vr"
-                        else rows
-                        if family == "demucs"
-                        else []
+                        ["good.pth"] if family == "vr" else rows if family == "demucs" else []
                     ),
                     _model_artifact_path=lambda _family, _name, _path=yaml_path: _path,
                 )
@@ -378,9 +398,7 @@ class InventoryCardinalityTests(unittest.TestCase):
                     registered_demucs={},
                 )
 
-                self.assertEqual(
-                    [record.id for record in index.records()], ["vr:good"]
-                )
+                self.assertEqual([record.id for record in index.records()], ["vr:good"])
 
     def test_builder_does_not_touch_the_network(self) -> None:
         from core.model_inventory import build_identity_index
@@ -425,7 +443,9 @@ class InventoryCardinalityTests(unittest.TestCase):
             checkpoint_path = os.path.join(directory, "recoverable.ckpt")
             hash_directory = os.path.join(directory, "model_data")
             os.makedirs(hash_directory)
-            with open(os.path.join(hash_directory, "trusted.json"), "w", encoding="utf-8") as handle:
+            with open(
+                os.path.join(hash_directory, "trusted.json"), "w", encoding="utf-8"
+            ) as handle:
                 json.dump({"config_yaml": "exact-recovery.yaml"}, handle)
             repo = _empty_repo(
                 _model_artifact_files=lambda family: (
@@ -436,15 +456,11 @@ class InventoryCardinalityTests(unittest.TestCase):
             )
 
             with patch.object(paths, "MDX_HASH_DIR", hash_directory):
-                record = build_identity_index(repo, snapshot=_snapshot()).lookup(
-                    "mdx:recoverable"
-                )
+                record = build_identity_index(repo, snapshot=_snapshot()).lookup("mdx:recoverable")
 
         self.assertFalse(record.identity_complete)
         self.assertIsNone(record.mdx)
-        self.assertEqual(
-            record.artifacts.supporting_filenames, ("exact-recovery.yaml",)
-        )
+        self.assertEqual(record.artifacts.supporting_filenames, ("exact-recovery.yaml",))
 
     def test_incomplete_catalogue_match_is_enriched_from_trusted_install(self) -> None:
         from bundled.constants import MDX_ARCH_TYPE
@@ -456,7 +472,9 @@ class InventoryCardinalityTests(unittest.TestCase):
             checkpoint_path = os.path.join(directory, "catalogued.ckpt")
             hash_directory = os.path.join(directory, "model_data")
             os.makedirs(hash_directory)
-            with open(os.path.join(hash_directory, "trusted.json"), "w", encoding="utf-8") as handle:
+            with open(
+                os.path.join(hash_directory, "trusted.json"), "w", encoding="utf-8"
+            ) as handle:
                 json.dump({"config_yaml": "trusted-local.yaml"}, handle)
             selection = "MDX-Net Model: Catalogued"
             files = {"catalogued.ckpt": "http://example.invalid/catalogued.ckpt"}
@@ -468,27 +486,19 @@ class InventoryCardinalityTests(unittest.TestCase):
                 checkpoint="catalogued.ckpt",
             )
             repo = _empty_repo(
-                _model_artifact_files=lambda family: (
-                    ["catalogued.ckpt"] if family == "mdx" else []
-                ),
+                _model_artifact_files=lambda family: ["catalogued.ckpt"] if family == "mdx" else [],
                 _model_artifact_path=lambda _family, _name: checkpoint_path,
                 model_hash_table={checkpoint_path: "trusted"},
             )
-            snapshot = _snapshot(
-                mdx={selection: files}, meta={"mdx": {selection: entry}}
-            )
+            snapshot = _snapshot(mdx={selection: files}, meta={"mdx": {selection: entry}})
 
             with patch.object(paths, "MDX_HASH_DIR", hash_directory):
-                record = build_identity_index(repo, snapshot=snapshot).lookup(
-                    "mdx:catalogued"
-                )
+                record = build_identity_index(repo, snapshot=snapshot).lookup("mdx:catalogued")
 
         self.assertTrue(record.installed)
         self.assertFalse(record.identity_complete)
         self.assertEqual(record.display, "MDX-Net — Catalogued")
-        self.assertEqual(
-            record.artifacts.supporting_filenames, ("trusted-local.yaml",)
-        )
+        self.assertEqual(record.artifacts.supporting_filenames, ("trusted-local.yaml",))
 
 
 class CollisionAndSafetyTests(unittest.TestCase):
@@ -614,7 +624,22 @@ class CatalogueDisplayProjectionTests(unittest.TestCase):
         selection = "VR Arch Single Model v5: 1_HP-UVR"
         raw = {"1_HP-UVR.pth": "https://example.invalid/1_HP-UVR.pth"}
         manager = SimpleNamespace(
-            _coordinator=None,
+            _coordinator=SimpleNamespace(
+                _latest=SimpleNamespace(
+                    revision=None,
+                    meta_by_family={
+                        "vr": {
+                            selection: EntryMeta(
+                                label=selection,
+                                display="1_HP-UVR",
+                                arch=VR_ARCH_TYPE,
+                                files=raw,
+                                checkpoint="1_HP-UVR.pth",
+                            )
+                        }
+                    },
+                )
+            ),
             vr_download_list={selection: raw},
             mdx_download_list={},
             demucs_download_list={},
@@ -635,6 +660,39 @@ class CatalogueDisplayProjectionTests(unittest.TestCase):
         row = ModelCatalogueService(cast(Any, manager)).records()[0]
 
         self.assertEqual(row.display, "VR v5 — HP 1")
+
+    def test_catalogue_record_projects_exact_evidence_state_and_warning(self) -> None:
+        from core.catalog_sources import EntryMeta
+        from core.catalogue_types import CatalogueEvidenceState
+
+        selection = "VR Arch Single Model v5: 1_HP-UVR"
+        raw = {"1_HP-UVR.pth": "https://example.invalid/1_HP-UVR.pth"}
+        meta = EntryMeta(
+            label=selection,
+            display="1_HP-UVR",
+            arch=VR_ARCH_TYPE,
+            files=raw,
+            checkpoint="1_HP-UVR.pth",
+            catalogue_evidence_status=CatalogueEvidenceState.STALE,
+            catalogue_evidence_warning="cached config evidence is stale",
+        )
+        manager = SimpleNamespace(
+            _coordinator=SimpleNamespace(
+                _latest=SimpleNamespace(revision=None, meta_by_family={"vr": {selection: meta}})
+            ),
+            vr_download_list={selection: raw},
+            mdx_download_list={},
+            demucs_download_list={},
+            apollo_download_list={},
+            unsupported_download_list={},
+            catalogue_meta={selection: meta},
+            resolve=lambda *_args, **_kwargs: (),
+        )
+
+        row = ModelCatalogueService(cast(Any, manager)).records()[0]
+
+        self.assertEqual(row.catalogue_evidence_status, "stale")
+        self.assertEqual(row.catalogue_evidence_warning, "cached config evidence is stale")
 
     def test_catalogue_projection_uses_family_split_metadata(self) -> None:
         from core.catalog_sources import EntryMeta
@@ -702,7 +760,12 @@ class CatalogueDisplayProjectionTests(unittest.TestCase):
             checkpoint=checkpoint,
         )
         manager = SimpleNamespace(
-            _coordinator=None,
+            _coordinator=SimpleNamespace(
+                _latest=SimpleNamespace(
+                    revision=None,
+                    meta_by_family={"mdx": {selection: meta}},
+                )
+            ),
             vr_download_list={},
             mdx_download_list={selection: files},
             demucs_download_list={},
@@ -886,6 +949,321 @@ class MetaByFamilyTests(unittest.TestCase):
 
 
 class DisplayIndexPrimaryOnlyTests(unittest.TestCase):
+    def test_runtime_download_generator_and_audit_agree_on_all_exact_ids(self) -> None:
+        """A divergent surface must not give a catalogue row a second identity."""
+        import sys
+
+        scripts = os.path.join(os.path.dirname(os.path.dirname(__file__)), "scripts")
+        if scripts not in sys.path:
+            sys.path.insert(0, scripts)
+        from catalogue import collect, stem_audit
+
+        from bundled.constants import APOLLO_ARCH_TYPE
+        from core.catalog_sources import EntryMeta
+        from core.model_inventory import build_identity_index
+        from core.model_manifest.loader import load_model_manifest
+        from core.model_naming import project_model_display
+
+        manifest = load_model_manifest()
+        expected_ids = {
+            "vr:UVR-BVE-4B_SN-44100-1",
+            "mdx:UVR-MDX-NET-Inst_HQ_4",
+            "mdx:BS_Inst_EXP_VRL",
+            "apollo:apollo_edm_big_by_essid",
+            *(
+                model_id
+                for model_id, record in manifest.models.items()
+                if model_id.startswith("demucs:") and record.lifecycle == "current"
+            ),
+        }
+        self.assertEqual(
+            len([model_id for model_id in expected_ids if model_id.startswith("demucs:")]), 24
+        )
+        arch_by_family = {
+            "vr": VR_ARCH_TYPE,
+            "mdx": MDX_ARCH_TYPE,
+            "demucs": DEMUCS_ARCH_TYPE,
+            "apollo": APOLLO_ARCH_TYPE,
+        }
+        generator_family = {
+            "vr": "VR Architecture",
+            "mdx": "Roformer",
+            "demucs": "Demucs",
+            "apollo": "Apollo",
+        }
+        catalogues = {family: {} for family in arch_by_family}
+        metadata = {family: {} for family in arch_by_family}
+        collected = []
+        expected_by_selection = {}
+        for model_id in sorted(expected_ids):
+            record = manifest.models[model_id]
+            family, _separator, _basename = model_id.partition(":")
+            evidence = record.catalogue_evidence
+            files = {evidence.primary_artifact: "https://example.invalid/model"}
+            if evidence.config_yaml:
+                files[evidence.config_yaml] = "https://example.invalid/config"
+            declaration = manifest.stems.models.get(model_id)
+            metadata[family][evidence.catalogue_label] = EntryMeta(
+                label=evidence.catalogue_label,
+                display=evidence.catalogue_label,
+                arch=arch_by_family[family],
+                files=files,
+                checkpoint=evidence.primary_artifact,
+                stems=list(declaration.native_signature) if declaration else [],
+            )
+            catalogues[family][evidence.catalogue_label] = files
+            expected_by_selection[(family, evidence.catalogue_label)] = model_id
+            collected.append(
+                collect.ModelEntry(
+                    source="test",
+                    family=generator_family[family],
+                    catalogue_label=evidence.catalogue_label,
+                    weight_file=evidence.primary_artifact,
+                    config_yaml=evidence.config_yaml,
+                    instruments=list(declaration.native_signature) if declaration else [],
+                )
+            )
+
+        snapshot = _snapshot(
+            vr=catalogues["vr"],
+            mdx=catalogues["mdx"],
+            demucs=catalogues["demucs"],
+            apollo=catalogues["apollo"],
+            meta=metadata,
+        )
+        runtime = build_identity_index(_empty_repo(), snapshot=snapshot)
+        self.assertEqual(
+            {record.id for record in runtime.records() if record.catalogue_entry},
+            expected_ids,
+        )
+
+        manager = SimpleNamespace(
+            vr_download_list=catalogues["vr"],
+            mdx_download_list=catalogues["mdx"],
+            demucs_download_list=catalogues["demucs"],
+            apollo_download_list=catalogues["apollo"],
+            unsupported_download_list={},
+            catalogue_meta={},
+            _coordinator=SimpleNamespace(_latest=snapshot),
+            resolve=lambda *_args, **_kwargs: (),
+        )
+        with patch("core.model_catalogue.sdr_for_files", return_value={}):
+            download_records = ModelCatalogueService(cast(Any, manager)).records()
+        self.assertEqual(len(download_records), len(expected_ids))
+        for record in download_records:
+            expected = expected_by_selection[(record.family, record.selection)]
+            self.assertEqual(
+                record.display,
+                project_model_display(expected, source_label=record.selection),
+            )
+
+        self.assertEqual(
+            {collect.catalogue_projection(entry)[0] for entry in collected},
+            expected_ids,
+        )
+        audit = stem_audit.audit_catalogue_stems(
+            collected,
+            collect.CatalogueContext(),
+            registry=manifest.stems,
+        )
+        self.assertEqual(set(audit.catalogue_model_ids), expected_ids)
+
+    def test_shared_catalogue_identity_rejects_ambiguous_or_invalid_rows(self) -> None:
+        from core.catalogue_identity import catalogue_model_id
+
+        rows = (
+            (
+                "multiple YAMLs",
+                "mdx",
+                {"model.ckpt": "u", "one.yaml": "u", "two.yml": "u"},
+                "model.ckpt",
+            ),
+            (
+                "multiple primary artifacts",
+                "mdx",
+                {"one.ckpt": "u", "two.ckpt": "u"},
+                "one.ckpt",
+            ),
+            (
+                "declared primary is absent",
+                "mdx",
+                {"model.ckpt": "u"},
+                "missing.ckpt",
+            ),
+            (
+                "invalid canonical ID component",
+                "mdx",
+                {"bad:name.ckpt": "u"},
+                "bad:name.ckpt",
+            ),
+        )
+        for reason, family, files, checkpoint in rows:
+            with self.subTest(reason=reason):
+                meta = SimpleNamespace(
+                    label="unreviewed fixture",
+                    display="unreviewed fixture",
+                    files=files,
+                    checkpoint=checkpoint,
+                    stems=(),
+                )
+                self.assertIsNone(
+                    catalogue_model_id(family, meta.label, files, meta),
+                )
+
+    def test_manifest_identity_requires_its_declared_primary_artifact(self) -> None:
+        """A Demucs bag cannot borrow an ID from another member of the bag."""
+        from core.catalogue_identity import catalogue_model_id
+        from core.model_manifest.loader import load_model_manifest
+
+        reviewed = load_model_manifest().models["demucs:htdemucs_ft"]
+        evidence = reviewed.catalogue_evidence
+        files = {
+            evidence.primary_artifact: "https://example.invalid/reviewed",
+            "other-member.th": "https://example.invalid/other",
+        }
+        meta = SimpleNamespace(
+            label=evidence.catalogue_label,
+            display=evidence.catalogue_label,
+            files=files,
+            checkpoint="other-member.th",
+            stems=(),
+        )
+
+        self.assertIsNone(catalogue_model_id("demucs", meta.label, files, meta))
+
+    def test_family_scoped_meta_prevents_cross_family_label_collision(self) -> None:
+        from core.model_catalogue import catalogue_entry_meta
+
+        label = "Shared Label"
+        vr_meta = SimpleNamespace(arch=VR_ARCH_TYPE, checkpoint="vr.pth")
+        mdx_meta = SimpleNamespace(arch=MDX_ARCH_TYPE, checkpoint="mdx.onnx")
+        manager = SimpleNamespace(
+            catalogue_meta={label: mdx_meta},
+            _coordinator=SimpleNamespace(
+                _latest=SimpleNamespace(
+                    meta_by_family={"vr": {label: vr_meta}, "mdx": {label: mdx_meta}}
+                )
+            ),
+        )
+
+        self.assertIs(catalogue_entry_meta(manager, "vr", label), vr_meta)
+        self.assertIs(catalogue_entry_meta(manager, "mdx", label), mdx_meta)
+
+    def test_exact_catalogue_lookup_never_uses_flat_metadata(self) -> None:
+        from core.model_catalogue import catalogue_entry_meta
+        from core.model_naming import canonical_display_name
+
+        label = "VR Arch Single Model v5: UVR-BVE-4B_SN-44100-1"
+        raw = {"UVR-BVE-4B_SN-44100-1.pth": "https://example.invalid/model"}
+        flat_meta = SimpleNamespace(
+            label=label,
+            files={"wrong.onnx": "https://example.invalid/wrong"},
+            checkpoint="wrong.onnx",
+        )
+        manager = SimpleNamespace(catalogue_meta={label: flat_meta}, _coordinator=None)
+
+        self.assertIs(catalogue_entry_meta(manager, "vr", label), flat_meta)
+        self.assertIsNone(catalogue_entry_meta(manager, "vr", label, exact=True))
+        manager.vr_download_list = {label: raw}
+        manager.mdx_download_list = {}
+        manager.demucs_download_list = {}
+        manager.apollo_download_list = {}
+        manager.unsupported_download_list = {}
+        manager.resolve = lambda *_args, **_kwargs: ()
+        with patch("core.model_catalogue.sdr_for_files", return_value={}):
+            records = ModelCatalogueService(cast(Any, manager)).records()
+        self.assertEqual(records[0].display, canonical_display_name(label))
+
+    def test_all_reviewed_demucs_catalogue_rows_keep_manifest_identity(self) -> None:
+        """Every complete current source bag resolves at both runtime boundaries."""
+        from core.catalogue_coordinator import build_meta_by_family
+        from core.catalogue_identity import catalogue_model_id
+        from core.model_inventory import build_identity_index
+
+        fixture = json.loads(_CURRENT_DEMUCS_BAGS_FIXTURE.read_text(encoding="utf-8"))
+        rows = fixture["rows"]
+        demucs = {row["catalogue_label"]: row["files"] for row in rows}
+        metadata = build_meta_by_family({}, {}, demucs, {}, {})["demucs"]
+        snapshot = _snapshot(demucs=demucs, meta={"demucs": metadata})
+
+        self.assertEqual(len(rows), 24)
+        self.assertEqual(sum(len(row["files"]) for row in rows), 56)
+        self.assertEqual(
+            {
+                row["model_id"]
+                for row in rows
+                if sum(not name.casefold().endswith((".yaml", ".yml")) for name in row["files"]) > 1
+            },
+            {
+                "demucs:htdemucs_ft",
+                "demucs:mdx",
+                "demucs:mdx_extra",
+                "demucs:mdx_extra_q",
+                "demucs:mdx_q",
+                "demucs:repro_mdx_a",
+                "demucs:repro_mdx_a_hybrid_only",
+                "demucs:repro_mdx_a_time_only",
+            },
+        )
+        for row in rows:
+            label = row["catalogue_label"]
+            files = row["files"]
+            meta = metadata[label]
+            with self.subTest(model_id=row["model_id"]):
+                self.assertEqual(meta.checkpoint, row["reviewed_primary_artifact"])
+                self.assertEqual(
+                    catalogue_model_id("demucs", label, files, meta),
+                    row["model_id"],
+                )
+
+        index = build_identity_index(
+            _empty_repo(),
+            snapshot=snapshot,
+            bundled_demucs_specs={},
+            registered_demucs={},
+        )
+        self.assertEqual(
+            {record.id for record in index.records() if record.family == "demucs"},
+            {row["model_id"] for row in rows},
+        )
+        for row in rows:
+            with self.subTest(runtime_model_id=row["model_id"]):
+                record = index.lookup(row["model_id"])
+                yaml_members = [
+                    name for name in row["files"] if name.casefold().endswith((".yaml", ".yml"))
+                ]
+                expected_entrypoint = (
+                    yaml_members[0] if yaml_members else row["reviewed_primary_artifact"]
+                )
+                self.assertEqual(record.artifacts.primary_filename, expected_entrypoint)
+                self.assertIn(
+                    row["reviewed_primary_artifact"],
+                    (record.artifacts.primary_filename, *record.artifacts.supporting_filenames),
+                )
+
+    def test_shared_catalogue_identity_uses_demucs_yaml_not_hash_member(self) -> None:
+        from types import SimpleNamespace
+
+        from core.catalogue_identity import catalogue_model_id
+        from core.model_catalogue import catalogue_presentation_id
+
+        files = {
+            "f7e0c4bc-ba3fe64a.th": "http://x/f7e0c4bc-ba3fe64a.th",
+            "d12395a8-e57c48e6.th": "http://x/d12395a8-e57c48e6.th",
+            "htdemucs_ft.yaml": "http://x/htdemucs_ft.yaml",
+        }
+        meta = SimpleNamespace(
+            label="Demucs v4: htdemucs_ft",
+            display="Demucs v4: htdemucs_ft",
+            files=files,
+            checkpoint="f7e0c4bc-ba3fe64a.th",
+            stems=("drums", "bass", "other", "vocals"),
+        )
+
+        expected = "demucs:htdemucs_ft"
+        self.assertEqual(catalogue_model_id("demucs", meta.label, files, meta), expected)
+        self.assertEqual(catalogue_presentation_id("demucs", meta.label, files, meta), expected)
+
     def test_yaml_stem_is_not_an_index_key(self) -> None:
         from bundled.constants import MDX_ARCH_TYPE
         from core.catalog_sources import EntryMeta
@@ -967,7 +1345,12 @@ class IdentityIndexCostTests(unittest.TestCase):
             if family != "mdx":
                 return []
             return [
-                "a.ckpt", "a.yaml", "b.ckpt", "b.yaml", "c.ckpt", "c.yaml",
+                "a.ckpt",
+                "a.yaml",
+                "b.ckpt",
+                "b.yaml",
+                "c.ckpt",
+                "c.yaml",
             ]
 
         repo = _empty_repo(
@@ -981,7 +1364,8 @@ class IdentityIndexCostTests(unittest.TestCase):
             ["mdx:a", "mdx:b", "mdx:c"],
         )
         self.assertEqual(
-            calls.count("mdx"), 1,
+            calls.count("mdx"),
+            1,
             "the MDX artifact directory must be listed once, not once per checkpoint",
         )
 
@@ -1115,13 +1499,9 @@ class DisplayEnrichmentTests(unittest.TestCase):
             persisted = self._records(installed_only, _snapshot())["mdx:custom"]
         self.assertEqual(persisted.display, "MDX23C — Persisted")
 
-        with patch(
-            "core.model_registry.ModelRegistryService.presentation", return_value={}
-        ):
+        with patch("core.model_registry.ModelRegistryService.presentation", return_value={}):
             mirrored = self._records(installed_only, _snapshot())["mdx:custom"]
-        self.assertEqual(
-            mirrored.display, "BandSplit Roformer — Vocals · ViperX"
-        )
+        self.assertEqual(mirrored.display, "BandSplit Roformer — Vocals · ViperX")
 
     def test_prededupe_aliases_follow_the_published_live_entry(self) -> None:
         first = "MDX-Net Model: Live Alpha"
@@ -1187,9 +1567,7 @@ class DisplayEnrichmentTests(unittest.TestCase):
         payload = {
             "mdx_download_list": {},
             "mdx_download_vip_list": {
-                "MDX-Net Model VIP: UVR-MDX-NET_Main_427": (
-                    "UVR-MDX-NET_Main_427.onnx"
-                )
+                "MDX-Net Model VIP: UVR-MDX-NET_Main_427": ("UVR-MDX-NET_Main_427.onnx")
             },
             "vr_download_list": {},
             "demucs_download_list": {},
@@ -1276,9 +1654,7 @@ class DisplayEnrichmentTests(unittest.TestCase):
             demucs=["registered.th"],
             demucs_name_select_MAPPER={"registered.th": "Mapper Label"},
         )
-        records = self._records(
-            repo, _snapshot(display_demucs={"registered": "Catalogue Label"})
-        )
+        records = self._records(repo, _snapshot(display_demucs={"registered": "Catalogue Label"}))
         self.assertEqual(records["demucs:registered"].display, "Catalogue Label")
 
     def test_table_driven_exact_mappings_agree_and_unknowns_stay_raw(self) -> None:
@@ -1357,12 +1733,16 @@ class PresentationBackfillTests(unittest.TestCase):
             ["model.ckpt", "config.yaml"] if family == "mdx" else []
         )
         snapshot.entry_sources = {"mdx": {"MDX-Net Model: Pair": "upstream"}}
-        with tempfile.TemporaryDirectory() as directory, patch(
-            "core.model_registry.paths.REGISTERED_MODEL_INDEX",
-            os.path.join(directory, "registered.json"),
-        ), patch(
-            "core.model_registry.paths.LEGACY_REGISTERED_MODEL_INDEX",
-            os.path.join(directory, "legacy-registered.json"),
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch(
+                "core.model_registry.paths.REGISTERED_MODEL_INDEX",
+                os.path.join(directory, "registered.json"),
+            ),
+            patch(
+                "core.model_registry.paths.LEGACY_REGISTERED_MODEL_INDEX",
+                os.path.join(directory, "legacy-registered.json"),
+            ),
         ):
             ModelRegistryService.remember_presentation(
                 "mdx:model", display_override="Trusted title"
@@ -1380,17 +1760,19 @@ class PresentationBackfillTests(unittest.TestCase):
         from core.model_registry import ModelRegistryService
 
         repo = _empty_repo(
-            _model_artifact_files=lambda family: (
-                ["mirror.onnx"] if family == "mdx" else []
-            ),
+            _model_artifact_files=lambda family: ["mirror.onnx"] if family == "mdx" else [],
             mdx_name_select_MAPPER={"mirror.onnx": "MDX-Net Model: Mirror"},
         )
-        with tempfile.TemporaryDirectory() as directory, patch(
-            "core.model_registry.paths.REGISTERED_MODEL_INDEX",
-            os.path.join(directory, "registered.json"),
-        ), patch(
-            "core.model_registry.paths.LEGACY_REGISTERED_MODEL_INDEX",
-            os.path.join(directory, "legacy-registered.json"),
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch(
+                "core.model_registry.paths.REGISTERED_MODEL_INDEX",
+                os.path.join(directory, "registered.json"),
+            ),
+            patch(
+                "core.model_registry.paths.LEGACY_REGISTERED_MODEL_INDEX",
+                os.path.join(directory, "legacy-registered.json"),
+            ),
         ):
             changed = backfill_installed_presentations(repo, None)
             evidence = ModelRegistryService.presentation("mdx:mirror")
@@ -1502,9 +1884,7 @@ class PresentationBackfillTests(unittest.TestCase):
         )
         snapshot.entry_sources = {"mdx": {selection: "upstream"}}
         repo = _empty_repo(
-            _model_artifact_files=lambda family: (
-                ["installed.ckpt"] if family == "mdx" else []
-            ),
+            _model_artifact_files=lambda family: ["installed.ckpt"] if family == "mdx" else [],
         )
         with (
             tempfile.TemporaryDirectory() as directory,

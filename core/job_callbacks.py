@@ -8,11 +8,12 @@ from __future__ import annotations
 
 import threading
 import typing
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
 from .debug_log import log_event, next_seq, preview_text, set_correlation_seq
 from .oom_choice import OOM_CHOICE_AUTO, OOM_CHOICE_STOP, OomChoiceRequest
+from .progress_trace import ProgressTraceSampler
 from .run_control import check_stopped
 
 
@@ -39,6 +40,11 @@ class JobCallbacks:
     on_input_finished: Optional[
         Callable[[tuple[str, ...], tuple[str, ...], BaseException | None], None]
     ] = None
+    _progress_trace: ProgressTraceSampler = field(
+        default_factory=ProgressTraceSampler,
+        init=False,
+        repr=False,
+    )
 
     def progress(
         self,
@@ -54,18 +60,20 @@ class JobCallbacks:
         if not self.on_progress:
             return
         clamped = max(0.0, min(1.0, fraction))
-        log_event(
-            "worker",
-            "progress_update",
-            level="trace",
-            fraction=round(clamped, 6),
-            local_step=local_step,
-            pass_index=pass_index,
-            pass_total=pass_total,
-            detail=detail,
-            combine_index=combine_index,
-            combine_total=combine_total,
-        )
+        trace_context = (pass_index, pass_total, detail, combine_index, combine_total)
+        if self._progress_trace.should_emit(clamped, context=trace_context):
+            log_event(
+                "worker",
+                "progress_update",
+                level="trace",
+                fraction=round(clamped, 6),
+                local_step=local_step,
+                pass_index=pass_index,
+                pass_total=pass_total,
+                detail=detail,
+                combine_index=combine_index,
+                combine_total=combine_total,
+            )
         self.on_progress(
             clamped,
             local_step=local_step,

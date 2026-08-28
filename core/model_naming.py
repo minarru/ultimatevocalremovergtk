@@ -13,7 +13,6 @@ model is ever renamed into something misleading.
 
 from __future__ import annotations
 
-import json
 import re
 from pathlib import Path
 from types import MappingProxyType
@@ -74,7 +73,14 @@ _HYPERACE_FINETUNE_PAREN_RE = re.compile(
     re.IGNORECASE,
 )
 
-_MANIFEST_PATH = Path(__file__).resolve().parent.parent / "bundled" / "model_display_manifest.json"
+_MANIFEST_PATH = Path(__file__).resolve().parent.parent / "bundled" / "model_manifest.json"
+_EMPTY_DISPLAY_MANIFEST: Mapping[str, Any] = MappingProxyType(
+    {
+        "author_aliases": MappingProxyType({}),
+        "model_aliases": MappingProxyType({}),
+        "waivers": MappingProxyType({}),
+    }
+)
 _STEM_COUNT_RE = re.compile(r"(?<!\()\b(?P<count>\d+)[\s-]+stems?\b", re.IGNORECASE)
 _TOKEN_REPLACEMENTS = (
     (re.compile(r"\binst(?:rumental)?[-\s]?voc(?:als)?\b", re.IGNORECASE), "Instrumental/Vocals"),
@@ -150,65 +156,24 @@ _PREFIX_FAMILIES = {
 
 
 def load_model_display_manifest(path: str | Path = _MANIFEST_PATH) -> Mapping[str, Any]:
-    """Load and validate the exact-ID presentation manifest.
+    """Return the presentation view from one unified manifest.
 
     The manifest is deliberately data-only: it may improve a title, but it
     never supplies an identity lookup or accepts a display string as an ID.
     """
+    from .model_manifest import ModelManifestError, load_model_manifest
+
     manifest_path = Path(path)
     try:
-        raw = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as error:
-        raise ValueError(f"invalid model display manifest: {manifest_path}") from error
-    if not isinstance(raw, dict):
-        raise ValueError("model display manifest must be a JSON object")
-    if raw.get("schema_version") != 1:
-        raise ValueError("unsupported model display manifest schema_version")
-
-    validated: dict[str, dict[str, Any]] = {}
-    for section in ("model_aliases", "author_aliases", "waivers"):
-        value = raw.get(section)
-        if not isinstance(value, dict):
-            raise ValueError(f"model display manifest {section} must be an object")
-        validated[section] = value
-
-    aliases: dict[str, str] = {}
-    for model_id, display in validated["model_aliases"].items():
-        if not isinstance(display, str) or not display.strip():
-            raise ValueError("model display aliases must map non-empty strings")
-        aliases[parse_stored_model_id(model_id).value] = display.strip()
-
-    authors: dict[str, str] = {}
-    for author, display in validated["author_aliases"].items():
-        if not isinstance(display, str) or not author.strip() or not display.strip():
-            raise ValueError("author aliases must map non-empty strings")
-        authors[author.casefold()] = display.strip()
-
-    waivers: dict[str, Mapping[str, str]] = {}
-    for model_id, flags in validated["waivers"].items():
-        exact_id = parse_stored_model_id(str(model_id)).value
-        if not isinstance(flags, dict) or not flags:
-            raise ValueError("model display waivers must contain flag reasons")
-        reasons: dict[str, str] = {}
-        for flag, reason in flags.items():
-            if (
-                not isinstance(flag, str)
-                or not flag.strip()
-                or not isinstance(reason, str)
-                or not reason.strip()
-            ):
-                raise ValueError("model display waiver flags and reasons must be non-empty strings")
-            reasons[flag] = reason.strip()
-        waivers[exact_id] = MappingProxyType(reasons)
-
-    return MappingProxyType(
-        {
-            "schema_version": 1,
-            "model_aliases": MappingProxyType(aliases),
-            "author_aliases": MappingProxyType(authors),
-            "waivers": MappingProxyType(waivers),
-        }
-    )
+        return load_model_manifest(manifest_path).presentation
+    except ModelManifestError:
+        # ``load_model_manifest`` owns the bounded critical diagnostic for the
+        # bundled path. Presentation is an application boundary: a damaged
+        # atomic authority must publish no partial view, but it must not make
+        # imports fail before callers can fall back to raw canonical names.
+        if manifest_path.resolve() == _MANIFEST_PATH.resolve():
+            return _EMPTY_DISPLAY_MANIFEST
+        raise
 
 
 _DISPLAY_MANIFEST = load_model_display_manifest()
@@ -316,8 +281,13 @@ def _join(family: str, remainder: str, author: str) -> str:
     return f"{title}{AUTHOR_SEPARATOR}{author}" if author else title
 
 
-def _project_source_label(source_label: str) -> str:
+def _project_source_label(
+    source_label: str,
+    *,
+    presentation: Mapping[str, Any] | None = None,
+) -> str:
     """Apply only deterministic presentation cleanup to one exact source label."""
+    selected_presentation = _DISPLAY_MANIFEST if presentation is None else presentation
     display = canonical_display_name(source_label)
     if not display:
         return ""
@@ -375,7 +345,7 @@ def _project_source_label(source_label: str) -> str:
     for component in re.split(r"\s*&\s*", author.strip()):
         token = component.strip()
         canonical_components.append(
-            _DISPLAY_MANIFEST["author_aliases"].get(token.casefold(), token)
+            selected_presentation["author_aliases"].get(token.casefold(), token)
         )
     canonical_author = " & ".join(component for component in canonical_components if component)
     return f"{title}{AUTHOR_SEPARATOR}{canonical_author}" if canonical_author else title
@@ -386,6 +356,7 @@ def project_model_display(
     *,
     source_label: str = "",
     explicit_display: str = "",
+    presentation: Mapping[str, Any] | None = None,
 ) -> str:
     """Return the human display label for one exact canonical model ID.
 
@@ -398,10 +369,14 @@ def project_model_display(
     override = str(explicit_display or "").strip()
     if override:
         return override
-    alias = _DISPLAY_MANIFEST["model_aliases"].get(exact_id.value)
+    selected_presentation = _DISPLAY_MANIFEST if presentation is None else presentation
+    alias = selected_presentation["model_aliases"].get(exact_id.value)
     if alias:
         return alias
-    source = _project_source_label(str(source_label or ""))
+    source = _project_source_label(
+        str(source_label or ""),
+        presentation=selected_presentation,
+    )
     if source:
         return source
     if exact_id.family == "vr":

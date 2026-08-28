@@ -1,0 +1,42 @@
+{
+  "reviewed_snapshot": "2026-08-27 Politrees before mvsepless merge priority",
+  "politrees": {
+    "roformer_download_list": {
+      "Roformer Model: MelBand Roformer | Guitar by becruily": {
+        "config_melband_roformer_guitar_becruily.yaml": "https://raw.githubusercontent.com/Politrees/UVR_resources/refs/heads/main/UVR_resources/configs/Roformer/MelBand/config_melband_roformer_guitar_becruily.yaml",
+        "melband_roformer_guitar_becruily.ckpt": "https://huggingface.co/Politrees/UVR_resources/resolve/main/models/Roformer/MelBand/melband_roformer_guitar_becruily.ckpt"
+      },
+      "Roformer Model: MelBand Roformer | Instrumental by becruily": {
+        "config_melband_roformer_instrumental_becruily.yaml": "https://raw.githubusercontent.com/Politrees/UVR_resources/refs/heads/main/UVR_resources/configs/Roformer/MelBand/config_melband_roformer_instrumental_becruily.yaml",
+        "mel_band_roformer_instrumental_becruily.ckpt": "https://huggingface.co/Politrees/UVR_resources/resolve/main/models/Roformer/MelBand/mel_band_roformer_instrumental_becruily.ckpt"
+      }
+    }
+  },
+  "mvsepless": {
+    "mdx_download_list": {
+      "Mel-Band Roformer Guitar by Becruily": {
+        "mbr_guitar_becruily.ckpt": "https://huggingface.co/noblebarkrr/mvsepless_resources/resolve/main/mel_band_roformer/mbr_guitar_becruily.ckpt?download=true",
+        "mbr_guitar_becruily_config.yaml": "https://huggingface.co/noblebarkrr/mvsepless_resources/resolve/main/mel_band_roformer/mbr_guitar_becruily_config.yaml?download=true"
+      },
+      "Mel-Band Roformer Instrumental by Becruily": {
+        "mbr_inst_becruily.ckpt": "https://huggingface.co/noblebarkrr/mvsepless_resources/resolve/main/mel_band_roformer/mbr_inst_becruily.ckpt?download=true",
+        "mbr_inst_becruily_config.yaml": "https://huggingface.co/noblebarkrr/mvsepless_resources/resolve/main/mel_band_roformer/mbr_inst_becruily_config.yaml?download=true"
+      },
+      "Mel-Band Roformer Invert Clean by Becruily": {
+        "mbr_invert_clean_becruily.ckpt": "https://huggingface.co/noblebarkrr/mvsepless_resources/resolve/main/mel_band_roformer/mbr_invert_clean_becruily.ckpt?download=true",
+        "mbr_invert_clean_becruily_config.yaml": "https://huggingface.co/noblebarkrr/mvsepless_resources/resolve/main/mel_band_roformer/mbr_invert_clean_becruily_config.yaml?download=true"
+      }
+    },
+    "vr_download_list": {},
+    "demucs_download_list": {},
+    "metadata": {}
+  },
+  "retired_labels": [
+    "Mel-Band Roformer Guitar by Becruily",
+    "Mel-Band Roformer Instrumental by Becruily"
+  ],
+  "retired_artifacts": {
+    "mdx:mbr_guitar_becruily": "mbr_guitar_becruily.ckpt",
+    "mdx:mbr_inst_becruily": "mbr_inst_becruily.ckpt"
+  }
+}

@@ -16,8 +16,10 @@ import json
 import os
 import re
 import sys
+import tempfile
 from dataclasses import dataclass
-from typing import Any, List, Optional, Tuple
+from pathlib import Path
+from typing import Any, List, Mapping, Optional, Tuple
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -40,11 +42,16 @@ from catalogue.collect import (  # noqa: E402
     build_ir,
 )
 
-from core.model_stem_manifest import (  # noqa: E402
-    BUNDLED_MANIFEST_PATH,
-    StemManifestError,
-    load_stem_manifest,
+from core.model_manifest import (  # noqa: E402
+    BUNDLED_MODEL_MANIFEST_PATH,
+    ModelManifestError,
+    load_model_manifest_document,
 )
+from core.model_manifest.loader import _duplicate_aware_mapping  # noqa: E402
+
+# Kept as the generator's patchable publication target while callers migrate
+# from the former stem-only manifest name.
+BUNDLED_MANIFEST_PATH = BUNDLED_MODEL_MANIFEST_PATH
 
 
 def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
@@ -255,6 +262,7 @@ class PublicationBundle:
     display_reference: render.PresentationReferenceAudit
     stem_reference: str
     ir: dict[str, Any]
+    manifest: dict[str, object]
 
 
 def _previous_entry_count(path: str) -> Optional[int]:
@@ -285,6 +293,45 @@ def _previous_entry_count(path: str) -> Optional[int]:
     except OSError:
         return None
     return None
+
+
+def _retained_refresh_report(path: str) -> Any:
+    """Recover trusted publication provenance for a report-less warm run.
+
+    The sidecar is accepted only when its document digest names the current
+    Markdown file. This lets an offline/warm regeneration update semantic rows
+    without erasing the last reviewed source-health evidence, while a stale or
+    hand-copied sidecar remains untrusted.
+    """
+    from core.catalogue_types import RefreshMode, RefreshReport, SourceId
+
+    try:
+        with open(_ir_path_for(path), encoding="utf-8") as handle:
+            payload = json.load(handle)
+        if payload.get("document_sha256") != _document_digest(path):
+            return None
+        provenance = payload.get("provenance")
+        if not isinstance(provenance, dict) or not provenance:
+            return None
+        mode = RefreshMode(str(provenance["mode"]))
+        succeeded = tuple(SourceId(str(item)) for item in provenance.get("succeeded", ()))
+        stale = tuple(SourceId(str(item)) for item in provenance.get("stale", ()))
+        failed = tuple(
+            (SourceId(str(item[0])), str(item[1]))
+            for item in provenance.get("failed", ())
+            if isinstance(item, (list, tuple)) and len(item) == 2
+        )
+        return RefreshReport(
+            mode=mode,
+            succeeded=succeeded,
+            failed=failed,
+            stale=stale,
+            mixed_age=bool(provenance.get("mixed_age", False)),
+            upstream_live=bool(provenance.get("upstream_live", False)),
+            usable=bool(provenance.get("usable", False)),
+        )
+    except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError):
+        return None
 
 
 def _publication_verdict(
@@ -348,6 +395,23 @@ def _text_digest(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def _load_manifest_source(path: str | Path) -> tuple[dict[str, object], Any]:
+    """Read and validate the unified source once before collection begins."""
+    manifest_path = Path(path)
+    try:
+        document = json.loads(
+            manifest_path.read_text(encoding="utf-8"),
+            object_pairs_hook=_duplicate_aware_mapping,
+        )
+    except ModelManifestError:
+        raise
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ModelManifestError(("manifest",), f"could not read manifest: {error}") from error
+    if not isinstance(document, dict):
+        raise ModelManifestError((), "must be an object")
+    return document, load_model_manifest_document(document)
+
+
 def _required_supplemental_evidence(ctx: collect.CatalogueContext) -> Tuple[str, ...]:
     """Name supplements required to produce a complete reviewed publication."""
     unavailable = list(ctx.unavailable_supplemental_evidence)
@@ -371,10 +435,15 @@ def _render_publication_bundle(
     catalogue_text: str,
     document_sha256: str,
     audit: stem_audit.StemAuditResult,
+    manifest_audit: stem_audit.ManifestCandidateResult,
+    presentation: Mapping[str, Any] | None = None,
 ) -> PublicationBundle:
     """Render the complete in-memory candidate set from validated evidence."""
     intent_reference = render._reference_tsv_text(ctx.community_by_file)
-    display_reference = render.presentation_reference_audit(entries)
+    display_reference = render.presentation_reference_audit(
+        entries,
+        presentation=presentation,
+    )
     stem_reference = render.stem_semantics_reference_tsv(audit.reference_rows)
     ir = build_ir(
         entries,
@@ -388,6 +457,7 @@ def _render_publication_bundle(
         display_reference=display_reference,
         stem_reference=stem_reference,
         ir=ir,
+        manifest=manifest_audit.document,
     )
 
 
@@ -410,6 +480,15 @@ def _ir_matches(path: str, payload: dict[str, Any]) -> bool:
     return _canonical_ir_for_diff(existing) == _canonical_ir_for_diff(payload)
 
 
+def _json_matches(path: str | Path, payload: object) -> bool:
+    try:
+        with open(path, encoding="utf-8") as handle:
+            existing = json.load(handle)
+    except (OSError, ValueError):
+        return False
+    return existing == payload
+
+
 def _candidate_parity_diagnostic(
     audit: stem_audit.StemAuditResult,
     stem_reference: str,
@@ -426,12 +505,27 @@ def _candidate_parity_diagnostic(
     )
 
 
+def _validate_publication_bundle(bundle: PublicationBundle) -> None:
+    """Finish every fallible render/serialization check before publication."""
+    json.dumps(bundle.manifest, indent=2, sort_keys=True)
+    json.dumps(bundle.ir, indent=2, sort_keys=True)
+    for text in (
+        bundle.catalogue,
+        bundle.intent_reference,
+        bundle.display_reference.text,
+        bundle.stem_reference,
+    ):
+        text.encode("utf-8")
+
+
 def _artifact_drift(
     bundle: PublicationBundle,
     *,
     include_ir: bool,
 ) -> list[str]:
     drift = []
+    if not _json_matches(BUNDLED_MANIFEST_PATH, bundle.manifest):
+        drift.append(str(BUNDLED_MANIFEST_PATH))
     if not render._text_matches(OUTPUT_PATH, bundle.catalogue):
         drift.append(OUTPUT_PATH)
     if include_ir and not _ir_matches(_ir_path_for(OUTPUT_PATH), bundle.ir):
@@ -484,6 +578,98 @@ def _print_structural_stem_diagnostics(result: stem_audit.StemAuditResult) -> No
         )
 
 
+def _print_manifest_diagnostics(result: stem_audit.ManifestCandidateResult) -> None:
+    for diagnostic in result.diagnostics:
+        model_ids = ", ".join(diagnostic.model_ids) or "(global)"
+        print(
+            f"Manifest audit {diagnostic.code}: {model_ids}: {diagnostic.message}",
+            file=sys.stderr,
+        )
+
+
+def _restore_bytes_atomic(path: str | Path, contents: bytes) -> None:
+    """Restore one transaction snapshot without re-entering patched writers."""
+    target = os.fspath(path)
+    directory = os.path.dirname(os.path.abspath(target))
+    os.makedirs(directory, exist_ok=True)
+    file_descriptor, temporary = tempfile.mkstemp(
+        prefix=f".{os.path.basename(target)}.", dir=directory
+    )
+    try:
+        with os.fdopen(file_descriptor, "wb") as handle:
+            handle.write(contents)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, target)
+    except BaseException:
+        try:
+            os.unlink(temporary)
+        except OSError:
+            pass
+        raise
+
+
+def _publish_bundle(bundle: PublicationBundle, *, include_ir: bool) -> tuple[str, ...]:
+    """Atomically replace one validated bundle, rolling back any late failure."""
+    from core.json_store import write_json_atomic, write_text_atomic
+
+    operations: list[tuple[str | Path, str, object]] = [
+        (BUNDLED_MANIFEST_PATH, "json", bundle.manifest),
+        (OUTPUT_PATH, "text", bundle.catalogue),
+    ]
+    if include_ir:
+        operations.append((_ir_path_for(OUTPUT_PATH), "json", bundle.ir))
+    operations.extend(
+        (
+            (REFERENCE_TSV_PATH, "text", bundle.intent_reference),
+            (DISPLAY_REFERENCE_TSV_PATH, "text", bundle.display_reference.text),
+            (STEM_SEMANTICS_REFERENCE_TSV_PATH, "text", bundle.stem_reference),
+        )
+    )
+    snapshots: dict[str, bytes | None] = {}
+    for path, _kind, _payload in operations:
+        target = os.fspath(path)
+        try:
+            with open(target, "rb") as handle:
+                snapshots[target] = handle.read()
+        except FileNotFoundError:
+            snapshots[target] = None
+
+    try:
+        for path, kind, payload in operations:
+            target = os.fspath(path)
+            if kind == "json":
+                if not isinstance(payload, dict):
+                    raise TypeError(f"JSON publication payload for {target} must be an object")
+                write_json_atomic(target, payload)
+            else:
+                if not isinstance(payload, str):
+                    raise TypeError(f"text publication payload for {target} must be text")
+                write_text_atomic(target, payload)
+    except BaseException:
+        rollback_errors = []
+        for path, _kind, _payload in reversed(operations):
+            target = os.fspath(path)
+            prior = snapshots[target]
+            try:
+                if prior is None:
+                    try:
+                        os.unlink(target)
+                    except FileNotFoundError:
+                        pass
+                else:
+                    _restore_bytes_atomic(target, prior)
+            except OSError as error:
+                rollback_errors.append(f"{target}: {error}")
+        if rollback_errors:
+            print(
+                "Publication rollback failed: " + "; ".join(rollback_errors),
+                file=sys.stderr,
+            )
+        raise
+    return tuple(os.fspath(path) for path, _kind, _payload in operations)
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     args = _parse_args(argv)
     policy = _policy_for(args)
@@ -498,13 +684,26 @@ def main(argv: Optional[List[str]] = None) -> int:
             no_hash_cache=args.no_hash_cache,
         )
     try:
-        registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)
-    except StemManifestError as error:
-        print(f"Stem audit manifest-invalid: {error}", file=sys.stderr)
+        manifest_document, unified_registry = _load_manifest_source(BUNDLED_MANIFEST_PATH)
+    except ModelManifestError as error:
+        print(f"Manifest audit manifest-invalid: {error}", file=sys.stderr)
         return 1
     _print_deprecated_reference_flags(args)
     ctx = collect._build_catalogue_context(policy=policy)
-    snapshot, entries = collect.collect_entries(ctx, policy=policy, registry=registry)
+    reviewed_non_config_ids = frozenset(
+        model_id
+        for model_id, record in unified_registry.models.items()
+        if not record.catalogue_evidence.config_yaml
+    )
+    snapshot, entries = collect.collect_entries(
+        ctx,
+        policy=policy,
+        registry=unified_registry.stems,
+        contracts=unified_registry.runtime,
+        reviewed_non_config_ids=reviewed_non_config_ids,
+        presentation=unified_registry.presentation,
+        manifest_records=unified_registry.models,
+    )
     unsupported = _unsupported_count(getattr(snapshot, "unsupported", None))
     report = getattr(snapshot, "report", None)
     missing_evidence = _required_supplemental_evidence(ctx)
@@ -519,6 +718,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                     entries,
                     unsupported_count=unsupported,
                     report=report,
+                    presentation=unified_registry.presentation,
                 )
             )
             print(
@@ -549,6 +749,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                     entries,
                     unsupported_count=unsupported,
                     report=report,
+                    presentation=unified_registry.presentation,
                 )
             )
             print(
@@ -569,9 +770,47 @@ def main(argv: Optional[List[str]] = None) -> int:
             )
         return 2
 
+    manifest_audit = stem_audit.build_manifest_candidate(
+        entries,
+        manifest_document,
+        registry=unified_registry,
+    )
+    if manifest_audit.degraded:
+        if args.summary:
+            print(
+                render.render_summary_report(
+                    entries,
+                    unsupported_count=unsupported,
+                    report=report,
+                    manifest_audit=manifest_audit,
+                    presentation=unified_registry.presentation,
+                )
+            )
+        _print_manifest_diagnostics(manifest_audit)
+        return 2
+    if not manifest_audit.structurally_valid:
+        if args.summary:
+            print(
+                render.render_summary_report(
+                    entries,
+                    unsupported_count=unsupported,
+                    report=report,
+                    manifest_audit=manifest_audit,
+                    presentation=unified_registry.presentation,
+                )
+            )
+        _print_manifest_diagnostics(manifest_audit)
+        return 1
+    candidate_presentation = manifest_audit.presentation or unified_registry.presentation
+
     # Phase 1: validate the exact reconciled source/manifest snapshot before
     # any publication candidate is rendered.
-    audit = stem_audit.audit_catalogue_stems(entries, ctx, registry=registry)
+    audit = stem_audit.audit_catalogue_stems(
+        entries,
+        ctx,
+        registry=unified_registry.stems,
+        current_model_ids=set(manifest_audit.current_model_ids),
+    )
     if not audit.structurally_valid:
         if args.summary:
             print(
@@ -580,6 +819,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                     unsupported_count=unsupported,
                     report=report,
                     stem_audit=audit,
+                    presentation=candidate_presentation,
                 )
             )
         _print_structural_stem_diagnostics(audit)
@@ -587,7 +827,13 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     # Phase 2: render all candidates in memory and verify that the renderer is
     # byte-identical to the audit-owned structured reference rows.
-    rendered_catalogue = render._render(entries, unsupported_count=unsupported, report=report)
+    publication_report = report or _retained_refresh_report(OUTPUT_PATH)
+    rendered_catalogue = render._render(
+        entries,
+        unsupported_count=unsupported,
+        report=publication_report,
+        presentation=candidate_presentation,
+    )
     document_sha256 = _text_digest(rendered_catalogue)
     if (args.check or args.summary) and render._text_matches(OUTPUT_PATH, rendered_catalogue):
         document_sha256 = _document_digest(OUTPUT_PATH) or document_sha256
@@ -595,11 +841,14 @@ def main(argv: Optional[List[str]] = None) -> int:
         entries,
         ctx=ctx,
         unsupported=unsupported,
-        report=report,
+        report=publication_report,
         catalogue_text=rendered_catalogue,
         document_sha256=document_sha256,
         audit=audit,
+        manifest_audit=manifest_audit,
+        presentation=candidate_presentation,
     )
+    _validate_publication_bundle(bundle)
     candidate_diagnostic = _candidate_parity_diagnostic(audit, bundle.stem_reference)
     if candidate_diagnostic is not None:
         print(
@@ -617,13 +866,17 @@ def main(argv: Optional[List[str]] = None) -> int:
                 unsupported_count=unsupported,
                 report=report,
                 stem_audit=audit,
+                manifest_audit=manifest_audit,
+                presentation=candidate_presentation,
             )
         )
+        _print_manifest_diagnostics(manifest_audit)
         _print_presentation_findings(bundle.display_reference)
         for path in drift:
             print(f"Out of date: {path}", file=sys.stderr)
         if (
             audit.diagnostics
+            or manifest_audit.diagnostics
             or drift
             or bundle.display_reference.unreviewed
             or (bundle.display_reference.collisions)
@@ -632,6 +885,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 0
 
     if args.check:
+        _print_manifest_diagnostics(manifest_audit)
         _print_presentation_findings(bundle.display_reference)
         if drift:
             for path in drift:
@@ -642,17 +896,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"Up to date: {OUTPUT_PATH}")
         return 0
 
-    from core.json_store import write_json_atomic, write_text_atomic
+    if bundle.display_reference.collisions:
+        _print_presentation_findings(bundle.display_reference)
+        return 1
 
     # Every renderer and strict validator above has completed. Each generated
-    # target is then atomically replaced, so a failed replacement cannot
-    # truncate a checked-in artifact or publish an unvalidated candidate.
-    write_text_atomic(OUTPUT_PATH, bundle.catalogue)
-    if not args.no_ir:
-        write_json_atomic(_ir_path_for(OUTPUT_PATH), bundle.ir)
-    write_text_atomic(REFERENCE_TSV_PATH, bundle.intent_reference)
-    write_text_atomic(DISPLAY_REFERENCE_TSV_PATH, bundle.display_reference.text)
-    write_text_atomic(STEM_SEMANTICS_REFERENCE_TSV_PATH, bundle.stem_reference)
+    # target is then atomically replaced as one rollback-protected transaction.
+    written_paths = _publish_bundle(bundle, include_ir=not args.no_ir)
     flagged = sum(1 for e in entries if e.flags)
     unknown = sum(1 for e in entries if e.name_intent == "unknown")
     with_meta = sum(1 for e in entries if e.metadata_source not in ("unavailable", ""))
@@ -660,13 +910,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         f"Wrote {OUTPUT_PATH} ({len(entries)} models, {with_meta} with metadata, "
         f"{unknown} unknown, {flagged} flagged, {unsupported} unsupported omitted)"
     )
-    for path in (
-        _ir_path_for(OUTPUT_PATH),
-        REFERENCE_TSV_PATH,
-        DISPLAY_REFERENCE_TSV_PATH,
-        STEM_SEMANTICS_REFERENCE_TSV_PATH,
-    ):
-        if path != _ir_path_for(OUTPUT_PATH) or not args.no_ir:
+    for path in written_paths:
+        if path != OUTPUT_PATH:
             print(f"Wrote {path}")
     return 0
 

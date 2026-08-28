@@ -30,8 +30,8 @@ Parsing rules for ``G_MESSAGES_DEBUG``:
 - ``uvr-ui uvr-worker`` — selective domains (GLib uses spaces; commas are accepted)
 - ``ui`` — shorthand for ``uvr-ui`` (same for other component names)
 
-High-frequency internals (every progress tick, worker pause polls, per-console
-chunk emit) use :func:`verbose`, enabled by ``uvr-trace`` or ``UVR_VERBOSE=1``.
+High-frequency internals (sampled progress, worker pause polls, per-console chunk
+emit) use :func:`verbose`, enabled by ``uvr-trace`` or ``UVR_VERBOSE=1``.
 
 Suggested profiles::
 

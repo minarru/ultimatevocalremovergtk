@@ -43,7 +43,7 @@ from core.model_scores import (
 
 from .dialogs.utils import close_on_escape
 from .dispatch import idle_on_main
-from .hints import set_icon_button_a11y
+from .hints import set_icon_button_a11y, set_tooltip
 from .markup import set_row_subtitle, set_row_title
 from .spacing import set_inset
 from .widget_state import drop, fetch, stash
@@ -65,17 +65,40 @@ def catalogue_semantics_subtitle(meta: typing.Any) -> str:
     """Render reviewed route labels, or an explicit raw-output fallback."""
     projection = getattr(meta, "stem_semantics", None)
     routes = tuple(getattr(projection, "routes", ()) or ())
-    if getattr(projection, "status", "raw") == "reviewed" and routes:
+    evidence = getattr(meta, "catalogue_evidence_status", "unavailable")
+    evidence_value = str(getattr(evidence, "value", evidence) or "")
+    if evidence_value == "not_applicable":
+        return "Restoration · output details not applicable"
+    if (
+        getattr(projection, "status", "raw") == "reviewed"
+        and routes
+        and evidence_value in {"ready", "stale"}
+    ):
         ordered = sorted(routes, key=lambda route: not route.logical_primary)
         stems = ", ".join(route.display for route in ordered)
         intent = str(getattr(meta, "intent", "") or "")
+        purpose_bucket = purpose_for_label(
+            str(getattr(meta, "label", "") or ""),
+            intent=intent,
+        )
         purpose = next(
-            (label for value, label in PURPOSE_FILTER_OPTIONS if value == intent),
+            (label for value, label in PURPOSE_FILTER_OPTIONS if value == purpose_bucket),
             "Reviewed",
         )
         return f"{purpose} · {stems}"
+    if evidence_value == "pending":
+        return "Loading output details…"
+    files = getattr(meta, "files", {}) or {}
+    has_config = any(str(name).casefold().endswith((".yaml", ".yml")) for name in files)
+    if evidence_value == "unavailable" and has_config:
+        return "Output details unavailable"
     stems = ", ".join(str(stem) for stem in (getattr(meta, "stems", ()) or ()))
     return f"Raw outputs · {stems}" if stems else "Raw outputs"
+
+
+def catalogue_evidence_detail(meta: typing.Any) -> str:
+    """Return non-destructive evidence detail for a row tooltip."""
+    return str(getattr(meta, "catalogue_evidence_warning", "") or "")
 
 
 def catalogue_matches(
@@ -344,7 +367,7 @@ class DownloadCenterWindow:
             return False
         if self._hide_unsupported and fetch(action, "_uvr_unsupported", False):
             return False
-        intent = self._catalogue_intent(label)
+        intent = self._catalogue_intent(arch, label)
         if (
             self._purpose != PURPOSE_ALL
             and purpose_for_label(label, intent=intent) != self._purpose
@@ -424,13 +447,23 @@ class DownloadCenterWindow:
     def _on_catalogue_tab_changed(self, *_args: typing.Any) -> None:
         self._update_download_button()
 
-    def _row_score(self, name: str) -> tuple[str | None, float | None, str]:
+    def _catalogue_row_metadata(self, arch: str, name: str) -> typing.Any:
+        """Resolve one row without flattening equal labels across families."""
+        family = FAMILY_BY_ARCH.get(arch)
+        scoped = getattr(self.manager, "catalogue_meta_by_family", {})
+        if family is not None:
+            family_metadata = scoped.get(family, {})
+            if name in family_metadata:
+                return family_metadata[name]
+        return getattr(self.manager, "catalogue_meta", {}).get(name)
+
+    def _row_score(self, arch: str, name: str) -> tuple[str | None, float | None, str]:
         """Return ``(stem, sdr, stems_text)`` for a catalogue label.
 
         Falls back to the filename regex when the benchmark table has no entry,
         which covers the handful of models whose SDR lives only in their name.
         """
-        meta = self.manager.catalogue_meta.get(name)
+        meta = self._catalogue_row_metadata(arch, name)
         stems_text = catalogue_semantics_subtitle(meta) if meta is not None else ""
         if meta is not None:
             # stem_count disambiguates a 2-stem 'other' (meaning instrumental)
@@ -454,7 +487,7 @@ class DownloadCenterWindow:
         check = Gtk.CheckButton(valign=Gtk.Align.CENTER)
         check.connect("toggled", lambda *_: self._on_row_check_toggled(key))
 
-        stem, sdr, stems_text = self._row_score(name)
+        stem, sdr, stems_text = self._row_score(arch, name)
 
         display = self._catalogue_display(arch, name)
         action = Adw.ActionRow()
@@ -471,6 +504,8 @@ class DownloadCenterWindow:
         stash(action, "_uvr_stems_text", stems_text)
         stash(action, "_uvr_sort_name", display.casefold())
         set_row_subtitle(action, format_sdr_subtitle(sdr, stem=stem, extra=stems_text))
+        meta = self._catalogue_row_metadata(arch, name)
+        set_tooltip(action, catalogue_evidence_detail(meta) if meta is not None else "")
 
         self._row_checks[key] = check
         self._row_actions[key] = action
@@ -872,37 +907,58 @@ class DownloadCenterWindow:
         make "visible" mean most of the catalogue and drain the priority lane
         of any meaning. Falls back to all tabs before a page is selected.
         """
+        return [label for _family, label in self._visible_catalogue_entries()]
+
+    def _visible_catalogue_entries(self) -> list[tuple[str, str]]:
+        """Return visible canonical selections with their catalogue family."""
         active = self.stack.get_visible_child_name()
         if active is not None and active in self._available:
             archs = [active]
         else:
             archs = list(self._available)
-        labels: list[str] = []
-        intents = self._catalogue_intents()
+        entries: list[tuple[str, str]] = []
         for arch in archs:
+            family = FAMILY_BY_ARCH.get(arch)
+            if family is None:
+                continue
+            intents = self._catalogue_intents(family)
             query = ""
             entry = self._search_entries.get(arch)
             if entry is not None:
                 query = entry.get_text() or ""
-            labels.extend(
-                catalogue_matches(
+            entries.extend(
+                (family, label)
+                for label in catalogue_matches(
                     list(self._available.get(arch) or []),
                     query,
                     purpose=self._purpose,
                     intents=intents,
                 )
             )
-        return labels
+        return entries
 
-    def _catalogue_intents(self) -> dict[str, str]:
+    def _all_catalogue_entries(self) -> list[tuple[str, str]]:
+        """Return all current rows as family-scoped canonical selections."""
+        return [
+            (family, label)
+            for arch, labels in self._available.items()
+            if (family := FAMILY_BY_ARCH.get(arch)) is not None
+            for label in labels
+            if label not in (NO_NEW_MODELS, NO_CONNECTION)
+        ]
+
+    def _catalogue_intents(self, family: str) -> dict[str, str]:
         """Return curated purpose metadata for the current catalogue rows."""
         manager = getattr(self, "manager", None)
-        metadata = getattr(manager, "catalogue_meta", {})
+        scoped = getattr(manager, "catalogue_meta_by_family", {})
+        metadata = scoped.get(family, {}) if isinstance(scoped, dict) else {}
         return {label: meta.intent for label, meta in metadata.items() if meta.intent}
 
-    def _catalogue_intent(self, label: str) -> str | None:
+    def _catalogue_intent(self, arch: str, label: str) -> str | None:
         manager = getattr(self, "manager", None)
-        metadata = getattr(manager, "catalogue_meta", {})
+        scoped = getattr(manager, "catalogue_meta_by_family", {})
+        family = FAMILY_BY_ARCH.get(arch)
+        metadata = scoped.get(family, {}) if isinstance(scoped, dict) and family else {}
         meta = metadata.get(label)
         return meta.intent if meta is not None else None
 
@@ -947,24 +1003,17 @@ class DownloadCenterWindow:
     def _flush_stem_yaml_fetches(self) -> bool:
         """Prioritize visible rows, then drain the rest while DC is open."""
         self._stem_fetch_armed = False
-        from core.catalogue_stem_cache import (
-            catalogue_stems_enabled,
-            enqueue_missing,
-            ensure_worker_started,
-        )
+        from core.catalogue_stem_cache import catalogue_stems_enabled
 
         if not catalogue_stems_enabled():
             return False
-        visible = self._pending_stem_yaml_urls(self._visible_catalogue_labels())
-        all_pending = self._pending_stem_yaml_urls()
+        visible = tuple(self._visible_catalogue_entries())
         visible_set = set(visible)
-        bulk = [url for url in all_pending if url not in visible_set]
+        bulk = tuple(entry for entry in self._all_catalogue_entries() if entry not in visible_set)
         if visible:
-            enqueue_missing(visible, priority=True)
+            self.manager.queue_catalogue_evidence(visible, priority=True)
         if bulk:
-            enqueue_missing(bulk, priority=False)
-        if visible or bulk:
-            ensure_worker_started()
+            self.manager.queue_catalogue_evidence(bulk, priority=False)
         return False
 
     def _schedule_stem_subtitle_refresh(self) -> None:
@@ -984,14 +1033,15 @@ class DownloadCenterWindow:
         if not updated:
             return False
         for key, action in self._row_actions.items():
-            _arch, name = key
+            arch, name = key
             if name not in updated:
                 continue
             if fetch(action, "_uvr_unsupported", False):
                 continue
-            meta = self.manager.catalogue_meta.get(name)
+            meta = self._catalogue_row_metadata(arch, name)
             stems_text = catalogue_semantics_subtitle(meta) if meta is not None else ""
             stash(action, "_uvr_stems_text", stems_text)
+            set_tooltip(action, catalogue_evidence_detail(meta) if meta is not None else "")
             set_row_subtitle(
                 action,
                 format_sdr_subtitle(
@@ -1117,7 +1167,7 @@ class DownloadCenterWindow:
             names,
             query,
             purpose=self._purpose,
-            intents=self._catalogue_intents(),
+            intents=self._catalogue_intents(FAMILY_BY_ARCH[arch]),
         )
         unsupported_matches = self._unsupported_matches(arch, query)
         if (query or self._purpose != PURPOSE_ALL) and not matches and not unsupported_matches:
@@ -1152,7 +1202,8 @@ class DownloadCenterWindow:
             rows = [
                 (label, reason)
                 for label, reason in rows
-                if purpose_for_label(label, intent=self._catalogue_intent(label)) == self._purpose
+                if purpose_for_label(label, intent=self._catalogue_intent(arch, label))
+                == self._purpose
             ]
         return [
             (label, reason)
@@ -1165,7 +1216,7 @@ class DownloadCenterWindow:
             self._available.get(arch) or [],
             query,
             purpose=self._purpose,
-            intents=self._catalogue_intents(),
+            intents=self._catalogue_intents(FAMILY_BY_ARCH[arch]),
         )
         return len(supported) + len(self._unsupported_matches(arch, query))
 
@@ -1206,12 +1257,27 @@ class DownloadCenterWindow:
         if not entries:
             return
         ids: list[str] = []
+        already_queued = 0
         for name, arch in entries:
+            if self.queue.active_item_id(name, arch) is not None:
+                already_queued += 1
+                continue
             jobs = self._resolve_pinned(name, arch)
-            item_id = self.queue.enqueue(name, arch, jobs=jobs)
+            action = self._row_actions.get((arch, name))
+            display = fetch(action, "_uvr_display_name", name) if action is not None else name
+            item_id = self.queue.enqueue(name, arch, jobs=jobs, label=str(display or name))
             if item_id:
                 ids.append(item_id)
         if not ids:
+            if already_queued:
+                for name, arch in entries:
+                    check = self._row_checks.get((arch, name))
+                    if check is not None:
+                        check.set_active(False)
+                self._update_download_button()
+                noun = "download" if already_queued == 1 else "downloads"
+                self._toast(f"{already_queued} {noun} already queued")
+                return
             self._toast("Nothing to download for the current selection")
             return
         for arch, name in [(a, n) for n, a in entries]:
@@ -1219,7 +1285,10 @@ class DownloadCenterWindow:
             if check is not None:
                 check.set_active(False)
         self._update_download_button()
-        self._toast(f"Queued {len(ids)} download(s)")
+        message = f"Queued {len(ids)} download(s)"
+        if already_queued:
+            message += f"; {already_queued} already queued"
+        self._toast(message)
 
     def refresh_after_downloads(self) -> None:
         """Remove newly installed rows without disturbing catalogue state."""

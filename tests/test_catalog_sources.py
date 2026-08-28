@@ -1,15 +1,28 @@
 """The single merge path shared by Download Center and the runtime pickers."""
 
+import json
 import os
 import typing
 import unittest
 import unittest.mock
+from dataclasses import replace
+from pathlib import Path
+from types import SimpleNamespace
 
+from bundled.constants import DEMUCS_ARCH_TYPE, MDX_ARCH_TYPE, VR_ARCH_TYPE
 from core import catalog_sources
+from core.catalogue_identity import catalogue_model_id
+from core.catalogue_types import CatalogueEvidenceState
+from core.mdx_runtime_contract import MdxConfigEvidence
+from core.stem_roles import StemReviewStatus
 
 #: ``_supplemental_sources`` takes no arguments and returns supplements only,
 #: so patching it leaves the real base merge under test.
 _NO_SUPPLEMENTS = ({}, {}, {}, {})
+
+_BECRUILY_SOURCE_DELTA_FIXTURE = (
+    Path(__file__).parent / "fixtures" / "catalogue" / "becruily_source_delta.json"
+)
 
 # Merges still see curated Apollo YAML URLs; keep the stem-cache worker off
 # unless a test is specifically about it (see test_catalog_stem_merge).
@@ -152,6 +165,231 @@ class EntryMetaTests(unittest.TestCase):
             with self.subTest(label=label):
                 self.assertIn(label, merged.meta)
 
+    def test_evidence_state_is_independent_from_review_status_and_identity(self) -> None:
+        values = tuple(state.value for state in CatalogueEvidenceState)
+        self.assertEqual(
+            values,
+            ("ready", "pending", "unavailable", "stale", "not_applicable"),
+        )
+        self.assertTrue(set(values).isdisjoint(status.value for status in StemReviewStatus))
+
+        meta = catalog_sources.EntryMeta(
+            label="VR Arch Single Model v5: UVR-BVE-4B_SN-44100-1",
+            display="BVE",
+            arch=VR_ARCH_TYPE,
+            files={"UVR-BVE-4B_SN-44100-1.pth": ""},
+            checkpoint="UVR-BVE-4B_SN-44100-1.pth",
+        )
+        before = catalogue_model_id("vr", meta.label, meta.files, meta)
+        changed = replace(
+            meta,
+            catalogue_evidence_status=CatalogueEvidenceState.STALE,
+            catalogue_evidence_warning="temporary validation failure",
+        )
+
+        self.assertEqual(meta.catalogue_evidence_status, CatalogueEvidenceState.UNAVAILABLE)
+        self.assertEqual(changed.stem_semantics, meta.stem_semantics)
+        self.assertEqual(catalogue_model_id("vr", changed.label, changed.files, changed), before)
+
+    def test_entry_meta_keeps_the_existing_positional_stem_projection_slot(self) -> None:
+        projection = catalog_sources.EntryMeta("", "", "").stem_semantics
+        meta = catalog_sources.EntryMeta(
+            "M",
+            "M",
+            MDX_ARCH_TYPE,
+            {},
+            None,
+            [],
+            None,
+            "",
+            "unknown",
+            "unknown",
+            projection,
+        )
+
+        self.assertIs(meta.stem_semantics, projection)
+        self.assertEqual(meta.catalogue_evidence_status, CatalogueEvidenceState.UNAVAILABLE)
+
+
+@_STEM_CACHE_OFF
+class ExactEvidencePrecedenceTests(unittest.TestCase):
+    def setUp(self) -> None:
+        catalog_sources.invalidate_catalogue_merge()
+
+    def test_bundled_exact_configs_beat_lower_authority_summary_metadata(self) -> None:
+        fixtures = (
+            (
+                "mdx:mbr_guitar_becruily",
+                "Mel-Band Roformer Instrumental by Becruily [mbr_guitar_becruily]",
+                "mbr_guitar_becruily.ckpt",
+                "mbr_guitar_becruily_config.yaml",
+                ["Instrumental", "Vocals"],
+                "Instrumental",
+                ["Guitar", "Other"],
+                "Guitar",
+                (("Guitar", "instrument.guitar"), (None, "instrument.guitar.removed")),
+            ),
+            (
+                "mdx:mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956",
+                "Roformer Model: MelBand Roformer | Karaoke by Aufr33 & Viperx",
+                "mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956.ckpt",
+                "config_melband_roformer_karaoke_aufr33_viperx_sdr_10.1956.yaml",
+                ["karaoke", "other"],
+                "other",
+                ["Vocals", "Instrumental"],
+                "Vocals",
+                (
+                    ("Vocals", "vocal.lead"),
+                    (None, "mix.instrumental_with_backing_vocals"),
+                ),
+            ),
+            (
+                "mdx:dereverb-echo_mel_band_roformer_sdr_10.0169",
+                "Roformer Model: MelBand Roformer | DeReverb-Echo by Sucial",
+                "dereverb-echo_mel_band_roformer_sdr_10.0169.ckpt",
+                "config_melband_roformer_dereverb-echo.yaml",
+                ["dry", "other"],
+                None,
+                ["dry", "No dry"],
+                None,
+                (("dry", "effect.reverb_echo.removed"), ("No dry", "effect.reverb_echo")),
+            ),
+        )
+        for (
+            model_id,
+            label,
+            checkpoint,
+            config,
+            summary_stems,
+            summary_target,
+            expected_stems,
+            expected_target,
+            expected_routes,
+        ) in fixtures:
+            with self.subTest(model_id=model_id):
+                evidence = MdxConfigEvidence(
+                    training_instruments=tuple(expected_stems),
+                    target_instrument=expected_target,
+                    content_sha256="a" * 64,
+                    sources=(f"fixture:{config}",),
+                )
+
+                def exact_evidence(
+                    requested_model_id: str,
+                    requested_config: str,
+                    *,
+                    expected_model_id: str = model_id,
+                    expected_config: str = config,
+                    expected_evidence: MdxConfigEvidence = evidence,
+                ) -> MdxConfigEvidence | None:
+                    if (
+                        requested_model_id == expected_model_id
+                        and requested_config.casefold() == expected_config.casefold()
+                    ):
+                        return expected_evidence
+                    return None
+
+                with unittest.mock.patch(
+                    "core.model_manifest.runtime.bundled_catalogue_config_evidence",
+                    side_effect=exact_evidence,
+                ):
+                    meta = catalog_sources._build_meta(
+                        {
+                            label: {
+                                checkpoint: f"https://example.test/{checkpoint}",
+                                config: f"https://example.test/{config}",
+                            }
+                        },
+                        MDX_ARCH_TYPE,
+                        {
+                            label: {
+                                "stems": summary_stems,
+                                "target_instrument": summary_target,
+                                "intent": "instrumental",
+                            }
+                        },
+                        {},
+                    )[label]
+
+                self.assertEqual(meta.stems, expected_stems)
+                self.assertEqual(meta.target_instrument, expected_target)
+                self.assertEqual(meta.stem_semantics.status, StemReviewStatus.REVIEWED.value)
+                self.assertEqual(meta.catalogue_evidence_status, CatalogueEvidenceState.READY)
+                self.assertEqual(
+                    tuple((route.native, route.role) for route in meta.stem_semantics.routes),
+                    expected_routes,
+                )
+
+    def test_unified_non_config_records_drive_runtime_download_and_generator_signatures(
+        self,
+    ) -> None:
+        from scripts.catalogue.collect import reviewed_stem_signature
+
+        fixtures = (
+            (
+                "demucs:htdemucs_6s",
+                "Demucs v4: htdemucs_6s",
+                {
+                    "5c90dfd2-34c22ccb.th": "https://example.test/weights.th",
+                    "htdemucs_6s.yaml": "https://example.test/htdemucs_6s.yaml",
+                },
+                DEMUCS_ARCH_TYPE,
+                ("drums", "bass", "other", "vocals", "guitar", "piano"),
+            ),
+            (
+                "vr:UVR-BVE-4B_SN-44100-1",
+                "VR Arch Single Model v5: UVR-BVE-4B_SN-44100-1",
+                "UVR-BVE-4B_SN-44100-1.pth",
+                VR_ARCH_TYPE,
+                ("Vocals", "Instrumental"),
+            ),
+        )
+        for model_id, label, raw, arch, expected in fixtures:
+            with self.subTest(model_id=model_id):
+                meta = catalog_sources._build_meta({label: raw}, arch, {}, {})[label]
+                download_signature = tuple(
+                    route.native for route in meta.stem_semantics.routes if route.native is not None
+                )
+                self.assertEqual(download_signature, expected)
+                self.assertEqual(reviewed_stem_signature(model_id, ()), expected)
+                self.assertEqual(meta.catalogue_evidence_status, CatalogueEvidenceState.READY)
+
+    def test_demucs_model_yaml_is_not_misclassified_as_live_mdx_config_evidence(self) -> None:
+        from core.catalogue_stem_cache import StemCacheHit
+
+        label = "Demucs v4: htdemucs_6s"
+        files = {
+            "5c90dfd2-34c22ccb.th": "https://example.test/weights.th",
+            "htdemucs_6s.yaml": "https://example.test/htdemucs_6s.yaml",
+        }
+        misleading = StemCacheHit(
+            stems=("Wrong",),
+            target_instrument="Wrong",
+            ok=True,
+            content_sha256="f" * 64,
+        )
+        with unittest.mock.patch("core.catalogue_stem_cache.lookup_stems", return_value=misleading):
+            meta = catalog_sources._build_meta({label: files}, DEMUCS_ARCH_TYPE, {}, {})[label]
+
+        self.assertEqual(meta.catalogue_evidence_status, CatalogueEvidenceState.READY)
+        self.assertEqual(
+            tuple(route.native for route in meta.stem_semantics.routes),
+            ("drums", "bass", "other", "vocals", "guitar", "piano"),
+        )
+
+    def test_apollo_stem_waiver_is_not_applicable_not_unavailable(self) -> None:
+        from core.extra_catalog import apollo_download_list
+
+        label, raw = next(iter(apollo_download_list().items()))
+        meta = catalog_sources._build_meta({label: raw}, "Apollo", {}, {})[label]
+
+        self.assertEqual(meta.stem_semantics.status, StemReviewStatus.WAIVED.value)
+        self.assertEqual(
+            meta.catalogue_evidence_status,
+            CatalogueEvidenceState.NOT_APPLICABLE,
+        )
+        self.assertFalse(catalog_sources._needs_catalogue_config_evidence(meta))
+
 
 @_STEM_CACHE_OFF
 class CatalogueIntentOverlayTests(unittest.TestCase):
@@ -280,7 +518,7 @@ class CatalogueIntentOverlayTests(unittest.TestCase):
             merged = catalog_sources.merged_catalogues(vr={}, mdx={}, demucs={})
 
         meta = merged.meta[label]
-        self.assertEqual(meta.stems, ["other", "vocals"])
+        self.assertEqual(meta.stems, ["Instrumental", "Vocals"])
         self.assertEqual(meta.stem_semantics.status, "reviewed")
         self.assertEqual(
             [(route.native, route.role) for route in meta.stem_semantics.routes],
@@ -312,9 +550,7 @@ class CatalogueIntentOverlayTests(unittest.TestCase):
                 ("Vocals", "vocal.vocals"),
             ],
         )
-        self.assertIn(
-            "runtime_contract=model_runtime_stem_contracts.json", meta.stem_semantics.evidence
-        )
+        self.assertIn("runtime_contract=model_manifest.json", meta.stem_semantics.evidence)
 
     def test_runtime_contract_warning_fails_live_projection_raw(self) -> None:
         from core.mdx_runtime_contract import ReconciledMdxRuntimeSignature
@@ -349,8 +585,12 @@ class CatalogueIntentOverlayTests(unittest.TestCase):
             projection.warning,
             "runtime-contract-unavailable error=test",
         )
+        self.assertEqual(
+            merged.meta[label].catalogue_evidence_warning,
+            "runtime-contract-unavailable error=test",
+        )
 
-    def test_all_28_promoted_ids_transition_to_reviewed_from_exact_config_cache(self) -> None:
+    def test_all_28_promoted_ids_use_bundled_exact_evidence_before_live_cache(self) -> None:
         from core.catalogue_stem_cache import StemCacheHit
         from core.mdx_runtime_contract import load_bundled_mdx_runtime_contracts
 
@@ -407,7 +647,7 @@ class CatalogueIntentOverlayTests(unittest.TestCase):
                 )
                 for status in ("reviewed", "raw")
             },
-            {"reviewed": 20, "raw": 8},
+            {"reviewed": 28, "raw": 0},
         )
 
         catalog_sources.invalidate_catalogue_merge()
@@ -433,7 +673,7 @@ class CatalogueIntentOverlayTests(unittest.TestCase):
                 projection = merged.meta[label].stem_semantics
                 self.assertEqual(projection.status, "reviewed")
                 self.assertIn(
-                    "runtime_contract=model_runtime_stem_contracts.json",
+                    "runtime_contract=model_manifest.json",
                     projection.evidence,
                 )
         self.assertEqual(
@@ -532,6 +772,123 @@ class MergePriorityDedupeTests(unittest.TestCase):
         # meta still names both for picker resolution
         self.assertIn(extras_label, merged.meta)
         self.assertIn(mv_label, merged.meta)
+
+    def test_reviewed_becruily_delta_excludes_retired_rows_but_keeps_installed_views(
+        self,
+    ) -> None:
+        from core.catalogue_coordinator import CatalogueCoordinator
+        from core.catalogue_types import SourceId
+        from core.model_inventory import build_identity_index
+        from core.model_manifest import load_model_manifest
+        from core.model_stem_manifest import resolve_model_stem_semantics
+        from core.remote_catalog_cache import RemoteJsonSource
+        from core.stem_roles import StemReviewStatus
+
+        fixture = json.loads(_BECRUILY_SOURCE_DELTA_FIXTURE.read_text(encoding="utf-8"))
+        sources = {
+            SourceId.UPSTREAM: RemoteJsonSource(
+                source_id=SourceId.UPSTREAM,
+                local_loader=lambda: {
+                    "vr_download_list": {},
+                    "mdx_download_list": {},
+                    "demucs_download_list": {},
+                },
+            ),
+            SourceId.POLITREES: RemoteJsonSource(
+                source_id=SourceId.POLITREES,
+                local_loader=lambda: fixture["politrees"],
+            ),
+            SourceId.EXTRAS: RemoteJsonSource(
+                source_id=SourceId.EXTRAS,
+                enabled=lambda: False,
+            ),
+            SourceId.MVSEPLESS: RemoteJsonSource(
+                source_id=SourceId.MVSEPLESS,
+                local_loader=lambda: fixture["mvsepless"],
+            ),
+        }
+        coordinator = CatalogueCoordinator(sources=sources)
+        self.addCleanup(coordinator.close)
+        snapshot = coordinator.ensure(allow_network=False)
+
+        visible_ids = {
+            catalogue_model_id("mdx", label, raw, snapshot.meta_by_family["mdx"][label])
+            for label, raw in snapshot.mdx.items()
+        }
+        retired_ids = {
+            "mdx:mbr_guitar_becruily",
+            "mdx:mbr_inst_becruily",
+        }
+        self.assertEqual(
+            visible_ids,
+            {
+                "mdx:melband_roformer_guitar_becruily",
+                "mdx:mel_band_roformer_instrumental_becruily",
+                "mdx:mbr_invert_clean_becruily",
+            },
+        )
+        self.assertTrue(retired_ids.isdisjoint(visible_ids))
+        self.assertTrue(set(fixture["retired_labels"]).isdisjoint(snapshot.mdx))
+        self.assertTrue(set(fixture["retired_labels"]).issubset(snapshot.pre_dedupe_mdx))
+        self.assertTrue(set(fixture["retired_labels"]).issubset(snapshot.meta_by_family["mdx"]))
+
+        retired_files = tuple(fixture["retired_artifacts"].values())
+        repo = SimpleNamespace(
+            _model_artifact_files=lambda family: retired_files if family == "mdx" else (),
+            list_vr_models=lambda: [],
+            list_mdx_models=lambda: [],
+            list_demucs_models=lambda: [],
+            inventory_generation=0,
+            catalogue_revision="reviewed-becruily-delta",
+            naming_revision=0,
+            mdx_name_select_MAPPER={},
+            demucs_name_select_MAPPER={},
+        )
+        index = build_identity_index(
+            repo,
+            snapshot=snapshot,
+            bundled_demucs_specs={},
+            registered_demucs={},
+        )
+        manifest = load_model_manifest()
+        self.assertEqual(manifest.models["mdx:mbr_invert_clean_becruily"].lifecycle, "current")
+        self.assertEqual(
+            {manifest.models[model_id].lifecycle for model_id in retired_ids},
+            {"retired"},
+        )
+        expected = {
+            "mdx:mbr_guitar_becruily": (
+                "MelBand Roformer — Instrumental · Becruily [mbr_guitar_becruily]",
+                (("Guitar", "instrument.guitar"), (None, "instrument.guitar.removed")),
+            ),
+            "mdx:mbr_inst_becruily": (
+                "MelBand Roformer — Instrumental · Becruily [mbr_inst_becruily]",
+                (("Instrumental", "mix.instrumental"), (None, "vocal.vocals")),
+            ),
+        }
+        for model_id, (display, routes) in expected.items():
+            with self.subTest(model_id=model_id):
+                record = index.lookup(model_id)
+                self.assertTrue(record.installed)
+                self.assertEqual(record.display, display)
+                declaration = manifest.stems.models[model_id]
+                resolved = resolve_model_stem_semantics(
+                    model_id,
+                    native_stems=declaration.native_signature,
+                    backend_primary=declaration.native_signature[0],
+                    registry=manifest.stems,
+                )
+                self.assertEqual(resolved.status, StemReviewStatus.REVIEWED)
+                self.assertEqual(
+                    tuple(
+                        (
+                            output.native.raw if output.native is not None else None,
+                            str(output.role),
+                        )
+                        for output in resolved.outputs
+                    ),
+                    routes,
+                )
 
 
 if __name__ == "__main__":

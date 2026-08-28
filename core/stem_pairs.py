@@ -7,6 +7,12 @@ from bundled.constants import FOUR_STEM_ENSEMBLE, MULTI_STEM_ENSEMBLE
 from .model_stem_manifest import StemPairDefinition, load_bundled_stem_semantics
 
 _STEM_MODES = frozenset({"mode.four_stem", "mode.multi_stem"})
+_STEM_PAIR_ORDER = (
+    "pair.vocals_instrumental",
+    "pair.karaoke",
+    "pair.backing_vocals",
+    "pair.center_side",
+)
 _STEM_MODE_DISPLAYS = {
     "mode.four_stem": FOUR_STEM_ENSEMBLE,
     "mode.multi_stem": MULTI_STEM_ENSEMBLE,
@@ -60,9 +66,19 @@ def stem_pair_halves(pair_id: str) -> tuple[str, str]:
 def ensemble_pair_choices() -> tuple[tuple[str, str], ...]:
     """Return exact stored IDs and labels for the ensemble pair combo."""
     registry = load_bundled_stem_semantics()
+    ordered_pairs = tuple(pair_id for pair_id in _STEM_PAIR_ORDER if pair_id in registry.pairs)
+    residual_pairs = tuple(
+        sorted(
+            (pair_id for pair_id in registry.pairs if pair_id not in _STEM_PAIR_ORDER),
+            key=lambda pair_id: (pair_id.casefold(), pair_id),
+        )
+    )
     return (
         ("", _CHOOSE_DISPLAY),
-        *((pair.id, pair.display) for pair in registry.pairs.values()),
+        *(
+            (pair_id, registry.pairs[pair_id].display)
+            for pair_id in (*ordered_pairs, *residual_pairs)
+        ),
         ("mode.four_stem", _STEM_MODE_DISPLAYS["mode.four_stem"]),
         ("mode.multi_stem", _STEM_MODE_DISPLAYS["mode.multi_stem"]),
     )

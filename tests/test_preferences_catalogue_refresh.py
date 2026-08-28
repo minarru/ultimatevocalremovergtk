@@ -107,6 +107,12 @@ class PreferencesCatalogueRefreshTests(unittest.TestCase):
                 self.model_updates += 1
                 return True
 
+            def force_revalidate_catalogue_evidence(
+                self,
+                _on_complete: Callable[[object], None],
+            ) -> tuple[str, ...]:
+                return ()
+
         class DeferredThread:
             instances: list["DeferredThread"] = []
 
@@ -145,6 +151,295 @@ class PreferencesCatalogueRefreshTests(unittest.TestCase):
         self.assertEqual(
             dialog.catalogue_cache_refresh_row.get_subtitle(),
             "Catalogue cache refreshed",
+        )
+
+    def test_refresh_publishes_sources_then_returns_while_evidence_updates(self) -> None:
+        import ui.preferences as preferences
+        from core.catalogue_types import RefreshMode, RefreshReport, SourceId
+
+        class Manager:
+            def __init__(self) -> None:
+                self.last_refresh_report = RefreshReport(
+                    mode=RefreshMode.FORCE,
+                    succeeded=(SourceId.UPSTREAM,),
+                    upstream_live=True,
+                    usable=True,
+                )
+                self.completion: Callable[[object], None] | None = None
+                self.force_calls = 0
+
+            def refresh(self) -> bool:
+                return True
+
+            def update_model_settings(self, _repo: object) -> bool:
+                return True
+
+            def force_revalidate_catalogue_evidence(
+                self,
+                on_complete: Callable[[object], None],
+            ) -> tuple[str, ...]:
+                self.force_calls += 1
+                self.completion = on_complete
+                return ("https://example.test/model.yaml",)
+
+        class DeferredThread:
+            instances: list["DeferredThread"] = []
+
+            def __init__(self, *, target: Callable[[], None], daemon: bool) -> None:
+                self.target = target
+                self.daemon = daemon
+                self.instances.append(self)
+
+            def start(self) -> None:
+                return None
+
+        manager = Manager()
+        dialog = self._dialog(manager)
+        with mock.patch.object(preferences.threading, "Thread", DeferredThread):
+            dialog.catalogue_cache_refresh_button.emit("clicked")
+
+        with mock.patch.object(
+            preferences,
+            "idle_on_main",
+            side_effect=lambda callback, *args: callback(*args),
+        ):
+            DeferredThread.instances[-1].target()
+
+        self.assertEqual(manager.force_calls, 1)
+        self.assertIsNotNone(manager.completion)
+        self.assertTrue(dialog.catalogue_cache_refresh_button.get_sensitive())
+        self.assertFalse(dialog.catalogue_cache_refresh_spinner.get_spinning())
+        self.assertEqual(
+            dialog.catalogue_cache_refresh_row.get_subtitle(),
+            "Catalogue refreshed; output details updating",
+        )
+
+    def test_refresh_worker_settles_when_evidence_fetch_is_disabled_or_disallowed(self) -> None:
+        import core.catalogue_stem_cache as csc
+        import ui.preferences as preferences
+        from bundled.constants import MDX_ARCH_TYPE
+        from core.access_policy import access_policy
+        from core.catalog_sources import EntryMeta
+        from core.catalogue_types import (
+            CatalogueEvidenceState,
+            RefreshMode,
+            RefreshReport,
+            SourceId,
+        )
+        from core.downloads import DownloadManager
+
+        for disabled, allow_network in ((True, True), (False, False)):
+            with self.subTest(disabled=disabled, allow_network=allow_network):
+                csc._reset_worker_state_for_tests()
+                manager = DownloadManager()
+                meta = EntryMeta(
+                    label="Rejected",
+                    display="Rejected",
+                    arch=MDX_ARCH_TYPE,
+                    files={
+                        "m.ckpt": "https://example.test/m.ckpt",
+                        "m.yaml": "https://example.test/m.yaml",
+                    },
+                    catalogue_evidence_status=CatalogueEvidenceState.UNAVAILABLE,
+                )
+                manager.catalogue_meta = {meta.label: meta}
+                manager.catalogue_meta_by_family = {"mdx": {meta.label: meta}}
+                manager._last_refresh_report = RefreshReport(
+                    mode=RefreshMode.FORCE,
+                    succeeded=(SourceId.UPSTREAM,),
+                    upstream_live=True,
+                    usable=True,
+                )
+                dialog = self._dialog(manager)
+                dialog.settings.process.auto_update_model_params = False
+                refresh_messages: list[str] = []
+
+                def run_idle(
+                    callback: Callable[..., object],
+                    *args: object,
+                    _messages: list[str] = refresh_messages,
+                ) -> object:
+                    if args and isinstance(args[0], str):
+                        _messages.append(str(args[0]))
+                    return callback(*args)
+
+                with (
+                    mock.patch.object(manager, "refresh", return_value=True),
+                    mock.patch.object(
+                        preferences,
+                        "idle_on_main",
+                        side_effect=run_idle,
+                    ),
+                    mock.patch.dict(
+                        os.environ,
+                        {"UVR_DISABLE_CATALOGUE_STEMS": "1" if disabled else "0"},
+                    ),
+                    access_policy(
+                        allow_network=allow_network,
+                        allow_metadata_writes=False,
+                        allow_cache_writes=False,
+                    ),
+                ):
+                    dialog._catalogue_cache_refresh_worker()
+
+                self.assertEqual(
+                    dialog.catalogue_cache_refresh_row.get_subtitle(),
+                    "Catalogue cache refreshed",
+                )
+                self.assertEqual(
+                    manager.catalogue_meta_by_family["mdx"][meta.label].catalogue_evidence_status,
+                    CatalogueEvidenceState.UNAVAILABLE,
+                )
+                self.assertEqual(manager._catalogue_evidence_pending, set())
+                self.assertEqual(manager._catalogue_evidence_force_pending, set())
+                self.assertEqual(manager._catalogue_evidence_callbacks, [])
+                self.assertNotIn(
+                    "Catalogue refreshed; output details updating",
+                    refresh_messages,
+                )
+                csc._reset_worker_state_for_tests()
+
+    def test_prestarted_worker_immediate_completion_settles_after_updating_feedback(self) -> None:
+        import tempfile
+        import threading
+
+        import core.catalogue_stem_cache as csc
+        import ui.preferences as preferences
+        from bundled.constants import MDX_ARCH_TYPE
+        from core.access_policy import access_policy
+        from core.catalog_sources import EntryMeta
+        from core.catalogue_types import (
+            CatalogueEvidenceState,
+            RefreshMode,
+            RefreshReport,
+            SourceId,
+        )
+        from core.downloads import DownloadManager
+
+        manager = DownloadManager()
+        meta = EntryMeta(
+            label="Immediate",
+            display="Immediate",
+            arch=MDX_ARCH_TYPE,
+            files={
+                "m.ckpt": "https://example.test/m.ckpt",
+                "m.yaml": "https://example.test/m.yaml",
+            },
+            catalogue_evidence_status=CatalogueEvidenceState.UNAVAILABLE,
+        )
+        manager.catalogue_meta = {meta.label: meta}
+        manager.catalogue_meta_by_family = {"mdx": {meta.label: meta}}
+        manager.mdx_download_list = {meta.label: meta.files}
+        manager._last_refresh_report = RefreshReport(
+            mode=RefreshMode.FORCE,
+            succeeded=(SourceId.UPSTREAM,),
+            upstream_live=True,
+            usable=True,
+        )
+        manager._coordinator = mock.MagicMock()
+        cache_notified = threading.Event()
+        manager._coordinator.notify_metadata.side_effect = lambda _labels: cache_notified.wait(
+            timeout=0.2
+        )
+        messages: list[str] = []
+
+        def fetch_immediately(
+            url: str,
+            *,
+            force: bool,
+            policy: object,
+        ) -> bool:
+            del force, policy
+            csc.remember_stems(
+                url,
+                ["Vocals", "Instrumental"],
+                "Vocals",
+                content_sha256="b" * 64,
+                ok=True,
+            )
+            return True
+
+        def run_idle(callback: Callable[..., object], *args: object) -> object:
+            result = callback(*args)
+            if args and isinstance(args[0], str):
+                messages.append(str(args[0]))
+            elif callback == dialog._finish_catalogue_evidence_refresh:
+                messages.append(str(dialog.catalogue_cache_refresh_row.get_subtitle()))
+            return result
+
+        original_ensure_worker_started = csc.ensure_worker_started
+
+        def ensure_and_wait() -> None:
+            original_ensure_worker_started()
+            self.assertTrue(cache_notified.wait(timeout=1.0), "cache worker did not finish")
+            self.assertTrue(csc._worker_idle.wait(timeout=1.0), "cache worker did not drain")
+
+        csc._reset_worker_state_for_tests()
+        csc.subscribe(cache_notified.set)
+        dialog = self._dialog(manager)
+        dialog.settings.process.auto_update_model_params = False
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_path = os.path.join(tmp, "catalogue_stem_cache.json")
+            with (
+                mock.patch.object(manager, "refresh", return_value=True),
+                mock.patch.object(csc, "_cache_path", return_value=cache_path),
+                mock.patch.object(csc, "_fetch_and_remember", side_effect=fetch_immediately),
+                mock.patch.object(csc, "ensure_worker_started", side_effect=ensure_and_wait),
+                mock.patch.object(preferences, "idle_on_main", side_effect=run_idle),
+                access_policy(
+                    allow_network=True,
+                    allow_metadata_writes=False,
+                    allow_cache_writes=False,
+                ),
+            ):
+                csc.clear_catalogue_stem_cache()
+                original_ensure_worker_started()
+                dialog._catalogue_cache_refresh_worker()
+
+        self.assertEqual(
+            messages,
+            [
+                "Catalogue refreshed; output details updating",
+                "Catalogue refreshed; output details updated",
+            ],
+        )
+        self.assertEqual(
+            dialog.catalogue_cache_refresh_row.get_subtitle(),
+            "Catalogue refreshed; output details updated",
+        )
+        self.assertEqual(manager._catalogue_evidence_pending, set())
+        self.assertEqual(manager._catalogue_evidence_force_pending, set())
+        self.assertEqual(manager._catalogue_evidence_callbacks, [])
+        self.assertFalse(csc.is_pending("https://example.test/m.yaml"))
+        csc._reset_worker_state_for_tests()
+
+    def test_evidence_completion_feedback_reports_aggregate_failures(self) -> None:
+        import ui.preferences as preferences
+
+        summary = SimpleNamespace(unavailable=2, stale=1)
+
+        self.assertEqual(
+            preferences.catalogue_evidence_refresh_feedback(summary),
+            "Catalogue refreshed; output details finished with 2 unavailable and 1 using previous details",
+        )
+
+    def test_evidence_completion_callback_updates_feedback_on_main_thread(self) -> None:
+        import ui.preferences as preferences
+
+        dialog = self._dialog()
+        summary = SimpleNamespace(unavailable=1, stale=0)
+        idle_calls: list[tuple[object, tuple[object, ...]]] = []
+
+        with mock.patch.object(
+            preferences,
+            "idle_on_main",
+            side_effect=lambda callback, *args: idle_calls.append((callback, args)),
+        ):
+            dialog._on_catalogue_evidence_refresh_completed(summary)
+
+        self.assertEqual(
+            idle_calls,
+            [(dialog._finish_catalogue_evidence_refresh, (summary,))],
         )
 
     def test_refresh_feedback_distinguishes_partial_and_failed_results(self) -> None:

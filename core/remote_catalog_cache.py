@@ -256,9 +256,7 @@ class RemoteJsonSource:
             return None
         if not isinstance(payload, dict) or not payload:
             return None
-        content = self._content_from_payload(
-            payload, fetched_at=0.0, etag=None, last_modified=None
-        )
+        content = self._content_from_payload(payload, fetched_at=0.0, etag=None, last_modified=None)
         with self._lock:
             if self._state.content is None:
                 self._publish_content(content, now, from_network=False)
@@ -353,14 +351,8 @@ class RemoteJsonSource:
         if not force and self._in_backoff(now):
             return self.state
         previous = self._state.content
-        validators = (
-            (None, None)
-            if previous is None
-            else (previous.etag, previous.last_modified)
-        )
-        payload, etag, last_modified, not_modified = self._http_get(
-            validators[0], validators[1]
-        )
+        validators = (None, None) if previous is None else (previous.etag, previous.last_modified)
+        payload, etag, last_modified, not_modified = self._http_get(validators[0], validators[1])
         if not_modified:
             if previous is None:
                 payload, etag, last_modified, not_modified = self._http_get(None, None)
@@ -381,13 +373,17 @@ class RemoteJsonSource:
             self._mark_failure(now, "fetch failed")
             if self._state.content is None:
                 # FORCE with an empty memory cache must still surface last-good
-                # disk content; do not stamp fetched_at.
+                # disk content; do not stamp fetched_at or erase the live-fetch
+                # failure that explains why the last-known-good data was used.
+                failed_status = self.state.status
                 disk_policy = AccessPolicy(
                     allow_network=False,
                     allow_metadata_writes=False,
                     allow_cache_writes=False,
                 )
                 self._read_disk(disk_policy, now)
+                with self._lock:
+                    self._state.status = failed_status
             return self.state
         try:
             content = self._content_from_payload(
@@ -481,9 +477,7 @@ class RemoteJsonSource:
             last_modified=last_modified,
         )
 
-    def _publish_content(
-        self, content: SourceContent, now: float, *, from_network: bool
-    ) -> None:
+    def _publish_content(self, content: SourceContent, now: float, *, from_network: bool) -> None:
         previous = self._state.content
         if (
             previous is not None
@@ -506,8 +500,8 @@ class RemoteJsonSource:
         else:
             self._state.content = content
         self._state.status.checked_at = now
-        self._state.status.last_success_at = now if from_network else (
-            self._state.status.last_success_at
+        self._state.status.last_success_at = (
+            now if from_network else (self._state.status.last_success_at)
         )
         self._state.status.error = None
         self._state.status.failures = 0

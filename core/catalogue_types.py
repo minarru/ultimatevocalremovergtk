@@ -64,6 +64,16 @@ class DeltaKind(str, Enum):
     METADATA_CHANGED = "metadata_changed"
 
 
+class CatalogueEvidenceState(str, Enum):
+    """Availability of exact catalogue evidence, separate from semantic review."""
+
+    READY = "ready"
+    PENDING = "pending"
+    UNAVAILABLE = "unavailable"
+    STALE = "stale"
+    NOT_APPLICABLE = "not_applicable"
+
+
 def freeze_files(model: object) -> tuple[tuple[str, str], ...]:
     """Preserve source file insertion order as an immutable tuple."""
     if isinstance(model, dict):
@@ -295,6 +305,7 @@ __all__ = [
     "ADAPTER_SCHEMA",
     "CatalogueDelta",
     "CatalogueEntry",
+    "CatalogueEvidenceState",
     "DeltaKind",
     "ENVELOPE_SCHEMA",
     "PRIOR_EXTRAS_SCNET_BANDIT_WINNERS",

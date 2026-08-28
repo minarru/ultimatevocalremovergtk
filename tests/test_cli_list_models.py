@@ -442,23 +442,32 @@ class DiscoveryTests(unittest.TestCase):
             canonical_roles=("vocal.vocals", "mix.instrumental"),
             evidence="catalogue_id=mdx:bs_neo_inst_beta; native_signature=vocals,other",
         )
+        entry = EntryMeta(
+            label=selection,
+            display=selection,
+            arch=MDX_ARCH_TYPE,
+            files=files,
+            checkpoint=checkpoint,
+            stem_semantics=projection,
+        )
         manager: Any = SimpleNamespace(
-            _coordinator=None,
+            _coordinator=SimpleNamespace(
+                _latest=SimpleNamespace(
+                    revision=None,
+                    meta_by_family={
+                        "vr": {},
+                        "mdx": {selection: entry},
+                        "demucs": {},
+                        "apollo": {},
+                    },
+                )
+            ),
             vr_download_list={},
             mdx_download_list={selection: files},
             demucs_download_list={},
             apollo_download_list={},
             unsupported_download_list={},
-            catalogue_meta={
-                selection: EntryMeta(
-                    label=selection,
-                    display=selection,
-                    arch=MDX_ARCH_TYPE,
-                    files=files,
-                    checkpoint=checkpoint,
-                    stem_semantics=projection,
-                )
-            },
+            catalogue_meta={selection: entry},
             resolve=lambda *_args, **_kwargs: (),
         )
         service = ModelCatalogueService(manager)
@@ -935,6 +944,217 @@ class ModelsListInstalledDefaultTests(unittest.TestCase):
             self.assertIn("identity_complete", item)
             self.assertNotIn("engine_name", item)
 
+    def test_all_known_projects_catalogue_evidence_without_config_parsing(self) -> None:
+        from bundled.constants import MDX_ARCH_TYPE
+        from cli.discovery import cmd_models_list
+        from core.catalog_sources import EntryMeta
+        from core.catalogue_types import (
+            CatalogueEvidenceState,
+            StemSemanticProjection,
+            StemSemanticRoute,
+        )
+        from core.model_identity import CatalogueRef
+
+        selection = "MDX23C Model: Curated Instrumental"
+        record = ModelRecord(
+            id="mdx:model",
+            family="mdx",
+            basename="model",
+            display="Curated Instrumental",
+            backend_name="model",
+            artifacts=ModelArtifacts("model.ckpt", ("model.yaml",)),
+            installed=False,
+            catalogue_entry=CatalogueRef("mdx", selection),
+            mdx=MdxSpec("mdx23c"),
+        )
+        projection = StemSemanticProjection(
+            backend_primary_stem="other",
+            backend_target_stem="other",
+            logical_primary_role="mix.instrumental",
+            logical_secondary_role="vocal.vocals",
+            status="reviewed",
+            context="full_mix",
+            routes=(
+                StemSemanticRoute(
+                    native="other",
+                    role="mix.instrumental",
+                    display="Instrumental",
+                    filename_tag="Instrumental",
+                    production="native",
+                    logical_primary=True,
+                ),
+            ),
+        )
+        entry = EntryMeta(
+            label=selection,
+            display="Curated Instrumental",
+            arch=MDX_ARCH_TYPE,
+            files={"model.ckpt": "https://example.invalid/model.ckpt"},
+            checkpoint="model.ckpt",
+            stem_semantics=projection,
+            catalogue_evidence_status=CatalogueEvidenceState.STALE,
+            catalogue_evidence_warning="cached config evidence is stale",
+        )
+        snapshot = SimpleNamespace(
+            meta_by_family={"vr": {}, "mdx": {selection: entry}, "demucs": {}, "apollo": {}},
+        )
+        coordinator = Mock()
+        coordinator._latest = snapshot
+        args = argparse.Namespace(
+            family=None,
+            all_known=True,
+            report="json",
+            quiet=True,
+            verbose=False,
+            job_id="all-known-evidence",
+        )
+        out, err = io.StringIO(), io.StringIO()
+
+        with (
+            patch("core.catalogue_coordinator.CatalogueCoordinator", return_value=coordinator),
+            patch(
+                "core.model_identity.ModelIdentityService._published_index",
+                return_value=IdentityIndex({record.id: record}),
+            ),
+            patch(
+                "core.model_data.load_mdx_c_config_data",
+                side_effect=AssertionError("list rendering parsed a config"),
+            ),
+            redirect_stdout(out),
+            redirect_stderr(err),
+        ):
+            code = cmd_models_list(args)
+
+        self.assertEqual(code, 0)
+        decoder = json.JSONDecoder()
+        payload, end = decoder.raw_decode(out.getvalue())
+        self.assertFalse(out.getvalue()[end:].strip())
+        item = payload["items"][0]
+        self.assertEqual(item["id"], "mdx:model")
+        self.assertEqual(item["backend_name"], "model")
+        self.assertEqual(item["backend_primary_stem"], "other")
+        self.assertEqual(item["stem_semantics_status"], "reviewed")
+        self.assertEqual(item["catalogue_evidence_status"], "stale")
+        self.assertEqual(item["catalogue_evidence_warning"], "cached config evidence is stale")
+        self.assertIn("cached config evidence is stale", err.getvalue())
+
+        args.report = "human"
+        human_out, human_err = io.StringIO(), io.StringIO()
+        with (
+            patch("core.catalogue_coordinator.CatalogueCoordinator", return_value=coordinator),
+            patch(
+                "core.model_identity.ModelIdentityService._published_index",
+                return_value=IdentityIndex({record.id: record}),
+            ),
+            patch(
+                "core.model_data.load_mdx_c_config_data",
+                side_effect=AssertionError("list rendering parsed a config"),
+            ),
+            redirect_stdout(human_out),
+            redirect_stderr(human_err),
+        ):
+            code = cmd_models_list(args)
+
+        self.assertEqual(code, 0)
+        self.assertIn('"display":"Instrumental"', human_out.getvalue())
+        self.assertIn("evidence: stale", human_out.getvalue())
+        self.assertIn("cached config evidence is stale", human_err.getvalue())
+
+    def test_all_known_installed_mdx_c_uses_snapshot_without_dry_resolution(self) -> None:
+        from bundled.constants import MDX_ARCH_TYPE
+        from cli.discovery import cmd_models_list
+        from core.catalog_sources import EntryMeta
+        from core.catalogue_types import StemSemanticProjection, StemSemanticRoute
+        from core.model_identity import CatalogueRef
+
+        selection = "MDX23C Model: Installed Curated Instrumental"
+        record = ModelRecord(
+            id="mdx:installed-model",
+            family="mdx",
+            basename="installed-model",
+            display="Installed Curated Instrumental",
+            backend_name="installed-model",
+            artifacts=ModelArtifacts("installed-model.ckpt", ("installed-model.yaml",)),
+            installed=True,
+            catalogue_entry=CatalogueRef("mdx", selection),
+            mdx=MdxSpec("mdx23c"),
+        )
+        projection = StemSemanticProjection(
+            backend_primary_stem="other",
+            backend_target_stem="other",
+            logical_primary_role="mix.instrumental",
+            logical_secondary_role=None,
+            status="reviewed",
+            context="full_mix",
+            routes=(
+                StemSemanticRoute(
+                    native="other",
+                    role="mix.instrumental",
+                    display="Instrumental",
+                    filename_tag="Instrumental",
+                    production="native",
+                    logical_primary=True,
+                ),
+            ),
+        )
+        entry = EntryMeta(
+            label=selection,
+            display="Installed Curated Instrumental",
+            arch=MDX_ARCH_TYPE,
+            files={"installed-model.ckpt": "https://example.invalid/installed-model.ckpt"},
+            checkpoint="installed-model.ckpt",
+            stem_semantics=projection,
+        )
+        coordinator = Mock()
+        coordinator._latest = SimpleNamespace(
+            meta_by_family={"vr": {}, "mdx": {selection: entry}, "demucs": {}, "apollo": {}},
+        )
+
+        for report in ("json", "human"):
+            with self.subTest(report=report):
+                args = argparse.Namespace(
+                    family=None,
+                    all_known=True,
+                    report=report,
+                    quiet=True,
+                    verbose=False,
+                    job_id=f"all-known-installed-mdx-c-{report}",
+                )
+                out = io.StringIO()
+                with (
+                    patch(
+                        "core.catalogue_coordinator.CatalogueCoordinator", return_value=coordinator
+                    ),
+                    patch(
+                        "core.model_identity.ModelIdentityService._published_index",
+                        return_value=IdentityIndex({record.id: record}),
+                    ),
+                    patch("cli.discovery._model_info", return_value=record.to_dict()) as detail,
+                    patch(
+                        "core.mdx_config_fetch.ensure_mdx_c_config",
+                        side_effect=AssertionError("list rendering fetched a config"),
+                    ) as fetch,
+                    patch(
+                        "core.model_data.load_mdx_c_config_data",
+                        side_effect=AssertionError("list rendering parsed a config"),
+                    ) as parse,
+                    redirect_stdout(out),
+                    redirect_stderr(io.StringIO()),
+                ):
+                    code = cmd_models_list(args)
+
+                self.assertEqual(code, 0)
+                detail.assert_not_called()
+                fetch.assert_not_called()
+                parse.assert_not_called()
+                if report == "json":
+                    item = json.loads(out.getvalue())["items"][0]
+                    self.assertEqual(item["id"], "mdx:installed-model")
+                    self.assertEqual(item["backend_name"], "installed-model")
+                    self.assertEqual(item["stem_semantics_status"], "reviewed")
+                else:
+                    self.assertIn('"display":"Instrumental"', out.getvalue())
+
     def test_all_known_owns_an_offline_catalogue_backed_repository(self) -> None:
         from bundled.constants import VR_ARCH_TYPE
         from cli.discovery import cmd_models_list
@@ -947,6 +1167,7 @@ class ModelsListInstalledDefaultTests(unittest.TestCase):
             display="Catalogue Only",
             arch=VR_ARCH_TYPE,
             files=files,
+            checkpoint="catalogue-only.pth",
         )
         snapshot = SimpleNamespace(
             vr={selection: files},

@@ -1,0 +1,25 @@
+{
+  "schema_version": 2,
+  "contracts": {
+    "mdx:MDX23C-8KFFT-InstVoc_HQ": {
+      "backend": "mdx_c_multi",
+      "native_signature": ["Vocals", "Instrumental"],
+      "primary_native": "Vocals",
+      "config_yamls": ["model_2_stem_full_band_8k.yaml"],
+      "evidence": {
+        "artifact_sources": ["https://huggingface.co/Politrees/UVR_resources/resolve/main/models/MDX23C/MDX23C-8KFFT-InstVoc_HQ.ckpt"],
+        "runtime_metadata_sources": ["models/MDX_Net_Models/model_data/model_data.json"],
+        "review_note": "Exact checkpoint hash selects the accepted null-target two-instrument config."
+      },
+      "artifact_evidence": [{"uvr_md5": "99b6ceaae542265a3b6d657bf9fde79f", "hash_record_source": "models/MDX_Net_Models/model_data/model_data.json"}],
+      "config_evidence": {
+        "model_2_stem_full_band_8k.yaml": {
+          "training_instruments": ["Vocals", "Instrumental"],
+          "target_instrument": null,
+          "content_sha256": "451765e869b78dcb9ca9188a74da31f581b7254ff0e8b532aa76b974148de947",
+          "sources": ["models/MDX_Net_Models/model_data/mdx_c_configs/model_2_stem_full_band_8k.yaml"]
+        }
+      }
+    }
+  }
+}

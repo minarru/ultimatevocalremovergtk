@@ -14,6 +14,7 @@ from core.ensembler import CollectedStem, Ensembler
 from core.run_hooks import _EnsembleRunHooks
 from core.settings import Settings
 from core.stem_roles import StemRoleId
+from core.stems import StemId, StemRoute, StemRouteKind
 from core.types import SaveFormat
 from core.types.settings_enums import FlacBitDepth, Mp3Bitrate
 
@@ -41,6 +42,58 @@ def _ensembler(export_path: str) -> Ensembler:
 
 
 class EnsembleFinalizationTests(unittest.TestCase):
+    def test_non_chunked_save_all_registers_disk_member_without_array_capture(self) -> None:
+        """Retained ensemble WAVs must not depend on an in-memory buffer."""
+        with tempfile.TemporaryDirectory() as folder:
+            member_path = os.path.join(folder, "song Model (Instrumental).wav")
+            with open(member_path, "wb") as handle:
+                handle.write(b"member")
+            settings = Settings.defaults()
+            settings.ensemble.save_all_outputs = True
+            runner = SimpleNamespace(settings=settings)
+            route = StemRoute(
+                StemId("instrument"),
+                StemRoleId("mix.instrumental"),
+                "Instrumental",
+                "Instrumental",
+                StemRouteKind.NATIVE,
+            )
+            model = SimpleNamespace(
+                canonical_id="mdx:instrumental-member",
+                selected_stem_routes=(route,),
+                available_stem_routes=(),
+                is_vocal_split_model=False,
+                is_secondary_model=False,
+                is_pre_proc_model=False,
+                is_inst_only_voc_splitter=False,
+                is_sec_bv_rebalance=False,
+                is_ensemble_mode=True,
+            )
+            state: Any = SimpleNamespace(
+                scratch={
+                    "last_member_stems": {},
+                    "member_paths": {},
+                    "ensemble_stems": {},
+                    "ensemble_contributors": {},
+                    "ensemble_stem_arrays": {},
+                    "ensemble_stem_paths": {},
+                }
+            )
+            hook = _EnsembleRunHooks(_ensembler(folder), is_multi_stem=False)
+
+            hook.after_chunk(
+                runner,
+                state,
+                model,
+                stems={},
+                paths={"Instrumental": member_path},
+                chunked=False,
+            )
+
+            key = ("reviewed", StemRoleId("mix.instrumental"))
+            self.assertEqual(state.scratch["member_paths"][key], member_path)
+            self.assertEqual(state.scratch["ensemble_stem_paths"][key], [member_path])
+
     def test_multi_stem_run_with_no_viable_output_is_an_error(self) -> None:
         with tempfile.TemporaryDirectory() as folder:
             settings = Settings.defaults()

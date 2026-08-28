@@ -35,19 +35,17 @@ from .catalog_dedupe import (
     normalize_catalogue_label,
     primary_checkpoint_url,
 )
-from .catalogue_types import StemSemanticProjection
+from .catalogue_identity import catalogue_model_id
+from .catalogue_types import CatalogueEvidenceState, StemSemanticProjection
 from .debug_log import debug
 from .extra_catalog import apollo_download_list, merge_extra_catalogues
-from .mdx_runtime_contract import (
-    local_catalogue_mdx_config_evidence,
-    reconcile_catalogue_mdx_runtime_signature,
-)
-from .model_identity import ModelId
+from .mdx_runtime_contract import reconcile_catalogue_mdx_runtime_signature
+from .model_identity import FAMILY_BY_ARCH
 from .model_naming import canonical_display_name
 from .model_stem_semantics import (
     INTENT_UNKNOWN,
     resolve_catalogue_intent,
-    resolve_catalogue_stem_semantics,
+    resolve_exact_catalogue_stem_semantics,
     resolve_is_karaoke,
     stem_semantics_projection,
 )
@@ -92,6 +90,177 @@ class EntryMeta:
             routes=(),
         )
     )
+    catalogue_evidence_status: CatalogueEvidenceState = CatalogueEvidenceState.UNAVAILABLE
+    catalogue_evidence_warning: str = ""
+
+
+def _entry_config_yaml(meta: EntryMeta) -> str:
+    return next(
+        (
+            os.path.basename(str(name))
+            for name in meta.files
+            if str(name).casefold().endswith((".yaml", ".yml"))
+        ),
+        "",
+    )
+
+
+def _append_warning(current: str, warning: str) -> str:
+    if not warning:
+        return current
+    return f"{current}; {warning}" if current else warning
+
+
+def reconcile_catalogue_evidence(
+    meta: EntryMeta,
+    *,
+    live_stems: Optional[List[str]] = None,
+    live_target_instrument: Optional[str] = None,
+    live_config_sha256: str = "",
+    live_usable: bool = False,
+    live_stale: bool = False,
+    live_failed: bool = False,
+    live_warning: str = "",
+    backend_primary: Optional[str] = None,
+) -> EntryMeta:
+    """Apply exact live, bundled, family, then audit evidence in one place."""
+    from .model_manifest.loader import load_model_manifest
+    from .model_manifest.runtime import bundled_catalogue_config_evidence
+    from .model_manifest.stems import (
+        catalogue_stem_evidence_not_applicable,
+        reviewed_catalogue_stem_signature,
+    )
+
+    config_yaml = _entry_config_yaml(meta)
+    family = FAMILY_BY_ARCH.get(meta.arch, "")
+    model_id = catalogue_model_id(family, meta.label, meta.files, meta) or ""
+    manifest = load_model_manifest()
+    record = manifest.models.get(model_id)
+    declared_signature = reviewed_catalogue_stem_signature(model_id)
+    associated_config = record.catalogue_evidence.config_yaml if record is not None else ""
+    evidence_config_yaml = associated_config or (config_yaml if family == "mdx" else "")
+    has_config_contract = bool(evidence_config_yaml)
+    bundled = (
+        bundled_catalogue_config_evidence(model_id, evidence_config_yaml)
+        if evidence_config_yaml
+        else None
+    )
+    usable_live = bool(has_config_contract and live_usable and live_stems and live_config_sha256)
+    selected_stems: tuple[str, ...] | None = None
+    selected_target: Optional[str] = None
+    selected_digest = ""
+    source = ""
+    warning = ""
+
+    if usable_live:
+        selected_stems = tuple(str(item) for item in live_stems or ())
+        selected_target = live_target_instrument or None
+        selected_digest = live_config_sha256
+        source = "live"
+    elif bundled is not None:
+        selected_stems = bundled.training_instruments
+        selected_target = bundled.target_instrument
+        selected_digest = bundled.content_sha256
+        source = "bundled"
+    elif not has_config_contract and declared_signature:
+        selected_stems = declared_signature
+        selected_target = meta.target_instrument
+        source = "family"
+
+    if catalogue_stem_evidence_not_applicable(model_id):
+        evidence_status = CatalogueEvidenceState.NOT_APPLICABLE
+    elif source == "live":
+        evidence_status = (
+            CatalogueEvidenceState.STALE if live_stale else CatalogueEvidenceState.READY
+        )
+        warning = live_warning if live_stale else ""
+    elif source:
+        evidence_status = CatalogueEvidenceState.READY
+    elif has_config_contract:
+        evidence_status = (
+            CatalogueEvidenceState.UNAVAILABLE
+            if live_failed or not _yaml_config_url(meta.files)
+            else CatalogueEvidenceState.PENDING
+        )
+        warning = live_warning if live_failed else ""
+    else:
+        evidence_status = CatalogueEvidenceState.UNAVAILABLE
+        warning = live_warning if live_failed else ""
+
+    semantic_mismatch = ""
+    exact_native: tuple[str, ...] | None = None
+    if selected_stems is not None:
+        live_fields_match = bool(
+            source == "live"
+            and bundled is not None
+            and selected_stems == bundled.training_instruments
+            and selected_target == bundled.target_instrument
+        )
+        if source == "live" and bundled is not None and not live_fields_match:
+            semantic_mismatch = (
+                "catalogue-evidence-mismatch "
+                f"model_id={model_id} training.instruments={selected_stems!r} "
+                f"expected={bundled.training_instruments!r} "
+                f"training.target_instrument={selected_target!r} "
+                f"expected={bundled.target_instrument!r}"
+            )
+        reconciled = reconcile_catalogue_mdx_runtime_signature(
+            model_id,
+            selected_stems,
+            target_instrument=str(selected_target or ""),
+            config_yaml=(config_yaml if source == "live" else evidence_config_yaml),
+            config_sha256=selected_digest,
+        )
+        exact_native = reconciled.native_signature
+        if reconciled.warning:
+            semantic_mismatch = reconciled.warning
+        if (
+            source == "live"
+            and bundled is not None
+            and selected_digest != bundled.content_sha256
+            and live_fields_match
+            and reconciled.contract is None
+        ):
+            warning = _append_warning(
+                warning,
+                f"catalogue-evidence-digest-drift model_id={model_id} config={config_yaml}",
+            )
+
+    resolved_primary = str(
+        backend_primary
+        if backend_primary is not None
+        else (meta.stem_semantics.backend_primary_stem or "")
+    )
+    resolved_target = selected_target if selected_stems is not None else meta.target_instrument
+    semantics = resolve_exact_catalogue_stem_semantics(
+        model_id,
+        exact_native_stems=exact_native,
+        audit_native_stems=meta.stems,
+        backend_primary=resolved_primary,
+        backend_target=str(resolved_target or ""),
+        evidence_warning=warning,
+        semantic_mismatch_warning=semantic_mismatch,
+    )
+    warning = (
+        semantics.warning
+        if warning or semantics.warning.startswith(("catalogue-evidence-", "runtime-contract-"))
+        else ""
+    )
+    projection = stem_semantics_projection(
+        semantics,
+        backend_primary=resolved_primary,
+        backend_target=str(resolved_target or ""),
+    )
+    return replace(
+        meta,
+        stems=(list(selected_stems) if selected_stems is not None else meta.stems),
+        target_instrument=resolved_target,
+        config_sha256=(selected_digest if selected_stems is not None else meta.config_sha256),
+        intent=(semantics.intent if semantics.status.value == "reviewed" else meta.guessed_intent),
+        stem_semantics=projection,
+        catalogue_evidence_status=evidence_status,
+        catalogue_evidence_warning=warning,
+    )
 
 
 def with_catalogue_config_evidence(
@@ -102,44 +271,12 @@ def with_catalogue_config_evidence(
     config_sha256: str,
 ) -> EntryMeta:
     """Reconcile newly parsed live YAML evidence through the shared boundary."""
-    target = meta.target_instrument or target_instrument
-    backend_target = str(target or "")
-    backend_primary = str(meta.stem_semantics.backend_primary_stem or "")
-    config_yaml = next(
-        (
-            os.path.basename(str(name))
-            for name in meta.files
-            if str(name).casefold().endswith((".yaml", ".yml"))
-        ),
-        "",
-    )
-    model_id = _catalogue_model_id(meta.arch, meta.checkpoint)
-    reconciled = reconcile_catalogue_mdx_runtime_signature(
-        model_id,
-        stems,
-        target_instrument=backend_target,
-        config_yaml=config_yaml,
-        config_sha256=config_sha256,
-    )
-    semantics = resolve_catalogue_stem_semantics(
-        model_id,
-        native_stems=reconciled.native_signature,
-        backend_primary=backend_primary,
-        backend_target=backend_target,
-        runtime_warning=reconciled.warning,
-    )
-    projection = stem_semantics_projection(
-        semantics,
-        backend_primary=backend_primary,
-        backend_target=backend_target,
-    )
-    return replace(
+    return reconcile_catalogue_evidence(
         meta,
-        stems=stems,
-        target_instrument=target,
-        config_sha256=config_sha256,
-        intent=(semantics.intent if semantics.status.value == "reviewed" else meta.guessed_intent),
-        stem_semantics=projection,
+        live_stems=stems,
+        live_target_instrument=target_instrument,
+        live_config_sha256=config_sha256,
+        live_usable=bool(stems and config_sha256),
     )
 
 
@@ -150,6 +287,7 @@ class MergedCatalogues:
     demucs: Dict[str, Any]
     apollo: Dict[str, Any]
     meta: Dict[str, EntryMeta]
+    meta_by_family: Dict[str, Dict[str, EntryMeta]]
 
 
 def invalidate_catalogue_merge() -> None:
@@ -214,10 +352,19 @@ def _supplemental_sources(
     return result
 
 
-def _primary_checkpoint(files: Mapping[str, str]) -> Optional[str]:
-    for name in files:
-        if not str(name).endswith(".yaml"):
-            return os.path.basename(str(name))
+def _primary_checkpoint(files: Mapping[str, str], *, demucs_bag: bool = False) -> Optional[str]:
+    weights = [
+        os.path.basename(str(name))
+        for name in files
+        if not str(name).casefold().endswith((".yaml", ".yml"))
+    ]
+    if weights:
+        # A Demucs YAML may declare several interchangeable ensemble members.
+        # Their source mapping order is not identity evidence, so use the same
+        # stable reviewed member selection as catalogue collection/publication.
+        if demucs_bag:
+            return max(weights, key=lambda item: (item.casefold(), item))
+        return weights[0]
     for name in files:
         return os.path.basename(str(name))
     return None
@@ -231,25 +378,12 @@ def _yaml_config_url(files: Mapping[str, str]) -> Optional[str]:
 
 
 def _needs_catalogue_config_evidence(meta: EntryMeta) -> bool:
-    """Whether one raw YAML-backed row still lacks parsed config bytes."""
-    return meta.stem_semantics.status != "reviewed" and not meta.config_sha256
-
-
-def _catalogue_model_id(arch: str, checkpoint: str | None) -> str:
-    """Return an exact canonical ID for a listed artifact, if it has one."""
-    family = {
-        VR_ARCH_TYPE: "vr",
-        MDX_ARCH_TYPE: "mdx",
-        DEMUCS_ARCH_TYPE: "demucs",
-        APOLLO_ARCH_TYPE: "apollo",
-    }.get(arch)
-    if family is None or not checkpoint:
-        return ""
-    basename = os.path.splitext(os.path.basename(checkpoint))[0]
-    try:
-        return ModelId(family, basename).value
-    except ValueError:
-        return ""
+    """Whether one YAML-backed row can still change evidence availability."""
+    return bool(_yaml_config_url(meta.files)) and meta.catalogue_evidence_status in (
+        CatalogueEvidenceState.PENDING,
+        CatalogueEvidenceState.UNAVAILABLE,
+        CatalogueEvidenceState.STALE,
+    )
 
 
 def _build_meta(
@@ -270,57 +404,14 @@ def _build_meta(
         source_meta = (
             extra_meta.get(label) or alias_meta.get(normalize_catalogue_label(label)) or {}
         )
-        checkpoint = _primary_checkpoint(files)
-        model_id = _catalogue_model_id(arch, checkpoint)
-        config_yaml = next(
-            (
-                os.path.basename(str(name))
-                for name in files
-                if str(name).casefold().endswith((".yaml", ".yml"))
-            ),
-            "",
-        )
+        checkpoint = _primary_checkpoint(files, demucs_bag=arch == DEMUCS_ARCH_TYPE)
         stems_raw = source_meta.get("stems")
         stems = list(stems_raw) if isinstance(stems_raw, list) else []
         target = source_meta.get("target_instrument") or None
-        config_sha256 = ""
-        local_evidence = local_catalogue_mdx_config_evidence(model_id, config_yaml)
-        if local_evidence is not None:
-            if not stems:
-                stems = list(local_evidence.training_instruments)
-            if not target:
-                target = local_evidence.target_instrument
-            config_sha256 = local_evidence.content_sha256
         yaml_url = _yaml_config_url(files)
-        if yaml_url:
-            hit = lookup_stems(yaml_url)
-            if hit is not None and hit.ok and hit.stems:
-                if not stems:
-                    stems = list(hit.stems)
-                config_sha256 = hit.content_sha256 or config_sha256
-                if not target:
-                    target = hit.target_instrument
+        hit = lookup_stems(yaml_url) if yaml_url else None
         backend_primary = str(source_meta.get("primary_stem") or "")
         backend_target = str(target or "")
-        reconciled = reconcile_catalogue_mdx_runtime_signature(
-            model_id,
-            stems,
-            target_instrument=backend_target,
-            config_yaml=config_yaml,
-            config_sha256=config_sha256,
-        )
-        semantics = resolve_catalogue_stem_semantics(
-            model_id,
-            native_stems=reconciled.native_signature,
-            backend_primary=backend_primary,
-            backend_target=backend_target,
-            runtime_warning=reconciled.warning,
-        )
-        projection = stem_semantics_projection(
-            semantics,
-            backend_primary=backend_primary,
-            backend_target=backend_target,
-        )
         guessed_intent = resolve_catalogue_intent(
             target=backend_target,
             instruments=stems,
@@ -329,7 +420,7 @@ def _build_meta(
             catalogue_label=label,
             category_intent=str(source_meta.get("intent") or INTENT_UNKNOWN),
         )
-        out[label] = EntryMeta(
+        base = EntryMeta(
             label=label,
             display=canonical_display_name(label),
             arch=arch,
@@ -337,10 +428,19 @@ def _build_meta(
             checkpoint=checkpoint,
             stems=stems,
             target_instrument=target,
-            config_sha256=config_sha256,
-            intent=(semantics.intent if semantics.status.value == "reviewed" else guessed_intent),
+            intent=guessed_intent,
             guessed_intent=guessed_intent,
-            stem_semantics=projection,
+        )
+        out[label] = reconcile_catalogue_evidence(
+            base,
+            live_stems=(list(hit.stems) if hit is not None else None),
+            live_target_instrument=(hit.target_instrument if hit is not None else None),
+            live_config_sha256=(hit.content_sha256 if hit is not None else ""),
+            live_usable=bool(hit is not None and hit.usable),
+            live_stale=bool(hit is not None and hit.stale),
+            live_failed=bool(hit is not None and hit.last_error is not None and not hit.usable),
+            live_warning=(hit.warning if hit is not None else ""),
+            backend_primary=backend_primary,
         )
     return out
 
@@ -417,13 +517,16 @@ def merged_catalogues(
     # checkpoint that has to resolve in the runtime pickers. Deduping first
     # silently un-named five legacy upstream models.
     meta: Dict[str, EntryMeta] = {}
-    for catalogue, arch in (
-        (vr_all, VR_ARCH_TYPE),
-        (mdx_all, MDX_ARCH_TYPE),
-        (demucs_all, DEMUCS_ARCH_TYPE),
-        (apollo_all, APOLLO_ARCH_TYPE),
+    meta_by_family: Dict[str, Dict[str, EntryMeta]] = {}
+    for family, catalogue, arch in (
+        ("vr", vr_all, VR_ARCH_TYPE),
+        ("mdx", mdx_all, MDX_ARCH_TYPE),
+        ("demucs", demucs_all, DEMUCS_ARCH_TYPE),
+        ("apollo", apollo_all, APOLLO_ARCH_TYPE),
     ):
-        meta.update(_build_meta(catalogue, arch, extra_meta, alias_meta))
+        family_meta = _build_meta(catalogue, arch, extra_meta, alias_meta)
+        meta_by_family[family] = family_meta
+        meta.update(family_meta)
 
     from .download_sizes import content_ids_from_cache
 
@@ -449,6 +552,7 @@ def merged_catalogues(
         demucs=demucs_out,
         apollo=apollo_out,
         meta=meta,
+        meta_by_family=meta_by_family,
     )
     # A clear_display_cache / invalidate mid-flight bumps the generation; do
     # not publish that stale result under the new live key.
