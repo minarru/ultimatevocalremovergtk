@@ -475,7 +475,6 @@ class ModelManifestTests(unittest.TestCase):
         historical_roots = tuple(
             root / relative
             for relative in (
-                "docs/reviews",
                 "docs/superpowers/plans",
                 "docs/superpowers/specs",
             )

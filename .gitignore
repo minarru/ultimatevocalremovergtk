@@ -123,8 +123,13 @@ resources/uvr.gresource.xml
 resources/icons/scalable/actions/bug-symbolic.svg
 resources/icons/scalable/actions/cross-small-symbolic.svg
 
-# Subagent-driven-development scratch workspace
+# Subagent-driven-development scratch (any depth, including worktrees)
 .superpowers/
+**/.superpowers/
+
+# Obsolete agent archives — local only; do not re-commit
+docs/plans/
+docs/reviews/
 
 # Git worktrees (local isolation)
 .worktrees/

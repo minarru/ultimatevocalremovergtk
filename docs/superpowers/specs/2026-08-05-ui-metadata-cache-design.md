@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-05  
 **Status:** approved for planning (scope from caching suggestions after Mel-Band / SCNet merge)  
-**Related:** [2026-08-04-ui-performance.md](../plans/2026-08-04-ui-performance.md) (catalogue merge, SWR, deferred combo populate — already shipped)
+**Related:** 2026-08-04 UI performance work (catalogue merge, SWR, deferred combo populate — already shipped)
 
 ## Problem
 
