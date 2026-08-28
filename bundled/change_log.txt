@@ -1,4 +1,4 @@
-Most Recent Changes (v1.1.0 — Linux GTK4 port):
+Most Recent Changes (v1.1.1 — Linux GTK4 port):
 
 Highlights:
 

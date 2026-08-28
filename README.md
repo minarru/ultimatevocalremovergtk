@@ -7,7 +7,7 @@ splitting audio into vocals, instrumental, drums, bass, and other stems. It is
 based on [Ultimate Vocal Remover v5.6](https://github.com/Anjok07/ultimatevocalremovergui)
 and also provides a headless `uvr` command-line interface.
 
-**GTK release v1.1.0** · [Source](https://github.com/minarru/ultimatevocalremovergtk) ·
+**GTK release v1.1.1** · [Source](https://github.com/minarru/ultimatevocalremovergtk) ·
 [Releases](https://github.com/minarru/ultimatevocalremovergtk/releases) ·
 [Report an issue](https://github.com/minarru/ultimatevocalremovergtk/issues)
 
