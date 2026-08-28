@@ -69,6 +69,26 @@ def _derived(role: StemRoleId, source_role: StemRoleId) -> SemanticStemOutput:
     )
 
 
+class CatalogueIdentityAdoptionTests(unittest.TestCase):
+    def test_audit_calls_the_neutral_catalogue_identity_boundary(self) -> None:
+        entry = collect.ModelEntry(
+            source="test",
+            family="Demucs",
+            catalogue_label="Demucs v4: htdemucs_ft",
+            weight_file="f7e0c4bc-ba3fe64a.th",
+        )
+
+        with patch.object(
+            stem_audit_module,
+            "catalogue_model_id",
+            wraps=stem_audit_module.catalogue_model_id,
+        ) as derive:
+            model_id = stem_audit_module._catalogue_model_id(entry)
+
+        self.assertEqual(model_id, "demucs:htdemucs_ft")
+        self.assertEqual(derive.call_args.args[:2], ("demucs", entry.catalogue_label))
+
+
 def _context(
     logical_primary: StemRoleId,
     *outputs: SemanticStemOutput,
@@ -167,6 +187,8 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
         self,
         entries: list[collect.ModelEntry],
         registry: StemSemanticsRegistry,
+        *,
+        current_model_ids: set[str] | None = None,
     ) -> StemAuditResult:
         counts = stem_audit_module.catalogue_evidence_counts(entries, {})
         pinned = (counts.literal_names, counts.normalized_names, counts.primary_names)
@@ -177,6 +199,7 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
                 expected_reference_text="same",
                 actual_reference_text="same",
                 registry=registry,
+                current_model_ids=current_model_ids,
             )
 
     def test_audit_owns_immutable_rows_and_renderer_only_serializes_them(self) -> None:
@@ -369,6 +392,33 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
             _diagnostic(result, "manifest-orphan-waiver").model_ids,
             ("mdx:orphan-waiver",),
         )
+
+    def test_retired_declarations_are_validated_but_excluded_from_current_coverage(self) -> None:
+        registry = _registry(
+            {
+                "mdx:fixture": _declaration(
+                    ("Vocals", "Instrumental"),
+                    _context(
+                        VOCALS,
+                        _native("Vocals", VOCALS),
+                        _native("Instrumental", INSTRUMENTAL),
+                    ),
+                ),
+                "mdx:retired": _declaration(
+                    ("Vocals",),
+                    _context(VOCALS, _native("Vocals", VOCALS)),
+                ),
+            }
+        )
+
+        result = self._audit(
+            [_entry("fixture")],
+            registry,
+            current_model_ids={"mdx:fixture"},
+        )
+
+        self.assertNotIn("manifest-orphan-declaration", _codes(result))
+        self.assertNotIn("mdx:retired", result.reviewed_model_ids)
 
     def test_context_recipe_and_karaoke_secondary_diagnostics_are_schema_2_exact(self) -> None:
         accompaniment = StemRoleId("mix.instrumental_with_backing_vocals")
@@ -889,7 +939,7 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
 
         evidence = _diagnostic(result, "evidence-count")
         self.assertEqual(evidence.model_ids, ("mdx:fixture",))
-        self.assertEqual(evidence.expected, ("150", "123", "92"))
+        self.assertEqual(evidence.expected, ("155", "123", "92"))
         self.assertEqual(evidence.actual, ("6", "6", "1"))
         self.assertNotIn("reference-drift", _codes(result))
         self.assertTrue(result.reference_matches)
@@ -1334,11 +1384,13 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
         self.assertEqual(rendered_ids, set(contracts))
         self.assertTrue(all(row[status_column] == "reviewed" for row in rows[1:]))
 
-    def test_canonical_snapshot_is_484_2_0_with_bidirectional_row_parity(self) -> None:
+    def test_canonical_snapshot_is_483_2_0_with_bidirectional_row_parity(self) -> None:
         """Checked identity evidence and reviewed schema-2 routes agree exactly."""
         from core.mdx_runtime_contract import load_bundled_mdx_runtime_contracts
+        from core.model_manifest import load_model_manifest
         from core.model_stem_manifest import load_bundled_stem_semantics
 
+        manifest = load_model_manifest()
         registry = load_bundled_stem_semantics()
         runtime_contracts = load_bundled_mdx_runtime_contracts().contracts
         reference_path = os.path.join(ROOT, "docs", "model_stem_semantics_reference.tsv")
@@ -1349,18 +1401,25 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
         for line in lines[1:]:
             cells = dict(zip(headers, line.split("\t"), strict=True))
             identity_by_id.setdefault(cells["model_id"], cells)
-        # Task 8 owns checked-in reference regeneration. Keep the final
-        # canonical assertion current while the preceding 485-ID generated
-        # snapshot remains deliberately unchanged for the publication commit.
-        identity_by_id.setdefault(
-            "mdx:scnet_mid_side_gilliaaan",
-            {
-                "model_id": "mdx:scnet_mid_side_gilliaaan",
-                "catalogue_source": "mvsepless",
-                "catalogue_label": "SCNet Mid-Side by Gilliaaan",
-                "execution_arch": "SCNet",
-            },
-        )
+        current_ids = {
+            model_id
+            for model_id, record in manifest.models.items()
+            if record.lifecycle == "current"
+        }
+        identity_by_id = {
+            model_id: identity
+            for model_id, identity in identity_by_id.items()
+            if model_id in current_ids
+        }
+        for model_id in current_ids.difference(identity_by_id):
+            record = manifest.models[model_id]
+            runtime_family = model_id.split(":", 1)[0]
+            identity_by_id[model_id] = {
+                "model_id": model_id,
+                "catalogue_source": record.catalogue_evidence.source,
+                "catalogue_label": record.catalogue_evidence.catalogue_label,
+                "execution_arch": runtime_family,
+            }
 
         family_by_runtime = {
             "demucs": "Demucs",
@@ -1422,12 +1481,13 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
                 entries,
                 collect.CatalogueContext(),
                 registry=registry,
+                current_model_ids=current_ids,
             )
 
-        self.assertEqual(len(identity_by_id), 486)
+        self.assertEqual(len(identity_by_id), 485)
         self.assertEqual(
             len(result.reviewed_model_ids),
-            484,
+            483,
             (result.raw_model_ids, result.diagnostics),
         )
         self.assertEqual(len(result.waived_model_ids), 2)
@@ -1446,6 +1506,7 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
         expected_routes = {
             (model_id, context, str(output.role)): output
             for model_id, declaration in registry.models.items()
+            if model_id in current_ids
             for context, declared_context in declaration.contexts.items()
             for output in declared_context.outputs
         }

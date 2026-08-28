@@ -2,6 +2,9 @@
 
 import tempfile
 import unittest
+from dataclasses import replace
+from types import MappingProxyType
+from unittest import mock
 
 from core.stem_pairs import (
     ensemble_pair_choices,
@@ -48,6 +51,32 @@ class MainStemChoiceTests(unittest.TestCase):
     def test_karaoke_id_is_offered(self) -> None:
         ids = [stored for stored, _label in ensemble_pair_choices()]
         self.assertIn("pair.karaoke", ids)
+
+    def test_future_pairs_append_deterministically_before_modes(self) -> None:
+        from core.model_stem_manifest import StemPairDefinition, load_bundled_stem_semantics
+
+        registry = load_bundled_stem_semantics()
+        exemplar = registry.pairs["pair.vocals_instrumental"]
+        pairs = dict(registry.pairs)
+        pairs["pair.z_future"] = StemPairDefinition(
+            id="pair.z_future",
+            display="Future Z",
+            roles=exemplar.roles,
+        )
+        pairs["pair.a_future"] = StemPairDefinition(
+            id="pair.a_future",
+            display="Future A",
+            roles=exemplar.roles,
+        )
+        extended = replace(registry, pairs=MappingProxyType(pairs))
+
+        with mock.patch("core.stem_pairs.load_bundled_stem_semantics", return_value=extended):
+            ids = [stored for stored, _label in ensemble_pair_choices()]
+
+        self.assertEqual(
+            ids[-4:],
+            ["pair.a_future", "pair.z_future", "mode.four_stem", "mode.multi_stem"],
+        )
 
     def test_pair_registry_has_only_reviewed_pairs_and_karaoke_is_accompaniment_first(
         self,

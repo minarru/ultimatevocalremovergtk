@@ -100,6 +100,49 @@ def resolve_catalogue_stem_semantics(
     return semantics
 
 
+def resolve_exact_catalogue_stem_semantics(
+    model_id: str,
+    *,
+    exact_native_stems: Sequence[str] | None,
+    audit_native_stems: Sequence[str] = (),
+    backend_primary: str = "",
+    backend_target: str = "",
+    evidence_warning: str = "",
+    semantic_mismatch_warning: str = "",
+) -> ModelStemSemantics:
+    """Resolve exact observed evidence, or retain the reviewed declaration.
+
+    Summary/category stems are audit-only for a known manifest identity. They
+    become raw native names only for a genuinely unknown identity. Availability
+    warnings are carried beside review status and never manufacture a semantic
+    mismatch.
+    """
+    from .model_manifest.stems import reviewed_catalogue_stem_signature
+
+    declared = reviewed_catalogue_stem_signature(model_id)
+    if exact_native_stems is None:
+        native_stems = declared or tuple(str(item) for item in audit_native_stems)
+    else:
+        native_stems = tuple(str(item) for item in exact_native_stems)
+    semantics = resolve_catalogue_stem_semantics(
+        model_id,
+        native_stems=native_stems,
+        backend_primary=backend_primary,
+        backend_target=backend_target,
+        runtime_warning=semantic_mismatch_warning,
+    )
+    warning = evidence_warning or semantic_mismatch_warning
+    if (
+        not semantic_mismatch_warning
+        and exact_native_stems is not None
+        and declared
+        and semantics.status is StemReviewStatus.RAW
+    ):
+        mismatch = f"catalogue-evidence-mismatch model_id={model_id} {semantics.warning}"
+        warning = f"{warning}; {mismatch}" if warning else mismatch
+    return replace(semantics, warning=warning) if warning else semantics
+
+
 def stem_semantics_projection(
     semantics: ModelStemSemantics | None,
     *,

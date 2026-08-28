@@ -6,13 +6,14 @@ import unittest
 
 import numpy as np
 
+from bundled.constants import MDX_ARCH_TYPE
 from core import Settings
-from core.model_config import ModelConfig
 from core.model_data import _mdx_c_secondary_for_pair
+from core.model_identity import ModelIdentityService
 from core.model_repository import ModelRepository
 from engines.mdx_c import mdx_combined_secondary_key
 
-_MID_SIDE_TAG = "MDX-Net: MDX23C — Mid-Side v2e · Gilliaaan"
+_MID_SIDE_ID = "mdx:mdx23c_mid_side2e_gilliaaan"
 
 
 class MDXCSecondaryPairTests(unittest.TestCase):
@@ -24,9 +25,7 @@ class MDXCSecondaryPairTests(unittest.TestCase):
 
     def test_voc_inst_pair_keeps_title_case_label(self) -> None:
         self.assertEqual(
-            _mdx_c_secondary_for_pair(
-                ["vocals", "instrumental"], "vocals", "Instrumental"
-            ),
+            _mdx_c_secondary_for_pair(["vocals", "instrumental"], "vocals", "Instrumental"),
             "Instrumental",
         )
 
@@ -56,9 +55,7 @@ class MDXCombinedSecondaryKeyTests(unittest.TestCase):
 
     def test_label_match_wins_and_is_case_insensitive(self) -> None:
         sources = self._sources("vocals", "instrumental")
-        key = mdx_combined_secondary_key(
-            sources, ["vocals", "instrumental"], "Instrumental"
-        )
+        key = mdx_combined_secondary_key(sources, ["vocals", "instrumental"], "Instrumental")
         self.assertEqual(key, "instrumental")
 
     def test_missing_stem_reports_the_available_keys(self) -> None:
@@ -75,14 +72,17 @@ class MDXCInstalledModelStemTests(unittest.TestCase):
         cls.repo = ModelRepository()
 
     def test_mid_side_model_complement_is_the_wide_stem(self) -> None:
-        try:
-            model = ModelConfig(
-                self.settings, self.repo, _MID_SIDE_TAG, is_dry_check=True
-            )
-        except Exception:
+        record = ModelIdentityService(self.repo).lookup(_MID_SIDE_ID)
+        if not record.installed:
             self.skipTest("mid-side MDX23C model not installed")
-        if not model.model_status:
-            self.skipTest("mid-side MDX23C model not installed")
+
+        model = self.repo.resolve_model_dry(self.settings, MDX_ARCH_TYPE, record.id)
+        self.assertIsNotNone(
+            model,
+            f"installed model {record.id!r} did not resolve through the repository",
+        )
+        assert model is not None
+        self.assertTrue(model.model_status, f"installed model {record.id!r} is invalid")
         self.assertEqual(list(model.mdx_model_stems), ["center", "wide"])
         self.assertEqual(model.primary_stem, "center")
         self.assertEqual(model.secondary_stem, "wide")

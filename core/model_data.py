@@ -4,16 +4,14 @@
 Per-run :class:`~core.model_config.ModelConfig` assembly lives in
 :mod:`core.model_config`. Nothing here imports ``tkinter``.
 """
-import typing
 
 import json
+import typing
 from typing import Any
 
 from bundled.constants import *  # noqa: F401,F403 - mirrors UVR.py's flat constant namespace
 
-from .model_stem_semantics import (
-    is_vocal_target,
-)
+from .model_stem_semantics import is_vocal_target
 
 _MDX_C_YAML_LOADER = None
 
@@ -56,8 +54,8 @@ def _mdx_c_yaml_loader() -> typing.Any:
     return _MDX_C_YAML_LOADER
 
 
-def load_mdx_c_config_data(data: str | bytes) -> dict:
-    """Parse trusted MDX-C / Roformer YAML already held in memory."""
+def load_mdx_c_config_data(data: str | bytes) -> Any:
+    """Parse an MDX-C / Roformer YAML in memory with the restricted loader."""
     import yaml
 
     return yaml.load(data, Loader=_mdx_c_yaml_loader())

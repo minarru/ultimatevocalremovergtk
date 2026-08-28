@@ -1,6 +1,6 @@
 # UVR Model Catalogue (TRvlvr + Politrees + extras + mvsepless)
 
-Generated: 2026-08-26 21:57 UTC by `scripts/generate_models_catalogue.py`.
+Generated: 2026-08-28 10:35 UTC by `scripts/generate_models_catalogue.py`.
 
 Regenerate after catalogue updates:
 
@@ -25,10 +25,20 @@ Instrumental Mel-Band / BS models often use `target_instrument: other` with
 `instruments: [other, vocals]`. That is a **2-stem vocal/instrumental** split.
 The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Demucs Other.
 
+## Source provenance
+
+- Snapshot mode: `force`
+- Source refreshed: extras, mvsepless, politrees, upstream
+- Source stale: none
+- Source failed: none
+- Source upstream live: True
+- Cache community: 0m old
+- Cache yaml: 0m old
+
 ## Summary
 
-- Total catalogue entries: **486**
-- Entries with resolved metadata: **484**
+- Total catalogue entries: **485**
+- Entries with resolved metadata: **485**
 - Unknown intent remaining: **2**
 - Flagged mismatches: **0**
 - Unsupported mvsepless entries (omitted): **0**
@@ -37,8 +47,8 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 
 | Family | Model | Metadata | Primary/Target |
 | --- | --- | --- | --- |
-| Apollo | Apollo — EDM Restoration Big · Essid | unavailable | — |
-| Apollo | Apollo — EDM Restoration · Essid | unavailable | — |
+| Apollo | Apollo — EDM Restoration Big · Essid | bundled_yaml:apollo_edm_big_by_essid.yaml | — |
+| Apollo | Apollo — EDM Restoration · Essid | bundled_yaml:apollo_edm_by_essid.yaml | — |
 
 ## Quick reference (all models)
 
@@ -65,7 +75,7 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | VR Architecture | VR v5 — HP2 7 | instrumental | Instrumental, Vocals | two_stem | Instrumental | — |
 | VR Architecture | VR v5 — HP2 8 | instrumental | Instrumental, Vocals | two_stem | Instrumental | — |
 | VR Architecture | VR v5 — HP2 9 | instrumental | Instrumental, Vocals | two_stem | Instrumental | — |
-| VR Architecture | VR v5 — Karaoke BVE (4 Bands, SN, 44.1 kHz) 1 | vocals | Backing Vocals, Instrumental with Lead Vocals | vocal_primary | Vocals | — |
+| VR Architecture | VR v5 — Karaoke BVE (4 Bands, SN, 44.1 kHz) 1 | vocals | Backing Vocals, Instrumental with Lead Vocals | two_stem | Vocals | — |
 | VR Architecture | VR v5 — De-Echo Aggressive · FoxJoy | special_fx | Echo Removed, Echo | two_stem | no echo | — |
 | VR Architecture | VR v5 — De-Echo Normal · FoxJoy | special_fx | Echo Removed, Echo | two_stem | no echo | — |
 | VR Architecture | VR v5 — De-Echo/DeReverb · FoxJoy | special_fx | Reverb/Echo Removed, Reverb/Echo | two_stem | no reverb | — |
@@ -213,14 +223,14 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | MDX-Net ONNX | MDX-Net — UVR Main 406 | vocals | Vocals, Instrumental | vocal_target | vocals | — |
 | MDX-Net ONNX | MDX-Net — UVR Main 427 | vocals | Vocals, Instrumental | vocal_target | vocals | — |
 | MDX-Net ONNX | MDX-Net — UVR Main 438 | vocals | Vocals, Instrumental | vocal_target | vocals | — |
-| MDX-Net ONNX | MDX-Net — Kim Instrumental | instrumental | Instrumental, Vocals | instrumental_primary | Instrumental | — |
-| MDX-Net ONNX | MDX-Net — Kim Vocals 1 | vocals | Vocals, Instrumental | vocal_primary | Vocals | — |
-| MDX-Net ONNX | MDX-Net — Kim Vocals 2 | vocals | Vocals, Instrumental | vocal_primary | Vocals | — |
-| MDX-Net ONNX | MDX-Net — Reverb HQ · FoxJoy | special_fx | Reverb Removed, Reverb | special_fx_primary:reverb | reverb | — |
-| MDX-Net ONNX | MDX-Net — UVR 1 | vocals | Vocals, Instrumental | vocal_primary | Vocals | — |
-| MDX-Net ONNX | MDX-Net — UVR 2 | vocals | Vocals, Instrumental | vocal_primary | Vocals | — |
-| MDX-Net ONNX | MDX-Net — UVR 3 | vocals | Vocals, Instrumental | vocal_primary | Vocals | — |
-| MDX-Net ONNX | MDX-Net — UVR Crowd HQ 1 · Aufr33 | specialty_stem | Crowd Removed, Crowd | special_fx_primary:no crowd | no crowd | — |
+| MDX-Net ONNX | MDX-Net — Kim Instrumental | instrumental | Instrumental, Vocals | two_stem | Instrumental | — |
+| MDX-Net ONNX | MDX-Net — Kim Vocals 1 | vocals | Vocals, Instrumental | two_stem | Vocals | — |
+| MDX-Net ONNX | MDX-Net — Kim Vocals 2 | vocals | Vocals, Instrumental | two_stem | Vocals | — |
+| MDX-Net ONNX | MDX-Net — Reverb HQ · FoxJoy | special_fx | Reverb Removed, Reverb | two_stem | reverb | — |
+| MDX-Net ONNX | MDX-Net — UVR 1 | vocals | Vocals, Instrumental | two_stem | Vocals | — |
+| MDX-Net ONNX | MDX-Net — UVR 2 | vocals | Vocals, Instrumental | two_stem | Vocals | — |
+| MDX-Net ONNX | MDX-Net — UVR 3 | vocals | Vocals, Instrumental | two_stem | Vocals | — |
+| MDX-Net ONNX | MDX-Net — UVR Crowd HQ 1 · Aufr33 | specialty_stem | Crowd Removed, Crowd | two_stem | no crowd | — |
 | MDX-Net ONNX | MDX-Net — UVR Instrumental 1 | instrumental | Instrumental, Vocals | instrumental_target | instrumental | — |
 | MDX-Net ONNX | MDX-Net — UVR Instrumental 2 | instrumental | Instrumental, Vocals | instrumental_target | instrumental | — |
 | MDX-Net ONNX | MDX-Net — UVR Instrumental 3 | instrumental | Instrumental, Vocals | instrumental_target | instrumental | — |
@@ -231,18 +241,18 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | MDX-Net ONNX | MDX-Net — UVR Instrumental HQ 5 | instrumental | Instrumental, Vocals | instrumental_target | instrumental | — |
 | MDX-Net ONNX | MDX-Net — UVR Instrumental Main | instrumental | Instrumental, Vocals | instrumental_target | instrumental | — |
 | MDX-Net ONNX | MDX-Net — UVR Karaoke | karaoke | Instrumental with Backing Vocals, Lead Vocals | karaoke_vocal_primary | Vocals | — |
-| MDX-Net ONNX | MDX-Net — UVR Karaoke 2 | karaoke | Instrumental with Backing Vocals, Lead Vocals | karaoke_instrumental_primary | other | — |
+| MDX-Net ONNX | MDX-Net — UVR Karaoke 2 | karaoke | Instrumental with Backing Vocals, Lead Vocals | karaoke_unknown_primary | other | — |
 | MDX-Net ONNX | MDX-Net — UVR Main | dual_voc_inst | Vocals or Instrumental — both are first-class 2-st… | vocal_target | vocals | — |
 | MDX-Net ONNX | MDX-Net — UVR Vocals Fine-Tuned | vocals | Vocals, Instrumental | vocal_target | vocals | — |
-| MDX-Net ONNX | MDX-Net — UVR 9482 | vocals | Vocals, Instrumental | vocal_primary | Vocals | — |
-| MDX-Net ONNX | MDX-Net — KUIELAB A Bass | specialty_stem | Bass, Bass Removed | demucs_component:bass | bass | — |
-| MDX-Net ONNX | MDX-Net — KUIELAB A Drums | specialty_stem | Drums, Drums Removed | demucs_component:drums | drums | — |
-| MDX-Net ONNX | MDX-Net — KUIELAB A Other | specialty_stem | Residual, Residual Removed | demucs_component:other | other | — |
-| MDX-Net ONNX | MDX-Net — KUIELAB A Vocals | specialty_stem | Vocals, Instrumental | vocal_primary | Vocals | — |
-| MDX-Net ONNX | MDX-Net — KUIELAB B Bass | specialty_stem | Bass, Bass Removed | demucs_component:bass | bass | — |
-| MDX-Net ONNX | MDX-Net — KUIELAB B Drums | specialty_stem | Drums, Drums Removed | demucs_component:drums | drums | — |
-| MDX-Net ONNX | MDX-Net — KUIELAB B Other | specialty_stem | Residual, Residual Removed | demucs_component:other | other | — |
-| MDX-Net ONNX | MDX-Net — KUIELAB B Vocals | specialty_stem | Vocals, Instrumental | vocal_primary | Vocals | — |
+| MDX-Net ONNX | MDX-Net — UVR 9482 | vocals | Vocals, Instrumental | two_stem | Vocals | — |
+| MDX-Net ONNX | MDX-Net — KUIELAB A Bass | specialty_stem | Bass, Bass Removed | two_stem | bass | — |
+| MDX-Net ONNX | MDX-Net — KUIELAB A Drums | specialty_stem | Drums, Drums Removed | two_stem | drums | — |
+| MDX-Net ONNX | MDX-Net — KUIELAB A Other | specialty_stem | Residual, Residual Removed | two_stem | other | — |
+| MDX-Net ONNX | MDX-Net — KUIELAB A Vocals | specialty_stem | Vocals, Instrumental | two_stem | Vocals | — |
+| MDX-Net ONNX | MDX-Net — KUIELAB B Bass | specialty_stem | Bass, Bass Removed | two_stem | bass | — |
+| MDX-Net ONNX | MDX-Net — KUIELAB B Drums | specialty_stem | Drums, Drums Removed | two_stem | drums | — |
+| MDX-Net ONNX | MDX-Net — KUIELAB B Other | specialty_stem | Residual, Residual Removed | two_stem | other | — |
+| MDX-Net ONNX | MDX-Net — KUIELAB B Vocals | specialty_stem | Vocals, Instrumental | two_stem | Vocals | — |
 | MDX-Net | MDX23C — Small (4 Stems) · KUIELAB | multi_stem | Multi-stem: Vocals, Drums, Bass, Residual | multi_stem | vocals | — |
 | MDX-Net | MDX23C (4 Stems) · KUIELAB | multi_stem | Multi-stem: Vocals, Drums, Bass, Residual | multi_stem | vocals | — |
 | MDX-Net | MDX23C (4 Stems) · ZFTurbo | multi_stem | Multi-stem: Vocals, Bass, Drums, Residual | multi_stem | vocals | — |
@@ -255,7 +265,7 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | MDX-Net | MDX23C — Mid-Side v1 · Gilliaaan | specialty_stem | Side / Center | single_target:wide | wide | — |
 | MDX-Net | MDX23C — Mid-Side v2e · Gilliaaan | specialty_stem | Center, Side | two_stem | center | — |
 | MDX23C | MDX23C — 8K FFT Instrumental/Vocals HQ 2 | dual_voc_inst | Vocals or Instrumental — both are first-class 2-st… | two_stem | Vocals | — |
-| MDX23C | MDX23C — DeReverb · Aufr33 & Jarredou | special_fx | Reverb Removed (+ Reverb complement) | special_fx_target:dry | dry | — |
+| MDX23C | MDX23C — DeReverb · Aufr33 & Jarredou | special_fx | Reverb Removed, Reverb | two_stem | dry | — |
 | MDX23C | MDX23C — DrumSep · Aufr33 & Jarredou | multi_stem | Multi-stem: Kick, Snare, Toms, Hi-Hat, Ride, Crash | multi_stem | kick | — |
 | MDX23C | MDX23C — Phantom Centre Extraction · WesleyR36 | specialty_stem | Center / Side | specialty_target:Similarity | Similarity | — |
 | MDX23C | MDX23C — 8K FFT Instrumental/Vocals HQ | dual_voc_inst | Vocals or Instrumental — both are first-class 2-st… | two_stem | Vocals | — |
@@ -319,8 +329,6 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | MDX-Net | MelBand Roformer — Instrumental Fv9 · GaboxR67 [mbr_instfv9_2_gabox] | instrumental | Instrumental / Vocals | instrumental_target | Instrumental | — |
 | MDX-Net | MelBand Roformer — Instrumental Fv9 · GaboxR67 [mbr_instfv9_gabox] | instrumental | Instrumental / Vocals | instrumental_target | Instrumental | — |
 | MDX-Net | MelBand Roformer — Instrumental FvX · GaboxR67 | instrumental | Instrumental / Vocals | instrumental_target | Instrumental | — |
-| MDX-Net | MelBand Roformer — Instrumental · Becruily [mbr_guitar_becruily] | specialty_stem | Guitar (+ Guitar Removed complement) | specialty_target:Guitar | Guitar | — |
-| MDX-Net | MelBand Roformer — Instrumental · Becruily [mbr_inst_becruily] | instrumental | Instrumental / Vocals | instrumental_target | Instrumental | — |
 | MDX-Net | MelBand Roformer — Instrumental (SDR 16.52) · Essid | instrumental | Instrumental / Vocals | instrumental_target | Instrumental | — |
 | MDX-Net | MelBand Roformer — Instrumental (SDR 16.81) · Essid | instrumental | Instrumental / Vocals | instrumental_target | Instrumental | — |
 | MDX-Net | MelBand Roformer — Instrumental v1 · Unwa | instrumental | Instrumental / Vocals | instrumental_target_other_yaml | other | — |
@@ -328,6 +336,7 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | MDX-Net | MelBand Roformer — Instrumental v1e Plus · Unwa | instrumental | Instrumental / Vocals | instrumental_target_other_yaml | other | — |
 | MDX-Net | MelBand Roformer — Instrumental v1e · Unwa | instrumental | Instrumental / Vocals | instrumental_target_other_yaml | other | — |
 | MDX-Net | MelBand Roformer — Instrumental v2 · Unwa | instrumental | Instrumental / Vocals | instrumental_target_other_yaml | other | — |
+| MDX-Net | MelBand Roformer — Invert Clean · Becruily | vocals | Vocals / Instrumental | vocal_target | Vocals | — |
 | MDX-Net | MelBand Roformer — Karaoke 25-02-2025 · GaboxR67 | karaoke | Instrumental with Backing Vocals / Lead Vocals | karaoke_unknown_primary | karaoke | — |
 | MDX-Net | MelBand Roformer — Karaoke 28-02-2025 · GaboxR67 | karaoke | Instrumental with Backing Vocals / Lead Vocals | karaoke_unknown_primary | karaoke | — |
 | MDX-Net | MelBand Roformer — Karaoke Fusion Aggressive · Gonzaluigi [mbr_karaoke_fusion2_aggr_gonzaluigi] | karaoke | Instrumental with Backing Vocals / Lead Vocals | karaoke_vocal_primary | Vocals | — |
@@ -883,8 +892,9 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** TRvlvr+Politrees
 - **Weight:** `UVR-BVE-4B_SN-44100-1.pth`
 - **Name intent:** vocals
-- **Backend focus:** vocal_primary
+- **Backend focus:** two_stem
 - **Primary stem (backend):** `Vocals`
+- **Instruments:** Vocals, Instrumental
 - **Best result:** Backing Vocals, Instrumental with Lead Vocals
 - **Save stems UI:** UI: Backing Vocals / Instrumental with Lead Vocals
 - **Metadata:** community_models.txt
@@ -3080,8 +3090,9 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** TRvlvr+Politrees
 - **Weight:** `Kim_Inst.onnx`
 - **Name intent:** instrumental
-- **Backend focus:** instrumental_primary
+- **Backend focus:** two_stem
 - **Primary stem (backend):** `Instrumental`
+- **Instruments:** Instrumental, Vocals
 - **Best result:** Instrumental, Vocals
 - **Save stems UI:** UI: Instrumental / Vocals
 - **Metadata:** community_models.txt
@@ -3092,8 +3103,9 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** TRvlvr+Politrees
 - **Weight:** `Kim_Vocal_1.onnx`
 - **Name intent:** vocals
-- **Backend focus:** vocal_primary
+- **Backend focus:** two_stem
 - **Primary stem (backend):** `Vocals`
+- **Instruments:** Vocals, Instrumental
 - **Best result:** Vocals, Instrumental
 - **Save stems UI:** UI: Vocals / Instrumental
 - **Metadata:** community_models.txt
@@ -3104,8 +3116,9 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** TRvlvr+Politrees
 - **Weight:** `Kim_Vocal_2.onnx`
 - **Name intent:** vocals
-- **Backend focus:** vocal_primary
+- **Backend focus:** two_stem
 - **Primary stem (backend):** `Vocals`
+- **Instruments:** Vocals, Instrumental
 - **Best result:** Vocals, Instrumental
 - **Save stems UI:** UI: Vocals / Instrumental
 - **Metadata:** community_models.txt
@@ -3116,8 +3129,9 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** TRvlvr+Politrees
 - **Weight:** `Reverb_HQ_By_FoxJoy.onnx`
 - **Name intent:** special_fx
-- **Backend focus:** special_fx_primary:reverb
+- **Backend focus:** two_stem
 - **Primary stem (backend):** `reverb`
+- **Instruments:** Reverb, No Reverb
 - **Best result:** Reverb Removed, Reverb
 - **Save stems UI:** UI: Reverb Removed / Reverb
 - **Metadata:** community_models.txt
@@ -3128,8 +3142,9 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** TRvlvr+Politrees
 - **Weight:** `UVR_MDXNET_1_9703.onnx`
 - **Name intent:** vocals
-- **Backend focus:** vocal_primary
+- **Backend focus:** two_stem
 - **Primary stem (backend):** `Vocals`
+- **Instruments:** Vocals, Instrumental
 - **Best result:** Vocals, Instrumental
 - **Save stems UI:** UI: Vocals / Instrumental
 - **Metadata:** community_models.txt
@@ -3140,8 +3155,9 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** TRvlvr+Politrees
 - **Weight:** `UVR_MDXNET_2_9682.onnx`
 - **Name intent:** vocals
-- **Backend focus:** vocal_primary
+- **Backend focus:** two_stem
 - **Primary stem (backend):** `Vocals`
+- **Instruments:** Vocals, Instrumental
 - **Best result:** Vocals, Instrumental
 - **Save stems UI:** UI: Vocals / Instrumental
 - **Metadata:** community_models.txt
@@ -3152,8 +3168,9 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** TRvlvr+Politrees
 - **Weight:** `UVR_MDXNET_3_9662.onnx`
 - **Name intent:** vocals
-- **Backend focus:** vocal_primary
+- **Backend focus:** two_stem
 - **Primary stem (backend):** `Vocals`
+- **Instruments:** Vocals, Instrumental
 - **Best result:** Vocals, Instrumental
 - **Save stems UI:** UI: Vocals / Instrumental
 - **Metadata:** community_models.txt
@@ -3164,8 +3181,9 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** TRvlvr+Politrees
 - **Weight:** `UVR-MDX-NET_Crowd_HQ_1.onnx`
 - **Name intent:** specialty_stem
-- **Backend focus:** special_fx_primary:no crowd
+- **Backend focus:** two_stem
 - **Primary stem (backend):** `no crowd`
+- **Instruments:** No Crowd, Crowd
 - **Best result:** Crowd Removed, Crowd
 - **Save stems UI:** UI: Crowd Removed / Crowd subset
 - **Metadata:** community_models.txt
@@ -3304,6 +3322,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Name intent:** karaoke
 - **Backend focus:** karaoke_vocal_primary
 - **Primary stem (backend):** `Vocals`
+- **Instruments:** Vocals, Instrumental
 - **Karaoke model:** yes
 - **Best result:** Instrumental with Backing Vocals, Lead Vocals
 - **Save stems UI:** UI: Instrumental with Backing Vocals / Lead Vocals
@@ -3315,9 +3334,9 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** TRvlvr+Politrees
 - **Weight:** `UVR_MDXNET_KARA_2.onnx`
 - **Name intent:** karaoke
-- **Backend focus:** karaoke_instrumental_primary
+- **Backend focus:** karaoke_unknown_primary
 - **Primary stem (backend):** `Instrumental`
-- **Instruments:** other, vocals
+- **Instruments:** Instrumental, Vocals
 - **Target instrument:** `other`
 - **Karaoke model:** yes
 - **Best result:** Instrumental with Backing Vocals, Lead Vocals
@@ -3359,8 +3378,9 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** TRvlvr+Politrees
 - **Weight:** `UVR_MDXNET_9482.onnx`
 - **Name intent:** vocals
-- **Backend focus:** vocal_primary
+- **Backend focus:** two_stem
 - **Primary stem (backend):** `Vocals`
+- **Instruments:** Vocals, Instrumental
 - **Best result:** Vocals, Instrumental
 - **Save stems UI:** UI: Vocals / Instrumental
 - **Metadata:** community_models.txt
@@ -3371,8 +3391,9 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** TRvlvr+Politrees
 - **Weight:** `kuielab_a_bass.onnx`
 - **Name intent:** specialty_stem
-- **Backend focus:** demucs_component:bass
+- **Backend focus:** two_stem
 - **Primary stem (backend):** `bass`
+- **Instruments:** Bass, No Bass
 - **Best result:** Bass, Bass Removed
 - **Save stems UI:** UI: Bass / Bass Removed subset
 - **Metadata:** community_models.txt
@@ -3383,8 +3404,9 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** TRvlvr+Politrees
 - **Weight:** `kuielab_a_drums.onnx`
 - **Name intent:** specialty_stem
-- **Backend focus:** demucs_component:drums
+- **Backend focus:** two_stem
 - **Primary stem (backend):** `drums`
+- **Instruments:** Drums, No Drums
 - **Best result:** Drums, Drums Removed
 - **Save stems UI:** UI: Drums / Drums Removed subset
 - **Metadata:** community_models.txt
@@ -3395,8 +3417,9 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** TRvlvr+Politrees
 - **Weight:** `kuielab_a_other.onnx`
 - **Name intent:** specialty_stem
-- **Backend focus:** demucs_component:other
+- **Backend focus:** two_stem
 - **Primary stem (backend):** `other`
+- **Instruments:** Other, No Other
 - **Best result:** Residual, Residual Removed
 - **Save stems UI:** UI: Residual / Residual Removed subset
 - **Metadata:** community_models.txt
@@ -3407,8 +3430,9 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** TRvlvr+Politrees
 - **Weight:** `kuielab_a_vocals.onnx`
 - **Name intent:** specialty_stem
-- **Backend focus:** vocal_primary
+- **Backend focus:** two_stem
 - **Primary stem (backend):** `Vocals`
+- **Instruments:** Vocals, Instrumental
 - **Best result:** Vocals, Instrumental
 - **Save stems UI:** UI: Vocals / Instrumental subset
 - **Metadata:** community_models.txt
@@ -3419,8 +3443,9 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** TRvlvr+Politrees
 - **Weight:** `kuielab_b_bass.onnx`
 - **Name intent:** specialty_stem
-- **Backend focus:** demucs_component:bass
+- **Backend focus:** two_stem
 - **Primary stem (backend):** `bass`
+- **Instruments:** Bass, No Bass
 - **Best result:** Bass, Bass Removed
 - **Save stems UI:** UI: Bass / Bass Removed subset
 - **Metadata:** community_models.txt
@@ -3431,8 +3456,9 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** TRvlvr+Politrees
 - **Weight:** `kuielab_b_drums.onnx`
 - **Name intent:** specialty_stem
-- **Backend focus:** demucs_component:drums
+- **Backend focus:** two_stem
 - **Primary stem (backend):** `drums`
+- **Instruments:** Drums, No Drums
 - **Best result:** Drums, Drums Removed
 - **Save stems UI:** UI: Drums / Drums Removed subset
 - **Metadata:** community_models.txt
@@ -3443,8 +3469,9 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** TRvlvr+Politrees
 - **Weight:** `kuielab_b_other.onnx`
 - **Name intent:** specialty_stem
-- **Backend focus:** demucs_component:other
+- **Backend focus:** two_stem
 - **Primary stem (backend):** `other`
+- **Instruments:** Other, No Other
 - **Best result:** Residual, Residual Removed
 - **Save stems UI:** UI: Residual / Residual Removed subset
 - **Metadata:** community_models.txt
@@ -3455,8 +3482,9 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** TRvlvr+Politrees
 - **Weight:** `kuielab_b_vocals.onnx`
 - **Name intent:** specialty_stem
-- **Backend focus:** vocal_primary
+- **Backend focus:** two_stem
 - **Primary stem (backend):** `Vocals`
+- **Instruments:** Vocals, Instrumental
 - **Best result:** Vocals, Instrumental
 - **Save stems UI:** UI: Vocals / Instrumental subset
 - **Metadata:** community_models.txt
@@ -3644,11 +3672,10 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Config:** `config_dereverb_mdx23c.yaml`
 - **Architecture:** MDX23C
 - **Name intent:** special_fx
-- **Backend focus:** special_fx_target:dry
+- **Backend focus:** two_stem
 - **Primary stem (backend):** `dry`
 - **Instruments:** dry, No dry
-- **Target instrument:** `dry`
-- **Best result:** Reverb Removed (+ Reverb complement)
+- **Best result:** Reverb Removed, Reverb
 - **Save stems UI:** UI: Reverb Removed / Reverb
 - **Metadata:** bundled_yaml:config_dereverb_mdx23c.yaml
 - **Note:** Community ref: dry, no dry
@@ -4593,36 +4620,6 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: Instrumental / Vocals
 - **Metadata:** bundled_yaml:mbr_instfvx_gabox_config.yaml
 
-### MelBand Roformer — Instrumental · Becruily [mbr_guitar_becruily]
-
-- **Source:** mvsepless
-- **Weight:** `mbr_guitar_becruily.ckpt`
-- **Config:** `mbr_guitar_becruily_config.yaml`
-- **Architecture:** Mel-Band Roformer
-- **Name intent:** specialty_stem
-- **Backend focus:** specialty_target:Guitar
-- **Primary stem (backend):** `Guitar`
-- **Instruments:** Guitar, Other
-- **Target instrument:** `Guitar`
-- **Best result:** Guitar (+ Guitar Removed complement)
-- **Save stems UI:** UI: Guitar / Guitar Removed subset
-- **Metadata:** bundled_yaml:mbr_guitar_becruily_config.yaml
-
-### MelBand Roformer — Instrumental · Becruily [mbr_inst_becruily]
-
-- **Source:** mvsepless
-- **Weight:** `mbr_inst_becruily.ckpt`
-- **Config:** `mbr_inst_becruily_config.yaml`
-- **Architecture:** Mel-Band Roformer
-- **Name intent:** instrumental
-- **Backend focus:** instrumental_target
-- **Primary stem (backend):** `Instrumental`
-- **Instruments:** Instrumental, Vocals
-- **Target instrument:** `Instrumental`
-- **Best result:** Instrumental / Vocals
-- **Save stems UI:** UI: Instrumental / Vocals
-- **Metadata:** bundled_yaml:mbr_inst_becruily_config.yaml
-
 ### MelBand Roformer — Instrumental (SDR 16.52) · Essid
 
 - **Source:** mvsepless
@@ -4732,6 +4729,21 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: Instrumental / Vocals
 - **Metadata:** bundled_yaml:mbr_inst2_unwa_config.yaml
 - **Note:** Expected: inst models use yaml stem `other` (UI: Vocals / Instrumental)
+
+### MelBand Roformer — Invert Clean · Becruily
+
+- **Source:** mvsepless
+- **Weight:** `mbr_invert_clean_becruily.ckpt`
+- **Config:** `mbr_invert_clean_becruily_config.yaml`
+- **Architecture:** Mel-Band Roformer
+- **Name intent:** vocals
+- **Backend focus:** vocal_target
+- **Primary stem (backend):** `Vocals`
+- **Instruments:** Vocals, Other
+- **Target instrument:** `Vocals`
+- **Best result:** Vocals / Instrumental
+- **Save stems UI:** UI: Vocals / Instrumental
+- **Metadata:** remote_yaml:mbr_invert_clean_becruily_config.yaml
 
 ### MelBand Roformer — Karaoke 25-02-2025 · GaboxR67
 
@@ -5751,7 +5763,6 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Best result:** Multi-stem: Vocals, Bass, Drums, Residual, Guitar, Piano
 - **Save stems UI:** UI: Vocals / Bass / Drums / Residual / Guitar / Piano subset
 - **Metadata:** bundled_yaml:config_BandSplit-Roformer_SW_by-jarredou.yaml
-- **Note:** Intent inferred from metadata (multi_stem)
 
 ### BandSplit Roformer — Vocals · Gabox
 
@@ -7406,7 +7417,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** drums, bass, other, vocals
 - **Best result:** Multi-stem: Vocals, Drums, Bass, Residual
 - **Save stems UI:** UI: Vocals / Drums / Bass / Residual subset
-- **Metadata:** demucs_heuristic
+- **Metadata:** catalogue_demucs_declaration
 
 ### Demucs v1 — Time-Domain Extra
 
@@ -7417,7 +7428,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** drums, bass, other, vocals
 - **Best result:** Multi-stem: Vocals, Drums, Bass, Residual
 - **Save stems UI:** UI: Vocals / Drums / Bass / Residual subset
-- **Metadata:** demucs_heuristic
+- **Metadata:** catalogue_demucs_declaration
 
 ### Demucs v1 — Light
 
@@ -7428,7 +7439,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** drums, bass, other, vocals
 - **Best result:** Multi-stem: Vocals, Drums, Bass, Residual
 - **Save stems UI:** UI: Vocals / Drums / Bass / Residual subset
-- **Metadata:** demucs_heuristic
+- **Metadata:** catalogue_demucs_declaration
 
 ### Demucs v1 — Light Extra
 
@@ -7439,7 +7450,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** drums, bass, other, vocals
 - **Best result:** Multi-stem: Vocals, Drums, Bass, Residual
 - **Save stems UI:** UI: Vocals / Drums / Bass / Residual subset
-- **Metadata:** demucs_heuristic
+- **Metadata:** catalogue_demucs_declaration
 
 ### Demucs v1 — Conv-TasNet
 
@@ -7450,7 +7461,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** drums, bass, other, vocals
 - **Best result:** Multi-stem: Vocals, Drums, Bass, Residual
 - **Save stems UI:** UI: Vocals / Drums / Bass / Residual subset
-- **Metadata:** demucs_heuristic
+- **Metadata:** catalogue_demucs_declaration
 
 ### Demucs v1 — Conv-TasNet Extra
 
@@ -7461,7 +7472,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** drums, bass, other, vocals
 - **Best result:** Multi-stem: Vocals, Drums, Bass, Residual
 - **Save stems UI:** UI: Vocals / Drums / Bass / Residual subset
-- **Metadata:** demucs_heuristic
+- **Metadata:** catalogue_demucs_declaration
 
 ### Demucs v2 — Time-Domain
 
@@ -7472,7 +7483,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** drums, bass, other, vocals
 - **Best result:** Multi-stem: Vocals, Drums, Bass, Residual
 - **Save stems UI:** UI: Vocals / Drums / Bass / Residual subset
-- **Metadata:** demucs_heuristic
+- **Metadata:** catalogue_demucs_declaration
 
 ### Demucs v2 — Time-Domain 48 kHz HQ
 
@@ -7483,7 +7494,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** drums, bass, other, vocals
 - **Best result:** Multi-stem: Vocals, Drums, Bass, Residual
 - **Save stems UI:** UI: Vocals / Drums / Bass / Residual subset
-- **Metadata:** demucs_heuristic
+- **Metadata:** catalogue_demucs_declaration
 
 ### Demucs v2 — Time-Domain Extra
 
@@ -7494,7 +7505,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** drums, bass, other, vocals
 - **Best result:** Multi-stem: Vocals, Drums, Bass, Residual
 - **Save stems UI:** UI: Vocals / Drums / Bass / Residual subset
-- **Metadata:** demucs_heuristic
+- **Metadata:** catalogue_demucs_declaration
 
 ### Demucs v2 — Unit Test
 
@@ -7505,7 +7516,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** drums, bass, other, vocals
 - **Best result:** Multi-stem: Vocals, Drums, Bass, Residual
 - **Save stems UI:** UI: Vocals / Drums / Bass / Residual subset
-- **Metadata:** demucs_heuristic
+- **Metadata:** catalogue_demucs_declaration
 
 ### Demucs v2 — Conv-TasNet
 
@@ -7516,7 +7527,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** drums, bass, other, vocals
 - **Best result:** Multi-stem: Vocals, Drums, Bass, Residual
 - **Save stems UI:** UI: Vocals / Drums / Bass / Residual subset
-- **Metadata:** demucs_heuristic
+- **Metadata:** catalogue_demucs_declaration
 
 ### Demucs v2 — Conv-TasNet Extra
 
@@ -7527,7 +7538,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** drums, bass, other, vocals
 - **Best result:** Multi-stem: Vocals, Drums, Bass, Residual
 - **Save stems UI:** UI: Vocals / Drums / Bass / Residual subset
-- **Metadata:** demucs_heuristic
+- **Metadata:** catalogue_demucs_declaration
 
 ### Demucs v3 — UVR Model (2 Stems)
 
@@ -7539,7 +7550,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** instrumental, vocals
 - **Best result:** Instrumental or Vocals — both are first-class 2-stem exports
 - **Save stems UI:** UI: Instrumental / Vocals (either stem is a valid primary export)
-- **Metadata:** demucs_heuristic
+- **Metadata:** catalogue_demucs_declaration
 
 ### Demucs v3 — MDX
 
@@ -7551,7 +7562,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** drums, bass, other, vocals
 - **Best result:** Multi-stem: Vocals, Drums, Bass, Residual
 - **Save stems UI:** UI: Vocals / Drums / Bass / Residual subset
-- **Metadata:** demucs_heuristic
+- **Metadata:** catalogue_demucs_declaration
 
 ### Demucs v3 — MDX Extra
 
@@ -7563,7 +7574,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** drums, bass, other, vocals
 - **Best result:** Multi-stem: Vocals, Drums, Bass, Residual
 - **Save stems UI:** UI: Vocals / Drums / Bass / Residual subset
-- **Metadata:** demucs_heuristic
+- **Metadata:** catalogue_demucs_declaration
 
 ### Demucs v3 — MDX Extra Quantized
 
@@ -7575,7 +7586,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** drums, bass, other, vocals
 - **Best result:** Multi-stem: Vocals, Drums, Bass, Residual
 - **Save stems UI:** UI: Vocals / Drums / Bass / Residual subset
-- **Metadata:** demucs_heuristic
+- **Metadata:** catalogue_demucs_declaration
 
 ### Demucs v3 — MDX Quantized
 
@@ -7587,7 +7598,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** drums, bass, other, vocals
 - **Best result:** Multi-stem: Vocals, Drums, Bass, Residual
 - **Save stems UI:** UI: Vocals / Drums / Bass / Residual subset
-- **Metadata:** demucs_heuristic
+- **Metadata:** catalogue_demucs_declaration
 
 ### Demucs v3 — Repro MDX A
 
@@ -7599,7 +7610,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** drums, bass, other, vocals
 - **Best result:** Multi-stem: Vocals, Drums, Bass, Residual
 - **Save stems UI:** UI: Vocals / Drums / Bass / Residual subset
-- **Metadata:** demucs_heuristic
+- **Metadata:** catalogue_demucs_declaration
 
 ### Demucs v3 — Repro MDX A Hybrid Only
 
@@ -7611,7 +7622,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** drums, bass, other, vocals
 - **Best result:** Multi-stem: Vocals, Drums, Bass, Residual
 - **Save stems UI:** UI: Vocals / Drums / Bass / Residual subset
-- **Metadata:** demucs_heuristic
+- **Metadata:** catalogue_demucs_declaration
 
 ### Demucs v3 — Repro MDX A Time-Domain Only
 
@@ -7623,7 +7634,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** drums, bass, other, vocals
 - **Best result:** Multi-stem: Vocals, Drums, Bass, Residual
 - **Save stems UI:** UI: Vocals / Drums / Bass / Residual subset
-- **Metadata:** demucs_heuristic
+- **Metadata:** catalogue_demucs_declaration
 
 ### Demucs v4 — Hybrid Demucs MMI
 
@@ -7635,7 +7646,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** drums, bass, other, vocals
 - **Best result:** Multi-stem: Vocals, Drums, Bass, Residual
 - **Save stems UI:** UI: Vocals / Drums / Bass / Residual subset
-- **Metadata:** demucs_heuristic
+- **Metadata:** catalogue_demucs_declaration
 
 ### Demucs v4 — Hybrid Transformer
 
@@ -7647,7 +7658,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** drums, bass, other, vocals
 - **Best result:** Multi-stem: Vocals, Drums, Bass, Residual
 - **Save stems UI:** UI: Vocals / Drums / Bass / Residual subset
-- **Metadata:** demucs_heuristic
+- **Metadata:** catalogue_demucs_declaration
 
 ### Demucs v4 — Hybrid Transformer (6 Stems)
 
@@ -7659,7 +7670,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** drums, bass, other, vocals, guitar, piano
 - **Best result:** Multi-stem: Vocals, Drums, Bass, Residual, Guitar, Piano
 - **Save stems UI:** UI: Vocals / Drums / Bass / Residual / Guitar / Piano subset
-- **Metadata:** demucs_heuristic
+- **Metadata:** catalogue_demucs_declaration
 
 ### Demucs v4 — Hybrid Transformer Fine-Tuned
 
@@ -7671,7 +7682,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** drums, bass, other, vocals
 - **Best result:** Multi-stem: Vocals, Drums, Bass, Residual
 - **Save stems UI:** UI: Vocals / Drums / Bass / Residual subset
-- **Metadata:** demucs_heuristic
+- **Metadata:** catalogue_demucs_declaration
 
 ## Apollo (detail)
 
@@ -7683,7 +7694,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Name intent:** unknown
 - **Backend focus:** unknown
 - **Best result:** unknown
-- **Metadata:** unavailable
+- **Metadata:** bundled_yaml:apollo_edm_big_by_essid.yaml
 
 ### Apollo — EDM Restoration · Essid
 
@@ -7693,4 +7704,4 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Name intent:** unknown
 - **Backend focus:** unknown
 - **Best result:** unknown
-- **Metadata:** unavailable
+- **Metadata:** bundled_yaml:apollo_edm_by_essid.yaml

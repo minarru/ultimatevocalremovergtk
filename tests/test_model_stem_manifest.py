@@ -771,6 +771,10 @@ class ManifestValidationTests(unittest.TestCase):
             declarations.append((model_id, declaration, target_match.group(1)))
 
         self.assertEqual(len(declarations), 304)
+        self.assertNotIn(
+            "mdx:MDX23C-De-Reverb-aufr33-jarredou",
+            {model_id for model_id, _declaration, _target in declarations},
+        )
         for model_id, declaration, target in declarations:
             with self.subTest(model_id=model_id):
                 self.assertEqual(declaration.native_signature, (target,))
@@ -860,17 +864,33 @@ class ManifestValidationTests(unittest.TestCase):
 
     def test_bundled_catalogue_covers_every_current_exact_identity(self) -> None:
         """The checked-in review is exhaustive, never inferred at runtime."""
-        registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)
+        from core.model_manifest import load_model_manifest
 
-        self.assertEqual(len(registry.models), 484)
+        manifest = load_model_manifest()
+        registry = manifest.stems
+        current_ids = {
+            model_id
+            for model_id, record in manifest.models.items()
+            if record.lifecycle == "current"
+        }
+        current_models = current_ids.intersection(registry.models)
+        current_waivers = current_ids.intersection(registry.waivers)
+
+        self.assertEqual(len(current_ids), 485)
+        self.assertEqual(len(current_models), 483)
         self.assertEqual(
-            set(registry.waivers),
+            current_waivers,
             {
                 "apollo:apollo_edm_big_by_essid",
                 "apollo:apollo_edm_by_essid",
             },
         )
-        self.assertFalse(set(registry.models) & set(registry.waivers))
+        self.assertEqual(current_ids, current_models | current_waivers)
+        self.assertFalse(current_models & current_waivers)
+        self.assertEqual(
+            set(registry.models).difference(current_ids),
+            {"mdx:mbr_guitar_becruily", "mdx:mbr_inst_becruily"},
+        )
 
     def test_accepts_all_supported_canonical_model_families(self) -> None:
         for model_id in ("vr:fixture", "mdx:fixture", "demucs:fixture", "apollo:fixture"):
@@ -915,7 +935,7 @@ class ManifestValidationTests(unittest.TestCase):
     def test_bundled_manifest_loads_core_roles_pairs_and_reviewed_catalogue(self) -> None:
         registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)
 
-        self.assertEqual(len(registry.models), 484)
+        self.assertEqual(len(registry.models), 485)
         self.assertEqual(len(registry.waivers), 2)
         self.assertIn(StemRoleId("vocal.vocals"), registry.roles)
         self.assertEqual(
@@ -1144,7 +1164,7 @@ class BundledFallbackTests(unittest.TestCase):
         document = _manifest()
         document["unknown"] = "closed-world violation"
         with TemporaryDirectory() as directory:
-            broken = Path(directory) / "model_stem_manifest.json"
+            broken = Path(directory) / "model_manifest.json"
             broken.write_text(json.dumps(document), encoding="utf-8")
 
             with self.assertRaises(StemManifestError):
@@ -1173,7 +1193,7 @@ class BundledFallbackTests(unittest.TestCase):
     ) -> None:
         self.addCleanup(load_bundled_stem_semantics.cache_clear)
         with TemporaryDirectory() as directory:
-            broken = Path(directory) / "model_stem_manifest.json"
+            broken = Path(directory) / "model_manifest.json"
             broken.write_bytes(b"\xff")
 
             with self.assertRaisesRegex(StemManifestError, "could not read manifest"):
@@ -1199,7 +1219,7 @@ class BundledFallbackTests(unittest.TestCase):
     ) -> None:
         self.addCleanup(load_bundled_stem_semantics.cache_clear)
         with TemporaryDirectory() as directory:
-            broken = Path(directory) / "model_stem_manifest.json"
+            broken = Path(directory) / "model_manifest.json"
             broken.write_text("{invalid", encoding="utf-8")
             with (
                 patch("core.model_stem_manifest.BUNDLED_MANIFEST_PATH", broken),

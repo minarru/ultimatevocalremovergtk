@@ -14,6 +14,13 @@ catalogue intent, export naming, and ensemble compatibility
 - [Ensemble stem semantics](2026-07-31-ensemble-stem-semantics-design.md)
 - [Model display quality and backfill revision](2026-08-24-model-display-quality-and-backfill-revision-design.md)
 
+> **Supersession notice (2026-08-27):** The separate bundled stem and runtime
+> authorities, atomic loading, catalogue-evidence state, and one-snapshot
+> publication rules in this historical design are superseded by the approved
+> [`Unified Model Manifest and Catalogue Evidence Design`](2026-08-27-unified-model-manifest-and-catalogue-evidence-design.md).
+> The reviewed role, route, context, and export decisions below remain
+> historical design evidence.
+
 ## Summary
 
 The current stem layer correctly preserves native yaml/hash keys, but its

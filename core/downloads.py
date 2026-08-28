@@ -48,7 +48,7 @@ from bundled.constants import (
 
 from . import paths
 from .catalog_dedupe import normalize_catalogue_label
-from .debug_log import debug
+from .debug_log import debug, log_event
 from .download_sizes import (
     content_ids_from_cache,
     describe_download_size,
@@ -59,6 +59,7 @@ from .download_sizes import (
 )
 from .json_store import locked_json_path
 from .mdx_config_fetch import ensure_mdx_c_config
+from .model_identity import FAMILY_BY_ARCH
 from .mvsepless_catalog import (
     unsupported_mvsepless_downloads,
     unsupported_reason_for_label,
@@ -78,6 +79,19 @@ from .version_info import release_update_status
 DOWNLOAD_MODEL_CACHE = paths.DOWNLOAD_MODEL_CACHE_PATH
 # Minimum interval between byte-count status strings shown in the queue UI.
 _INFO_UPDATE_INTERVAL_S = 0.25
+
+
+@dataclasses.dataclass(frozen=True)
+class CatalogueEvidenceSummary:
+    """Aggregate semantic-review and exact-evidence availability counts."""
+
+    reviewed: int = 0
+    raw: int = 0
+    waived: int = 0
+    pending: int = 0
+    unavailable: int = 0
+    stale: int = 0
+
 
 # Mapper JSON download links paired with their on-disk destinations (the exact
 # four files ``download_model_settings`` refreshes).
@@ -312,10 +326,20 @@ class DownloadManager:
         # {label: EntryMeta} from the last merge. Annotated loosely so
         # ``catalog_sources`` stays out of this module's import time.
         self.catalogue_meta: Dict[str, Any] = {}
+        # Family-keyed metadata is the authoritative association for exact
+        # identity/display projection. The flat map remains presentation-only
+        # compatibility state for older consumers.
+        self.catalogue_meta_by_family: Dict[str, Dict[str, Any]] = {}
         self._size_warmup_lock = threading.Lock()
         self._size_warmup_done_for: Optional[frozenset[str]] = None
         self._catalogue_changed_subscribers: List[Callable[[], None]] = []
         self._catalogue_changed_lock = threading.Lock()
+        self._catalogue_evidence_lock = threading.Lock()
+        self._catalogue_evidence_pending: set[str] = set()
+        self._catalogue_evidence_force_pending: set[str] = set()
+        self._catalogue_evidence_callbacks: list[Callable[[CatalogueEvidenceSummary], None]] = []
+        self._catalogue_evidence_url_entries: Dict[str, list[tuple[str, str]]] = {}
+        self._catalogue_evidence_subscribed = False
         self._coordinator = None
         self._repo = repo
         self._last_refresh_report: Any = None
@@ -405,6 +429,10 @@ class DownloadManager:
         self.demucs_download_list = dict(snapshot.demucs)
         self.apollo_download_list = dict(snapshot.apollo)
         self.catalogue_meta = dict(snapshot.meta)
+        self.catalogue_meta_by_family = {
+            str(family): dict(entries)
+            for family, entries in getattr(snapshot, "meta_by_family", {}).items()
+        }
         self.unsupported_download_list = dict(snapshot.unsupported)
         from .catalogue_types import SourceId
 
@@ -665,6 +693,7 @@ class DownloadManager:
         self.demucs_download_list = merged.demucs
         self.apollo_download_list = merged.apollo
         self.catalogue_meta = merged.meta
+        self.catalogue_meta_by_family = merged.meta_by_family
         existing_labels = {
             **self.vr_download_list,
             **self.mdx_download_list,
@@ -676,38 +705,320 @@ class DownloadManager:
             allow_network=allow_network,
         )
 
-    def apply_catalogue_stem_cache(self) -> set[str]:
-        """Patch catalogue_meta stems from the YAML stem cache. Return updated labels."""
+    def apply_catalogue_stem_cache(
+        self,
+        urls: typing.Iterable[str] | None = None,
+    ) -> set[str]:
+        """Patch family-scoped metadata from completed exact config evidence."""
         from .catalog_sources import (
             _needs_catalogue_config_evidence,
             _yaml_config_url,
-            with_catalogue_config_evidence,
+            reconcile_catalogue_evidence,
         )
         from .catalogue_stem_cache import lookup_stems
 
+        allowed_urls = set(urls or ())
+        scoped = self._family_catalogue_meta()
+        targets = [
+            (family, label, meta)
+            for family, metadata in scoped.items()
+            for label, meta in list(metadata.items())
+        ]
+        if not targets:
+            targets = [
+                (FAMILY_BY_ARCH.get(meta.arch, ""), label, meta)
+                for label, meta in list(self.catalogue_meta.items())
+            ]
         updated: set[str] = set()
-        for label, meta in list(self.catalogue_meta.items()):
-            if not _needs_catalogue_config_evidence(meta):
-                continue
+        updated_by_family: Dict[str, list[str]] = {}
+        for family, label, meta in targets:
             url = _yaml_config_url(meta.files)
             if not url:
                 continue
-            hit = lookup_stems(url)
-            if hit is None or not hit.ok or not hit.stems or not hit.content_sha256:
+            if url not in allowed_urls and not _needs_catalogue_config_evidence(meta):
                 continue
-            self.catalogue_meta[label] = with_catalogue_config_evidence(
+            hit = lookup_stems(url)
+            if hit is None:
+                continue
+            # Legacy successes without a digest are not exact byte evidence.
+            if hit.usable and not hit.content_sha256:
+                continue
+            reconciled = reconcile_catalogue_evidence(
                 meta,
-                stems=list(hit.stems),
-                target_instrument=meta.target_instrument or hit.target_instrument,
-                config_sha256=hit.content_sha256,
+                live_stems=list(hit.stems),
+                live_target_instrument=hit.target_instrument,
+                live_config_sha256=hit.content_sha256,
+                live_usable=hit.usable,
+                live_stale=hit.stale,
+                live_failed=hit.last_error is not None and not hit.usable,
+                live_warning=hit.warning,
             )
-            updated.add(label)
+            if reconciled != meta:
+                flat = getattr(self, "catalogue_meta", {})
+                if flat.get(label) is meta or label not in flat:
+                    flat[label] = reconciled
+                family_meta = scoped.get(family)
+                if family_meta is not None and label in family_meta:
+                    family_meta[label] = reconciled
+                updated.add(label)
+                updated_by_family.setdefault(family, []).append(label)
         if updated:
             coordinator = getattr(self, "_coordinator", None)
             notify = getattr(coordinator, "notify_metadata", None)
             if callable(notify):
-                notify({"mdx": tuple(sorted(updated))})
+                notify(
+                    {family: tuple(sorted(labels)) for family, labels in updated_by_family.items()}
+                )
         return updated
+
+    def _ensure_catalogue_evidence_listener(self) -> None:
+        """Subscribe once to incremental config-validation cache changes."""
+        if getattr(self, "_catalogue_evidence_subscribed", False):
+            return
+        from .catalogue_stem_cache import subscribe
+
+        subscribe(self._on_catalogue_evidence_cache_update)
+        self._catalogue_evidence_subscribed = True
+
+    def _on_catalogue_evidence_cache_update(self) -> None:
+        """Apply completed config evidence while leaving queued work pending."""
+        from .catalogue_stem_cache import pending_urls
+
+        lock = getattr(self, "_catalogue_evidence_lock", None)
+        if lock is None:
+            return
+        with lock:
+            tracked = set(self._catalogue_evidence_pending)
+        self.apply_catalogue_stem_cache(tracked)
+        active = pending_urls()
+        callbacks: list[Callable[[CatalogueEvidenceSummary], None]] = []
+        completed_force: set[str] = set()
+        with lock:
+            self._catalogue_evidence_pending.intersection_update(active)
+            before_force = set(self._catalogue_evidence_force_pending)
+            self._catalogue_evidence_force_pending.intersection_update(active)
+            if before_force and not self._catalogue_evidence_force_pending:
+                completed_force = before_force
+                callbacks = list(self._catalogue_evidence_callbacks)
+                self._catalogue_evidence_callbacks.clear()
+        if not completed_force:
+            return
+        summary = self.catalogue_evidence_summary()
+        self._log_catalogue_evidence_failures(completed_force)
+        log_event(
+            "download",
+            "catalogue_evidence_batch_completed",
+            level="debug",
+            **dataclasses.asdict(summary),
+        )
+        for callback in callbacks:
+            try:
+                callback(summary)
+            except Exception as exc:
+                log_event(
+                    "download",
+                    "catalogue_evidence_subscriber_failed",
+                    level="warning",
+                    subscriber_type=type(callback).__name__,
+                    error_type=type(exc).__name__,
+                    message=str(exc),
+                )
+
+    def _family_catalogue_meta(self) -> Dict[str, Dict[str, Any]]:
+        """Return the authoritative family-scoped catalogue metadata."""
+        scoped = getattr(self, "catalogue_meta_by_family", None)
+        return scoped if isinstance(scoped, dict) else {}
+
+    def _public_family_catalogue_meta(self) -> Dict[str, Dict[str, Any]]:
+        """Resolve post-deduplication public rows through exact family metadata."""
+        scoped = self._family_catalogue_meta()
+        catalogues = {
+            "vr": getattr(self, "vr_download_list", {}),
+            "mdx": getattr(self, "mdx_download_list", {}),
+            "demucs": getattr(self, "demucs_download_list", {}),
+            "apollo": getattr(self, "apollo_download_list", {}),
+        }
+        return {
+            family: {
+                str(label): metadata[str(label)] for label in catalogue if str(label) in metadata
+            }
+            for family, catalogue in catalogues.items()
+            if isinstance(catalogue, dict)
+            for metadata in (scoped.get(family, {}),)
+        }
+
+    def catalogue_evidence_summary(self) -> CatalogueEvidenceSummary:
+        """Count semantic review and evidence availability without flattening IDs."""
+        semantic = {"reviewed": 0, "raw": 0, "waived": 0}
+        evidence = {"pending": 0, "unavailable": 0, "stale": 0}
+        for metadata in self._public_family_catalogue_meta().values():
+            for meta in metadata.values():
+                projection = getattr(meta, "stem_semantics", None)
+                review = str(getattr(projection, "status", "raw") or "raw")
+                if review in semantic:
+                    semantic[review] += 1
+                state = getattr(meta, "catalogue_evidence_status", "unavailable")
+                state_value = str(getattr(state, "value", state) or "")
+                if state_value in evidence:
+                    evidence[state_value] += 1
+        return CatalogueEvidenceSummary(**semantic, **evidence)
+
+    def _log_catalogue_evidence_failures(self, urls: typing.Iterable[str]) -> None:
+        """Log batch failures with exact identities and bounded cache diagnostics."""
+        from .catalogue_identity import catalogue_model_id
+        from .catalogue_stem_cache import lookup_stems
+
+        scoped = self._family_catalogue_meta()
+        url_entries = getattr(self, "_catalogue_evidence_url_entries", {})
+        for url in urls:
+            hit = lookup_stems(url)
+            error = getattr(hit, "last_error", None) if hit is not None else None
+            if error is None:
+                continue
+            for family, label in url_entries.get(url, ()):
+                meta = scoped.get(family, {}).get(label)
+                catalogue = getattr(self, f"{family}_download_list", {})
+                raw = catalogue.get(label) if isinstance(catalogue, dict) else None
+                model_id = catalogue_model_id(family, label, raw, meta) or f"{family}:{label}"
+                log_event(
+                    "download",
+                    "catalogue_evidence_validation_failed",
+                    level="warning",
+                    model_id=model_id,
+                    url=url,
+                    error_type=getattr(error, "kind", type(error).__name__),
+                    message=getattr(error, "message", str(error)),
+                )
+
+    def queue_catalogue_evidence(
+        self,
+        entries: typing.Iterable[tuple[str, str]] | None = None,
+        *,
+        priority: bool = False,
+        force: bool = False,
+        on_complete: Callable[[CatalogueEvidenceSummary], None] | None = None,
+    ) -> tuple[str, ...]:
+        """Queue exact config evidence and expose pending state immediately.
+
+        ``entries`` contains canonical ``(family, catalogue selection)`` pairs.
+        Omitting it selects every current family-scoped entry. Force bypasses
+        both success and failure TTLs without deleting last-known-good cache
+        evidence.
+        """
+        from .catalog_sources import _needs_catalogue_config_evidence, _yaml_config_url
+        from .catalogue_stem_cache import (
+            enqueue_missing,
+            ensure_worker_started,
+            lookup_stems,
+        )
+        from .catalogue_types import CatalogueEvidenceState
+
+        scoped = self._family_catalogue_meta()
+        public_scoped = self._public_family_catalogue_meta()
+        requested = (
+            tuple(entries)
+            if entries is not None
+            else tuple(
+                (family, label) for family, metadata in public_scoped.items() for label in metadata
+            )
+        )
+        selected: list[tuple[str, str, Any, str]] = []
+        seen_entries: set[tuple[str, str, str]] = set()
+        for family, label in requested:
+            metadata = scoped.get(str(family), {})
+            meta = metadata.get(str(label))
+            if meta is None or str(family) != "mdx":
+                continue
+            url = _yaml_config_url(meta.files)
+            if not url:
+                continue
+            entry_key = (str(family), str(label), url)
+            if entry_key in seen_entries:
+                continue
+            if not force:
+                hit = lookup_stems(url)
+                if hit is not None:
+                    if not (hit.ok and not hit.content_sha256) and not hit.revalidation_due:
+                        continue
+                elif not _needs_catalogue_config_evidence(meta) and not meta.config_sha256:
+                    continue
+            seen_entries.add(entry_key)
+            selected.append((str(family), str(label), meta, url))
+
+        urls = tuple(sorted({item[3] for item in selected}))
+        if not urls:
+            return ()
+        published_urls: tuple[str, ...] = ()
+
+        def publish_reserved(accepted: tuple[str, ...]) -> None:
+            nonlocal published_urls
+            accepted_set = set(accepted)
+            published_urls = tuple(url for url in urls if url in accepted_set)
+            accepted_entries = [item for item in selected if item[3] in accepted_set]
+            changed: Dict[str, list[str]] = {}
+            for family, label, meta, _url in accepted_entries:
+                status = getattr(meta, "catalogue_evidence_status", None)
+                if status is not CatalogueEvidenceState.UNAVAILABLE:
+                    continue
+                pending_meta = dataclasses.replace(
+                    meta,
+                    catalogue_evidence_status=CatalogueEvidenceState.PENDING,
+                    catalogue_evidence_warning="",
+                )
+                scoped[family][label] = pending_meta
+                flat = getattr(self, "catalogue_meta", {})
+                if flat.get(label) is meta:
+                    flat[label] = pending_meta
+                changed.setdefault(family, []).append(label)
+
+            lock = getattr(self, "_catalogue_evidence_lock", None)
+            if lock is None:
+                self._catalogue_evidence_lock = threading.Lock()
+                lock = self._catalogue_evidence_lock
+                self._catalogue_evidence_pending = set()
+            with lock:
+                self._catalogue_evidence_pending.update(published_urls)
+                if force:
+                    self._catalogue_evidence_force_pending.update(published_urls)
+                    if on_complete is not None:
+                        self._catalogue_evidence_callbacks.append(on_complete)
+                for family, label, _meta, url in accepted_entries:
+                    associations = self._catalogue_evidence_url_entries.setdefault(url, [])
+                    association = (family, label)
+                    if association not in associations:
+                        associations.append(association)
+            if force:
+                summary = self.catalogue_evidence_summary()
+                log_event(
+                    "download",
+                    "catalogue_evidence_batch_started",
+                    urls=len(published_urls),
+                    force=True,
+                    **dataclasses.asdict(summary),
+                )
+            coordinator = getattr(self, "_coordinator", None)
+            notify = getattr(coordinator, "notify_metadata", None)
+            if changed and callable(notify):
+                notify({family: tuple(labels) for family, labels in changed.items()})
+            self._ensure_catalogue_evidence_listener()
+
+        accepted = enqueue_missing(
+            urls,
+            priority=priority,
+            force=force,
+            on_reserved=publish_reserved,
+        )
+        if not accepted:
+            return ()
+        ensure_worker_started()
+        return published_urls
+
+    def force_revalidate_catalogue_evidence(
+        self,
+        on_complete: Callable[[CatalogueEvidenceSummary], None] | None = None,
+    ) -> tuple[str, ...]:
+        """Conditionally revalidate every current config without clearing LKG."""
+        return self.queue_catalogue_evidence(force=True, on_complete=on_complete)
 
     # -- Download lists ---------------------------------------------------------
 
@@ -1229,7 +1540,7 @@ class DownloadManager:
         def by_display(family: str, catalogue: Dict[str, Any]) -> Dict[str, Any]:
             def display(label: str) -> str:
                 raw = catalogue[label]
-                meta = catalogue_entry_meta(self, family, label)
+                meta = catalogue_entry_meta(self, family, label, exact=True)
                 return project_catalogue_display(family, label, raw, meta)
 
             return {
@@ -1265,7 +1576,7 @@ class DownloadManager:
                         family,
                         selection,
                         model,
-                        catalogue_entry_meta(self, family, selection),
+                        catalogue_entry_meta(self, family, selection, exact=True),
                     ),
                     model,
                 )

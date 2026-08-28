@@ -28,12 +28,11 @@ Anything advanced/per-method (secondary models, vocal splitter, change-model
 defaults, deverb, the download center, ...) is intentionally left to later
 phases.
 """
-import typing
 
-import json
 import os
 import re
 import threading
+import typing
 from typing import Optional
 
 from gi.repository import Adw, GLib, Gtk
@@ -47,8 +46,8 @@ from bundled.constants import (
 )
 from core.export_naming import preview_output_name
 from core.json_store import read_json_object, safe_json_path, write_json_atomic
-from core.platform import system_name
 from core.paths import SETTINGS_CACHE_DIR
+from core.platform import system_name
 
 from .application import apply_color_scheme
 from .dispatch import idle_on_main
@@ -132,6 +131,24 @@ def catalogue_refresh_feedback(
     return "Couldn't refresh catalogue cache. Previous cache kept."
 
 
+def catalogue_evidence_refresh_feedback(summary: typing.Any) -> str:
+    """Describe aggregate config-evidence completion without hiding LKG use."""
+    unavailable = int(getattr(summary, "unavailable", 0) or 0)
+    stale = int(getattr(summary, "stale", 0) or 0)
+    if unavailable and stale:
+        return (
+            "Catalogue refreshed; output details finished with "
+            f"{unavailable} unavailable and {stale} using previous details"
+        )
+    if unavailable:
+        noun = "model" if unavailable == 1 else "models"
+        return f"Catalogue refreshed; output details unavailable for {unavailable} {noun}"
+    if stale:
+        noun = "model" if stale == 1 else "models"
+        return f"Catalogue refreshed; using previous output details for {stale} {noun}"
+    return "Catalogue refreshed; output details updated"
+
+
 class ProfileStore:
     """Read/write named settings profiles as JSON, matching ``UVR.py``.
 
@@ -153,11 +170,7 @@ class ProfileStore:
             entries = os.listdir(self.directory)
         except OSError:
             return []
-        return sorted(
-            os.path.splitext(entry)[0]
-            for entry in entries
-            if entry.endswith(".json")
-        )
+        return sorted(os.path.splitext(entry)[0] for entry in entries if entry.endswith(".json"))
 
     def save(self, name: str, data: dict) -> Optional[str]:
         """Write ``data`` as a profile. Returns an error message, or ``None`` on success."""
@@ -210,7 +223,12 @@ class PreferencesDialog(Adw.PreferencesDialog):
       window's widgets is the point.
     """
 
-    def __init__(self, context: typing.Any, on_settings_reloaded: typing.Any=None, on_settings_applied: typing.Any=None):
+    def __init__(
+        self,
+        context: typing.Any,
+        on_settings_reloaded: typing.Any = None,
+        on_settings_applied: typing.Any = None,
+    ):
         super().__init__()
         self.context = context
         self.settings = context.settings
@@ -252,9 +270,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
             [label for label, _value in _DIAGNOSTIC_LEVEL_OPTIONS],
             subtitle="Errors are always recorded; Debug and Trace add progressively more detail",
         )
-        self.diagnostic_level_row.connect(
-            "notify::selected", self._on_diagnostic_level_changed
-        )
+        self.diagnostic_level_row.connect("notify::selected", self._on_diagnostic_level_changed)
         diagnostics_group.add(self.diagnostic_level_row)
 
         self.diagnostic_sensitive_row = Adw.SwitchRow(
@@ -356,10 +372,22 @@ class PreferencesDialog(Adw.PreferencesDialog):
         process_group = Adw.PreferencesGroup(title="General process settings")
         self._process_switches = {}
         for key, title, subtitle in (
-            ("is_testing_audio", "Settings test mode", "Prefix outputs with a timestamp for testing"),
+            (
+                "is_testing_audio",
+                "Settings test mode",
+                "Prefix outputs with a timestamp for testing",
+            ),
             ("is_add_model_name", "Model test mode", "Append the model name to output file names"),
-            ("is_create_model_folder", "Generate model folder", "Save outputs inside a per-model subfolder"),
-            ("is_accept_any_input", "Accept any input", "Allow any input file type, not just common audio"),
+            (
+                "is_create_model_folder",
+                "Generate model folder",
+                "Save outputs inside a per-model subfolder",
+            ),
+            (
+                "is_accept_any_input",
+                "Accept any input",
+                "Allow any input file type, not just common audio",
+            ),
             ("is_normalization", "Normalize output", "Limit peaks above 1.0 on saved audio"),
             (
                 "is_match_mix_level",
@@ -442,7 +470,9 @@ class PreferencesDialog(Adw.PreferencesDialog):
         sample_group.add(self.sample_mode_row)
 
         adjustment = Gtk.Adjustment(lower=5, upper=120, step_increment=5, page_increment=10)
-        self.sample_duration_row = Adw.SpinRow(title="Sample clip duration (seconds)", adjustment=adjustment)
+        self.sample_duration_row = Adw.SpinRow(
+            title="Sample clip duration (seconds)", adjustment=adjustment
+        )
         self.sample_duration_row.connect("notify::value", self._on_duration_changed)
         sample_group.add(self.sample_duration_row)
         page.add(sample_group)
@@ -546,11 +576,42 @@ class PreferencesDialog(Adw.PreferencesDialog):
             model_settings_updated: bool | None = None
             if online and self.settings.process.auto_update_model_params:
                 model_settings_updated = bool(manager.update_model_settings(self.context.repo))
-            message = catalogue_refresh_feedback(
+            final_message = catalogue_refresh_feedback(
                 manager.last_refresh_report,
                 online=online,
                 model_settings_updated=model_settings_updated,
             )
+            report_usable = bool(getattr(manager.last_refresh_report, "usable", False))
+            if online or report_usable:
+                completion_lock = threading.Lock()
+                completion_published = False
+                early_completion: typing.Any = None
+
+                def evidence_completed(summary: typing.Any) -> None:
+                    nonlocal early_completion
+                    with completion_lock:
+                        if not completion_published:
+                            early_completion = summary
+                            return
+                    self._on_catalogue_evidence_refresh_completed(summary)
+
+                queued = manager.force_revalidate_catalogue_evidence(evidence_completed)
+                if queued:
+                    idle_on_main(
+                        self._finish_catalogue_cache_refresh,
+                        "Catalogue refreshed; output details updating",
+                    )
+                    with completion_lock:
+                        completion_published = True
+                        completed = early_completion
+                    if completed is not None:
+                        self._on_catalogue_evidence_refresh_completed(completed)
+                    debug(
+                        "download",
+                        f"preferences catalogue evidence queued={len(queued)}",
+                    )
+                    return
+            message = final_message
         except Exception as exc:  # noqa: BLE001 - shown in Preferences and log
             from .errorlog import log_error
 
@@ -563,6 +624,15 @@ class PreferencesDialog(Adw.PreferencesDialog):
             )
         debug("download", f"preferences catalogue refresh result={message!r}")
         idle_on_main(self._finish_catalogue_cache_refresh, message)
+
+    def _on_catalogue_evidence_refresh_completed(self, summary: typing.Any) -> None:
+        """Marshal a cache-worker aggregate result onto the GTK main thread."""
+        idle_on_main(self._finish_catalogue_evidence_refresh, summary)
+
+    def _finish_catalogue_evidence_refresh(self, summary: typing.Any) -> None:
+        message = catalogue_evidence_refresh_feedback(summary)
+        self.catalogue_cache_refresh_row.set_subtitle(message)
+        self.add_toast(Adw.Toast.new(message))
 
     def _finish_catalogue_cache_refresh(self, message: str) -> None:
         self._catalogue_cache_refreshing = False
@@ -608,9 +678,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
             diagnostic_index = next(
                 (
                     index
-                    for index, (_label, value) in enumerate(
-                        _DIAGNOSTIC_LEVEL_OPTIONS
-                    )
+                    for index, (_label, value) in enumerate(_DIAGNOSTIC_LEVEL_OPTIONS)
                     if value == diagnostic_level
                 ),
                 0,
@@ -627,14 +695,10 @@ class PreferencesDialog(Adw.PreferencesDialog):
 
             from ui.shared_settings import gpu_dependent_enabled
 
-            self.device_row.set_sensitive(
-                gpu_dependent_enabled(self.settings.process.use_gpu)
-            )
+            self.device_row.set_sensitive(gpu_dependent_enabled(self.settings.process.use_gpu))
 
             self.sample_mode_row.set_active(bool(self.settings.process.sample_mode))
-            self.cleanup_ensemble_temps_row.set_active(
-                bool(self.settings.ensemble.cleanup_temps)
-            )
+            self.cleanup_ensemble_temps_row.set_active(bool(self.settings.ensemble.cleanup_temps))
             self.auto_update_model_params_row.set_active(
                 bool(self.settings.process.auto_update_model_params)
             )
@@ -652,9 +716,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
                 long_chunk = 0.0
             self.long_chunk_row.set_value(max(0.0, min(3600.0, long_chunk)))
             try:
-                long_overlap = float(
-                    self.settings.process.long_file_chunk_overlap_seconds or 2.0
-                )
+                long_overlap = float(self.settings.process.long_file_chunk_overlap_seconds or 2.0)
             except (TypeError, ValueError):
                 long_overlap = 2.0
             self.long_chunk_overlap_row.set_value(max(0.0, min(30.0, long_overlap)))
@@ -663,7 +725,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
         finally:
             self._loading = False
 
-    def _refresh_profile_list(self, select: typing.Any=None) -> None:
+    def _refresh_profile_list(self, select: typing.Any = None) -> None:
         profiles = self._profiles.list_profiles()
         values = profiles if profiles else [_NO_PROFILES]
         # set_combo_values lives in rows.py; rebuild the model here to stay self-contained.
@@ -727,9 +789,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
         self._persist()
         apply_color_scheme(value)
 
-    def _on_diagnostic_level_changed(
-        self, row: typing.Any, _pspec: typing.Any
-    ) -> None:
+    def _on_diagnostic_level_changed(self, row: typing.Any, _pspec: typing.Any) -> None:
         if self._loading:
             return
         index = row.get_selected()
@@ -742,9 +802,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
         self._apply_diagnostic_policy()
         self._persist()
 
-    def _on_diagnostic_sensitive_changed(
-        self, row: typing.Any, _pspec: typing.Any
-    ) -> None:
+    def _on_diagnostic_sensitive_changed(self, row: typing.Any, _pspec: typing.Any) -> None:
         if self._loading:
             return
         self.settings.diagnostics.include_sensitive = bool(row.get_active())
@@ -787,9 +845,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
         """Debounce disk writes so spin-row ticks do not rewrite settings JSON."""
         if self._persist_timeout_id:
             GLib.source_remove(self._persist_timeout_id)
-        self._persist_timeout_id = GLib.timeout_add(
-            _PERSIST_DEBOUNCE_MS, self._flush_persist
-        )
+        self._persist_timeout_id = GLib.timeout_add(_PERSIST_DEBOUNCE_MS, self._flush_persist)
 
     def _flush_persist(self) -> bool:
         self._persist_timeout_id = 0
@@ -846,7 +902,9 @@ class PreferencesDialog(Adw.PreferencesDialog):
     def _on_save_profile(self, entry_row: typing.Any) -> None:
         name = entry_row.get_text().strip()
         if not _is_valid_profile_name(name):
-            self.add_toast(Adw.Toast.new("Invalid name. Use up to 25 letters, numbers, spaces or dashes"))
+            self.add_toast(
+                Adw.Toast.new("Invalid name. Use up to 25 letters, numbers, spaces or dashes")
+            )
             return
         canonical = name.replace(" ", "_")
         if canonical in self._profiles.list_profiles():
@@ -864,7 +922,9 @@ class PreferencesDialog(Adw.PreferencesDialog):
             return
         self._write_profile(entry_row, name)
 
-    def _on_save_profile_confirmed(self, _dialog: typing.Any, response: typing.Any, entry_row: typing.Any, name: str) -> None:
+    def _on_save_profile_confirmed(
+        self, _dialog: typing.Any, response: typing.Any, entry_row: typing.Any, name: str
+    ) -> None:
         if response != "replace":
             return
         self._write_profile(entry_row, name)
@@ -899,7 +959,9 @@ class PreferencesDialog(Adw.PreferencesDialog):
         dialog.connect("response", self._on_load_profile_confirmed, name)
         dialog.present(self)
 
-    def _on_load_profile_confirmed(self, _dialog: typing.Any, response: typing.Any, name: str) -> None:
+    def _on_load_profile_confirmed(
+        self, _dialog: typing.Any, response: typing.Any, name: str
+    ) -> None:
         if response != "load":
             return
         data = self._profiles.load(name)
@@ -923,9 +985,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
         self._reload_widgets()
         if self._on_settings_reloaded is not None:
             self._on_settings_reloaded()
-        self.add_toast(
-            Adw.Toast.new(persistence_feedback(error, f'Loaded profile "{name}"'))
-        )
+        self.add_toast(Adw.Toast.new(persistence_feedback(error, f'Loaded profile "{name}"')))
 
     def _on_remove_profile(self, _button: typing.Any) -> None:
         name = get_combo_value(self.profile_combo)
@@ -943,7 +1003,9 @@ class PreferencesDialog(Adw.PreferencesDialog):
         dialog.connect("response", self._on_remove_confirmed, name)
         dialog.present(self)
 
-    def _on_remove_confirmed(self, _dialog: typing.Any, response: typing.Any, name: typing.Any) -> None:
+    def _on_remove_confirmed(
+        self, _dialog: typing.Any, response: typing.Any, name: typing.Any
+    ) -> None:
         if response != "remove":
             return
         removed, error = self._profiles.remove(name)
@@ -987,6 +1049,4 @@ class PreferencesDialog(Adw.PreferencesDialog):
         self._reload_widgets()
         if self._on_settings_reloaded is not None:
             self._on_settings_reloaded()
-        self.add_toast(
-            Adw.Toast.new(persistence_feedback(error, "Settings reset to default"))
-        )
+        self.add_toast(Adw.Toast.new(persistence_feedback(error, "Settings reset to default")))

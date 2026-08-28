@@ -33,7 +33,7 @@ from .catalogue_types import (
     SourceContent,
     SourceId,
 )
-from .debug_log import debug, log_event
+from .debug_log import log_event
 from .remote_catalog_cache import RemoteJsonSource
 
 DeltaCallback = Callable[[CatalogueDelta], None]
@@ -683,14 +683,28 @@ class CatalogueCoordinator:
         for callback in typed:
             try:
                 callback(delta)
-            except Exception:
-                debug("download", "catalogue delta subscriber raised")
+            except Exception as exc:
+                log_event(
+                    "download",
+                    "catalogue_subscriber_failed",
+                    level="warning",
+                    subscriber_kind="delta",
+                    error_type=type(exc).__name__,
+                    message=str(exc),
+                )
         if delta.removal_only:
             for callback in identity:
                 try:
                     callback()
-                except Exception:
-                    debug("download", "catalogue identity subscriber raised")
+                except Exception as exc:
+                    log_event(
+                        "download",
+                        "catalogue_subscriber_failed",
+                        level="warning",
+                        subscriber_kind="identity",
+                        error_type=type(exc).__name__,
+                        message=str(exc),
+                    )
 
 
 def _basename_index(meta: Mapping[str, Any], arch: str) -> dict[str, str]:

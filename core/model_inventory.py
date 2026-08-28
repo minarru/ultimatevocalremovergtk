@@ -10,6 +10,7 @@ from typing import Any, Iterable, Mapping, cast
 
 import yaml
 
+from .catalogue_identity import catalogue_model_id
 from .model_identity import (
     CatalogueRef,
     DemucsSpec,
@@ -109,9 +110,7 @@ def _record(
     mdx: MdxSpec | None = None,
 ) -> ModelRecord:
     primary = validate_artifact_name(primary, family=family)
-    supporting = tuple(
-        validate_artifact_name(name, family=family) for name in supporting
-    )
+    supporting = tuple(validate_artifact_name(name, family=family) for name in supporting)
     model_id = ModelId(family, basename)
     return ModelRecord(
         id=model_id.value,
@@ -136,8 +135,13 @@ def _project_vr(selection: str, entry: Any, files: tuple[str, ...]) -> ModelReco
     primary = primaries[0]
     basename = artifact_stem(primary)
     return _record(
-        "vr", basename, str(getattr(entry, "display", basename)), basename, primary,
-        (name for name in files if name != primary), selection=selection,
+        "vr",
+        basename,
+        str(getattr(entry, "display", basename)),
+        basename,
+        primary,
+        (name for name in files if name != primary),
+        selection=selection,
     )
 
 
@@ -177,16 +181,22 @@ def _project_mdx(selection: str, entry: Any, files: tuple[str, ...]) -> ModelRec
         error = f"unknown MDX YAML architecture for {primary}"
     basename = artifact_stem(primary)
     return _record(
-        "mdx", basename, str(getattr(entry, "display", basename)), basename, primary,
-        yamls, selection=selection, complete=complete, error=error, mdx=kind,
+        "mdx",
+        basename,
+        str(getattr(entry, "display", basename)),
+        basename,
+        primary,
+        yamls,
+        selection=selection,
+        complete=complete,
+        error=error,
+        mdx=kind,
     )
 
 
 def _demucs_version_from_label(entry: Any) -> str | None:
     for value in (getattr(entry, "label", ""), getattr(entry, "display", "")):
-        match = re.fullmatch(
-            r"(?:Demucs )?v([1-4])(?:\s*:\s*|\s*\|\s*)(.+)", str(value)
-        )
+        match = re.fullmatch(r"(?:Demucs )?v([1-4])(?:\s*:\s*|\s*\|\s*)(.+)", str(value))
         if match:
             return f"v{match.group(1)}"
     return None
@@ -211,9 +221,7 @@ def _demucs_spec(entry: Any) -> DemucsSpec | None:
     return DemucsSpec(version, layout)  # type: ignore[arg-type]
 
 
-def _project_demucs(
-    selection: str, entry: Any, files: tuple[str, ...]
-) -> ModelRecord | None:
+def _project_demucs(selection: str, entry: Any, files: tuple[str, ...]) -> ModelRecord | None:
     yamls = [name for name in files if name.casefold().endswith(_YAML_SUFFIXES)]
     if len(yamls) > 1:
         return None
@@ -221,10 +229,7 @@ def _project_demucs(
         primary = yamls[0]
         supporting = tuple(name for name in files if name != primary)
     else:
-        weights = [
-            name for name in files
-            if name.casefold().endswith((".th", ".th.gz"))
-        ]
+        weights = [name for name in files if name.casefold().endswith((".th", ".th.gz"))]
         if len(weights) != 1:
             return None
         primary = weights[0]
@@ -232,26 +237,33 @@ def _project_demucs(
     basename = artifact_stem(primary)
     spec = _demucs_spec(entry)
     return _record(
-        "demucs", basename, str(getattr(entry, "display", basename)), basename,
-        primary, supporting, selection=selection, complete=spec is not None,
+        "demucs",
+        basename,
+        str(getattr(entry, "display", basename)),
+        basename,
+        primary,
+        supporting,
+        selection=selection,
+        complete=spec is not None,
         error=None if spec else f"unknown Demucs version or source layout for {primary}",
         demucs=spec,
     )
 
 
-def _project_apollo(
-    selection: str, entry: Any, files: tuple[str, ...]
-) -> ModelRecord | None:
-    checkpoints = [
-        name for name in files if name.casefold().endswith((".ckpt", ".bin"))
-    ]
+def _project_apollo(selection: str, entry: Any, files: tuple[str, ...]) -> ModelRecord | None:
+    checkpoints = [name for name in files if name.casefold().endswith((".ckpt", ".bin"))]
     if len(checkpoints) != 1:
         return None
     primary = checkpoints[0]
     basename = artifact_stem(primary)
     return _record(
-        "apollo", basename, str(getattr(entry, "display", basename)), primary,
-        primary, (name for name in files if name != primary), selection=selection,
+        "apollo",
+        basename,
+        str(getattr(entry, "display", basename)),
+        primary,
+        primary,
+        (name for name in files if name != primary),
+        selection=selection,
     )
 
 
@@ -275,20 +287,28 @@ def _catalogue_records(snapshot: Any) -> list[ModelRecord]:
             # artifact name in any single row must drop that row, not raise out
             # of ``build_identity_index`` and empty every model picker.
             try:
-                record = projector(
-                    str(selection), entry, _entry_files(entry, raw, family)
-                )
+                files = _entry_files(entry, raw, family)
+                record = projector(str(selection), entry, files)
             except ValueError as exc:
                 from .debug_log import debug
 
                 debug(
                     "model",
-                    f"catalogue row rejected family={family} "
-                    f"selection={selection!r}: {exc}",
+                    f"catalogue row rejected family={family} selection={selection!r}: {exc}",
                 )
                 continue
-            if record is not None:
-                records.append(record)
+            if record is None:
+                continue
+            model_id = catalogue_model_id(family, str(selection), raw, entry)
+            if model_id is None:
+                from .debug_log import debug
+
+                debug(
+                    "model",
+                    f"catalogue row has no exact identity family={family} selection={selection!r}",
+                )
+                continue
+            records.append(replace(record, id=model_id, basename=ModelId.parse(model_id).basename))
     return records
 
 
@@ -364,16 +384,12 @@ def _mdx_spec_from_architecture(architecture: str, yaml_name: str) -> MdxSpec | 
     return MdxSpec(kind) if kind is not None else None  # type: ignore[arg-type]
 
 
-def _trusted_mdx_config(
-    repo: Any, checkpoint_filename: str
-) -> tuple[str, MdxSpec | None] | None:
+def _trusted_mdx_config(repo: Any, checkpoint_filename: str) -> tuple[str, MdxSpec | None] | None:
     """Return exact trusted YAML evidence, even before the YAML is available."""
     from . import paths
     from .mdx_c_registry import infer_mdx_c_architecture
 
-    payload = _trusted_local_metadata(
-        repo, "mdx", checkpoint_filename, paths.MDX_HASH_DIR
-    )
+    payload = _trusted_local_metadata(repo, "mdx", checkpoint_filename, paths.MDX_HASH_DIR)
     if payload is None:
         return None
     config = payload.get("config_yaml")
@@ -391,9 +407,7 @@ def _trusted_mdx_config(
 def _apollo_config_name(repo: Any, checkpoint_filename: str) -> str | None:
     from . import paths
 
-    payload = _trusted_local_metadata(
-        repo, "apollo", checkpoint_filename, paths.APOLLO_HASH_DIR
-    )
+    payload = _trusted_local_metadata(repo, "apollo", checkpoint_filename, paths.APOLLO_HASH_DIR)
     if payload is None:
         return None
     config = payload.get("config_yaml")
@@ -409,7 +423,12 @@ def _installed_record(
         return _record(family, basename, basename, basename, filename, installed=True)
     if family == "mdx" and folded.endswith(".onnx"):
         return _record(
-            family, basename, basename, basename, filename, installed=True,
+            family,
+            basename,
+            basename,
+            basename,
+            filename,
+            installed=True,
             mdx=MdxSpec("classic_onnx"),
         )
     if family == "mdx" and folded.endswith(".ckpt"):
@@ -421,14 +440,17 @@ def _installed_record(
             yaml_name = _mdx_installed_yaml(files, filename)
             yaml_path = cast(
                 str | None,
-                path_provider(family, yaml_name)
-                if yaml_name and callable(path_provider)
-                else None,
+                path_provider(family, yaml_name) if yaml_name and callable(path_provider) else None,
             )
             kind = _mdx_kind((filename, yaml_name or ""), yaml_path)
         return _record(
-            family, basename, basename, basename, filename,
-            (yaml_name,) if yaml_name else (), installed=True,
+            family,
+            basename,
+            basename,
+            basename,
+            filename,
+            (yaml_name,) if yaml_name else (),
+            installed=True,
             complete=kind is not None,
             error=None if kind else f"unknown MDX YAML architecture for {filename}",
             mdx=kind,
@@ -436,15 +458,26 @@ def _installed_record(
     if family == "demucs" and folded.endswith((".th", ".th.gz", ".yaml", ".yml")):
         spec = None
         return _record(
-            family, basename, basename, basename, filename, installed=True,
-            complete=False, error=f"unknown Demucs version or source layout for {filename}",
+            family,
+            basename,
+            basename,
+            basename,
+            filename,
+            installed=True,
+            complete=False,
+            error=f"unknown Demucs version or source layout for {filename}",
             demucs=spec,
         )
     if family == "apollo" and folded.endswith((".ckpt", ".bin")):
         config_name = _apollo_config_name(repo, filename)
         supporting = (config_name,) if config_name else ()
         return _record(
-            family, basename, basename, filename, filename, supporting,
+            family,
+            basename,
+            basename,
+            filename,
+            filename,
+            supporting,
             installed=True,
         )
     return None
@@ -512,8 +545,7 @@ def _merge_installed(repo: Any, records: list[ModelRecord]) -> list[ModelRecord]
                         )
                         mdx = local_record.mdx or catalogue_record.mdx
                         complete = (
-                            catalogue_record.identity_complete
-                            or local_record.identity_complete
+                            catalogue_record.identity_complete or local_record.identity_complete
                         )
                         result[existing] = replace(
                             catalogue_record,
@@ -526,26 +558,27 @@ def _merge_installed(repo: Any, records: list[ModelRecord]) -> list[ModelRecord]
                             identity_error=(
                                 None
                                 if complete
-                                else local_record.identity_error
-                                or catalogue_record.identity_error
+                                else local_record.identity_error or catalogue_record.identity_error
                             ),
                             mdx=mdx,
                         )
                     else:
-                        result[existing] = replace(
-                            catalogue_record, installed=True
-                        )
+                        result[existing] = replace(catalogue_record, installed=True)
                 else:
-                    result[existing] = replace(
-                        catalogue_record, installed=True
-                    )
+                    result[existing] = replace(catalogue_record, installed=True)
                 continue
             try:
                 if filename in demucs_bags:
                     basename = artifact_stem(filename)
                     record = _record(
-                        "demucs", basename, basename, basename, filename,
-                        demucs_bags[filename], installed=True, complete=False,
+                        "demucs",
+                        basename,
+                        basename,
+                        basename,
+                        filename,
+                        demucs_bags[filename],
+                        installed=True,
+                        complete=False,
                         error=f"unknown Demucs version or source layout for {filename}",
                     )
                 else:
@@ -558,8 +591,7 @@ def _merge_installed(repo: Any, records: list[ModelRecord]) -> list[ModelRecord]
 
                 debug(
                     "model",
-                    f"installed artifact rejected family={family} "
-                    f"file={filename!r}: {exc}",
+                    f"installed artifact rejected family={family} file={filename!r}: {exc}",
                 )
                 continue
             if record is not None:
@@ -580,9 +612,7 @@ def _apply_bundled_demucs(
         if spec is None:
             result.append(record)
         else:
-            result.append(replace(
-                record, demucs=spec, identity_complete=True, identity_error=None
-            ))
+            result.append(replace(record, demucs=spec, identity_complete=True, identity_error=None))
     return result
 
 
@@ -640,17 +670,11 @@ def _apply_registered_demucs(
             result.append(record)
             continue
         entrypoint_path = str(raw.get("entrypoint") or "")
-        supporting_paths = tuple(
-            str(path) for path in (raw.get("supporting_artifacts") or ())
-        )
+        supporting_paths = tuple(str(path) for path in (raw.get("supporting_artifacts") or ()))
         entrypoint = os.path.basename(entrypoint_path)
-        supporting = tuple(
-            os.path.basename(path) for path in supporting_paths
-        )
+        supporting = tuple(os.path.basename(path) for path in supporting_paths)
         absolute_paths = tuple(
-            os.path.join(
-                paths.DEMUCS_MODELS_DIR, relative.replace("/", os.sep)
-            )
+            os.path.join(paths.DEMUCS_MODELS_DIR, relative.replace("/", os.sep))
             for relative in (entrypoint_path, *supporting_paths)
         )
         missing = [
@@ -661,27 +685,29 @@ def _apply_registered_demucs(
             if not os.path.isfile(absolute)
         ]
         membership_error = (
-            _registered_demucs_bag_membership_error(
-                absolute_paths[0], absolute_paths[1:]
-            )
-            if not missing else None
+            _registered_demucs_bag_membership_error(absolute_paths[0], absolute_paths[1:])
+            if not missing
+            else None
         )
         spec = DemucsSpec(
             str(raw.get("demucs_version")),  # type: ignore[arg-type]
             str(raw.get("source_layout")),  # type: ignore[arg-type]
         )
-        result.append(replace(
-            record,
-            display=str(raw.get("display_name") or record.display),
-            backend_name=str(raw.get("backend_name") or record.backend_name),
-            artifacts=ModelArtifacts(entrypoint, supporting),
-            demucs=spec,
-            identity_complete=not missing and membership_error is None,
-            identity_error=(
-                f"missing registered Demucs artifacts: {', '.join(missing)}"
-                if missing else membership_error
-            ),
-        ))
+        result.append(
+            replace(
+                record,
+                display=str(raw.get("display_name") or record.display),
+                backend_name=str(raw.get("backend_name") or record.backend_name),
+                artifacts=ModelArtifacts(entrypoint, supporting),
+                demucs=spec,
+                identity_complete=not missing and membership_error is None,
+                identity_error=(
+                    f"missing registered Demucs artifacts: {', '.join(missing)}"
+                    if missing
+                    else membership_error
+                ),
+            )
+        )
     return result
 
 
@@ -729,28 +755,16 @@ def _exact_catalogue_selection(
 ) -> str | None:
     """Return one published selection, empty for none, or ``None`` for ambiguity."""
     if snapshot is None:
-        return (
-            record.catalogue_entry.selection
-            if record.catalogue_entry is not None
-            else ""
-        )
+        return record.catalogue_entry.selection if record.catalogue_entry is not None else ""
     catalogue = getattr(snapshot, record.family, None)
     if not isinstance(catalogue, Mapping):
-        return (
-            record.catalogue_entry.selection
-            if record.catalogue_entry is not None
-            else ""
-        )
+        return record.catalogue_entry.selection if record.catalogue_entry is not None else ""
     matches = _published_catalogue_selections(published_index, record)
     if len(matches) > 1:
         return None
     if matches:
         return matches[0]
-    return (
-        record.catalogue_entry.selection
-        if record.catalogue_entry is not None
-        else ""
-    )
+    return record.catalogue_entry.selection if record.catalogue_entry is not None else ""
 
 
 def _record_display(
@@ -773,18 +787,11 @@ def _record_display(
     if record.installed:
         persisted = ModelRegistryService.presentation(record.id)
         explicit = str(persisted.get("display_override") or "").strip()
-        exact_selection = _exact_catalogue_selection(
-            snapshot, record, published_index
-        )
+        exact_selection = _exact_catalogue_selection(snapshot, record, published_index)
         current_label = exact_selection or ""
 
         attribute = _DISPLAY_INDEX_ATTR.get(record.family)
-        if (
-            exact_selection is not None
-            and not current_label
-            and attribute
-            and snapshot is not None
-        ):
+        if exact_selection is not None and not current_label and attribute and snapshot is not None:
             index = getattr(snapshot, attribute, None)
             if isinstance(index, Mapping):
                 current_label = str(index.get(record.basename) or "").strip()
@@ -803,16 +810,9 @@ def _record_display(
 
         existing = str(record.display or "").strip()
         existing_source = (
-            existing
-            if exact_selection is not None and existing != record.basename
-            else ""
+            existing if exact_selection is not None and existing != record.basename else ""
         )
-        source_label = (
-            current_label
-            or persisted_label
-            or mapper_label
-            or existing_source
-        )
+        source_label = current_label or persisted_label or mapper_label or existing_source
         display = project_model_display(
             record.id,
             source_label=source_label,
@@ -889,9 +889,7 @@ def backfill_installed_presentations(repo: Any, snapshot: Any | None) -> bool:
                 candidates=published_matches,
             )
             continue
-        exact_selection = _exact_catalogue_selection(
-            snapshot, record, published_index
-        )
+        exact_selection = _exact_catalogue_selection(snapshot, record, published_index)
         if exact_selection:
             label = exact_selection
             source = _entry_source(snapshot, record.family, label)
@@ -899,9 +897,7 @@ def backfill_installed_presentations(repo: Any, snapshot: Any | None) -> bool:
             mapper_attribute = _NAME_MAPPER_ATTR.get(record.family)
             mapper = getattr(repo, mapper_attribute, None) if mapper_attribute else None
             if isinstance(mapper, Mapping):
-                label = str(
-                    lookup_mapper_display_exact(record.basename, mapper) or ""
-                ).strip()
+                label = str(lookup_mapper_display_exact(record.basename, mapper) or "").strip()
                 if label:
                     source = "model_name_mapper"
         if label and ModelRegistryService.remember_presentation(
@@ -933,9 +929,7 @@ def _enrich_record_displays(
     result: list[ModelRecord] = []
     for record in records:
         display = _record_display(repo, record, snapshot, published_index)
-        result.append(
-            record if display is None else replace(record, display=display)
-        )
+        result.append(record if display is None else replace(record, display=display))
     return result
 
 
@@ -949,7 +943,8 @@ def _detect_collisions(records: list[ModelRecord]) -> dict[str, ModelRecord]:
         if len(primaries) > 1:
             names = ", ".join(sorted(primaries))
             result[model_id] = replace(
-                matches[0], identity_complete=False,
+                matches[0],
+                identity_complete=False,
                 identity_error=f"identity collision between {names}",
                 installed=any(item.installed for item in matches),
             )
@@ -976,18 +971,14 @@ def build_identity_index(
     if registered_demucs is None:
         from .demucs_registry import DemucsRegistry
 
-        registered_demucs = cast(
-            Mapping[str, Any], DemucsRegistry().load_read_only()["models"]
-        )
+        registered_demucs = cast(Mapping[str, Any], DemucsRegistry().load_read_only()["models"])
     published_records = _catalogue_records(snapshot) if snapshot is not None else []
     published_index = _published_catalogue_selection_index(published_records)
     records = published_records
     records = _merge_installed(repo, records)
     records = _apply_bundled_demucs(records, bundled_demucs_specs)
     records = _apply_registered_demucs(records, registered_demucs)
-    records = _enrich_record_displays(
-        repo, records, snapshot, published_index=published_index
-    )
+    records = _enrich_record_displays(repo, records, snapshot, published_index=published_index)
     detected = _detect_collisions(records)
     from .debug_log import log_event
 

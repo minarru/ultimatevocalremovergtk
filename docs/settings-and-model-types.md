@@ -17,7 +17,7 @@ are not compatibility APIs.
 | `core/settings/flat_map.py` | Legacy flat-key to nested-field bridge for older input only |
 | `core/settings/io.py` | `settings.json` load/save and one-shot `data.pkl` import |
 | `core/stem_pairs.py` | Exact `ensemble.main_stem` validation and display choices |
-| `bundled/model_stem_manifest.json` | Data-defined pair roles and namespaced pair IDs |
+| `bundled/model_manifest.json` | Unified model authority, including data-defined pair roles and namespaced pair IDs |
 | `core/model_config/` | `ModelConfig` hierarchy and `assemble_model` |
 
 ## Current JSON shape

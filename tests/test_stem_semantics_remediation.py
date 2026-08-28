@@ -6,6 +6,7 @@ import json
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 from unittest import mock
 
 import numpy as np
@@ -130,13 +131,37 @@ def _normalized_manifest_model(model: dict[str, object]) -> dict[str, object]:
     return {"intent": model["intent"], "contexts": contexts}
 
 
+def _frozen_decision_manifest_view() -> dict[str, Any]:
+    """Project the historical Task 5 oracle from the unified authority."""
+    document = json.loads(Path("bundled/model_manifest.json").read_text(encoding="utf-8"))
+    models = {
+        model_id: {
+            **record["stem_semantics"],
+            "evidence": record["stem_semantics"]["review_note"],
+        }
+        for model_id, record in document["models"].items()
+        if "stem_semantics" in record and model_id != "mdx:mbr_invert_clean_becruily"
+    }
+    for declaration in models.values():
+        declaration.pop("review_note")
+    return {
+        "schema_version": 2,
+        "roles": document["roles"],
+        "pairs": document["pairs"],
+        "models": models,
+        "waivers": {
+            model_id: record["stem_waiver"]
+            for model_id, record in document["models"].items()
+            if "stem_waiver" in record
+        },
+    }
+
+
 class ReviewedDecisionLedgerTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.fixture = json.loads(DECISION_FIXTURE.read_text(encoding="utf-8"))
-        cls.manifest = json.loads(
-            Path("bundled/model_stem_manifest.json").read_text(encoding="utf-8")
-        )
+        cls.manifest = _frozen_decision_manifest_view()
 
     def test_fixture_is_the_complete_sorted_final_decision_oracle(self) -> None:
         fixture = self.fixture
@@ -365,9 +390,7 @@ class SemanticConsumerMatrixTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.registry = load_bundled_stem_semantics()
-        cls.manifest = json.loads(
-            Path("bundled/model_stem_manifest.json").read_text(encoding="utf-8")
-        )
+        cls.manifest = _frozen_decision_manifest_view()
 
     def _resolve(
         self,
@@ -593,13 +616,13 @@ class SemanticConsumerMatrixTests(unittest.TestCase):
                 self.assertEqual(len(selected), 1)
                 self.assertEqual(selected[0].role, StemRoleId(role))
         self.assertEqual(
-            tuple(self.registry.pairs),
-            (
+            set(self.registry.pairs),
+            {
                 "pair.vocals_instrumental",
                 "pair.karaoke",
                 "pair.backing_vocals",
                 "pair.center_side",
-            ),
+            },
         )
 
     def test_mbr_bgm_jasper_keeps_vocals_native_primary_and_derived_complement(self) -> None:

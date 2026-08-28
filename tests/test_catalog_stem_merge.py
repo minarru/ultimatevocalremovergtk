@@ -10,7 +10,8 @@ from unittest import mock
 
 from core import catalog_sources
 from core import catalogue_stem_cache as csc
-from core.catalogue_stem_cache import StemCacheHit
+from core.catalogue_stem_cache import StemCacheError, StemCacheHit
+from core.catalogue_types import CatalogueEvidenceState
 from core.model_display import clear_display_cache
 
 _CATALOGUE_OFF = {
@@ -61,6 +62,7 @@ class CatalogStemMergeTests(unittest.TestCase):
             stems=("Vocals", "other"),
             target_instrument="Vocals",
             ok=True,
+            content_sha256="a" * 64,
         )
         supplements = (
             {},
@@ -76,6 +78,7 @@ class CatalogStemMergeTests(unittest.TestCase):
         meta = merged.meta["M"]
         self.assertEqual(meta.stems, ["Vocals", "other"])
         self.assertEqual(meta.target_instrument, "Vocals")
+        self.assertEqual(meta.catalogue_evidence_status, CatalogueEvidenceState.READY)
         lookup.assert_called()
         enqueue.assert_not_called()
         ensure.assert_not_called()
@@ -111,6 +114,55 @@ class CatalogStemMergeTests(unittest.TestCase):
             ("Instrumental",),
         )
 
+    def test_live_dereverb_mdx23c_two_native_signature_stays_reviewed(self) -> None:
+        label = "MDX23C Model: MDX23C DeReverb by aufr33 & jarredou"
+        config_url = (
+            "https://raw.githubusercontent.com/Politrees/UVR_resources/refs/heads/"
+            "main/UVR_resources/configs/MDX23C/config_dereverb_mdx23c.yaml"
+        )
+        digest = "a0cf11216913ab8941afb96fa7ab333390d1740b4a74a5d2f4b81ca8a218c756"
+        hit = StemCacheHit(
+            stems=("dry", "No dry"),
+            target_instrument=None,
+            ok=True,
+            content_sha256=digest,
+        )
+
+        with mock.patch("core.catalogue_stem_cache.lookup_stems", return_value=hit):
+            meta = catalog_sources._build_meta(
+                {
+                    label: {
+                        "MDX23C-De-Reverb-aufr33-jarredou.ckpt": (
+                            "https://example.test/MDX23C-De-Reverb-aufr33-jarredou.ckpt"
+                        ),
+                        "config_dereverb_mdx23c.yaml": config_url,
+                    }
+                },
+                "MDX-Net",
+                {},
+                {},
+            )[label]
+
+        self.assertEqual(meta.config_sha256, digest)
+        self.assertEqual(meta.stems, ["dry", "No dry"])
+        self.assertIsNone(meta.target_instrument)
+        self.assertEqual(
+            meta.stem_semantics.status,
+            "reviewed",
+            meta.catalogue_evidence_warning,
+        )
+        self.assertEqual(meta.catalogue_evidence_warning, "")
+        self.assertEqual(
+            [
+                (route.native, route.role, route.production, route.complement_of)
+                for route in meta.stem_semantics.routes
+            ],
+            [
+                ("dry", "effect.reverb.removed", "native", None),
+                ("No dry", "effect.reverb", "native", None),
+            ],
+        )
+
     def test_stem_cache_miss_does_not_start_worker(self) -> None:
         supplements = (
             {},
@@ -124,10 +176,14 @@ class CatalogStemMergeTests(unittest.TestCase):
                     with mock.patch("core.catalogue_stem_cache.ensure_worker_started") as ensure:
                         merged = catalog_sources.merged_catalogues(vr={}, mdx={}, demucs={})
         self.assertEqual(merged.meta["M"].stems, [])
+        self.assertEqual(
+            merged.meta["M"].catalogue_evidence_status,
+            CatalogueEvidenceState.PENDING,
+        )
         enqueue.assert_not_called()
         ensure.assert_not_called()
 
-    def test_existing_stems_still_acquire_missing_config_evidence(self) -> None:
+    def test_live_exact_config_replaces_existing_summary_stems(self) -> None:
         digest = "a" * 64
         hit = StemCacheHit(
             stems=("Different", "Inventory"),
@@ -153,8 +209,8 @@ class CatalogStemMergeTests(unittest.TestCase):
                     with mock.patch("core.catalogue_stem_cache.ensure_worker_started") as ensure:
                         merged = catalog_sources.merged_catalogues(vr={}, mdx={}, demucs={})
         meta = merged.meta["M"]
-        self.assertEqual(meta.stems, ["Drums", "Bass"])
-        self.assertEqual(meta.target_instrument, "Drums")
+        self.assertEqual(meta.stems, ["Different", "Inventory"])
+        self.assertEqual(meta.target_instrument, "Different")
         self.assertEqual(meta.config_sha256, digest)
         lookup.assert_called_once_with(_YAML_URL)
         enqueue.assert_not_called()
@@ -201,8 +257,161 @@ class CatalogStemMergeTests(unittest.TestCase):
         meta = merged.meta["M"]
         self.assertEqual(meta.stems, [])
         self.assertIsNone(meta.target_instrument)
+        self.assertEqual(meta.catalogue_evidence_status, CatalogueEvidenceState.UNAVAILABLE)
+        self.assertIn("YAML validation failed", meta.catalogue_evidence_warning)
         enqueue.assert_not_called()
         ensure.assert_not_called()
+
+    def test_live_exact_config_overrides_bundled_and_mismatch_is_model_specific(self) -> None:
+        label = "Mel-Band Roformer Instrumental by Becruily [mbr_guitar_becruily]"
+        hit = StemCacheHit(
+            stems=("Bass", "Other"),
+            target_instrument="Bass",
+            ok=True,
+            content_sha256="f" * 64,
+        )
+        supplements = (
+            {},
+            {
+                label: {
+                    "mbr_guitar_becruily.ckpt": "https://example.test/model.ckpt",
+                    "mbr_guitar_becruily_config.yaml": _YAML_URL,
+                }
+            },
+            {},
+            {label: {"stems": ["Instrumental"], "target_instrument": "Instrumental"}},
+        )
+        with _with_supplements(supplements):
+            with mock.patch("core.catalogue_stem_cache.lookup_stems", return_value=hit):
+                merged = catalog_sources.merged_catalogues(vr={}, mdx={}, demucs={})
+
+        meta = merged.meta[label]
+        self.assertEqual(meta.stems, ["Bass", "Other"])
+        self.assertEqual(meta.target_instrument, "Bass")
+        self.assertEqual(meta.catalogue_evidence_status, CatalogueEvidenceState.READY)
+        self.assertEqual(meta.stem_semantics.status, "raw")
+        self.assertIn("mdx:mbr_guitar_becruily", meta.catalogue_evidence_warning)
+        self.assertIn("mismatch", meta.catalogue_evidence_warning)
+
+    def test_stale_live_evidence_retains_reviewed_routes_and_warning(self) -> None:
+        label = "Mel-Band Roformer Instrumental by Becruily [mbr_guitar_becruily]"
+        hit = StemCacheHit(
+            stems=("Guitar", "Other"),
+            target_instrument="Guitar",
+            ok=True,
+            content_sha256="3438f5eef8881dfadd26f7c1b9481b9fcfa99de9e8be24b90e50ca63de7b7581",
+            last_error=StemCacheError("network", "temporary outage", 1.0),
+            stale=True,
+            warning="temporary outage",
+        )
+        supplements = (
+            {},
+            {
+                label: {
+                    "mbr_guitar_becruily.ckpt": "https://example.test/model.ckpt",
+                    "mbr_guitar_becruily_config.yaml": _YAML_URL,
+                }
+            },
+            {},
+            {},
+        )
+        with _with_supplements(supplements):
+            with mock.patch("core.catalogue_stem_cache.lookup_stems", return_value=hit):
+                merged = catalog_sources.merged_catalogues(vr={}, mdx={}, demucs={})
+
+        meta = merged.meta[label]
+        self.assertEqual(meta.catalogue_evidence_status, CatalogueEvidenceState.STALE)
+        self.assertEqual(meta.catalogue_evidence_warning, "temporary outage")
+        self.assertEqual(meta.stem_semantics.status, "reviewed")
+        self.assertEqual(meta.stem_semantics.routes[0].native, "Guitar")
+
+    def test_same_semantics_digest_drift_stays_reviewed_for_ordinary_catalogue_evidence(
+        self,
+    ) -> None:
+        label = "Mel-Band Roformer Instrumental by Becruily [mbr_guitar_becruily]"
+        hit = StemCacheHit(
+            stems=("Guitar", "Other"),
+            target_instrument="Guitar",
+            ok=True,
+            content_sha256="f" * 64,
+        )
+        supplements = (
+            {},
+            {
+                label: {
+                    "mbr_guitar_becruily.ckpt": "https://example.test/model.ckpt",
+                    "mbr_guitar_becruily_config.yaml": _YAML_URL,
+                }
+            },
+            {},
+            {},
+        )
+        with _with_supplements(supplements):
+            with mock.patch("core.catalogue_stem_cache.lookup_stems", return_value=hit):
+                merged = catalog_sources.merged_catalogues(vr={}, mdx={}, demucs={})
+
+        meta = merged.meta[label]
+        self.assertEqual(meta.stem_semantics.status, "reviewed")
+        self.assertEqual(meta.catalogue_evidence_status, CatalogueEvidenceState.READY)
+        self.assertIn("digest-drift", meta.catalogue_evidence_warning)
+
+    def test_live_training_field_drift_is_raw_before_target_only_projection(self) -> None:
+        label = "Mel-Band Roformer Instrumental by Becruily [mbr_guitar_becruily]"
+        hit = StemCacheHit(
+            stems=("Guitar", "Piano"),
+            target_instrument="Guitar",
+            ok=True,
+            content_sha256="f" * 64,
+        )
+        supplements = (
+            {},
+            {
+                label: {
+                    "mbr_guitar_becruily.ckpt": "https://example.test/model.ckpt",
+                    "mbr_guitar_becruily_config.yaml": _YAML_URL,
+                }
+            },
+            {},
+            {},
+        )
+        with _with_supplements(supplements):
+            with mock.patch("core.catalogue_stem_cache.lookup_stems", return_value=hit):
+                merged = catalog_sources.merged_catalogues(vr={}, mdx={}, demucs={})
+
+        meta = merged.meta[label]
+        self.assertEqual(meta.stems, ["Guitar", "Piano"])
+        self.assertEqual(meta.target_instrument, "Guitar")
+        self.assertEqual(meta.stem_semantics.status, "raw")
+        self.assertIn("catalogue-evidence-mismatch", meta.catalogue_evidence_warning)
+        self.assertIn("training.instruments", meta.catalogue_evidence_warning)
+
+    def test_ordinary_config_basename_drift_with_exact_fields_stays_reviewed(self) -> None:
+        label = "Mel-Band Roformer Instrumental by Becruily [mbr_guitar_becruily]"
+        hit = StemCacheHit(
+            stems=("Guitar", "Other"),
+            target_instrument="Guitar",
+            ok=True,
+            content_sha256="3438f5eef8881dfadd26f7c1b9481b9fcfa99de9e8be24b90e50ca63de7b7581",
+        )
+        supplements = (
+            {},
+            {
+                label: {
+                    "mbr_guitar_becruily.ckpt": "https://example.test/model.ckpt",
+                    "renamed_live_config.yaml": _YAML_URL,
+                }
+            },
+            {},
+            {},
+        )
+        with _with_supplements(supplements):
+            with mock.patch("core.catalogue_stem_cache.lookup_stems", return_value=hit):
+                merged = catalog_sources.merged_catalogues(vr={}, mdx={}, demucs={})
+
+        meta = merged.meta[label]
+        self.assertEqual(meta.stem_semantics.status, "reviewed")
+        self.assertEqual(meta.catalogue_evidence_warning, "")
+        self.assertEqual(meta.stems, ["Guitar", "Other"])
 
 
 class SemanticProjectionTests(unittest.TestCase):
@@ -449,7 +658,7 @@ class SemanticProjectionTests(unittest.TestCase):
             (
                 "effect removal",
                 "mdx:MDX23C-De-Reverb-aufr33-jarredou",
-                ("dry",),
+                ("dry", "No dry"),
                 StemProcessingContext.FULL_MIX,
                 "reviewed",
                 "effect.reverb.removed",

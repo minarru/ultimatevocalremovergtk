@@ -9,11 +9,16 @@ from urllib.parse import quote, unquote
 
 from bundled.constants import APOLLO_ARCH_TYPE, DEMUCS_ARCH_TYPE, MDX_ARCH_TYPE, VR_ARCH_TYPE
 
+from .catalogue_identity import catalogue_model_id
 from .downloads import DownloadManager
 from .model_naming import canonical_display_name
 from .model_scores import (
-    PURPOSE_ALL, filter_labels_by_purpose, parse_sdr_score, primary_sdr,
-    purpose_for_label, sdr_for_files,
+    PURPOSE_ALL,
+    filter_labels_by_purpose,
+    parse_sdr_score,
+    primary_sdr,
+    purpose_for_label,
+    sdr_for_files,
 )
 
 FAMILY_ARCH = {
@@ -37,63 +42,7 @@ def catalogue_presentation_id(
     file set is sufficient for presentation only.  This gives catalogue rows
     exact ID-aware titles without changing any family's execution rules.
     """
-    from .model_identity import ModelId
-    from .model_inventory import (
-        _entry_files,
-        _project_apollo,
-        _project_demucs,
-        _project_mdx,
-        _project_vr,
-        artifact_stem,
-    )
-
-    projector = {
-        "vr": _project_vr,
-        "mdx": _project_mdx,
-        "demucs": _project_demucs,
-        "apollo": _project_apollo,
-    }.get(family)
-    if projector is None or meta is None:
-        return None
-    try:
-        files = _entry_files(meta, raw, family)
-    except ValueError:
-        return None
-    try:
-        record = projector(
-            selection,
-            meta,
-            files,
-        )
-    except ValueError:
-        record = None
-    if record is not None:
-        return record.id
-
-    # Presentation references cover syntactic catalogue IDs even when a
-    # family's runtime projector rejects that artifact suffix.  Keep this
-    # escape hatch fail-closed: there must be one exact declared weight and at
-    # most one YAML configuration, and the derived basename must itself be a
-    # valid canonical-ID component.
-    declared = str(getattr(meta, "checkpoint", "") or "")
-    yamls = [
-        name for name in files if name.casefold().endswith((".yaml", ".yml"))
-    ]
-    presentation_primaries = [
-        name
-        for name in files
-        if not name.casefold().endswith((".yaml", ".yml"))
-    ]
-    if (
-        len(yamls) > 1
-        or len(presentation_primaries) != 1
-        or declared != presentation_primaries[0]
-    ):
-        return None
-    try:
-        return ModelId(family, artifact_stem(declared)).value
-    except ValueError:
-        return None
+    return catalogue_model_id(family, selection, raw, meta)
 
 
 def project_catalogue_display(
@@ -101,6 +50,8 @@ def project_catalogue_display(
     selection: str,
     raw: Any,
     meta: Any,
+    *,
+    presentation: Mapping[str, Any] | None = None,
 ) -> str:
     """Project one catalogue row through the exact presentation contract."""
     from .model_naming import project_model_display
@@ -108,11 +59,21 @@ def project_catalogue_display(
     model_id = catalogue_presentation_id(family, selection, raw, meta)
     if model_id is None:
         return canonical_display_name(selection)
-    return project_model_display(model_id, source_label=selection)
+    return project_model_display(
+        model_id,
+        source_label=selection,
+        presentation=presentation,
+    )
 
 
-def catalogue_entry_meta(manager: Any, family: str, selection: str) -> Any:
-    """Read native family-scoped metadata, with the legacy flat map as fallback."""
+def catalogue_entry_meta(
+    manager: Any,
+    family: str,
+    selection: str,
+    *,
+    exact: bool = False,
+) -> Any:
+    """Read family-scoped metadata, optionally rejecting legacy flat fallback."""
     coordinator = getattr(manager, "_coordinator", None)
     snapshot = getattr(coordinator, "_latest", None)
     by_family = getattr(snapshot, "meta_by_family", None)
@@ -120,7 +81,25 @@ def catalogue_entry_meta(manager: Any, family: str, selection: str) -> Any:
         family_meta = by_family.get(family)
         if isinstance(family_meta, Mapping) and selection in family_meta:
             return family_meta[selection]
+    local_by_family = getattr(manager, "catalogue_meta_by_family", None)
+    if isinstance(local_by_family, Mapping):
+        family_meta = local_by_family.get(family)
+        if isinstance(family_meta, Mapping) and selection in family_meta:
+            return family_meta[selection]
+    if exact:
+        return None
     return manager.catalogue_meta.get(selection)
+
+
+def catalogue_evidence_fields(meta: Any | None) -> dict[str, str]:
+    """Project catalogue evidence without loading model configuration data."""
+    status = getattr(meta, "catalogue_evidence_status", "unavailable")
+    value = getattr(status, "value", status)
+    result = {"catalogue_evidence_status": str(value or "unavailable")}
+    warning = str(getattr(meta, "catalogue_evidence_warning", "") or "")
+    if warning:
+        result["catalogue_evidence_warning"] = warning
+    return result
 
 
 @dataclass(frozen=True)
@@ -157,19 +136,26 @@ class ModelCatalogueRecord:
     score: float | None = None
     size: str | None = None
     intent: str | None = None
+    catalogue_evidence_status: str = "unavailable"
+    catalogue_evidence_warning: str | None = None
 
 
 def catalogue_label_matches(label: str, query: str, *, extra: str = "") -> bool:
     folded = query.strip().casefold()
     return not folded or any(
         folded in value.casefold()
-        for value in (label, canonical_display_name(label), extra) if value
+        for value in (label, canonical_display_name(label), extra)
+        if value
     )
 
 
 def filter_catalogue_labels(
-    names: Iterable[str], query: str, *, purpose: str = PURPOSE_ALL,
-    intents: dict[str, str] | None = None, sentinels: Iterable[str] = (),
+    names: Iterable[str],
+    query: str,
+    *,
+    purpose: str = PURPOSE_ALL,
+    intents: dict[str, str] | None = None,
+    sentinels: Iterable[str] = (),
 ) -> list[str]:
     blocked = set(sentinels)
     selectable = [name for name in names if name not in blocked]
@@ -228,10 +214,8 @@ class ModelCatalogueService:
         for family, values in catalogues.items():
             arch = FAMILY_ARCH[family]
             for selection, _model in values.items():
-                meta = catalogue_entry_meta(self.manager, family, selection)
-                display = project_catalogue_display(
-                    family, selection, _model, meta
-                )
+                meta = catalogue_entry_meta(self.manager, family, selection, exact=True)
+                display = project_catalogue_display(family, selection, _model, meta)
                 intent = str(getattr(meta, "intent", "") or "") or None
                 reason = unsupported.get((arch, selection))
                 jobs = self.manager.resolve(selection, arch, fetch_config=False)
@@ -242,28 +226,42 @@ class ModelCatalogueService:
                         getattr(meta, "target_instrument", None),
                         stem_count=len(getattr(meta, "stems", ()) or ()) or 2,
                     )
-                    if meta is not None else None
+                    if meta is not None
+                    else None
                 )
                 score = scored[1] if scored is not None else parse_sdr_score(selection)
-                rows.append(ModelCatalogueRecord(
-                    str(CatalogEntryId(family, selection)), family, selection,
-                    display,
-                    purpose_for_label(selection, intent=intent), reason is None,
-                    installed, reason, score,
-                    describe_cached_download_size(jobs) if jobs else "—",
-                    intent,
-                ))
+                rows.append(
+                    ModelCatalogueRecord(
+                        str(CatalogEntryId(family, selection)),
+                        family,
+                        selection,
+                        display,
+                        purpose_for_label(selection, intent=intent),
+                        reason is None,
+                        installed,
+                        reason,
+                        score,
+                        describe_cached_download_size(jobs) if jobs else "—",
+                        intent,
+                        **catalogue_evidence_fields(meta),
+                    )
+                )
         self._records = tuple(rows)
         self._records_key = key
         return self._records
 
     def filter(
-        self, *, family: str | None = None, query: str = "",
-        purpose: str = PURPOSE_ALL, supported: bool | None = None,
+        self,
+        *,
+        family: str | None = None,
+        query: str = "",
+        purpose: str = PURPOSE_ALL,
+        supported: bool | None = None,
         installed: bool | None = None,
     ) -> tuple[ModelCatalogueRecord, ...]:
         return tuple(
-            row for row in self.records()
+            row
+            for row in self.records()
             if (family is None or row.family == family)
             and (purpose in {"", PURPOSE_ALL} or row.purpose == purpose)
             and (supported is None or row.supported is supported)
@@ -272,9 +270,7 @@ class ModelCatalogueService:
                 row.selection,
                 query,
                 extra=" ".join(
-                    value
-                    for value in (row.display, row.unsupported_reason or "")
-                    if value
+                    value for value in (row.display, row.unsupported_reason or "") if value
                 ),
             )
         )
@@ -284,17 +280,29 @@ class ModelCatalogueService:
         records = self.records()
         if raw.startswith("catalog:"):
             parsed = CatalogEntryId.parse(raw)
-            matches = [row for row in records if row.family == parsed.family and row.selection == parsed.selection]
+            matches = [
+                row
+                for row in records
+                if row.family == parsed.family and row.selection == parsed.selection
+            ]
         else:
-            matches = [row for row in records if raw.casefold() in {row.selection.casefold(), row.display.casefold()}]
+            matches = [
+                row
+                for row in records
+                if raw.casefold() in {row.selection.casefold(), row.display.casefold()}
+            ]
             if not matches:
                 matches = [row for row in records if catalogue_label_matches(row.selection, raw)]
         if len(matches) != 1:
             candidates = ", ".join(row.id for row in matches[:8]) or "none"
-            raise ValueError(f"unknown or ambiguous catalogue entry {reference!r}; matches: {candidates}")
+            raise ValueError(
+                f"unknown or ambiguous catalogue entry {reference!r}; matches: {candidates}"
+            )
         return matches[0]
 
-    def jobs(self, records: Iterable[ModelCatalogueRecord]) -> tuple[tuple[ModelCatalogueRecord, tuple[tuple[str, str], ...]], ...]:
+    def jobs(
+        self, records: Iterable[ModelCatalogueRecord]
+    ) -> tuple[tuple[ModelCatalogueRecord, tuple[tuple[str, str], ...]], ...]:
         return tuple(
             (record, tuple(self.manager.resolve(record.selection, FAMILY_ARCH[record.family])))
             for record in records
@@ -302,8 +310,14 @@ class ModelCatalogueService:
 
 
 __all__ = [
-    "CatalogEntryId", "FAMILY_ARCH", "ModelCatalogueRecord",
-    "ModelCatalogueService", "catalogue_label_matches", "filter_catalogue_labels",
-    "catalogue_entry_meta", "catalogue_presentation_id",
+    "CatalogEntryId",
+    "FAMILY_ARCH",
+    "ModelCatalogueRecord",
+    "ModelCatalogueService",
+    "catalogue_label_matches",
+    "filter_catalogue_labels",
+    "catalogue_entry_meta",
+    "catalogue_evidence_fields",
+    "catalogue_presentation_id",
     "project_catalogue_display",
 ]

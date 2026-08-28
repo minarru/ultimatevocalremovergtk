@@ -1,4 +1,5 @@
 import typing
+import unicodedata
 import unittest
 
 from bundled.constants import (
@@ -765,6 +766,132 @@ class CatalogueIntentOverlayTests(unittest.TestCase):
             resolve_catalogue_intent(),
             INTENT_UNKNOWN,
         )
+
+
+class UnifiedManifestCatalogueSemanticsTests(unittest.TestCase):
+    def test_invert_clean_uses_only_the_configured_target_as_native_output(self) -> None:
+        from core.model_manifest import load_model_manifest
+        from core.model_stem_manifest import resolve_model_stem_semantics
+        from core.stem_roles import StemReviewStatus
+
+        model_id = "mdx:mbr_invert_clean_becruily"
+        registry = load_model_manifest().stems
+        resolved = resolve_model_stem_semantics(
+            model_id,
+            native_stems=("Vocals",),
+            backend_primary="Vocals",
+            backend_target="Vocals",
+            registry=registry,
+        )
+        self.assertEqual(resolved.status, StemReviewStatus.REVIEWED)
+        self.assertEqual(
+            tuple(
+                (
+                    output.native.raw if output.native is not None else None,
+                    str(output.role),
+                    output.production.value,
+                    output.complement_of.value if output.complement_of is not None else None,
+                )
+                for output in resolved.outputs
+            ),
+            (
+                ("Vocals", "vocal.vocals", "native", None),
+                (None, "mix.instrumental", "derived", "vocal.vocals"),
+            ),
+        )
+
+        training_list_as_outputs = resolve_model_stem_semantics(
+            model_id,
+            native_stems=("Vocals", "Other"),
+            backend_primary="Vocals",
+            backend_target="Vocals",
+            registry=registry,
+        )
+        self.assertEqual(training_list_as_outputs.status, StemReviewStatus.RAW)
+        self.assertIn("signature-mismatch", training_list_as_outputs.warning)
+
+    def test_retired_installed_records_keep_their_exact_reviewed_routes(self) -> None:
+        from core.model_manifest import load_model_manifest
+        from core.model_stem_manifest import resolve_model_stem_semantics
+        from core.stem_roles import StemReviewStatus
+
+        registry = load_model_manifest().stems
+        expected = {
+            "mdx:mbr_guitar_becruily": (
+                ("Guitar", "instrument.guitar"),
+                (None, "instrument.guitar.removed"),
+            ),
+            "mdx:mbr_inst_becruily": (
+                ("Instrumental", "mix.instrumental"),
+                (None, "vocal.vocals"),
+            ),
+        }
+        for model_id, expected_routes in expected.items():
+            declaration = registry.models[model_id]
+            resolved = resolve_model_stem_semantics(
+                model_id,
+                native_stems=declaration.native_signature,
+                backend_primary=declaration.native_signature[0],
+                registry=registry,
+            )
+            with self.subTest(model_id=model_id):
+                self.assertEqual(resolved.status, StemReviewStatus.REVIEWED)
+                self.assertEqual(
+                    tuple(
+                        (
+                            output.native.raw if output.native is not None else None,
+                            str(output.role),
+                        )
+                        for output in resolved.outputs
+                    ),
+                    expected_routes,
+                )
+
+    def test_unified_manifest_pins_current_semantic_totals_and_clean_vocabulary(self) -> None:
+        from core.model_manifest import load_model_manifest
+
+        manifest = load_model_manifest()
+        registry = manifest.stems
+        current_ids = {
+            model_id
+            for model_id, record in manifest.models.items()
+            if record.lifecycle == "current"
+        }
+        retired_ids = set(manifest.models).difference(current_ids)
+        current_declarations = current_ids.intersection(registry.models)
+        current_waivers = current_ids.intersection(registry.waivers)
+
+        self.assertEqual((len(current_ids), len(retired_ids)), (485, 2))
+        self.assertEqual(len(current_declarations), 483)
+        self.assertEqual(
+            current_waivers,
+            {
+                "apollo:apollo_edm_big_by_essid",
+                "apollo:apollo_edm_by_essid",
+            },
+        )
+        self.assertEqual(len(registry.models), 485)
+        self.assertEqual(
+            sum(len(registry.models[model_id].contexts) for model_id in current_declarations),
+            514,
+        )
+        self.assertEqual(len(registry.pairs), 4)
+
+        used_roles = {
+            output.role
+            for declaration in registry.models.values()
+            for context in declaration.contexts.values()
+            for output in context.outputs
+        }
+        self.assertEqual(set(registry.roles).difference(used_roles), set())
+
+        def normalized(value: str) -> str:
+            return unicodedata.normalize("NFKC", value).strip().casefold()
+
+        display_keys = [normalized(definition.display) for definition in registry.roles.values()]
+        tag_keys = [normalized(definition.filename_tag) for definition in registry.roles.values()]
+        self.assertEqual(len(display_keys) - len(set(display_keys)), 0)
+        self.assertEqual(len(tag_keys) - len(set(tag_keys)), 0)
 
 
 if __name__ == "__main__":

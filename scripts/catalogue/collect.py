@@ -17,7 +17,7 @@ import urllib.error
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from types import SimpleNamespace
-from typing import Any, Dict, List, Mapping, Optional, Tuple
+from typing import AbstractSet, Any, Dict, List, Mapping, Optional, Tuple
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, ROOT)
@@ -30,6 +30,7 @@ from core.catalogue_coordinator import (  # noqa: E402
     flatten_upstream_lists,
     yaml_basename_from_ref,
 )
+from core.catalogue_identity import catalogue_model_id  # noqa: E402
 from core.catalogue_types import (  # noqa: E402
     UPSTREAM_DEMUCS_KEYS,
     UPSTREAM_MDX_KEYS,
@@ -41,18 +42,22 @@ from core.extra_catalog import APOLLO_LIST_KEY  # noqa: E402
 from core.mdx_runtime_contract import (  # noqa: E402
     BUNDLED_MDX_RUNTIME_CONTRACT_PATH,
     MdxRuntimeContractError,
+    MdxRuntimeContractRegistry,
     ReconciledMdxRuntimeSignature,
     is_catalogue_mdx_target_runtime,
     load_mdx_runtime_contracts,
     reconcile_catalogue_mdx_runtime_signature,
 )
-from core.model_catalogue import (  # noqa: E402
-    catalogue_presentation_id,
-    project_catalogue_display,
-)
+from core.model_catalogue import project_catalogue_display  # noqa: E402
 from core.model_data import (  # noqa: E402
     _mdx_c_training,
     load_mdx_c_config_data,
+)
+from core.model_manifest.schema import UnifiedModelRecord  # noqa: E402
+from core.model_manifest.stems import (  # noqa: E402
+    catalogue_stem_evidence_uses_config,
+    reviewed_catalogue_stem_signature,
+    stem_semantics_registry,
 )
 from core.model_naming import canonical_display_name  # noqa: E402
 from core.model_stem_manifest import StemSemanticsRegistry  # noqa: E402
@@ -115,22 +120,27 @@ _POLITREES_KEYS = (
 )
 _SUPPLEMENT_LIST_KEYS = (*_POLITREES_KEYS, APOLLO_LIST_KEY)
 
-# The VR backend always emits its reviewed primary plus the computed
-# complement. This exact BVE artifact has authoritative hash metadata for the
-# primary and an exact community record for the complement, but catalogue
-# sources do not carry a native inventory list. Keep the exception scoped to
-# its canonical ID so absent inventory for every other model remains absent.
-_REVIEWED_MISSING_NATIVE_SIGNATURES = {
-    "vr:UVR-BVE-4B_SN-44100-1": ("Vocals", "Instrumental"),
-}
 
-
-def reviewed_stem_signature(model_id: str, instruments: Any) -> tuple[str, ...]:
-    """Return actual inventory, or one exact reviewed missing-inventory supplement."""
+def reviewed_stem_signature(
+    model_id: str,
+    instruments: Any,
+    *,
+    registry: StemSemanticsRegistry | None = None,
+    evidence_uses_config: bool | None = None,
+    reviewed_non_config_ids: AbstractSet[str] | None = None,
+) -> tuple[str, ...]:
+    """Prefer exact non-config declarations over inferred inventory hints."""
     actual = tuple(str(native) for native in instruments)
-    if actual:
-        return actual
-    return _REVIEWED_MISSING_NATIVE_SIGNATURES.get(model_id, ())
+    if registry is None or reviewed_non_config_ids is None:
+        reviewed = reviewed_catalogue_stem_signature(model_id)
+        uses_config = catalogue_stem_evidence_uses_config(model_id)
+    else:
+        declaration = registry.models.get(model_id)
+        reviewed = () if declaration is None else declaration.native_signature
+        uses_config = bool(evidence_uses_config) and model_id not in reviewed_non_config_ids
+    if reviewed and not uses_config:
+        return reviewed
+    return actual or reviewed
 
 
 is_runtime_target_instrument = is_catalogue_mdx_target_runtime
@@ -144,6 +154,9 @@ def runtime_stem_signature(
     config_yaml: str = "",
     config_sha256: str = "",
     metadata_source: str = "",
+    registry: StemSemanticsRegistry | None = None,
+    contracts: MdxRuntimeContractRegistry | None = None,
+    reviewed_non_config_ids: AbstractSet[str] | None = None,
 ) -> tuple[str, ...]:
     """Project collected training evidence to actual engine-native source keys."""
     return runtime_stem_reconciliation(
@@ -153,6 +166,9 @@ def runtime_stem_signature(
         config_yaml=config_yaml,
         config_sha256=config_sha256,
         metadata_source=metadata_source,
+        registry=registry,
+        contracts=contracts,
+        reviewed_non_config_ids=reviewed_non_config_ids,
     ).native_signature
 
 
@@ -164,19 +180,37 @@ def runtime_stem_reconciliation(
     config_yaml: str = "",
     config_sha256: str = "",
     metadata_source: str = "",
+    registry: StemSemanticsRegistry | None = None,
+    contracts: MdxRuntimeContractRegistry | None = None,
+    reviewed_non_config_ids: AbstractSet[str] | None = None,
 ) -> ReconciledMdxRuntimeSignature:
     """Return the one shared exact runtime-signature reconciliation result."""
+    uses_config = bool(config_yaml) or metadata_source.startswith(("bundled_yaml:", "remote_yaml:"))
+    selected_instruments = reviewed_stem_signature(
+        model_id,
+        instruments,
+        registry=registry,
+        evidence_uses_config=uses_config,
+        reviewed_non_config_ids=reviewed_non_config_ids,
+    )
     reconciled = reconcile_catalogue_mdx_runtime_signature(
         model_id,
-        tuple(str(native) for native in instruments),
+        selected_instruments,
         target_instrument=target_instrument,
         config_yaml=config_yaml,
         config_sha256=config_sha256,
         metadata_source=metadata_source,
+        contracts=contracts,
     )
     if reconciled.native_signature:
         return reconciled
-    fallback = reviewed_stem_signature(model_id, instruments)
+    fallback = reviewed_stem_signature(
+        model_id,
+        selected_instruments,
+        registry=registry,
+        evidence_uses_config=uses_config,
+        reviewed_non_config_ids=reviewed_non_config_ids,
+    )
     if not fallback:
         return reconciled
     return ReconciledMdxRuntimeSignature(
@@ -278,8 +312,8 @@ _RUNTIME_FAMILY_BY_CATALOGUE_FAMILY = {
 }
 
 
-def catalogue_projection(entry: ModelEntry) -> tuple[str, str]:
-    """Return the exact canonical ID and display for a collected row."""
+def catalogue_identity_inputs(entry: ModelEntry) -> tuple[str, str, dict[str, str], object]:
+    """Build one complete, family-scoped identity row for shared consumers."""
     try:
         family = _RUNTIME_FAMILY_BY_CATALOGUE_FAMILY[entry.family]
     except KeyError as exc:
@@ -300,12 +334,28 @@ def catalogue_projection(entry: ModelEntry) -> tuple[str, str]:
         checkpoint=entry.weight_file,
         stems=(),
     )
-    model_id = catalogue_presentation_id(family, entry.catalogue_label, files, meta)
+    return family, entry.catalogue_label, files, meta
+
+
+def catalogue_projection(
+    entry: ModelEntry,
+    *,
+    presentation: Mapping[str, Any] | None = None,
+) -> tuple[str, str]:
+    """Return the exact canonical ID and display for a collected row."""
+    family, selection, files, meta = catalogue_identity_inputs(entry)
+    model_id = catalogue_model_id(family, selection, files, meta)
     if model_id is None:
         raise ValueError(
             f"catalogue row has no unambiguous presentation primary: {entry.catalogue_label!r}"
         )
-    return model_id, project_catalogue_display(family, entry.catalogue_label, files, meta)
+    return model_id, project_catalogue_display(
+        family,
+        selection,
+        files,
+        meta,
+        presentation=presentation,
+    )
 
 
 def _reviewed_result_projection(
@@ -449,10 +499,16 @@ def reconcile_stem_semantics(
     entries: List[ModelEntry],
     *,
     registry: StemSemanticsRegistry,
+    contracts: MdxRuntimeContractRegistry | None = None,
+    reviewed_non_config_ids: AbstractSet[str] | None = None,
+    presentation: Mapping[str, Any] | None = None,
 ) -> None:
     """Attach exact reviewed semantics to one already-collected snapshot."""
     for entry in entries:
-        model_id, model_display = catalogue_projection(entry)
+        model_id, model_display = catalogue_projection(
+            entry,
+            presentation=presentation,
+        )
         runtime = runtime_stem_reconciliation(
             model_id,
             entry.instruments,
@@ -460,6 +516,9 @@ def reconcile_stem_semantics(
             config_yaml=entry.config_yaml,
             config_sha256=entry.config_sha256,
             metadata_source=entry.metadata_source,
+            registry=registry,
+            contracts=contracts,
+            reviewed_non_config_ids=reviewed_non_config_ids,
         )
         declaration = registry.models.get(model_id)
         contexts = (
@@ -1298,32 +1357,25 @@ def _finalize_entry(meta: ModelEntry) -> None:
         meta.notes.append("Expected: inst models use yaml stem `other` (UI: Vocals / Instrumental)")
 
 
-def _demucs_overlay(meta: ModelEntry) -> None:
-    """Demucs family facts, inferred from the label.
-
-    Demucs entries carry no yaml and no hash metadata, so their stem set comes
-    from the label alone. This must run *before* _finalize_entry: the derived
-    fields (backend_focus, ui_export_note, flags) are computed from
-    instruments/stem_count/name_intent, and deriving them from an empty entry
-    left every Demucs model with a blank export note.
-    """
-    label = meta.catalogue_label
-    if "UVR Model" in label or "uvr" in label.lower():
-        meta.instruments = ["instrumental", "vocals"]
-        meta.stem_count = 2
-        meta.name_intent = "dual_voc_inst"
+def _demucs_overlay(
+    meta: ModelEntry,
+    registry: StemSemanticsRegistry | None = None,
+    presentation: Mapping[str, Any] | None = None,
+) -> None:
+    """Project Demucs outputs from the unified reviewed declaration."""
+    model_id = catalogue_projection(meta, presentation=presentation)[0]
+    selected_registry = registry or stem_semantics_registry()
+    declaration = selected_registry.models.get(model_id)
+    if declaration is None:
+        return
+    meta.instruments = list(declaration.native_signature)
+    meta.stem_count = len(meta.instruments)
+    meta.name_intent = declaration.intent
+    if meta.stem_count == 2:
         meta.best_result_override = "2-stem: instrumental + vocals (user picks focus)"
-    elif "6s" in label:
-        meta.instruments = ["drums", "bass", "other", "vocals", "guitar", "piano"]
-        meta.stem_count = 6
-        meta.name_intent = "multi_stem"
-        meta.best_result_override = "6-stem Demucs"
     else:
-        meta.instruments = ["drums", "bass", "other", "vocals"]
-        meta.stem_count = 4
-        meta.name_intent = "multi_stem"
-        meta.best_result_override = "4-stem Demucs"
-    meta.metadata_source = "demucs_heuristic"
+        meta.best_result_override = f"{meta.stem_count}-stem Demucs"
+    meta.metadata_source = "catalogue_demucs_declaration"
 
 
 def _parse_catalogue_entry(
@@ -1336,6 +1388,10 @@ def _parse_catalogue_entry(
     entry_meta: Any = None,
     policy: FetchPolicy = DEFAULT_FETCH_POLICY,
     config_url_index: Mapping[tuple[str, str], str] | None = None,
+    registry: StemSemanticsRegistry | None = None,
+    reviewed_non_config_ids: AbstractSet[str] | None = None,
+    presentation: Mapping[str, Any] | None = None,
+    manifest_records: Mapping[str, UnifiedModelRecord] | None = None,
 ) -> List[ModelEntry]:
     yaml_name = ""
     yaml_url = ""
@@ -1381,6 +1437,15 @@ def _parse_catalogue_entry(
         config_url=yaml_url,
     )
     meta.name_intent = _infer_name_intent(label)
+    reviewed_non_config = False
+    reviewed_config_contract = False
+    if yaml_name and family not in ("Apollo", "Demucs") and reviewed_non_config_ids is not None:
+        model_id = catalogue_projection(meta, presentation=presentation)[0]
+        reviewed_non_config = model_id in reviewed_non_config_ids
+        record = manifest_records.get(model_id) if manifest_records is not None else None
+        reviewed_config_contract = bool(
+            record is not None and record.catalogue_evidence.config_yaml == yaml_name
+        )
 
     if yaml_name and family not in ("Apollo", "Demucs"):
         # Apollo and Demucs sidecars describe execution/configuration details,
@@ -1392,8 +1457,23 @@ def _parse_catalogue_entry(
             yaml_url,
             policy=policy,
         )
+        exact_config_evidence = yaml_source.startswith(("bundled_yaml:", "remote_yaml:"))
+        if not exact_config_evidence and manifest_records is not None:
+            model_id = catalogue_projection(meta, presentation=presentation)[0]
+            record = manifest_records.get(model_id)
+            evidence = None if record is None else record.config_evidence.get(yaml_name)
+            if record is not None and evidence is not None:
+                instruments = list(evidence.training_instruments)
+                target = evidence.target_instrument or ""
+                arch = arch or _architecture_from_yaml_name(yaml_name)
+                yaml_source = record.catalogue_evidence.metadata_source
+                config_sha256 = evidence.content_sha256
+                exact_config_evidence = True
+                meta.notes.append(
+                    "Exact unified config evidence reused because live/cache bytes were unavailable"
+                )
         meta.arch = arch
-        if yaml_source.startswith(("bundled_yaml:", "remote_yaml:")):
+        if exact_config_evidence:
             meta.instruments = instruments
             meta.target_instrument = target
             meta.config_sha256 = config_sha256
@@ -1402,12 +1482,18 @@ def _parse_catalogue_entry(
                 meta.primary_stem = target
             elif instruments:
                 meta.primary_stem = instruments[0]
-        else:
+        elif not reviewed_non_config and not reviewed_config_contract:
             # Filename guesses can still label architecture informally, but
             # cannot become a native signature used by strict publication.
             ctx.unavailable_yaml_evidence.add(yaml_name)
         if yaml_source:
             meta.metadata_source = yaml_source
+    elif (
+        yaml_name
+        and family == "Apollo"
+        and os.path.isfile(os.path.join(_BUNDLED_MDX_YAML_DIR, yaml_name))
+    ):
+        meta.metadata_source = f"bundled_yaml:{yaml_name}"
 
     if weight:
         ref = ctx.community_by_file.get(weight.lower())
@@ -1440,7 +1526,7 @@ def _parse_catalogue_entry(
 
     _apply_entry_meta(meta, entry_meta)
     if family == "Demucs":
-        _demucs_overlay(meta)
+        _demucs_overlay(meta, registry, presentation)
     _finalize_entry(meta)
     return [meta]
 
@@ -1525,6 +1611,10 @@ def _entries_from_snapshot(
     ctx: CatalogueContext,
     *,
     policy: FetchPolicy = DEFAULT_FETCH_POLICY,
+    registry: StemSemanticsRegistry | None = None,
+    reviewed_non_config_ids: AbstractSet[str] | None = None,
+    presentation: Mapping[str, Any] | None = None,
+    manifest_records: Mapping[str, UnifiedModelRecord] | None = None,
 ) -> List[ModelEntry]:
     trvlvr, politrees, extras, mvsepless = payloads
     meta_index = getattr(snapshot, "meta", {}) or {}
@@ -1558,6 +1648,10 @@ def _entries_from_snapshot(
                 entry_meta=meta_index.get(label),
                 policy=policy,
                 config_url_index=config_url_index,
+                registry=registry,
+                reviewed_non_config_ids=reviewed_non_config_ids,
+                presentation=presentation,
+                manifest_records=manifest_records,
             )
         )
 
@@ -1573,6 +1667,10 @@ def _entries_from_snapshot(
                 entry_meta=meta_index.get(label),
                 policy=policy,
                 config_url_index=config_url_index,
+                registry=registry,
+                reviewed_non_config_ids=reviewed_non_config_ids,
+                presentation=presentation,
+                manifest_records=manifest_records,
             )
         )
 
@@ -1587,6 +1685,10 @@ def _entries_from_snapshot(
                 entry_meta=meta_index.get(label),
                 policy=policy,
                 config_url_index=config_url_index,
+                registry=registry,
+                reviewed_non_config_ids=reviewed_non_config_ids,
+                presentation=presentation,
+                manifest_records=manifest_records,
             )
         )
 
@@ -1601,6 +1703,10 @@ def _entries_from_snapshot(
                 entry_meta=meta_index.get(label),
                 policy=policy,
                 config_url_index=config_url_index,
+                registry=registry,
+                reviewed_non_config_ids=reviewed_non_config_ids,
+                presentation=presentation,
+                manifest_records=manifest_records,
             )
         )
 
@@ -1614,6 +1720,10 @@ def collect_entries(
     allow_network: Optional[bool] = None,
     coordinator: Optional[CatalogueCoordinator] = None,
     registry: Optional[StemSemanticsRegistry] = None,
+    contracts: Optional[MdxRuntimeContractRegistry] = None,
+    reviewed_non_config_ids: Optional[AbstractSet[str]] = None,
+    presentation: Optional[Mapping[str, Any]] = None,
+    manifest_records: Optional[Mapping[str, UnifiedModelRecord]] = None,
 ) -> Tuple[Any, List[ModelEntry]]:
     """Acquire a snapshot and turn it into entries. The one collection path.
 
@@ -1636,9 +1746,24 @@ def collect_entries(
         coordinator=coordinator,
         policy=policy,
     )
-    entries = _entries_from_snapshot(snapshot, payloads, ctx, policy=policy)
+    entries = _entries_from_snapshot(
+        snapshot,
+        payloads,
+        ctx,
+        policy=policy,
+        registry=registry,
+        reviewed_non_config_ids=reviewed_non_config_ids,
+        presentation=presentation,
+        manifest_records=manifest_records,
+    )
     if registry is not None:
-        reconcile_stem_semantics(entries, registry=registry)
+        reconcile_stem_semantics(
+            entries,
+            registry=registry,
+            contracts=contracts,
+            reviewed_non_config_ids=reviewed_non_config_ids,
+            presentation=presentation,
+        )
     return snapshot, entries
 
 

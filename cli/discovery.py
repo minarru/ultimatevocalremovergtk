@@ -59,6 +59,64 @@ def _stem_semantics_fields(model: Any | None) -> dict[str, Any]:
     ).as_dict()
 
 
+def _catalogue_projection_fields(record: Any, repo: Any) -> dict[str, Any]:
+    """Read one all-known row's published evidence without resolving its config."""
+    from core.model_catalogue import catalogue_evidence_fields
+
+    entry = getattr(record, "catalogue_entry", None)
+    family = getattr(entry, "family", None)
+    selection = getattr(entry, "selection", None)
+    snapshot = getattr(getattr(repo, "catalogue", None), "_latest", None)
+    by_family = getattr(snapshot, "meta_by_family", None)
+    meta = None
+    if isinstance(by_family, Mapping) and isinstance(family, str) and isinstance(selection, str):
+        values = by_family.get(family)
+        if isinstance(values, Mapping):
+            meta = values.get(selection)
+
+    fields: dict[str, Any] = catalogue_evidence_fields(meta)
+    projection = getattr(meta, "stem_semantics", None)
+    if projection is not None:
+        fields.update(projection.as_dict())
+        fields["canonical_roles"] = list(projection.canonical_roles)
+        if projection.evidence:
+            fields["stem_semantics_evidence"] = projection.evidence
+    return fields
+
+
+def _list_model_info(record: Any) -> dict[str, Any]:
+    """Build a non-invasive list row from the published identity record.
+
+    ``models list`` is discovery, not inspection: dry model resolution can
+    fetch or parse an MDX-C config.  A model's detailed runtime configuration
+    remains available through ``models show``; list reports only its published
+    identity and the raw semantic fallback until a catalogue projection exists.
+    """
+    return {
+        **record.to_dict(),
+        "configured": bool(record.installed and record.identity_complete),
+        **_stem_semantics_fields(None),
+    }
+
+
+def _emit_catalogue_evidence_warning(record: Any, fields: Mapping[str, Any]) -> None:
+    """Keep per-row evidence diagnostics out of the result document."""
+    warning = fields.get("catalogue_evidence_warning")
+    if not isinstance(warning, str) or not warning:
+        return
+    from core.debug_log import log_event
+
+    model_id = str(getattr(record, "id", "unknown"))
+    log_event(
+        "cli",
+        "catalogue_evidence_warning",
+        level="warning",
+        model_id=model_id,
+        warning=warning,
+    )
+    print(f"warning: catalogue evidence {model_id}: {warning}", file=sys.stderr)
+
+
 def _print_rows(args: argparse.Namespace, rows: list[dict[str, Any]]) -> int:
     if report_mode(args) == "human":
         for row in rows:
@@ -110,6 +168,18 @@ def _projected_stem_label(row: Mapping[str, Any] | None, key: str) -> str | None
 
 
 def _human_cell(value: Any, *, key: str | None = None, row: Mapping[str, Any] | None = None) -> str:
+    if key == "catalogue_evidence_warning":
+        return ""
+    if key == "catalogue_evidence_status":
+        warning = "" if row is None else str(row.get("catalogue_evidence_warning") or "")
+        if "mismatch" in warning:
+            return "evidence: mismatch"
+        labels = {
+            "pending": "evidence: pending",
+            "unavailable": "evidence: unavailable",
+            "stale": "evidence: stale",
+        }
+        return labels.get(str(value), "")
     if key in {"primary_stem", "secondary_stem"}:
         projected = _projected_stem_label(row, key)
         if projected is not None:
@@ -329,10 +399,26 @@ def cmd_models_list(args: argparse.Namespace) -> int:
             for record in records:
                 if args.family is not None and record.family != args.family:
                     continue
-                if not record.installed:
-                    rows.append({**record.to_dict(), "configured": False})
-                    continue
-                rows.append(_model_info(record, repo))
+                item = _list_model_info(record)
+                if getattr(args, "all_known", False):
+                    catalogue_fields = _catalogue_projection_fields(record, repo)
+                    if "stem_semantics_status" in catalogue_fields:
+                        item.update(
+                            {
+                                key: value
+                                for key, value in catalogue_fields.items()
+                                if key != "catalogue_evidence_warning"
+                            }
+                        )
+                    item.update(
+                        {
+                            key: value
+                            for key, value in catalogue_fields.items()
+                            if key.startswith("catalogue_evidence_")
+                        }
+                    )
+                    _emit_catalogue_evidence_warning(record, catalogue_fields)
+                rows.append(item)
             return _print_rows(args, rows)
     finally:
         if coordinator is not None:
@@ -582,6 +668,8 @@ def cmd_models_catalog(args: argparse.Namespace) -> int:
             installed=args.installed,
         ):
             item = dataclasses.asdict(row)
+            if not item.get("catalogue_evidence_warning"):
+                item.pop("catalogue_evidence_warning", None)
             from core.model_catalogue import catalogue_entry_meta
 
             meta = catalogue_entry_meta(service.manager, row.family, row.selection)

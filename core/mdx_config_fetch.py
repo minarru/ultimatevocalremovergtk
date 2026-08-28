@@ -7,7 +7,7 @@ import os
 import ssl
 import urllib.error
 import urllib.request
-from typing import Iterator, Iterable, Optional
+from typing import Iterable, Iterator, Optional
 
 from bundled.constants import MDX23_CONFIG_CHECKS, POLITREES_CONFIG_SUBDIRS, POLITREES_RAW_BASE
 
@@ -16,6 +16,7 @@ from .access_policy import access_policy, current_access_policy
 from .debug_log import debug
 
 _DOWNLOAD_TIMEOUT_SECONDS = 30
+
 
 @contextlib.contextmanager
 def mdx_c_network(allow_network: bool) -> Iterator[None]:
@@ -38,9 +39,7 @@ def _ssl_context() -> ssl.SSLContext:
 
 
 def _urlopen(url: str | urllib.request.Request):
-    return urllib.request.urlopen(
-        url, context=_ssl_context(), timeout=_DOWNLOAD_TIMEOUT_SECONDS
-    )
+    return urllib.request.urlopen(url, context=_ssl_context(), timeout=_DOWNLOAD_TIMEOUT_SECONDS)
 
 
 def _safe_config_name(filename: str) -> Optional[str]:
@@ -119,11 +118,7 @@ def ensure_mdx_c_config(filename: str, *, allow_network: bool | None = None) -> 
     if os.path.isfile(dest):
         return True
 
-    allowed = (
-        current_access_policy().allow_network
-        if allow_network is None
-        else allow_network
-    )
+    allowed = current_access_policy().allow_network if allow_network is None else allow_network
     if not allowed:
         debug("download", f"mdx_c_config offline-miss name={safe}")
         return False

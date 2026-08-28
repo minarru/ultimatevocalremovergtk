@@ -17,13 +17,15 @@ _METHOD_VIEW = _REPO / "ui" / "views" / "base.py"
 _OPTION_SUMMARIES = _REPO / "ui" / "option_summaries.py"
 
 
-def _reviewed_target_routes(model_id: str, native: str):
+def _reviewed_target_routes(model_id: str, natives: str | tuple[str, ...]):
     from core.stems import model_stem_routes
 
+    native_stems = (natives,) if isinstance(natives, str) else natives
+    native = native_stems[0]
     return model_stem_routes(
         SimpleNamespace(
             canonical_id=model_id,
-            mdx_model_stems=[native],
+            mdx_model_stems=list(native_stems),
             demucs_source_list=[],
             primary_stem=native,
             primary_stem_native=native,
@@ -589,20 +591,21 @@ class LegacyStateSemanticPersistenceTests(unittest.TestCase):
         cases = (
             (
                 "mdx:bs_dereverb_2250_anvuew",
-                "noreverb",
+                ("noreverb",),
                 0,
             ),
             (
                 "mdx:MDX23C-De-Reverb-aufr33-jarredou",
-                "dry",
+                ("dry", "No dry"),
                 1,
             ),
         )
-        for model_id, native, index in cases:
+        for model_id, native_stems, index in cases:
+            native = native_stems[0]
             with self.subTest(model_id=model_id, native=native, index=index):
                 expected = resolve_model_stem_semantics(
                     model_id,
-                    native_stems=[native],
+                    native_stems=list(native_stems),
                 )
                 expected_role = expected.outputs[index].role
                 self.assertIsInstance(expected_role, StemRoleId)
@@ -614,7 +617,7 @@ class LegacyStateSemanticPersistenceTests(unittest.TestCase):
                     primary_key="is_primary_stem_only",
                     secondary_key="is_secondary_stem_only",
                 )
-                state.routes = _reviewed_target_routes(model_id, native)
+                state.routes = _reviewed_target_routes(model_id, native_stems)
                 settings = Settings.defaults()
                 state.write(settings, ExclusiveView(choice=state.routes[index].concept))
                 self.assertEqual(settings.process.stem_focus, expected_role.value)

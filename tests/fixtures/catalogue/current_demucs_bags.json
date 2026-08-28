@@ -1,0 +1,205 @@
+{
+  "reviewed_snapshot": "2026-08-27 cached post-merge TRvlvr and Politrees catalogue",
+  "rows": [
+    {
+      "model_id": "demucs:UVR_Demucs_Model_1",
+      "catalogue_label": "Demucs v3: UVR Model",
+      "reviewed_primary_artifact": "ebf34a2db.th",
+      "files": {
+        "UVR_Demucs_Model_1.yaml": "https://github.com/TRvlvr/model_repo/releases/download/all_public_uvr_models/UVR_Demucs_Model_1.yaml",
+        "ebf34a2db.th": "https://github.com/TRvlvr/model_repo/releases/download/all_public_uvr_models/ebf34a2db.th"
+      }
+    },
+    {
+      "model_id": "demucs:demucs",
+      "catalogue_label": "Demucs v1: demucs",
+      "reviewed_primary_artifact": "demucs.th",
+      "files": {"demucs.th": "https://dl.fbaipublicfiles.com/demucs/v2.0/demucs.th"}
+    },
+    {
+      "model_id": "demucs:demucs-e07c671f",
+      "catalogue_label": "Demucs v2: demucs",
+      "reviewed_primary_artifact": "demucs-e07c671f.th",
+      "files": {"demucs-e07c671f.th": "https://dl.fbaipublicfiles.com/demucs/v3.0/demucs-e07c671f.th"}
+    },
+    {
+      "model_id": "demucs:demucs48_hq-28a1282c",
+      "catalogue_label": "Demucs v2: demucs48_hq",
+      "reviewed_primary_artifact": "demucs48_hq-28a1282c.th",
+      "files": {"demucs48_hq-28a1282c.th": "https://dl.fbaipublicfiles.com/demucs/v3.0/demucs48_hq-28a1282c.th"}
+    },
+    {
+      "model_id": "demucs:demucs_extra",
+      "catalogue_label": "Demucs v1: demucs_extra",
+      "reviewed_primary_artifact": "demucs_extra.th",
+      "files": {"demucs_extra.th": "https://dl.fbaipublicfiles.com/demucs/v2.0/demucs_extra.th"}
+    },
+    {
+      "model_id": "demucs:demucs_extra-3646af93",
+      "catalogue_label": "Demucs v2: demucs_extra",
+      "reviewed_primary_artifact": "demucs_extra-3646af93.th",
+      "files": {"demucs_extra-3646af93.th": "https://dl.fbaipublicfiles.com/demucs/v3.0/demucs_extra-3646af93.th"}
+    },
+    {
+      "model_id": "demucs:demucs_unittest-09ebc15f",
+      "catalogue_label": "Demucs v2: demucs_unittest",
+      "reviewed_primary_artifact": "demucs_unittest-09ebc15f.th",
+      "files": {"demucs_unittest-09ebc15f.th": "https://dl.fbaipublicfiles.com/demucs/v3.0/demucs_unittest-09ebc15f.th"}
+    },
+    {
+      "model_id": "demucs:hdemucs_mmi",
+      "catalogue_label": "Demucs v4: hdemucs_mmi",
+      "reviewed_primary_artifact": "75fc33f5-1941ce65.th",
+      "files": {
+        "75fc33f5-1941ce65.th": "https://dl.fbaipublicfiles.com/demucs/hybrid_transformer/75fc33f5-1941ce65.th",
+        "hdemucs_mmi.yaml": "https://github.com/TRvlvr/model_repo/releases/download/all_public_uvr_models/hdemucs_mmi.yaml"
+      }
+    },
+    {
+      "model_id": "demucs:htdemucs",
+      "catalogue_label": "Demucs v4: htdemucs",
+      "reviewed_primary_artifact": "955717e8-8726e21a.th",
+      "files": {
+        "955717e8-8726e21a.th": "https://dl.fbaipublicfiles.com/demucs/hybrid_transformer/955717e8-8726e21a.th",
+        "htdemucs.yaml": "https://github.com/TRvlvr/model_repo/releases/download/all_public_uvr_models/htdemucs.yaml"
+      }
+    },
+    {
+      "model_id": "demucs:htdemucs_6s",
+      "catalogue_label": "Demucs v4: htdemucs_6s",
+      "reviewed_primary_artifact": "5c90dfd2-34c22ccb.th",
+      "files": {
+        "5c90dfd2-34c22ccb.th": "https://dl.fbaipublicfiles.com/demucs/hybrid_transformer/5c90dfd2-34c22ccb.th",
+        "htdemucs_6s.yaml": "https://github.com/TRvlvr/model_repo/releases/download/all_public_uvr_models/htdemucs_6s.yaml"
+      }
+    },
+    {
+      "model_id": "demucs:htdemucs_ft",
+      "catalogue_label": "Demucs v4: htdemucs_ft",
+      "reviewed_primary_artifact": "f7e0c4bc-ba3fe64a.th",
+      "files": {
+        "04573f0d-f3cf25b2.th": "https://dl.fbaipublicfiles.com/demucs/hybrid_transformer/04573f0d-f3cf25b2.th",
+        "92cfc3b6-ef3bcb9c.th": "https://dl.fbaipublicfiles.com/demucs/hybrid_transformer/92cfc3b6-ef3bcb9c.th",
+        "d12395a8-e57c48e6.th": "https://dl.fbaipublicfiles.com/demucs/hybrid_transformer/d12395a8-e57c48e6.th",
+        "f7e0c4bc-ba3fe64a.th": "https://dl.fbaipublicfiles.com/demucs/hybrid_transformer/f7e0c4bc-ba3fe64a.th",
+        "htdemucs_ft.yaml": "https://github.com/TRvlvr/model_repo/releases/download/all_public_uvr_models/htdemucs_ft.yaml"
+      }
+    },
+    {
+      "model_id": "demucs:light",
+      "catalogue_label": "Demucs v1: light",
+      "reviewed_primary_artifact": "light.th",
+      "files": {"light.th": "https://dl.fbaipublicfiles.com/demucs/v2.0/light.th"}
+    },
+    {
+      "model_id": "demucs:light_extra",
+      "catalogue_label": "Demucs v1: light_extra",
+      "reviewed_primary_artifact": "light_extra.th",
+      "files": {"light_extra.th": "https://dl.fbaipublicfiles.com/demucs/v2.0/light_extra.th"}
+    },
+    {
+      "model_id": "demucs:mdx",
+      "catalogue_label": "Demucs v3: mdx",
+      "reviewed_primary_artifact": "c511e2ab-fe698775.th",
+      "files": {
+        "0d19c1c6-0f06f20e.th": "https://dl.fbaipublicfiles.com/demucs/mdx_final/0d19c1c6-0f06f20e.th",
+        "7d865c68-3d5dd56b.th": "https://dl.fbaipublicfiles.com/demucs/mdx_final/7d865c68-3d5dd56b.th",
+        "7ecf8ec1-70f50cc9.th": "https://dl.fbaipublicfiles.com/demucs/mdx_final/7ecf8ec1-70f50cc9.th",
+        "c511e2ab-fe698775.th": "https://dl.fbaipublicfiles.com/demucs/mdx_final/c511e2ab-fe698775.th",
+        "mdx.yaml": "https://raw.githubusercontent.com/facebookresearch/demucs/main/demucs/remote/mdx.yaml"
+      }
+    },
+    {
+      "model_id": "demucs:mdx_extra",
+      "catalogue_label": "Demucs v3: mdx_extra",
+      "reviewed_primary_artifact": "e51eebcc-c1b80bdd.th",
+      "files": {
+        "5d2d6c55-db83574e.th": "https://dl.fbaipublicfiles.com/demucs/mdx_final/5d2d6c55-db83574e.th",
+        "a1d90b5c-ae9d2452.th": "https://dl.fbaipublicfiles.com/demucs/mdx_final/a1d90b5c-ae9d2452.th",
+        "cfa93e08-61801ae1.th": "https://dl.fbaipublicfiles.com/demucs/mdx_final/cfa93e08-61801ae1.th",
+        "e51eebcc-c1b80bdd.th": "https://dl.fbaipublicfiles.com/demucs/mdx_final/e51eebcc-c1b80bdd.th",
+        "mdx_extra.yaml": "https://raw.githubusercontent.com/facebookresearch/demucs/main/demucs/remote/mdx_extra.yaml"
+      }
+    },
+    {
+      "model_id": "demucs:mdx_extra_q",
+      "catalogue_label": "Demucs v3: mdx_extra_q",
+      "reviewed_primary_artifact": "83fc094f-4a16d450.th",
+      "files": {
+        "14fc6a69-a89dd0ee.th": "https://dl.fbaipublicfiles.com/demucs/mdx_final/14fc6a69-a89dd0ee.th",
+        "464b36d7-e5a9386e.th": "https://dl.fbaipublicfiles.com/demucs/mdx_final/464b36d7-e5a9386e.th",
+        "7fd6ef75-a905dd85.th": "https://dl.fbaipublicfiles.com/demucs/mdx_final/7fd6ef75-a905dd85.th",
+        "83fc094f-4a16d450.th": "https://dl.fbaipublicfiles.com/demucs/mdx_final/83fc094f-4a16d450.th",
+        "mdx_extra_q.yaml": "https://raw.githubusercontent.com/facebookresearch/demucs/main/demucs/remote/mdx_extra_q.yaml"
+      }
+    },
+    {
+      "model_id": "demucs:mdx_q",
+      "catalogue_label": "Demucs v3: mdx_q",
+      "reviewed_primary_artifact": "b72baf4e-8778635e.th",
+      "files": {
+        "305bc58f-18378783.th": "https://dl.fbaipublicfiles.com/demucs/mdx_final/305bc58f-18378783.th",
+        "42e558d4-196e0e1b.th": "https://dl.fbaipublicfiles.com/demucs/mdx_final/42e558d4-196e0e1b.th",
+        "6b9c2ca1-3fd82607.th": "https://dl.fbaipublicfiles.com/demucs/mdx_final/6b9c2ca1-3fd82607.th",
+        "b72baf4e-8778635e.th": "https://dl.fbaipublicfiles.com/demucs/mdx_final/b72baf4e-8778635e.th",
+        "mdx_q.yaml": "https://raw.githubusercontent.com/facebookresearch/demucs/main/demucs/remote/mdx_q.yaml"
+      }
+    },
+    {
+      "model_id": "demucs:repro_mdx_a",
+      "catalogue_label": "Demucs v3: repro_mdx_a",
+      "reviewed_primary_artifact": "fa0cb7f9-100d8bf4.th",
+      "files": {
+        "1ef250f1-592467ce.th": "https://dl.fbaipublicfiles.com/demucs/mdx_final/1ef250f1-592467ce.th",
+        "902315c2-b39ce9c9.th": "https://dl.fbaipublicfiles.com/demucs/mdx_final/902315c2-b39ce9c9.th",
+        "9a6b4851-03af0aa6.th": "https://dl.fbaipublicfiles.com/demucs/mdx_final/9a6b4851-03af0aa6.th",
+        "fa0cb7f9-100d8bf4.th": "https://dl.fbaipublicfiles.com/demucs/mdx_final/fa0cb7f9-100d8bf4.th",
+        "repro_mdx_a.yaml": "https://github.com/TRvlvr/model_repo/releases/download/all_public_uvr_models/repro_mdx_a.yaml"
+      }
+    },
+    {
+      "model_id": "demucs:repro_mdx_a_hybrid_only",
+      "catalogue_label": "Demucs v3: repro_mdx_a_hybrid_only",
+      "reviewed_primary_artifact": "fa0cb7f9-100d8bf4.th",
+      "files": {
+        "902315c2-b39ce9c9.th": "https://dl.fbaipublicfiles.com/demucs/mdx_final/902315c2-b39ce9c9.th",
+        "fa0cb7f9-100d8bf4.th": "https://dl.fbaipublicfiles.com/demucs/mdx_final/fa0cb7f9-100d8bf4.th",
+        "repro_mdx_a_hybrid_only.yaml": "https://github.com/TRvlvr/model_repo/releases/download/all_public_uvr_models/repro_mdx_a_hybrid_only.yaml"
+      }
+    },
+    {
+      "model_id": "demucs:repro_mdx_a_time_only",
+      "catalogue_label": "Demucs v3: repro_mdx_a_time_only",
+      "reviewed_primary_artifact": "9a6b4851-03af0aa6.th",
+      "files": {
+        "1ef250f1-592467ce.th": "https://dl.fbaipublicfiles.com/demucs/mdx_final/1ef250f1-592467ce.th",
+        "9a6b4851-03af0aa6.th": "https://dl.fbaipublicfiles.com/demucs/mdx_final/9a6b4851-03af0aa6.th",
+        "repro_mdx_a_time_only.yaml": "https://github.com/TRvlvr/model_repo/releases/download/all_public_uvr_models/repro_mdx_a_time_only.yaml"
+      }
+    },
+    {
+      "model_id": "demucs:tasnet",
+      "catalogue_label": "Demucs v1: tasnet",
+      "reviewed_primary_artifact": "tasnet.th",
+      "files": {"tasnet.th": "https://dl.fbaipublicfiles.com/demucs/v2.0/tasnet.th"}
+    },
+    {
+      "model_id": "demucs:tasnet-beb46fac",
+      "catalogue_label": "Demucs v2: tasnet",
+      "reviewed_primary_artifact": "tasnet-beb46fac.th",
+      "files": {"tasnet-beb46fac.th": "https://dl.fbaipublicfiles.com/demucs/v3.0/tasnet-beb46fac.th"}
+    },
+    {
+      "model_id": "demucs:tasnet_extra",
+      "catalogue_label": "Demucs v1: tasnet_extra",
+      "reviewed_primary_artifact": "tasnet_extra.th",
+      "files": {"tasnet_extra.th": "https://dl.fbaipublicfiles.com/demucs/v2.0/tasnet_extra.th"}
+    },
+    {
+      "model_id": "demucs:tasnet_extra-df3777b2",
+      "catalogue_label": "Demucs v2: tasnet_extra",
+      "reviewed_primary_artifact": "tasnet_extra-df3777b2.th",
+      "files": {"tasnet_extra-df3777b2.th": "https://dl.fbaipublicfiles.com/demucs/v3.0/tasnet_extra-df3777b2.th"}
+    }
+  ]
+}

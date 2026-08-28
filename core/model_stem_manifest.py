@@ -8,7 +8,6 @@ continue through raw, isolated stem outputs.
 
 from __future__ import annotations
 
-import json
 import unicodedata
 from dataclasses import dataclass, replace
 from functools import lru_cache
@@ -33,7 +32,7 @@ from .stem_roles import (
     StemRoleId,
 )
 
-BUNDLED_MANIFEST_PATH = Path(BUNDLED_DATA_DIR) / "model_stem_manifest.json"
+BUNDLED_MANIFEST_PATH = Path(BUNDLED_DATA_DIR) / "model_manifest.json"
 
 
 class StemManifestError(ValueError):
@@ -122,18 +121,6 @@ def _strict_bool(value: object, path: tuple[str | int, ...]) -> bool:
     if type(value) is not bool:
         raise _error(path, "must be a boolean")
     return value
-
-
-def _duplicate_aware_mapping(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    """Build one JSON object while rejecting keys the decoder would overwrite."""
-    result: dict[str, object] = {}
-    for key, value in pairs:
-        if key in result:
-            # ``object_pairs_hook`` visits nested objects before their parents,
-            # so the complete path is unavailable. Preserve the exact key.
-            raise _error(("manifest",), f"duplicate key {key!r}")
-        result[key] = value
-    return result
 
 
 def _string(value: object, path: tuple[str | int, ...]) -> str:
@@ -570,23 +557,23 @@ def load_stem_manifest_document(document: object) -> StemSemanticsRegistry:
 
 
 def load_stem_manifest(path: Path) -> StemSemanticsRegistry:
-    """Read and strictly validate a JSON manifest from ``path``."""
+    """Return the stem-semantics view from one unified manifest."""
+    from .model_manifest import ModelManifestError, load_model_manifest
+
     try:
-        document = json.loads(
-            path.read_text(encoding="utf-8"),
-            object_pairs_hook=_duplicate_aware_mapping,
-        )
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
-        raise _error(("manifest",), f"could not read manifest: {error}") from error
-    return load_stem_manifest_document(document)
+        return load_model_manifest(path).stems
+    except ModelManifestError as error:
+        raise _error(error.path, error.message) from error
 
 
 @lru_cache(maxsize=1)
 def load_bundled_stem_semantics() -> StemSemanticsRegistry:
     """Load bundled declarations once, failing closed to raw runtime behavior."""
+    from .model_manifest import ModelManifestError
+
     try:
         return load_stem_manifest(BUNDLED_MANIFEST_PATH)
-    except StemManifestError as error:
+    except (StemManifestError, ModelManifestError) as error:
         log_event("model", "stem_manifest_invalid", level="error", error=str(error))
         return StemSemanticsRegistry.empty()
 

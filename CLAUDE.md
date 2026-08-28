@@ -24,7 +24,8 @@ Tests are **stdlib unittest** (no pytest config, despite a stray `.pytest_cache`
 .venv/bin/python -m unittest tests.test_dispatch.DispatchTests.test_main_thread_wrapper  # one test
 ```
 
-CI runs full discovery under `GSK_RENDERER=cairo xvfb-run -a`.
+CI runs full discovery with the isolated Xvfb flow in
+[docs/environment.md](docs/environment.md#gtk-display-backend-testing).
 
 Type checking is **basedpyright** (a pyright fork — same CLI, same config file), configured in [pyrightconfig.json](pyrightconfig.json): `standard` mode plus a few strict-mode rules, over `ui/ cli/ core/ engines/ tests/ bundled/ ml/ scripts/` (plus `__version__.py`). Keep `models/` and `vendor/demucs` excluded — do not chase type errors there. Stubs live in [typings/](typings/). Install the checker with `pip install -r requirements-dev.txt`; CI runs it on every PR.
 
@@ -77,8 +78,9 @@ Other:
 ./uvr models list --family mdx
 ./uvr models list --all-known
 ./uvr bench song.wav -o /tmp/ab --model mdx:Model --a-env UVR_AUTOCAST=0 --b-env UVR_AUTOCAST=1
-python scripts/generate_models_catalogue.py   # regenerate docs/models-catalogue.md
-python scripts/generate_models_catalogue.py --check     # read-only drift check
+python scripts/generate_models_catalogue.py   # regenerate unified manifest + catalogue Markdown/TSVs
+python scripts/generate_models_catalogue.py --refresh   # refresh one live snapshot, then publish the whole bundle
+python scripts/generate_models_catalogue.py --check --offline  # read-only warm-cache consistency check
 python scripts/generate_models_catalogue.py --summary   # counts + mismatches to stdout
 python scripts/model_sweep.py --list      # local-only: every installed model, one real run each
 python scripts/model_sweep.py --method mdx --json /tmp/sweep.json
@@ -92,7 +94,7 @@ python scripts/generate_models_catalogue.py --audit-stem-confidence --guessed-on
 
 Layers, strictly one-directional (`ui` → `core` → `engines` → `ml`, and `cli` → `core`; `bundled` is read by all):
 
-- **`bundled/`** — read-only shipped data: `constants/` (stems, process methods, help strings, and a frozen legacy settings-key table for pickle migration), `error_handling.py` (traceback-substring → user message matching), changelog, download metadata. Imported as `from bundled.constants import *` in engine/model code to mirror upstream's flat namespace.
+- **`bundled/`** — read-only shipped data: [model_manifest.json](bundled/model_manifest.json) (the one atomic presentation, reviewed-stem, MDX-runtime-contract, lifecycle, and exact catalogue/config-evidence authority), `constants/` (stems, process methods, help strings, and a frozen legacy settings-key table for pickle migration), `error_handling.py` (traceback-substring → user message matching), changelog, and download metadata. Imported as `from bundled.constants import *` in engine/model code to mirror upstream's flat namespace.
 - **`core/`** — Tk-free backend facade. Public surface is re-exported in [core/__init__.py](core/__init__.py): `Settings`, `ModelConfig`/`ModelRepository`/`assemble_model` (`ModelRepository` lives in [core/model_repository.py](core/model_repository.py); MDX-C yaml and hash-JSON helpers remain in [core/model_data.py](core/model_data.py)), `ProcessData`, `JobRunner`/`JobCallbacks` (callbacks live in [core/job_callbacks.py](core/job_callbacks.py); single/ensemble file-pass hooks live in [core/run_hooks.py](core/run_hooks.py)), `AudioToolRunner`.
 - **`cli/`** — command-line front end exposed through `uvr` (with `python -m cli` as an internal entry point), a presentation layer peer of `ui/`. Core has no CLI trampoline.
 - **`engines/`** — separation orchestration. `SeperateAttributes` ([engines/base.py](engines/base.py)) is the shared engine base; `SeperateVR` / `SeperateMDX` / `SeperateMDXC` / `SeperateDemucs` are constructed by [engines/separator_factory.py](engines/separator_factory.py). GUI startup preloads those modules through [core/separate_import.py](core/separate_import.py) so the first run does not stall on torch.
@@ -107,7 +109,7 @@ Layers, strictly one-directional (`ui` → `core` → `engines` → `ml`, and `c
 
 **`--set` and named CLI flags share one validated path.** `set_path` cannot reject an unknown field on its own — the settings sections are plain dataclasses without `slots`, so `setattr` invents the attribute instead of raising. Anything that accepts a user-supplied settings path must flow through `SettingsResolver` and the validation helpers in [core/settings/access.py](core/settings/access.py). Named `cli` flags compile to `(path, value)` pairs in `cli/process_flags.py`; `--set` is the final CLI layer.
 
-**Enum settings are `str, Enum` — but don't stringify them.** `process.method` and `process.save_format` are enums ([core/types/enums.py](core/types/enums.py)), as are the closed vocabularies in [core/types/settings_enums.py](core/types/settings_enums.py) (wav type, bitrate, denoise/phase options, audio tool, manual-ensemble algorithm, colour scheme). `ensemble.main_stem` is instead a plain `str` in [core/settings/model.py](core/settings/model.py), normalized against manifest-defined `pair.*` and `mode.*` IDs by [core/stem_pairs.py](core/stem_pairs.py) and [bundled/model_stem_manifest.json](bundled/model_stem_manifest.json). `==` against a bundled constant, dict lookup, `.lower()` and `json.dumps` all behave as the value string, so most code Just Works. `str(v)` and `f"{v}"` do **not** — they yield `"SaveFormat.WAV"`, not `"WAV"`. Route filenames, paths and log lines through `enum_value` ([core/settings/coerce.py](core/settings/coerce.py)), re-exported for the UI from [ui/settings_bind.py](ui/settings_bind.py); it unwraps enums and passes everything else through.
+**Enum settings are `str, Enum` — but don't stringify them.** `process.method` and `process.save_format` are enums ([core/types/enums.py](core/types/enums.py)), as are the closed vocabularies in [core/types/settings_enums.py](core/types/settings_enums.py) (wav type, bitrate, denoise/phase options, audio tool, manual-ensemble algorithm, colour scheme). `ensemble.main_stem` is instead a plain `str` in [core/settings/model.py](core/settings/model.py), normalized against the unified manifest's `pair.*` definitions and reserved `mode.*` IDs by [core/stem_pairs.py](core/stem_pairs.py). `==` against a bundled constant, dict lookup, `.lower()` and `json.dumps` all behave as the value string, so most code Just Works. `str(v)` and `f"{v}"` do **not** — they yield `"SaveFormat.WAV"`, not `"WAV"`. Route filenames, paths and log lines through `enum_value` ([core/settings/coerce.py](core/settings/coerce.py)), re-exported for the UI from [ui/settings_bind.py](ui/settings_bind.py); it unwraps enums and passes everything else through.
 
 **Shared settings have per-page widgets.** Separation, Ensemble and Audio Tools each hold their own copies of the global keys (format/quality, GPU, autocast, sample mode, vocal splitter). Bind a widget to one and you must re-apply it in that page's `_sync_shared_from_settings` — which runs on *every* tab activation — not only in the one-time `load()`. Miss it and the stale widget writes all its keys back over whatever another page just edited.
 
@@ -121,7 +123,9 @@ Layers, strictly one-directional (`ui` → `core` → `engines` → `ml`, and `c
 
 **Canonical model identity is `family:basename`, resolved exactly.** [core/model_identity.py](core/model_identity.py) defines `ModelId`/`ModelRecord` over the four families `vr`, `mdx`, `demucs`, `apollo`; [core/model_inventory.py](core/model_inventory.py) builds one `IdentityIndex` per `(inventory_generation, catalogue_revision, naming_revision)` from family adapters, offline (no network, no hashing). Installed-file or execution-metadata changes publish through `ModelRepository.invalidate_models()`. Catalogue association and label refinements use `invalidate_model_presentation()` and its separate subscriber; they must not bump `inventory_generation` or invalidate resolved plans. GUI method/ensemble/karaoke pickers list installed `ModelRecord`s only; catalogue-only entries surface solely via `models list --all-known`. Runtime code must never import a display-to-basename resolver (`resolve_mdx_model_basename` and siblings) — `core/model_display.py` is the sole allowed importer, enforced by [tests/test_no_runtime_display_inversion.py](tests/test_no_runtime_display_inversion.py).
 
-**Model display is a one-way projection.** [core/model_naming.py](core/model_naming.py) applies trusted override → exact manifest alias → conservatively formatted source label → raw basename. [core/model_registry.py](core/model_registry.py) atomically persists schema-2 presentation evidence at `paths.REGISTERED_MODEL_INDEX`; there is no checked-in registry seed. Reads merge a legacy root `registered_models.json` without rewriting it, and the next registry mutation migrates and archives that file under runtime state. Display text must never be used to recover canonical identity.
+**Bundled model metadata loads atomically.** [core/model_manifest/](core/model_manifest/) validates [bundled/model_manifest.json](bundled/model_manifest.json) once and projects immutable presentation, stem-semantics, and MDX runtime-contract views through the existing compatibility facades. A failure in any domain publishes none of them; application boundaries log once and retain raw/isolated runtime behavior. Do not add a second bundled parser, authority, or fallback file.
+
+**Model display is a one-way projection.** [core/model_naming.py](core/model_naming.py) applies trusted override → exact unified-manifest alias → conservatively formatted source label → raw basename. [core/model_registry.py](core/model_registry.py) atomically persists schema-2 presentation evidence at `paths.REGISTERED_MODEL_INDEX`; there is no checked-in registry seed. Reads merge a legacy root `registered_models.json` without rewriting it, and the next registry mutation migrates and archives that file under runtime state. Display text must never be used to recover canonical identity.
 
 ### Separation run pipeline
 
@@ -138,6 +142,8 @@ Note the coupling: `Ensembler.get_files_to_ensemble` collects members by **filen
 `instrumental` on a multi-source MDX-C model is a **derived** route with no native key: `derive_mdx_multi_complement` ([engines/mdx_c.py](engines/mdx_c.py)) either sums the remaining sources or subtracts the primary from the mix depending on Combine Stems. That is a recipe change only — it must never change the route's concept, label or filename.
 
 **Stem focus is validated at plan time, and severity follows provenance.** `_stem_focus_diagnostics` ([core/job_plan.py](core/job_plan.py)) makes an unavailable stem an `error` when it came from the CLI and a `warning` (fall back to every viable output) when inherited from a GUI profile. For 4-stem and multi-stem ensembles focus filters only the **final** combined outputs — members must still emit their complete stem set for aggregation — and `select_ensemble_stem_routes` reports `INSUFFICIENT_MEMBERS` separately from unmatched when fewer than two members contribute.
+
+**Semantic review and catalogue evidence availability are independent.** Reviewed/waived/raw stem status comes only from the unified manifest; `ready`, `pending`, `unavailable`, `stale`, and `not_applicable` describe whether exact catalogue/config evidence can currently be validated. A timeout, cold cache, or stale last-known-good entry must not downgrade a reviewed declaration to raw, and successful parsed evidence may report drift but must never invent semantics.
 
 **Run payloads are typed.** `ProcessData` carries callbacks, routing flags, and source-cache state into engines. Engines reuse already-computed stems within one input file via its `cached_source_callback` / `cached_model_source_holder` fields; the runner clears the cache per input file (`_cached_sources_clear`). `_build_all_models` supplies `list_all_models`, which engines use to decide whether a referenced primary/secondary model actually participates in this run.
 
@@ -158,7 +164,7 @@ Three command entry points under `scripts/`, plus `model_tool_support.py` and th
   stem-confidence audit both import from it; verdicts, reporting and architecture construction
   stay in their owning commands. Range reads validate the 206 and `Content-Range` and raise `RangeError`
   rather than returning whatever the server sent.
-- **The catalogue generator refuses to publish a degraded run.** Exit codes are distinct:
+- **The catalogue generator publishes one validated bundle from one snapshot.** The unified manifest, catalogue Markdown, intent/display/stem TSVs, and IR are rendered and validated in memory from the same post-deduplication collection before any target is replaced; never hand-edit a generated Markdown/TSV. The generator refuses to publish a degraded run. Exit codes are distinct:
   `0` wrote/up to date, `1` drift (`--check`), `2` this run's data is too degraded to
   judge. A cold cache yields a fraction of the catalogue, so without the guard a partial
   run replaces a good 7,000-line document. `--allow-degraded` overrides.
@@ -168,11 +174,13 @@ Three command entry points under `scripts/`, plus `model_tool_support.py` and th
   `--summary` prints to stdout and writes nothing.
 - **Drift means the catalogue changed, not that time passed.** `--check` compares canonical
   forms with the volatile header lines (`Generated:`, provenance, cache ages) stripped.
-- **Ephemeral catalogue caches live under `CACHE_DIR`**, keyed by a URL digest rather than
-  basename (two models can both ship a `config.yaml`), with a TTL. `--refresh` forces a
-  refetch of Download Center coordinator sources (upstream, Politrees, extras, mvsepless)
-  and of those supplements; `--offline` is strictly cache-only and serves a stale entry
-  rather than fetching.
+- **Ephemeral catalogue caches live under `CACHE_DIR`**, separate from the checked-in
+  unified authority and runtime/user state. Source/config entries are keyed by URL rather
+  than basename (two models can both ship a `config.yaml`) and use TTL plus stale-while-
+  revalidate. The schema-2 stem-evidence cache keeps exact last-known-good parsed evidence
+  and its error/staleness state; a failed refresh never erases usable evidence. `--refresh`
+  forces a refetch of Download Center coordinator sources (upstream, Politrees, extras,
+  mvsepless) and supplements; `--offline` is strictly cache-only and may serve stale data.
 - **The `.ir.json` sidecar is tied to its document by SHA-256** and is gitignored. The
   publication guard reads its previous entry count from it only when that digest matches,
   falling back to the document — a stale sidecar must not lower the guard's floor.
@@ -212,6 +220,7 @@ Known bugs and roadmap gaps are tracked in [docs/tracked-issues.md](docs/tracked
 
 - Search with `rg` (ripgrep), not `grep` or `git grep` — see [.cursor/rules/use-rg.mdc](.cursor/rules/use-rg.mdc).
 - GTK-dependent tests guard with `@unittest.skipUnless(...)` plus `gi.require_version("Gtk", "4.0")` / `("Adw", "1")` inside `setUpClass`, so the suite still runs where GTK is unavailable. Non-UI logic is tested by mocking `GLib.idle_add` rather than starting a main loop.
+- **GTK display-backend selection:** follow the [authoritative environment convention](docs/environment.md#gtk-display-backend-testing); do not mix private Wayland, Xvfb, or active-host sessions.
 - Structured diagnostics go through [core/debug_log.py](core/debug_log.py). Errors are recorded by default in the rotating cache log; Preferences and CLI `--debug` / `--trace` raise the level, while `G_MESSAGES_DEBUG` and `UVR_VERBOSE` remain development compatibility switches. Use named `log_event` boundaries for new code and keep high-frequency events Trace-only. Full privacy and switch details are in [docs/environment.md](docs/environment.md).
 - Upstream's `Seperate*` misspelling is the real class-name prefix across the engine layer — keep it. Likewise, the error strings in `bundled/error_handling.py` are matched against upstream tracebacks verbatim; don't "fix" them.
 - Tests that build a real `MainWindow` read on-disk `settings.json` via `AppContext()` — set every setting an assertion depends on. Verify isolation with `UVR_DATA_DIR=<scratch>` (symlink `models/` into it, or model resolution comes back empty).

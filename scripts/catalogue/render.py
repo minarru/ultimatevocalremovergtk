@@ -124,24 +124,34 @@ class PresentationReferenceAudit:
     collisions: Tuple[Tuple[str, Tuple[str, ...]], ...]
 
 
-def _catalogue_projection(entry: ModelEntry) -> Tuple[str, str]:
-    return catalogue_projection(entry)
+def _catalogue_projection(
+    entry: ModelEntry,
+    *,
+    presentation: Mapping[str, Any] | None = None,
+) -> Tuple[str, str]:
+    return catalogue_projection(entry, presentation=presentation)
 
 
 def _canonical_model_id(entry: ModelEntry) -> str:
     return _catalogue_projection(entry)[0]
 
 
-def _display_label(entry: ModelEntry) -> str:
+def _display_label(
+    entry: ModelEntry,
+    *,
+    presentation: Mapping[str, Any] | None = None,
+) -> str:
     """Return the same exact projected label used by the UI and TSV audit."""
-    return _catalogue_projection(entry)[1]
+    return _catalogue_projection(entry, presentation=presentation)[1]
 
 
 def presentation_reference_audit(
     entries: List[ModelEntry],
+    *,
+    presentation: Mapping[str, Any] | None = None,
 ) -> PresentationReferenceAudit:
     """Project the complete catalogue through shared presentation and audit it."""
-    projections = [_catalogue_projection(entry) for entry in entries]
+    projections = [_catalogue_projection(entry, presentation=presentation) for entry in entries]
     projected = [
         (entry, model_id) for entry, (model_id, _display) in zip(entries, projections, strict=True)
     ]
@@ -151,7 +161,7 @@ def presentation_reference_audit(
         key = unicodedata.normalize("NFKC", display).casefold()
         display_counts[key] = display_counts.get(key, 0) + 1
 
-    manifest = load_model_display_manifest()
+    manifest = load_model_display_manifest() if presentation is None else presentation
     waivers = manifest["waivers"]
     rows = []
     unreviewed_rows: List[Tuple[str, Tuple[str, ...]]] = []
@@ -211,9 +221,13 @@ def presentation_reference_audit(
     )
 
 
-def presentation_reference_tsv(entries: List[ModelEntry]) -> str:
+def presentation_reference_tsv(
+    entries: List[ModelEntry],
+    *,
+    presentation: Mapping[str, Any] | None = None,
+) -> str:
     """Render the complete catalogue as deterministic presentation audit data."""
-    return presentation_reference_audit(entries).text
+    return presentation_reference_audit(entries, presentation=presentation).text
 
 
 def stem_semantics_reference_tsv(
@@ -237,6 +251,8 @@ def render_summary_report(
     unsupported_count: int = 0,
     report: Any = None,
     stem_audit: Any = None,
+    manifest_audit: Any = None,
+    presentation: Mapping[str, Any] | None = None,
 ) -> str:
     """Just the exceptions: what a maintainer is usually looking for.
 
@@ -288,22 +304,50 @@ def render_summary_report(
                 f"- Role-to-native variant groups: **{len(stem_audit.role_to_native_variants)}**",
             )
         )
+    if manifest_audit is not None:
+        states = manifest_audit.evidence_states
+        lines.extend(
+            (
+                f"- Current manifest models: **{len(manifest_audit.current_model_ids)}**",
+                f"- Retired manifest models: **{len(manifest_audit.retired_model_ids)}**",
+                f"- Evidence ready: **{states.get('ready', 0)}**",
+                f"- Evidence pending: **{states.get('pending', 0)}**",
+                f"- Evidence unavailable: **{states.get('unavailable', 0)}**",
+                f"- Evidence stale: **{states.get('stale', 0)}**",
+                f"- Evidence not applicable: **{states.get('not_applicable', 0)}**",
+                "- Same-semantics config digest drift: "
+                f"**{manifest_audit.same_semantics_digest_drift_count}**",
+                f"- Semantic config mismatches: **{manifest_audit.semantic_mismatch_count}**",
+                f"- Lifecycle drift: **{manifest_audit.lifecycle_drift_count}**",
+                f"- Manifest reference drift: **{manifest_audit.reference_drift_count}**",
+            )
+        )
     lines.append("")
 
     if flagged:
         lines += ["## Flagged mismatches", ""]
         for entry in flagged:
             lines.append(
-                f"- **{_display_label(entry)}** ({entry.family}) — " + "; ".join(entry.flags)
+                f"- **{_display_label(entry, presentation=presentation)}** "
+                f"({entry.family}) — " + "; ".join(entry.flags)
             )
         lines.append("")
     if unknown:
         lines += ["## Unknown intent", ""]
         for entry in unknown:
-            lines.append(f"- **{_display_label(entry)}** ({entry.family}, {entry.source})")
+            lines.append(
+                f"- **{_display_label(entry, presentation=presentation)}** "
+                f"({entry.family}, {entry.source})"
+            )
         lines.append("")
     if stem_audit is not None:
         lines.extend(_stem_audit_summary_lines(stem_audit))
+    if manifest_audit is not None and manifest_audit.diagnostics:
+        lines.extend(("## Manifest findings", ""))
+        lines.extend(
+            _format_stem_audit_diagnostic(diagnostic) for diagnostic in manifest_audit.diagnostics
+        )
+        lines.append("")
     degraded = _summary_health_warning(entries, report)
     if degraded:
         lines += [degraded, ""]
@@ -448,7 +492,13 @@ def _md_table(headers: List[str], rows: List[List[str]]) -> str:
     return "\n".join(lines)
 
 
-def _render(entries: List[ModelEntry], *, unsupported_count: int = 0, report: Any = None) -> str:
+def _render(
+    entries: List[ModelEntry],
+    *,
+    unsupported_count: int = 0,
+    report: Any = None,
+    presentation: Mapping[str, Any] | None = None,
+) -> str:
     flagged = [e for e in entries if e.flags]
     unknown = [e for e in entries if e.name_intent == "unknown"]
     with_meta = [e for e in entries if e.metadata_source not in ("unavailable", "")]
@@ -503,7 +553,7 @@ def _render(entries: List[ModelEntry], *, unsupported_count: int = 0, report: An
                     [
                         [
                             e.family,
-                            _display_label(e),
+                            _display_label(e, presentation=presentation),
                             e.metadata_source,
                             e.target_instrument or e.primary_stem or "—",
                         ]
@@ -523,7 +573,7 @@ def _render(entries: List[ModelEntry], *, unsupported_count: int = 0, report: An
                 [
                     [
                         e.family,
-                        _display_label(e),
+                        _display_label(e, presentation=presentation),
                         e.name_intent,
                         (e.best_result[:50] + "…") if len(e.best_result) > 50 else e.best_result,
                         e.backend_focus,
@@ -551,7 +601,7 @@ def _render(entries: List[ModelEntry], *, unsupported_count: int = 0, report: An
                     ["Model", "Primary", "Karaoke flag", "Best result"],
                     [
                         [
-                            _display_label(e),
+                            _display_label(e, presentation=presentation),
                             e.primary_stem or e.target_instrument,
                             "yes" if e.is_karaoke else "—",
                             e.best_result,
@@ -582,7 +632,7 @@ def _render(entries: List[ModelEntry], *, unsupported_count: int = 0, report: An
                     ["Model", "Config", "Instruments", "Best result"],
                     [
                         [
-                            _display_label(e),
+                            _display_label(e, presentation=presentation),
                             e.config_yaml,
                             ", ".join(e.instruments),
                             e.best_result,
@@ -603,7 +653,7 @@ def _render(entries: List[ModelEntry], *, unsupported_count: int = 0, report: An
                     ["Label", "Intent", "Backend", "Target/Primary", "Best result", "Flags"],
                     [
                         [
-                            _display_label(e),
+                            _display_label(e, presentation=presentation),
                             e.name_intent,
                             e.backend_focus,
                             e.target_instrument or e.primary_stem,
@@ -622,7 +672,7 @@ def _render(entries: List[ModelEntry], *, unsupported_count: int = 0, report: An
         if entry.family != current_family:
             current_family = entry.family
             lines.extend([f"## {current_family} (detail)", ""])
-        short = _display_label(entry)
+        short = _display_label(entry, presentation=presentation)
         lines.append(f"### {short}")
         lines.append("")
         lines.append(f"- **Source:** {entry.source}")

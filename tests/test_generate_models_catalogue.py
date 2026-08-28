@@ -1,8 +1,12 @@
 import json
 import os
 import sys
+import tempfile
+import unicodedata
 import unittest
 import urllib.error
+from contextlib import contextmanager
+from pathlib import Path
 from typing import Any, Mapping, Optional, cast
 from unittest import mock
 
@@ -48,6 +52,56 @@ def _clean_stem_audit(*_args: object, **_kwargs: object) -> StemAuditResult:
         evidence_counts=CatalogueEvidenceCounts(148, 123, 92, ()),
         diagnostics=(),
     )
+
+
+@contextmanager
+def _legacy_publication_manifest_fixture():
+    """Keep pre-unification CLI fixtures focused on their original boundary."""
+    import copy
+    import tempfile
+
+    source_document = json.loads(Path(cli.BUNDLED_MODEL_MANIFEST_PATH).read_text(encoding="utf-8"))
+    with tempfile.TemporaryDirectory(prefix="uvr-generator-manifest-fixture-") as directory:
+        path = Path(directory) / "model_manifest.json"
+        path.write_text(
+            json.dumps(source_document, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+
+        def unchanged_candidate(
+            entries: list[catalogue.ModelEntry],
+            document: dict[str, object],
+            **_kwargs: object,
+        ) -> object:
+            ids = tuple(
+                sorted(
+                    (catalogue.catalogue_projection(entry)[0] for entry in entries),
+                    key=str.casefold,
+                )
+            )
+            return cli.stem_audit.ManifestCandidateResult(
+                document=copy.deepcopy(document),
+                diagnostics=(),
+                current_model_ids=ids,
+                retired_model_ids=(),
+                evidence_states={
+                    "ready": len(ids),
+                    "pending": 0,
+                    "unavailable": 0,
+                    "stale": 0,
+                    "not_applicable": 0,
+                },
+            )
+
+        with (
+            mock.patch.object(cli, "BUNDLED_MANIFEST_PATH", path),
+            mock.patch.object(
+                cli.stem_audit,
+                "build_manifest_candidate",
+                side_effect=unchanged_candidate,
+            ),
+        ):
+            yield
 
 
 class DemucsBagArtifactTests(unittest.TestCase):
@@ -99,7 +153,85 @@ class DemucsBagArtifactTests(unittest.TestCase):
         self.assertEqual(weights, ["a.th", "a.th"])
 
 
+class CatalogueIdentityAdoptionTests(unittest.TestCase):
+    def test_collection_calls_the_neutral_catalogue_identity_boundary(self) -> None:
+        entry = catalogue.ModelEntry(
+            source="test",
+            family="MDX-Net ONNX",
+            catalogue_label="MDX-Net Model: exact row",
+            weight_file="exact-model.onnx",
+        )
+
+        with mock.patch.object(
+            catalogue, "catalogue_model_id", wraps=catalogue.catalogue_model_id
+        ) as derive:
+            model_id, _display = catalogue.catalogue_projection(entry)
+
+        self.assertEqual(model_id, "mdx:exact-model")
+        self.assertEqual(derive.call_args.args[:2], ("mdx", entry.catalogue_label))
+
+
 class RuntimeStemSignatureTests(unittest.TestCase):
+    def test_exact_non_config_signatures_outrank_conflicting_summary_hints(self) -> None:
+        fixtures = (
+            (
+                "demucs:htdemucs_6s",
+                ("summary-drums", "summary-vocals"),
+                ("drums", "bass", "other", "vocals", "guitar", "piano"),
+            ),
+            (
+                "vr:UVR-BVE-4B_SN-44100-1",
+                ("Lead Only",),
+                ("Vocals", "Instrumental"),
+            ),
+        )
+
+        for model_id, hints, expected in fixtures:
+            with self.subTest(model_id=model_id):
+                self.assertEqual(catalogue.reviewed_stem_signature(model_id, hints), expected)
+                self.assertEqual(catalogue.runtime_stem_signature(model_id, hints), expected)
+
+    def test_config_backed_signature_keeps_parsed_config_precedence(self) -> None:
+        self.assertEqual(
+            catalogue.reviewed_stem_signature(
+                "mdx:mbr_guitar_becruily",
+                ("Live Config A", "Live Config B"),
+            ),
+            ("Live Config A", "Live Config B"),
+        )
+
+    def test_reviewed_non_config_signature_ignores_incidental_config_name(self) -> None:
+        from core.model_manifest import load_model_manifest_document
+
+        document = _generator_manifest_document()
+        del document["models"]["mdx:model"]["config_evidence"]
+        registry = load_model_manifest_document(document).stems
+
+        self.assertEqual(
+            catalogue.reviewed_stem_signature(
+                "mdx:model",
+                ("Config A", "Config B"),
+                registry=registry,
+                evidence_uses_config=True,
+                reviewed_non_config_ids={"mdx:model"},
+            ),
+            ("Vocals",),
+        )
+
+    def test_all_24_exact_demucs_records_have_generator_signatures(self) -> None:
+        from core.model_manifest.stems import stem_semantics_registry
+
+        demucs_ids = tuple(
+            model_id
+            for model_id in stem_semantics_registry().models
+            if model_id.startswith("demucs:")
+        )
+
+        self.assertEqual(len(demucs_ids), 24)
+        self.assertTrue(
+            all(catalogue.reviewed_stem_signature(model_id, ()) for model_id in demucs_ids)
+        )
+
     def test_reviewed_collection_evidence_removes_exact_three_guess_false_positives(self) -> None:
         from core.model_stem_manifest import load_bundled_stem_semantics
 
@@ -1424,16 +1556,23 @@ class DemucsFinalizationTests(unittest.TestCase):
         self.assertEqual(entry.backend_focus, "two_stem")
 
     def test_family_specific_best_result_prose_is_preserved(self) -> None:
-        self.assertEqual(self._entry("Demucs v4: htdemucs_6s", "a.th").best_result, "6-stem Demucs")
-        self.assertEqual(self._entry("Demucs v4: htdemucs", "b.th").best_result, "4-stem Demucs")
         self.assertEqual(
-            self._entry("Demucs v3: UVR Model", "c.th").best_result,
+            self._entry("Demucs v4: htdemucs_6s", "htdemucs_6s.th").best_result,
+            "6-stem Demucs",
+        )
+        self.assertEqual(
+            self._entry("Demucs v4: htdemucs", "htdemucs.th").best_result,
+            "4-stem Demucs",
+        )
+        self.assertEqual(
+            self._entry("Demucs v3: UVR Model", "UVR_Demucs_Model_1.th").best_result,
             "2-stem: instrumental + vocals (user picks focus)",
         )
 
-    def test_metadata_source_records_the_heuristic(self) -> None:
+    def test_metadata_source_records_the_exact_unified_declaration(self) -> None:
         self.assertEqual(
-            self._entry("Demucs v4: htdemucs", "b.th").metadata_source, "demucs_heuristic"
+            self._entry("Demucs v4: htdemucs", "htdemucs.th").metadata_source,
+            "catalogue_demucs_declaration",
         )
 
 
@@ -1984,6 +2123,13 @@ class StrictCatalogueInputIsolationTests(unittest.TestCase):
                 catalogue_text=catalogue_text,
                 document_sha256=cli._text_digest(catalogue_text),
                 audit=audit,
+                manifest_audit=cli.stem_audit.ManifestCandidateResult(
+                    document={},
+                    diagnostics=(),
+                    current_model_ids=(),
+                    retired_model_ids=(),
+                    evidence_states={},
+                ),
             )
         return {
             "entries": [asdict(entry) for entry in entries],
@@ -2330,6 +2476,7 @@ class ReferenceTsvOptInTests(unittest.TestCase):
 
         ctx = catalogue.CatalogueContext(community_by_file=self._community())
         with contextlib.ExitStack() as stack:
+            stack.enter_context(_legacy_publication_manifest_fixture())
             stack.enter_context(mock.patch.object(cli, "REFERENCE_TSV_PATH", self.tsv))
             stack.enter_context(mock.patch.object(cli, "OUTPUT_PATH", self.out))
             stack.enter_context(mock.patch.object(cli, "DISPLAY_REFERENCE_TSV_PATH", self.display))
@@ -2615,6 +2762,7 @@ class DisplayReferenceCliTests(unittest.TestCase):
         snapshot = _Snapshot()
 
         with contextlib.ExitStack() as stack:
+            stack.enter_context(_legacy_publication_manifest_fixture())
             stack.enter_context(mock.patch.object(cli, "OUTPUT_PATH", self.out))
             stack.enter_context(
                 mock.patch.object(cli, "DISPLAY_REFERENCE_TSV_PATH", self.reference)
@@ -2691,21 +2839,14 @@ class DisplayReferenceCliTests(unittest.TestCase):
             "MDX-Net Model: Shared": "first.onnx",
             "MDX-Net: shared": "second.onnx",
         }
-        self.assertEqual(
-            self._run(["--write-display-reference"], vr={}, mdx=mdx),
-            0,
-        )
-        with open(self.reference, "rb") as handle:
-            before = handle.read()
         stderr = io.StringIO()
 
         with contextlib.redirect_stderr(stderr):
-            result = self._run(["--check", "--write-display-reference"], vr={}, mdx=mdx)
+            result = self._run(["--write-display-reference"], vr={}, mdx=mdx)
 
         self.assertEqual(result, 1)
         self.assertIn("case-insensitive display collision", stderr.getvalue().lower())
-        with open(self.reference, "rb") as handle:
-            self.assertEqual(handle.read(), before)
+        self.assertFalse(os.path.exists(self.reference))
 
     def test_default_run_writes_the_reference(self) -> None:
         self.assertEqual(self._run([]), 0)
@@ -2779,6 +2920,7 @@ class CheckModeTests(unittest.TestCase):
             }
         )
         with contextlib.ExitStack() as stack:
+            stack.enter_context(_legacy_publication_manifest_fixture())
             stack.enter_context(mock.patch.object(cli, "OUTPUT_PATH", self.out))
             stack.enter_context(mock.patch.object(cli, "REFERENCE_TSV_PATH", self.tsv))
             stack.enter_context(mock.patch.object(cli, "DISPLAY_REFERENCE_TSV_PATH", self.display))
@@ -2925,6 +3067,46 @@ class ProvenanceBlockTests(unittest.TestCase):
     def test_renders_without_a_report(self) -> None:
         text = render._render([], unsupported_count=0, report=None)
         self.assertIn("Total catalogue entries", text)
+
+    def test_reportless_warm_run_retains_trusted_published_provenance(self) -> None:
+        from core.catalogue_types import RefreshMode, RefreshReport, SourceId
+
+        report = RefreshReport(
+            mode=RefreshMode.FORCE,
+            succeeded=(
+                SourceId.EXTRAS,
+                SourceId.UPSTREAM,
+                SourceId.POLITREES,
+                SourceId.MVSEPLESS,
+            ),
+            upstream_live=True,
+            usable=True,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            document = os.path.join(directory, "models-catalogue.md")
+            text = render._render([], unsupported_count=0, report=report)
+            with open(document, "w", encoding="utf-8") as handle:
+                handle.write(text)
+            with open(catalogue._ir_path_for(document), "w", encoding="utf-8") as handle:
+                json.dump(
+                    catalogue.build_ir(
+                        [],
+                        report=report,
+                        unsupported_count=0,
+                        document_sha256=catalogue._document_digest(document),
+                    ),
+                    handle,
+                )
+
+            retained = cli._retained_refresh_report(document)
+
+        self.assertIsNotNone(retained)
+        self.assertEqual(retained.mode, RefreshMode.FORCE)
+        self.assertEqual(set(retained.succeeded), set(report.succeeded))
+        self.assertTrue(retained.upstream_live)
+        warm_text = render._render([], unsupported_count=0, report=retained)
+        self.assertIn("- Snapshot mode: `force`", warm_text)
+        self.assertIn("- Source upstream live: True", warm_text)
 
     def test_intent_source_prose_excludes_unused_hash_supplements(self) -> None:
         """Removing the fetch while retaining its provenance claim is misleading."""
@@ -3177,6 +3359,7 @@ class CheckContractTests(unittest.TestCase):
         stdout = io.StringIO()
         stderr = io.StringIO()
         with contextlib.ExitStack() as stack:
+            stack.enter_context(_legacy_publication_manifest_fixture())
             stack.enter_context(mock.patch.object(cli, "OUTPUT_PATH", out))
             stack.enter_context(mock.patch.object(cli, "REFERENCE_TSV_PATH", intent_ref))
             stack.enter_context(mock.patch.object(cli, "DISPLAY_REFERENCE_TSV_PATH", display_ref))
@@ -3351,6 +3534,7 @@ class CheckContractTests(unittest.TestCase):
         from core import catalogue_stem_cache, download_sizes
 
         with contextlib.ExitStack() as stack:
+            stack.enter_context(_legacy_publication_manifest_fixture())
             stack.enter_context(mock.patch.object(cli, "OUTPUT_PATH", out))
             stack.enter_context(mock.patch.object(cli, "REFERENCE_TSV_PATH", intent_ref))
             stack.enter_context(mock.patch.object(cli, "DISPLAY_REFERENCE_TSV_PATH", display_ref))
@@ -3554,6 +3738,7 @@ class CheckContractTests(unittest.TestCase):
         tmp = tempfile.mkdtemp(prefix="uvr-tsvwarn-")
         stderr = io.StringIO()
         with contextlib.ExitStack() as stack:
+            stack.enter_context(_legacy_publication_manifest_fixture())
             stack.enter_context(mock.patch.object(cli, "OUTPUT_PATH", os.path.join(tmp, "c.md")))
             stack.enter_context(
                 mock.patch.object(cli, "REFERENCE_TSV_PATH", os.path.join(tmp, "r.tsv"))
@@ -4228,6 +4413,390 @@ class CollectEntriesIsTheRealPathTests(unittest.TestCase):
         self.assertEqual(collect.call_count, 1, "main did not go through collect_entries")
 
 
+def _generator_manifest_document(*, lifecycle: str = "current") -> dict[str, Any]:
+    """Small valid unified manifest for generator candidate-contract tests."""
+    return {
+        "schema_version": 1,
+        "author_aliases": {},
+        "roles": {
+            "vocal.vocals": {
+                "display": "Vocals",
+                "filename_tag": "Vocals",
+                "family": "vocal",
+            }
+        },
+        "pairs": {},
+        "models": {
+            "mdx:model": {
+                "lifecycle": lifecycle,
+                "display_alias": "Reviewed Fixture",
+                "stem_semantics": {
+                    "native_signature": ["Vocals"],
+                    "intent": "vocals",
+                    "contexts": {
+                        "full_mix": {
+                            "logical_primary": "vocal.vocals",
+                            "outputs": [
+                                {
+                                    "native": "Vocals",
+                                    "role": "vocal.vocals",
+                                }
+                            ],
+                        }
+                    },
+                    "review_note": "Human-reviewed fixture semantics.",
+                },
+                "catalogue_evidence": {
+                    "source": "old-source",
+                    "catalogue_label": "Old label",
+                    "primary_artifact": "model.ckpt",
+                    "metadata_source": "old-metadata",
+                    "config_yaml": "model.yaml",
+                },
+                "config_evidence": {
+                    "model.yaml": {
+                        "training_instruments": ["Vocals", "Other"],
+                        "target_instrument": "Vocals",
+                        "content_sha256": "a" * 64,
+                        "sources": ["https://old.test/model.yaml"],
+                    }
+                },
+            }
+        },
+    }
+
+
+def _generator_manifest_entry(**changes: object) -> catalogue.ModelEntry:
+    values: dict[str, object] = {
+        "source": "fixture-source",
+        "family": "MDX23C",
+        "catalogue_label": "Fixture Model",
+        "weight_file": "model.ckpt",
+        "config_yaml": "model.yaml",
+        "config_url": "https://new.test/model.yaml",
+        "config_sha256": "a" * 64,
+        "instruments": ["Vocals", "Other"],
+        "target_instrument": "Vocals",
+        "metadata_source": "remote_yaml:model.yaml",
+    }
+    values.update(changes)
+    return catalogue.ModelEntry(**values)  # type: ignore[arg-type]
+
+
+def _candidate_document(
+    result: cli.stem_audit.ManifestCandidateResult,
+) -> dict[str, Any]:
+    """Narrow a validated candidate to the JSON object shape used by fixtures."""
+    return cast(dict[str, Any], result.document)
+
+
+class ManifestCandidateContractTests(unittest.TestCase):
+    """The generator changes machine evidence without fabricating review decisions."""
+
+    def test_demucs_bundle_yaml_is_not_published_as_mdx_config_evidence(self) -> None:
+        entry = catalogue.ModelEntry(
+            source="fixture-source",
+            family="Demucs",
+            catalogue_label="Demucs v4: htdemucs_6s",
+            weight_file="5c90dfd2-34c22ccb.th",
+            config_yaml="htdemucs_6s.yaml",
+            metadata_source="catalogue_demucs_declaration",
+        )
+
+        self.assertNotIn(
+            "config_yaml",
+            cli.stem_audit._manifest_evidence_document(entry),
+        )
+
+    def test_candidate_keeps_richer_exact_provenance_for_the_same_artifact(self) -> None:
+        from core.model_manifest import load_model_manifest_document
+
+        document = _generator_manifest_document()
+        evidence = document["models"]["mdx:model"]["catalogue_evidence"]
+        evidence.update(
+            {
+                "source": "fixture-source",
+                "catalogue_label": "Fixture Model",
+                "primary_artifact": "model.ckpt",
+                "metadata_source": "remote_yaml:model.yaml+exact_artifact_hash",
+            }
+        )
+        unified = load_model_manifest_document(document)
+
+        candidate = cli.stem_audit.build_manifest_candidate(
+            [_generator_manifest_entry()],
+            document,
+            registry=unified,
+        )
+
+        self.assertEqual(
+            _candidate_document(candidate)["models"]["mdx:model"]["catalogue_evidence"][
+                "metadata_source"
+            ],
+            "remote_yaml:model.yaml+exact_artifact_hash",
+        )
+
+    def _candidate(
+        self,
+        entries: list[catalogue.ModelEntry],
+        *,
+        lifecycle: str = "current",
+        strict_runtime: bool = False,
+    ) -> cli.stem_audit.ManifestCandidateResult:
+        from dataclasses import replace
+        from types import SimpleNamespace
+
+        from core.model_manifest import load_model_manifest_document
+
+        document = _generator_manifest_document(lifecycle=lifecycle)
+        registry = load_model_manifest_document(document)
+        if strict_runtime:
+            registry = replace(
+                registry,
+                runtime=SimpleNamespace(contracts={"mdx:model": object()}),
+            )
+        return cli.stem_audit.build_manifest_candidate(entries, document, registry=registry)
+
+    def test_new_catalogue_id_requires_a_reviewed_record(self) -> None:
+        result = self._candidate([_generator_manifest_entry(weight_file="new.ckpt")])
+
+        self.assertIn("manifest-new-current", {item.code for item in result.diagnostics})
+        self.assertFalse(result.structurally_valid)
+
+    def test_missing_current_id_requires_explicit_retirement(self) -> None:
+        result = self._candidate([])
+
+        finding = next(
+            item for item in result.diagnostics if item.code == "manifest-missing-current"
+        )
+        self.assertEqual(finding.model_ids, ("mdx:model",))
+        self.assertFalse(result.structurally_valid)
+
+    def test_retired_id_cannot_reappear_without_lifecycle_review(self) -> None:
+        result = self._candidate([_generator_manifest_entry()], lifecycle="retired")
+
+        finding = next(
+            item for item in result.diagnostics if item.code == "manifest-retired-reappeared"
+        )
+        self.assertEqual(finding.model_ids, ("mdx:model",))
+        self.assertFalse(result.structurally_valid)
+
+    def test_same_semantics_digest_drift_updates_only_machine_evidence(self) -> None:
+        result = self._candidate([_generator_manifest_entry(config_sha256="b" * 64)])
+
+        self.assertTrue(result.structurally_valid)
+        self.assertEqual(
+            [item.code for item in result.diagnostics],
+            ["config-digest-drift"],
+        )
+        record = _candidate_document(result)["models"]["mdx:model"]
+        self.assertEqual(record["display_alias"], "Reviewed Fixture")
+        self.assertEqual(
+            record["stem_semantics"]["review_note"],
+            "Human-reviewed fixture semantics.",
+        )
+        self.assertEqual(
+            record["config_evidence"]["model.yaml"]["content_sha256"],
+            "b" * 64,
+        )
+        self.assertEqual(
+            record["config_evidence"]["model.yaml"]["sources"],
+            ["https://new.test/model.yaml"],
+        )
+
+    def test_strict_runtime_digest_drift_keeps_the_approved_digest(self) -> None:
+        result = self._candidate(
+            [_generator_manifest_entry(config_sha256="b" * 64)],
+            strict_runtime=True,
+        )
+
+        self.assertFalse(result.structurally_valid)
+        self.assertIn(
+            "runtime-config-digest-mismatch",
+            {item.code for item in result.diagnostics},
+        )
+        self.assertEqual(
+            _candidate_document(result)["models"]["mdx:model"]["config_evidence"]["model.yaml"][
+                "content_sha256"
+            ],
+            "a" * 64,
+        )
+
+    def test_config_signature_or_target_drift_blocks_candidate(self) -> None:
+        cases = (
+            {"instruments": ["Vocals", "Drums"]},
+            {"target_instrument": "Other"},
+        )
+        for changes in cases:
+            with self.subTest(changes=changes):
+                result = self._candidate([_generator_manifest_entry(**changes)])
+                self.assertIn(
+                    "config-semantic-mismatch",
+                    {item.code for item in result.diagnostics},
+                )
+                self.assertFalse(result.structurally_valid)
+
+    def test_missing_config_association_keeps_the_reviewed_evidence(self) -> None:
+        result = self._candidate(
+            [
+                _generator_manifest_entry(
+                    config_yaml="",
+                    config_url="",
+                    config_sha256="",
+                )
+            ]
+        )
+
+        self.assertFalse(result.structurally_valid)
+        self.assertTrue(result.degraded)
+        self.assertEqual(
+            _candidate_document(result)["models"]["mdx:model"]["catalogue_evidence"]["config_yaml"],
+            "model.yaml",
+        )
+
+    def test_missing_exact_config_evidence_is_degraded(self) -> None:
+        result = self._candidate([_generator_manifest_entry(config_sha256="")])
+
+        finding = next(
+            item for item in result.diagnostics if item.code == "config-evidence-missing"
+        )
+        self.assertEqual(finding.model_ids, ("mdx:model",))
+        self.assertTrue(result.degraded)
+
+    def test_reconciliation_uses_the_supplied_unified_views_without_reloading(self) -> None:
+        from core.model_manifest import load_model_manifest_document
+
+        unified = load_model_manifest_document(_generator_manifest_document())
+        entry = _generator_manifest_entry()
+
+        with (
+            mock.patch(
+                "core.mdx_runtime_contract.load_bundled_mdx_runtime_contracts",
+                side_effect=AssertionError("runtime registry reloaded"),
+            ),
+            mock.patch.object(
+                catalogue,
+                "reviewed_catalogue_stem_signature",
+                side_effect=AssertionError("stem registry reloaded"),
+            ),
+            mock.patch.object(
+                catalogue,
+                "catalogue_stem_evidence_uses_config",
+                side_effect=AssertionError("model registry reloaded"),
+            ),
+        ):
+            catalogue.reconcile_stem_semantics(
+                [entry],
+                registry=unified.stems,
+                contracts=unified.runtime,
+                reviewed_non_config_ids=frozenset(),
+            )
+
+        self.assertIsNotNone(entry.stem_semantics)
+
+    def test_config_backed_current_id_without_pinned_evidence_detects_wrong_signature(self) -> None:
+        from core.model_manifest import load_model_manifest
+
+        unified = load_model_manifest()
+        model_id = "mdx:BandSplit_Roformer_4stems_FT_by_SYH99999"
+        record = unified.models[model_id]
+        self.assertTrue(record.catalogue_evidence.config_yaml)
+        self.assertFalse(record.config_evidence)
+        entry = catalogue.ModelEntry(
+            source=record.catalogue_evidence.source,
+            family="Roformer",
+            catalogue_label=record.catalogue_evidence.catalogue_label,
+            weight_file=record.catalogue_evidence.primary_artifact,
+            config_yaml=record.catalogue_evidence.config_yaml,
+            config_url="https://example.test/current-no-pin.yaml",
+            config_sha256="b" * 64,
+            instruments=["WRONG_A", "WRONG_B"],
+            metadata_source="remote_yaml:current-no-pin.yaml",
+        )
+
+        reviewed_non_config_ids = {
+            model_id
+            for model_id, record in unified.models.items()
+            if not record.catalogue_evidence.config_yaml
+        }
+
+        catalogue.reconcile_stem_semantics(
+            [entry],
+            registry=unified.stems,
+            contracts=unified.runtime,
+            reviewed_non_config_ids=reviewed_non_config_ids,
+        )
+        semantics = entry.stem_semantics
+        if semantics is None:
+            self.fail("reconciliation did not attach exact stem semantics")
+        self.assertEqual(semantics.model_id, model_id)
+        self.assertEqual(semantics.native_signature, ("WRONG_A", "WRONG_B"))
+        self.assertFalse(semantics.reviewed)
+        self.assertIn("signature-mismatch", semantics.contexts[0].warning)
+
+    def test_offline_cache_miss_uses_exact_unified_config_evidence(self) -> None:
+        import shutil
+        import tempfile
+
+        from core.model_manifest import load_model_manifest_document
+
+        document = _generator_manifest_document()
+        document["models"]["mdx:model"]["catalogue_evidence"]["metadata_source"] = (
+            "remote_yaml:model.yaml"
+        )
+        unified = load_model_manifest_document(document)
+        cache_dir = os.path.join(tempfile.mkdtemp(prefix="uvr-manifest-evidence-"), "yaml")
+        self.addCleanup(shutil.rmtree, os.path.dirname(cache_dir), ignore_errors=True)
+        context = catalogue.CatalogueContext()
+
+        with (
+            mock.patch.object(catalogue, "YAML_CACHE_DIR", cache_dir),
+            mock.patch(
+                "core.mdx_config_fetch._urlopen",
+                side_effect=AssertionError("offline config fetch"),
+            ),
+        ):
+            entry = catalogue._parse_catalogue_entry(
+                source="fixture-source",
+                family="MDX23C",
+                label="Fixture Model",
+                payload={
+                    "model.ckpt": "https://new.test/model.ckpt",
+                    "model.yaml": "https://new.test/model.yaml",
+                },
+                ctx=context,
+                policy=catalogue.OFFLINE_FETCH_POLICY,
+                registry=unified.stems,
+                manifest_records=unified.models,
+            )[0]
+
+        self.assertEqual(entry.config_sha256, "a" * 64)
+        self.assertEqual(entry.instruments, ["Vocals", "Other"])
+        self.assertEqual(entry.target_instrument, "Vocals")
+        self.assertEqual(entry.metadata_source, "remote_yaml:model.yaml")
+        self.assertEqual(context.unavailable_yaml_evidence, set())
+        self.assertFalse(os.path.exists(cache_dir))
+
+    def test_offline_cache_miss_without_exact_unified_evidence_stays_degraded(self) -> None:
+        context = catalogue.CatalogueContext()
+
+        entry = catalogue._parse_catalogue_entry(
+            source="fixture-source",
+            family="MDX23C",
+            label="Fixture Model",
+            payload={
+                "model.ckpt": "https://new.test/model.ckpt",
+                "unknown.yaml": "https://new.test/unknown.yaml",
+            },
+            ctx=context,
+            policy=catalogue.OFFLINE_FETCH_POLICY,
+            manifest_records={},
+        )[0]
+
+        self.assertEqual(entry.config_sha256, "")
+        self.assertEqual(context.unavailable_yaml_evidence, {"unknown.yaml"})
+
+
 class UnifiedPublicationCliTests(unittest.TestCase):
     """The generator publishes and compares one complete snapshot bundle."""
 
@@ -4241,7 +4810,11 @@ class UnifiedPublicationCliTests(unittest.TestCase):
         self.intent = os.path.join(self.tmp, "model_intent_reference.tsv")
         self.display = os.path.join(self.tmp, "model_display_reference.tsv")
         self.stem = os.path.join(self.tmp, "model_stem_semantics_reference.tsv")
+        self.manifest = Path(self.tmp) / "model_manifest.json"
         self.ir = catalogue._ir_path_for(self.output)
+        with open(self.manifest, "w", encoding="utf-8") as handle:
+            json.dump(_generator_manifest_document(), handle, indent=2, sort_keys=True)
+            handle.write("\n")
         self.context = catalogue.CatalogueContext(
             community_by_file={
                 "model.ckpt": catalogue.CommunityRef(
@@ -4259,12 +4832,18 @@ class UnifiedPublicationCliTests(unittest.TestCase):
             family="MDX23C",
             catalogue_label="Fixture Model",
             weight_file="model.ckpt",
-            instruments=["vocals", "other"],
-            primary_stem="vocals",
+            config_yaml="model.yaml",
+            config_url="https://new.test/model.yaml",
+            config_sha256="a" * 64,
+            instruments=["Vocals", "Other"],
+            target_instrument="Vocals",
+            primary_stem="Vocals",
             stem_count=2,
             name_intent="vocals",
-            metadata_source="fixture",
+            metadata_source="remote_yaml:model.yaml",
         )
+        self.entries = [self.entry]
+        self.collect_call_count = 0
 
     def _audit(self, *args: object, **kwargs: object) -> StemAuditResult:
         return StemAuditResult(
@@ -4291,6 +4870,12 @@ class UnifiedPublicationCliTests(unittest.TestCase):
 
         from catalogue import stem_audit
 
+        def collect_once(
+            *_args: object, **_kwargs: object
+        ) -> tuple[object, list[catalogue.ModelEntry]]:
+            self.collect_call_count += 1
+            return _Snapshot(), self.entries
+
         audit_side_effect = self._audit if audit is None else audit
         if isinstance(audit_side_effect, StemAuditResult):
             audit_result = audit_side_effect
@@ -4305,6 +4890,7 @@ class UnifiedPublicationCliTests(unittest.TestCase):
             mock.patch.object(cli, "REFERENCE_TSV_PATH", self.intent),
             mock.patch.object(cli, "DISPLAY_REFERENCE_TSV_PATH", self.display),
             mock.patch.object(cli, "STEM_SEMANTICS_REFERENCE_TSV_PATH", self.stem),
+            mock.patch.object(cli, "BUNDLED_MANIFEST_PATH", self.manifest),
             mock.patch.object(
                 catalogue,
                 "_build_catalogue_context",
@@ -4313,7 +4899,7 @@ class UnifiedPublicationCliTests(unittest.TestCase):
             mock.patch.object(
                 catalogue,
                 "collect_entries",
-                return_value=(_Snapshot(), [self.entry]),
+                side_effect=collect_once,
             ),
             mock.patch.object(
                 stem_audit,
@@ -4323,15 +4909,247 @@ class UnifiedPublicationCliTests(unittest.TestCase):
         ):
             return cli.main(argv)
 
+    def test_one_collection_snapshot_feeds_validation_and_all_renderers(self) -> None:
+        from unittest import mock
+
+        from catalogue import stem_audit
+
+        audited: list[object] = []
+        candidates: list[cli.stem_audit.ManifestCandidateResult] = []
+
+        def audit_entries(entries: object, *_args: object, **_kwargs: object) -> StemAuditResult:
+            audited.append(entries)
+            return self._audit()
+
+        real_build_candidate = stem_audit.build_manifest_candidate
+
+        def build_candidate(
+            *args: object, **kwargs: object
+        ) -> cli.stem_audit.ManifestCandidateResult:
+            candidate = real_build_candidate(*args, **kwargs)  # type: ignore[arg-type]
+            candidates.append(candidate)
+            return candidate
+
+        with (
+            mock.patch.object(
+                stem_audit,
+                "build_manifest_candidate",
+                side_effect=build_candidate,
+            ) as manifest_candidate,
+            mock.patch.object(render, "_render", wraps=render._render) as catalogue_renderer,
+            mock.patch.object(
+                render,
+                "presentation_reference_audit",
+                wraps=render.presentation_reference_audit,
+            ) as display_renderer,
+            mock.patch.object(cli, "build_ir", wraps=cli.build_ir) as ir_renderer,
+        ):
+            self.assertEqual(self._run([], audit=audit_entries), 0)
+
+        self.assertEqual(self.collect_call_count, 1)
+        self.assertIs(manifest_candidate.call_args.args[0], self.entries)
+        self.assertEqual(audited, [self.entries])
+        self.assertIs(catalogue_renderer.call_args.args[0], self.entries)
+        self.assertIs(display_renderer.call_args.args[0], self.entries)
+        self.assertIs(ir_renderer.call_args.args[0], self.entries)
+        candidate_presentation = candidates[0].presentation
+        self.assertIsNotNone(candidate_presentation)
+        self.assertIs(
+            catalogue_renderer.call_args.kwargs["presentation"],
+            candidate_presentation,
+        )
+        self.assertIs(
+            display_renderer.call_args.kwargs["presentation"],
+            candidate_presentation,
+        )
+
+    def test_cold_offline_check_accepts_incidental_yaml_for_reviewed_non_config_model(
+        self,
+    ) -> None:
+        """An incidental config name is not required evidence for an exact non-config ID."""
+        import contextlib
+        import shutil
+        from unittest import mock
+
+        document = _generator_manifest_document()
+        record = cast(dict[str, dict[str, object]], document["models"])["mdx:model"]
+        del record["config_evidence"]
+        self.manifest.write_text(
+            json.dumps(document, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        yaml_cache = os.path.join(self.tmp, "cold-yaml-cache")
+
+        class _Snapshot:
+            vr: dict[str, object] = {}
+            mdx = {
+                "Fixture Model": {
+                    "model.ckpt": "https://example.invalid/model.ckpt",
+                    "incidental.yaml": "https://example.invalid/incidental.yaml",
+                }
+            }
+            demucs: dict[str, object] = {}
+            apollo: dict[str, object] = {}
+            meta: dict[str, object] = {}
+            unsupported: dict[str, object] = {}
+            report = None
+
+        upstream = {"mdx_download_list": _Snapshot.mdx}
+        real_collect_entries = catalogue.collect_entries
+
+        def collect_expected_snapshot(
+            *args: object, **kwargs: object
+        ) -> tuple[object, list[catalogue.ModelEntry]]:
+            snapshot, entries = real_collect_entries(*args, **kwargs)  # type: ignore[arg-type]
+            # Bootstrap the expected artifact set with the desired reviewed-
+            # non-config gate, then exercise the unmodified real path below.
+            self.context.unavailable_yaml_evidence.clear()
+            return snapshot, entries
+
+        common_patches = (
+            mock.patch.object(cli, "OUTPUT_PATH", self.output),
+            mock.patch.object(cli, "REFERENCE_TSV_PATH", self.intent),
+            mock.patch.object(cli, "DISPLAY_REFERENCE_TSV_PATH", self.display),
+            mock.patch.object(cli, "STEM_SEMANTICS_REFERENCE_TSV_PATH", self.stem),
+            mock.patch.object(cli, "BUNDLED_MANIFEST_PATH", self.manifest),
+            mock.patch.object(catalogue, "YAML_CACHE_DIR", yaml_cache),
+            mock.patch.object(catalogue, "_build_catalogue_context", return_value=self.context),
+            mock.patch.object(
+                catalogue,
+                "_snapshot_and_payloads",
+                return_value=(_Snapshot(), (upstream, {}, {}, {})),
+            ),
+            mock.patch(
+                "core.mdx_config_fetch._urlopen",
+                side_effect=AssertionError("offline generator requested the network"),
+            ),
+            mock.patch.object(cli.stem_audit, "audit_catalogue_stems", side_effect=self._audit),
+        )
+        with contextlib.ExitStack() as stack:
+            for patcher in common_patches:
+                stack.enter_context(patcher)
+            stack.enter_context(
+                mock.patch.object(
+                    catalogue, "collect_entries", side_effect=collect_expected_snapshot
+                )
+            )
+            self.assertEqual(cli.main(["--offline"]), 0)
+
+        self.assertFalse(os.path.exists(yaml_cache))
+        shutil.rmtree(yaml_cache, ignore_errors=True)
+        self.context.unavailable_yaml_evidence.clear()
+        paths = (self.manifest, self.output, self.ir, self.intent, self.display, self.stem)
+        before = {Path(path): Path(path).read_bytes() for path in paths}
+
+        with contextlib.ExitStack() as stack:
+            for patcher in common_patches:
+                stack.enter_context(patcher)
+            stack.enter_context(
+                mock.patch(
+                    "core.json_store.write_json_atomic",
+                    side_effect=AssertionError("check attempted a manifest write"),
+                )
+            )
+            stack.enter_context(
+                mock.patch(
+                    "core.json_store.write_text_atomic",
+                    side_effect=AssertionError("check attempted an artifact write"),
+                )
+            )
+            stack.enter_context(
+                mock.patch.object(
+                    catalogue.os,
+                    "replace",
+                    side_effect=AssertionError("check attempted a cache write"),
+                )
+            )
+            self.assertEqual(cli.main(["--check", "--offline"]), 0)
+
+        self.assertEqual(self.context.unavailable_yaml_evidence, set())
+        self.assertFalse(os.path.exists(yaml_cache))
+        self.assertEqual(
+            {Path(path): Path(path).read_bytes() for path in paths},
+            before,
+        )
+
+    def test_candidate_presentation_alias_and_waiver_render_without_global_state(self) -> None:
+        """Markdown and TSV use the exact presentation view loaded from the fixture path."""
+        from unittest import mock
+
+        document = _generator_manifest_document()
+        record = cast(dict[str, dict[str, object]], document["models"])["mdx:model"]
+        record["display_alias"] = "Candidate_Only_Alias"
+        record["display_waivers"] = {
+            "underscore": "Candidate-only fixture alias is deliberately underscored."
+        }
+        self.manifest.write_text(
+            json.dumps(document, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+
+        class _ForbiddenGlobalPresentation(dict[str, object]):
+            def __getitem__(self, key: str) -> object:
+                raise AssertionError(f"renderer consulted global presentation section {key!r}")
+
+            def get(self, key: str, default: object = None) -> object:
+                raise AssertionError(f"renderer consulted global presentation section {key!r}")
+
+        with (
+            mock.patch(
+                "core.model_naming._DISPLAY_MANIFEST",
+                _ForbiddenGlobalPresentation(),
+            ),
+            mock.patch.object(
+                render,
+                "load_model_display_manifest",
+                side_effect=AssertionError("renderer reloaded global presentation state"),
+            ),
+        ):
+            self.assertEqual(self._run([]), 0)
+
+        markdown = Path(self.output).read_text(encoding="utf-8")
+        display_rows = Path(self.display).read_text(encoding="utf-8").splitlines()
+        headers = display_rows[0].split("\t")
+        row = dict(zip(headers, display_rows[1].split("\t"), strict=True))
+        self.assertIn("### Candidate_Only_Alias", markdown)
+        self.assertEqual(row["current_display"], "Candidate_Only_Alias")
+        self.assertEqual(row["presentation_flags"], "underscore")
+        self.assertEqual(
+            row["waiver_reasons"],
+            "underscore: Candidate-only fixture alias is deliberately underscored.",
+        )
+        self.assertEqual(row["review_status"], "reviewed")
+
     def test_default_write_synchronizes_every_generated_artifact(self) -> None:
         """Removing a default renderer must leave a missing checked-in output."""
         self.assertEqual(self._run([]), 0)
 
-        for path in (self.output, self.ir, self.intent, self.display, self.stem):
+        for path in (self.output, self.ir, self.intent, self.display, self.stem, self.manifest):
             with self.subTest(path=path):
                 self.assertTrue(os.path.isfile(path))
         with open(self.ir, encoding="utf-8") as handle:
             self.assertEqual(json.load(handle)["entry_count"], 1)
+        with open(self.manifest, encoding="utf-8") as handle:
+            manifest = json.load(handle)
+        self.assertEqual(
+            manifest["models"]["mdx:model"]["catalogue_evidence"]["source"],
+            "fixture",
+        )
+
+    def test_check_compares_the_unified_manifest_without_repairing_it(self) -> None:
+        self.assertEqual(self._run([]), 0)
+        with open(self.manifest, encoding="utf-8") as handle:
+            stale = json.load(handle)
+        stale["models"]["mdx:model"]["catalogue_evidence"]["source"] = "stale"
+        with open(self.manifest, "w", encoding="utf-8") as handle:
+            json.dump(stale, handle, indent=2, sort_keys=True)
+            handle.write("\n")
+        with open(self.manifest, "rb") as handle:
+            before = handle.read()
+
+        self.assertEqual(self._run(["--check"]), 1)
+        with open(self.manifest, "rb") as handle:
+            self.assertEqual(handle.read(), before)
 
     def test_check_compares_every_generated_artifact_without_repairing_it(self) -> None:
         """A stale reference cannot escape --check because its flag was omitted."""
@@ -4382,9 +5200,101 @@ class UnifiedPublicationCliTests(unittest.TestCase):
         incomplete = catalogue.CatalogueContext(
             unavailable_supplemental_evidence=("community models.txt reference",)
         )
+        before = self.manifest.read_bytes()
 
-        self.assertEqual(self._run([], context=incomplete), 2)
+        for argv in ([], ["--allow-degraded"]):
+            with self.subTest(argv=argv):
+                self.assertEqual(self._run(argv, context=incomplete), 2)
         self.assertFalse(os.path.exists(self.output))
+        self.assertEqual(self.manifest.read_bytes(), before)
+
+    def test_display_collision_blocks_every_replacement(self) -> None:
+        collision = render.PresentationReferenceAudit(
+            text="header\n",
+            unreviewed=(),
+            collisions=(("Same", ("mdx:model", "mdx:other")),),
+        )
+        sentinels = {path: Path(path).read_bytes() for path in (self.manifest,)}
+
+        with mock.patch.object(render, "presentation_reference_audit", return_value=collision):
+            self.assertEqual(self._run([]), 1)
+
+        for path, contents in sentinels.items():
+            with self.subTest(path=path), open(path, "rb") as handle:
+                self.assertEqual(handle.read(), contents)
+
+    def test_failed_late_atomic_writer_rolls_back_the_whole_bundle(self) -> None:
+        self.assertEqual(self._run([]), 0)
+        paths = (self.manifest, self.output, self.ir, self.intent, self.display, self.stem)
+        before = {path: Path(path).read_bytes() for path in paths}
+        real_writer = __import__(
+            "core.json_store", fromlist=["write_text_atomic"]
+        ).write_text_atomic
+
+        def fail_display(path: str, text: str) -> None:
+            if path == self.display:
+                raise OSError("late fixture replacement failure")
+            real_writer(path, text)
+
+        self.entry.source = "changed-source"
+        with mock.patch("core.json_store.write_text_atomic", side_effect=fail_display):
+            with self.assertRaisesRegex(OSError, "late fixture replacement failure"):
+                self._run([])
+
+        for path in paths:
+            with self.subTest(path=path), open(path, "rb") as handle:
+                self.assertEqual(handle.read(), before[path])
+
+    def test_unserializable_rendered_json_fails_before_the_first_replacement(self) -> None:
+        self.assertEqual(self._run([]), 0)
+        paths = (self.manifest, self.output, self.ir, self.intent, self.display, self.stem)
+        before = {path: Path(path).read_bytes() for path in paths}
+
+        with (
+            mock.patch.object(cli, "build_ir", return_value={"invalid": object()}),
+            mock.patch("core.json_store.write_json_atomic") as write_json,
+            mock.patch("core.json_store.write_text_atomic") as write_text,
+        ):
+            with self.assertRaises(TypeError):
+                self._run([])
+
+        write_json.assert_not_called()
+        write_text.assert_not_called()
+        for path in paths:
+            with self.subTest(path=path):
+                self.assertEqual(Path(path).read_bytes(), before[path])
+
+    def test_summary_reports_manifest_lifecycle_evidence_and_drift_counts(self) -> None:
+        import contextlib
+        import io
+
+        from core.model_manifest import load_model_manifest_document
+
+        document = _generator_manifest_document()
+        registry = load_model_manifest_document(document)
+        manifest_audit = cli.stem_audit.build_manifest_candidate(
+            [_generator_manifest_entry(config_sha256="b" * 64)],
+            document,
+            registry=registry,
+        )
+        output = io.StringIO()
+
+        with contextlib.redirect_stdout(output):
+            print(
+                render.render_summary_report(
+                    [self.entry],
+                    manifest_audit=manifest_audit,
+                )
+            )
+
+        text = output.getvalue()
+        self.assertIn("Current manifest models: **1**", text)
+        self.assertIn("Retired manifest models: **0**", text)
+        self.assertIn("Evidence ready: **1**", text)
+        self.assertIn("Same-semantics config digest drift: **1**", text)
+        self.assertIn("Semantic config mismatches: **0**", text)
+        self.assertIn("Lifecycle drift: **0**", text)
+        self.assertIn("Manifest reference drift: **1**", text)
 
     def test_summary_reports_semantic_findings_without_publishing(self) -> None:
         """A summary must consume the audit result instead of recollecting semantics."""
@@ -4418,7 +5328,7 @@ class UnifiedPublicationCliTests(unittest.TestCase):
         self.assertEqual(self._run([]), 0)
         with open(self.stem, "a", encoding="utf-8") as handle:
             handle.write("stale row\n")
-        paths = (self.output, self.ir, self.intent, self.display, self.stem)
+        paths = (self.output, self.ir, self.intent, self.display, self.stem, self.manifest)
         before = {}
         for path in paths:
             with open(path, "rb") as handle:
@@ -4485,9 +5395,11 @@ class UnifiedPublicationCliTests(unittest.TestCase):
         """The renderer cannot reload or independently resolve manifest semantics."""
         from unittest import mock
 
-        from core.model_stem_manifest import BUNDLED_MANIFEST_PATH, load_stem_manifest
+        from core.model_manifest import load_model_manifest_document
 
-        registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)
+        with open(self.manifest, encoding="utf-8") as handle:
+            document = json.load(handle)
+        registry = load_model_manifest_document(document)
         seen: list[object] = []
         rendered_rows: list[object] = []
 
@@ -4502,9 +5414,8 @@ class UnifiedPublicationCliTests(unittest.TestCase):
         with (
             mock.patch.object(
                 cli,
-                "load_stem_manifest",
-                wraps=load_stem_manifest,
-                create=True,
+                "load_model_manifest_document",
+                wraps=load_model_manifest_document,
             ) as loader,
             mock.patch.object(
                 render,
@@ -4514,8 +5425,8 @@ class UnifiedPublicationCliTests(unittest.TestCase):
         ):
             self.assertEqual(self._run([], audit=audit_stems), 0)
 
-        loader.assert_called_once_with(BUNDLED_MANIFEST_PATH)
-        self.assertEqual(seen, [registry])
+        loader.assert_called_once()
+        self.assertEqual(seen, [registry.stems])
         self.assertEqual(rendered_rows, [()])
 
     def test_missing_politrees_hash_files_do_not_degrade_a_complete_offline_bundle(self) -> None:
@@ -4537,13 +5448,17 @@ class UnifiedPublicationCliTests(unittest.TestCase):
         ) as handle:
             handle.write(b"model.ckpt  MDX23C  vocals*, other  Fixture model\n")
         os.makedirs(yaml_cache)
+        yaml_bytes = b"training:\n  instruments: [Vocals, Other]\n  target_instrument: Vocals\n"
         with open(
             catalogue._cache_path(yaml_cache, yaml_url, "model.yaml"),
             "wb",
         ) as handle:
-            handle.write(b"training:\n  instruments: [vocals, other]\n")
+            handle.write(yaml_bytes)
         self.entry.config_yaml = "model.yaml"
         self.entry.config_url = yaml_url
+        self.entry.config_sha256 = __import__("hashlib").sha256(yaml_bytes).hexdigest()
+        self.entry.instruments = ["Vocals", "Other"]
+        self.entry.target_instrument = "Vocals"
         self.entry.metadata_source = "remote_yaml:model.yaml"
         network_calls: list[str] = []
 
@@ -4750,6 +5665,7 @@ class SidecarTrustTests(unittest.TestCase):
             report = None
 
         with contextlib.ExitStack() as stack:
+            stack.enter_context(_legacy_publication_manifest_fixture())
             stack.enter_context(mock.patch.object(cli, "OUTPUT_PATH", self.doc))
             stack.enter_context(
                 mock.patch.object(
@@ -5024,6 +5940,84 @@ class FetchHelperTests(unittest.TestCase):
                 )
             )
             self.assertFalse(os.path.exists(runtime_dir))
+
+
+class ReviewedRepositoryPublicationTests(unittest.TestCase):
+    def test_generated_bundle_has_the_reviewed_task_10_end_state(self) -> None:
+        """The checked-in publication must retain every reviewed count and zero gate."""
+        root = Path(ROOT)
+        manifest = json.loads((root / "bundled/model_manifest.json").read_text())
+        current = {
+            model_id: record
+            for model_id, record in manifest["models"].items()
+            if record["lifecycle"] == "current"
+        }
+        declarations = {
+            model_id: record["stem_semantics"]
+            for model_id, record in current.items()
+            if "stem_semantics" in record
+        }
+        waivers = {
+            model_id: record["stem_waiver"]
+            for model_id, record in current.items()
+            if "stem_waiver" in record
+        }
+        self.assertEqual(len(current), 485)
+        self.assertEqual(len(declarations), 483)
+        self.assertEqual(
+            set(waivers),
+            {
+                "apollo:apollo_edm_big_by_essid",
+                "apollo:apollo_edm_by_essid",
+            },
+        )
+        self.assertEqual(
+            sum(len(declaration["contexts"]) for declaration in declarations.values()),
+            514,
+        )
+
+        stem_lines = (root / "docs/model_stem_semantics_reference.tsv").read_text().splitlines()
+        stem_headers = stem_lines[0].split("\t")
+        stem_rows = [
+            dict(zip(stem_headers, line.split("\t"), strict=True)) for line in stem_lines[1:]
+        ]
+        self.assertEqual(len(stem_rows), 1_237)
+        self.assertEqual(
+            {row["model_id"] for row in stem_rows if row["review_status"] == "raw"},
+            set(),
+        )
+
+        display_lines = (root / "docs/model_display_reference.tsv").read_text().splitlines()
+        display_headers = display_lines[0].split("\t")
+        display_rows = [
+            dict(zip(display_headers, line.split("\t"), strict=True)) for line in display_lines[1:]
+        ]
+        self.assertEqual(len(display_rows), 485)
+        self.assertEqual(
+            {row["canonical_id"] for row in display_rows if row["review_status"] == "unreviewed"},
+            set(),
+        )
+        normalized: dict[str, list[str]] = {}
+        for row in display_rows:
+            key = unicodedata.normalize("NFKC", row["current_display"]).casefold()
+            normalized.setdefault(key, []).append(row["canonical_id"])
+        self.assertEqual(
+            {key: ids for key, ids in normalized.items() if len(ids) > 1},
+            {},
+        )
+
+        catalogue_text = (root / "docs/models-catalogue.md").read_text()
+        self.assertIn("- Snapshot mode: `force`", catalogue_text)
+        self.assertIn("- Source stale: none", catalogue_text)
+        self.assertIn("- Source failed: none", catalogue_text)
+        self.assertIn("- Source upstream live: True", catalogue_text)
+        refreshed_line = next(
+            line for line in catalogue_text.splitlines() if line.startswith("- Source refreshed:")
+        )
+        self.assertEqual(
+            {source.strip() for source in refreshed_line.partition(":")[2].split(",")},
+            {"extras", "upstream", "politrees", "mvsepless"},
+        )
 
 
 class StemConfidenceAuditModeTests(unittest.TestCase):

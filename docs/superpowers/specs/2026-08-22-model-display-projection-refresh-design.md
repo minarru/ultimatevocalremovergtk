@@ -10,6 +10,13 @@
 > Canonical identity and the remaining refresh/publication contracts here stay
 > in force.
 
+> **Supersession notice (2026-08-27):** The bundled presentation authority,
+> atomic loading, catalogue-evidence state, and one-snapshot publication rules
+> are superseded by the approved
+> [`Unified Model Manifest and Catalogue Evidence Design`](2026-08-27-unified-model-manifest-and-catalogue-evidence-design.md).
+> This document remains the historical record for its implemented projection
+> and refresh decisions.
+
 ## Summary
 
 Every model surface must obtain its human-readable name from

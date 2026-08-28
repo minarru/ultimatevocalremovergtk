@@ -9,15 +9,39 @@ import tempfile
 import threading
 import time
 import unittest
+import urllib.error
+import urllib.request
+from email.message import Message
 from typing import Callable
 from unittest import mock
 
+from yaml.constructor import ConstructorError
+
 import core.catalogue_stem_cache as csc
+
+_SCHEMA_2_ENTRY_KEYS = {
+    "stems",
+    "target_instrument",
+    "content_sha256",
+    "etag",
+    "last_modified",
+    "fetched_at",
+    "checked_at",
+    "last_error",
+}
 
 
 class _FakeResponse:
-    def __init__(self, data: bytes) -> None:
+    def __init__(
+        self,
+        data: bytes,
+        *,
+        status: int = 200,
+        headers: dict[str, str] | None = None,
+    ) -> None:
         self._data = data
+        self.status = status
+        self.headers = headers or {}
 
     def read(self, n: int = -1) -> bytes:
         if n < 0:
@@ -40,6 +64,10 @@ def _wait_until(predicate: Callable[[], bool], *, timeout: float = 2.0) -> bool:
             return True
         time.sleep(0.01)
     return False
+
+
+def _request_url(request: urllib.request.Request) -> str:
+    return request.full_url
 
 
 class CatalogueStemCacheTests(unittest.TestCase):
@@ -76,6 +104,24 @@ training:
         self.assertEqual(stems, ["Vocals", "other"])
         self.assertEqual(target, "Vocals")
 
+    def test_parse_accepts_reviewed_python_tuple_but_rejects_unsafe_tags(self) -> None:
+        stems, target = csc.parse_stems_from_yaml_bytes(
+            b"training:\n  instruments: !!python/tuple [Vocals, Other]\n"
+            b"  target_instrument: Vocals\n"
+        )
+        self.assertEqual(stems, ["Vocals", "Other"])
+        self.assertEqual(target, "Vocals")
+
+        with self.assertRaises(ConstructorError):
+            csc.parse_stems_from_yaml_bytes(
+                b"training: !!python/object/apply:os.system ['echo unsafe']\n"
+            )
+
+    def test_parse_rejects_documents_without_nonempty_training_instruments(self) -> None:
+        for payload in (b"- Vocals\n", b"training: {}\n", b"training:\n  instruments: []\n"):
+            with self.subTest(payload=payload), self.assertRaises(ValueError):
+                csc.parse_stems_from_yaml_bytes(payload)
+
     def test_remember_and_lookup_round_trip(self) -> None:
         url = "https://example.test/config.yaml?v=1"
         digest = "a" * 64
@@ -101,8 +147,373 @@ training:
         self.assertTrue(os.path.isfile(self.cache_path))
         with open(self.cache_path, encoding="utf-8") as handle:
             payload = json.load(handle)
+        self.assertEqual(payload["schema_version"], 2)
         key = csc.normalize_config_url(url)
         self.assertIn(key, payload["entries"])
+        self.assertEqual(set(payload["entries"][key]), _SCHEMA_2_ENTRY_KEYS)
+
+    def test_legacy_cache_is_read_without_rewrite_then_normalized_on_mutation(self) -> None:
+        url = "https://example.test/legacy.yaml?source=old"
+        original = {
+            "fetched_at": 100.0,
+            "entries": {
+                csc.normalize_config_url(url): {
+                    "stems": ["Vocals", "Other"],
+                    "target_instrument": "Vocals",
+                    "content_sha256": "c" * 64,
+                    "fetched_at": time.time(),
+                    "ok": True,
+                }
+            },
+        }
+        with open(self.cache_path, "w", encoding="utf-8") as handle:
+            json.dump(original, handle)
+        csc._memory_entries = None
+
+        hit = csc.lookup_stems(url)
+
+        self.assertIsNotNone(hit)
+        assert hit is not None
+        self.assertTrue(hit.usable)
+        with open(self.cache_path, encoding="utf-8") as handle:
+            self.assertEqual(json.load(handle), original)
+
+        csc.remember_stems("https://example.test/new.yaml", ["Drums"], None, ok=True)
+        with open(self.cache_path, encoding="utf-8") as handle:
+            normalized = json.load(handle)
+        self.assertEqual(normalized["schema_version"], 2)
+        self.assertNotIn("ok", normalized["entries"][csc.normalize_config_url(url)])
+        self.assertEqual(
+            normalized["entries"][csc.normalize_config_url(url)]["checked_at"],
+            original["entries"][csc.normalize_config_url(url)]["fetched_at"],
+        )
+
+    def test_success_ttl_uses_checked_at_and_cold_failure_uses_failure_ttl(self) -> None:
+        now = 10_000_000.0
+        success = "https://example.test/success.yaml"
+        failure = "https://example.test/failure.yaml"
+        csc.remember_stems(success, ["Vocals"], None, ok=True)
+        csc.remember_stems(failure, [], None, ok=False, error_kind="network")
+        entries = csc._ensure_loaded()
+        entries[csc.normalize_config_url(success)]["checked_at"] = (
+            now - csc._SUCCESS_TTL_SECONDS + 1
+        )
+        entries[csc.normalize_config_url(failure)]["checked_at"] = (
+            now - csc._FAILURE_TTL_SECONDS + 1
+        )
+        with mock.patch.object(csc.time, "time", return_value=now):
+            self.assertTrue(csc.lookup_stems(success).usable)  # type: ignore[union-attr]
+            self.assertFalse(csc.lookup_stems(failure).usable)  # type: ignore[union-attr]
+        entries[csc.normalize_config_url(success)]["checked_at"] = (
+            now - csc._SUCCESS_TTL_SECONDS - 1
+        )
+        entries[csc.normalize_config_url(failure)]["checked_at"] = (
+            now - csc._FAILURE_TTL_SECONDS - 1
+        )
+        with mock.patch.object(csc.time, "time", return_value=now):
+            expired_success = csc.lookup_stems(success)
+            self.assertIsNotNone(expired_success)
+            assert expired_success is not None
+            self.assertTrue(expired_success.usable)
+            self.assertTrue(expired_success.revalidation_due)
+            self.assertIsNone(csc.lookup_stems(failure))
+
+    def test_failed_revalidation_preserves_last_known_good_evidence(self) -> None:
+        url = "https://example.test/stale.yaml"
+        csc.remember_stems(
+            url,
+            ["Vocals", "Other"],
+            "Vocals",
+            content_sha256="a" * 64,
+            ok=True,
+            etag='"v1"',
+        )
+
+        csc.remember_stems(url, [], None, ok=False, error_kind="network", error_message="down")
+
+        with mock.patch.object(csc.time, "time", return_value=12.0):
+            hit = csc.lookup_stems(url)
+        self.assertIsNotNone(hit)
+        assert hit is not None
+        self.assertTrue(hit.ok)
+        self.assertTrue(hit.stale)
+        self.assertEqual(hit.stems, ("Vocals", "Other"))
+        self.assertEqual(hit.content_sha256, "a" * 64)
+        self.assertEqual(hit.etag, '"v1"')
+        self.assertIn("down", hit.warning)
+
+    def test_expired_success_remains_usable_and_becomes_due(self) -> None:
+        now = 10_000_000.0
+        url = "https://example.test/expired-success.yaml"
+        csc.remember_stems(url, ["Vocals", "Instrumental"], "Vocals", ok=True)
+        entry = csc._ensure_loaded()[csc.normalize_config_url(url)]
+        entry["checked_at"] = now - csc._SUCCESS_TTL_SECONDS - 1
+
+        with mock.patch.object(csc.time, "time", return_value=now):
+            hit = csc.lookup_stems(url)
+
+        self.assertIsNotNone(hit)
+        assert hit is not None
+        self.assertTrue(hit.usable)
+        self.assertTrue(hit.stale)
+        self.assertTrue(hit.revalidation_due)
+
+    def test_retained_lkg_failure_uses_failure_retry_ttl(self) -> None:
+        now = 10_000_000.0
+        url = "https://example.test/lkg-retry.yaml"
+        csc.remember_stems(url, ["Vocals", "Instrumental"], "Vocals", ok=True)
+        csc.remember_stems(url, [], None, ok=False, error_kind="network", error_message="down")
+        entry = csc._ensure_loaded()[csc.normalize_config_url(url)]
+
+        entry["checked_at"] = now - csc._FAILURE_TTL_SECONDS + 1
+        with mock.patch.object(csc.time, "time", return_value=now):
+            before_retry = csc.lookup_stems(url)
+        self.assertIsNotNone(before_retry)
+        assert before_retry is not None
+        self.assertTrue(before_retry.usable)
+        self.assertFalse(before_retry.revalidation_due)
+
+        entry["checked_at"] = now - csc._FAILURE_TTL_SECONDS - 1
+        with mock.patch.object(csc.time, "time", return_value=now):
+            after_retry = csc.lookup_stems(url)
+        self.assertIsNotNone(after_retry)
+        assert after_retry is not None
+        self.assertTrue(after_retry.usable)
+        self.assertTrue(after_retry.revalidation_due)
+
+    def test_force_revalidation_sends_validators_and_304_keeps_body(self) -> None:
+        url = "https://example.test/conditional.yaml"
+        csc.remember_stems(
+            url,
+            ["Vocals"],
+            "Vocals",
+            content_sha256="b" * 64,
+            ok=True,
+            etag='"v1"',
+            last_modified="Wed, 27 Aug 2026 12:00:00 GMT",
+        )
+        requests: list[urllib.request.Request] = []
+
+        def fake_urlopen(request: urllib.request.Request) -> _FakeResponse:
+            requests.append(request)
+            return _FakeResponse(b"", status=304)
+
+        with mock.patch.object(csc, "_urlopen", side_effect=fake_urlopen):
+            csc._fetch_and_remember(url, force=True)
+
+        request = requests[0]
+        self.assertEqual(request.get_header("If-none-match"), '"v1"')
+        self.assertEqual(
+            request.get_header("If-modified-since"),
+            "Wed, 27 Aug 2026 12:00:00 GMT",
+        )
+        hit = csc.lookup_stems(url)
+        self.assertIsNotNone(hit)
+        assert hit is not None
+        self.assertEqual(hit.stems, ("Vocals",))
+        self.assertEqual(hit.content_sha256, "b" * 64)
+        self.assertFalse(hit.stale)
+
+    def test_http_error_304_advances_checked_at_without_replacing_evidence(self) -> None:
+        url = "https://example.test/conditional-http-error.yaml"
+        csc.remember_stems(url, ["Vocals"], None, content_sha256="d" * 64, ok=True)
+        entry = csc._ensure_loaded()[csc.normalize_config_url(url)]
+        entry["fetched_at"] = 10.0
+        entry["checked_at"] = 11.0
+        response = urllib.error.HTTPError(url, 304, "not modified", Message(), None)
+        with (
+            mock.patch.object(csc.time, "time", return_value=12.0),
+            mock.patch.object(csc, "_urlopen", side_effect=response),
+        ):
+            self.assertTrue(csc._fetch_and_remember(url, force=True))
+        with mock.patch.object(csc.time, "time", return_value=12.0):
+            hit = csc.lookup_stems(url)
+        self.assertIsNotNone(hit)
+        assert hit is not None
+        self.assertEqual(hit.fetched_at, 10.0)
+        self.assertEqual(hit.checked_at, 12.0)
+        self.assertEqual(hit.content_sha256, "d" * 64)
+
+    def test_http_200_replaces_evidence_only_after_parse_and_digest_checks(self) -> None:
+        url = "https://example.test/replace.yaml"
+        old_body = b"training:\n  instruments: [Vocals]\n"
+        csc.remember_stems(
+            url,
+            ["Vocals"],
+            None,
+            content_sha256=hashlib.sha256(old_body).hexdigest(),
+            ok=True,
+            etag='"old"',
+        )
+        new_body = b"training:\n  instruments: [Drums, Bass]\n  target_instrument: Drums\n"
+        with mock.patch.object(
+            csc,
+            "_urlopen",
+            return_value=_FakeResponse(new_body, headers={"ETag": '"new"'}),
+        ):
+            csc._fetch_and_remember(url, force=True)
+        hit = csc.lookup_stems(url)
+        self.assertIsNotNone(hit)
+        assert hit is not None
+        self.assertEqual(hit.stems, ("Drums", "Bass"))
+        self.assertEqual(hit.target_instrument, "Drums")
+        self.assertEqual(hit.content_sha256, hashlib.sha256(new_body).hexdigest())
+        self.assertEqual(hit.etag, '"new"')
+
+        with mock.patch.object(csc, "_urlopen", return_value=_FakeResponse(b"training: {}\n")):
+            csc._fetch_and_remember(url, force=True)
+        self.assertEqual(csc.lookup_stems(url).stems, ("Drums", "Bass"))  # type: ignore[union-attr]
+
+    def test_revalidation_distinguishes_body_and_semantic_drift(self) -> None:
+        url = "https://example.test/drift.yaml"
+        body = b"training:\n  instruments: [Vocals]\n"
+        csc.remember_stems(
+            url,
+            ["Vocals"],
+            None,
+            content_sha256=hashlib.sha256(body).hexdigest(),
+            ok=True,
+        )
+        formatting_only = b"# republished\ntraining:\n  instruments: [Vocals]\n"
+        with (
+            mock.patch.object(csc, "_urlopen", return_value=_FakeResponse(formatting_only)),
+            mock.patch.object(csc, "log_event") as log_event,
+        ):
+            csc._fetch_and_remember(url, force=True)
+        same_fields = csc.lookup_stems(url)
+        self.assertIsNotNone(same_fields)
+        assert same_fields is not None
+        self.assertEqual(
+            set(csc._ensure_loaded()[csc.normalize_config_url(url)]), _SCHEMA_2_ENTRY_KEYS
+        )
+        with open(self.cache_path, encoding="utf-8") as handle:
+            self.assertEqual(
+                set(json.load(handle)["entries"][csc.normalize_config_url(url)]),
+                _SCHEMA_2_ENTRY_KEYS,
+            )
+        self.assertTrue(
+            any(
+                call.args[1] == "catalogue_stem_evidence_drift" for call in log_event.call_args_list
+            )
+        )
+
+        semantic = b"training:\n  instruments: [Drums]\n"
+        with (
+            mock.patch.object(csc, "_urlopen", return_value=_FakeResponse(semantic)),
+            mock.patch.object(csc, "log_event") as log_event,
+        ):
+            csc._fetch_and_remember(url, force=True)
+        changed_fields = csc.lookup_stems(url)
+        self.assertIsNotNone(changed_fields)
+        assert changed_fields is not None
+        self.assertEqual(changed_fields.stems, ("Drums",))
+        self.assertEqual(
+            set(csc._ensure_loaded()[csc.normalize_config_url(url)]), _SCHEMA_2_ENTRY_KEYS
+        )
+        with open(self.cache_path, encoding="utf-8") as handle:
+            self.assertEqual(
+                set(json.load(handle)["entries"][csc.normalize_config_url(url)]),
+                _SCHEMA_2_ENTRY_KEYS,
+            )
+        self.assertTrue(
+            any(
+                call.args[1] == "catalogue_stem_evidence_drift" for call in log_event.call_args_list
+            )
+        )
+
+    def test_cold_failure_has_no_evidence_and_force_retries_expired_failure(self) -> None:
+        url = "https://example.test/cold-failure.yaml"
+        csc.remember_stems(url, [], None, ok=False, error_kind="network", error_message="offline")
+        hit = csc.lookup_stems(url)
+        self.assertIsNotNone(hit)
+        assert hit is not None
+        self.assertFalse(hit.usable)
+        self.assertEqual(hit.stems, ())
+        self.assertEqual(hit.last_error.kind, "network")  # type: ignore[union-attr]
+        self.assertGreater(hit.last_error.at, 0)  # type: ignore[union-attr]
+        csc._ensure_loaded()[csc.normalize_config_url(url)]["checked_at"] = 0.0
+        with mock.patch.object(
+            csc, "_urlopen", return_value=_FakeResponse(b"training:\n  instruments: [Other]\n")
+        ):
+            csc._fetch_and_remember(url, force=True)
+        self.assertEqual(csc.lookup_stems(url).stems, ("Other",))  # type: ignore[union-attr]
+
+    def test_atomic_write_failure_preserves_previous_cache_file(self) -> None:
+        first = "https://example.test/first.yaml"
+        csc.remember_stems(first, ["Vocals"], None, ok=True)
+        with open(self.cache_path, "rb") as handle:
+            before = handle.read()
+        with mock.patch.object(csc.os, "replace", side_effect=OSError("disk full")):
+            csc.remember_stems("https://example.test/second.yaml", ["Drums"], None, ok=True)
+        with open(self.cache_path, "rb") as handle:
+            self.assertEqual(handle.read(), before)
+
+    def test_read_only_policy_never_writes_cache(self) -> None:
+        from core.access_policy import access_policy
+
+        with access_policy(
+            allow_network=True,
+            allow_metadata_writes=False,
+            allow_cache_writes=False,
+        ):
+            csc.remember_stems("https://example.test/readonly.yaml", ["Vocals"], None, ok=True)
+        self.assertFalse(os.path.exists(self.cache_path))
+
+    def test_queued_read_only_policy_never_migrates_or_writes(self) -> None:
+        """The executor must use the enqueuer's ContextVar policy, not defaults."""
+        from core import paths
+        from core.access_policy import access_policy
+
+        url = "https://example.test/read-only-worker.yaml"
+        read_only_path = os.path.join(self._tmp.name, "read-only-worker-cache.json")
+        self._path_patch.stop()
+        try:
+            with (
+                mock.patch.object(paths, "CATALOGUE_STEM_CACHE_FILE", read_only_path),
+                mock.patch.object(
+                    paths,
+                    "migrate_cache_file",
+                    side_effect=AssertionError("read-only worker migrated cache"),
+                ),
+                mock.patch.object(
+                    csc,
+                    "_urlopen",
+                    return_value=_FakeResponse(b"training:\n  instruments: [Vocals]\n"),
+                ),
+            ):
+                with access_policy(
+                    allow_network=True,
+                    allow_metadata_writes=False,
+                    allow_cache_writes=False,
+                ):
+                    csc.enqueue_missing([url])
+                    csc.ensure_worker_started()
+                    self.assertTrue(
+                        _wait_until(
+                            lambda: (hit := csc.lookup_stems(url)) is not None and hit.usable
+                        ),
+                        "read-only queued worker did not retain in-memory evidence",
+                    )
+            self.assertFalse(os.path.exists(read_only_path))
+            self.assertFalse(os.path.exists(f"{read_only_path}.tmp"))
+        finally:
+            self._path_patch.start()
+
+    def test_force_and_priority_merge_for_both_enqueue_orders(self) -> None:
+        url = "https://example.test/merged-duplicate.yaml"
+        for first, second in (
+            ({"priority": False, "force": True}, {"priority": True, "force": False}),
+            ({"priority": True, "force": False}, {"priority": False, "force": True}),
+        ):
+            with self.subTest(first=first, second=second):
+                csc.enqueue_missing([url], priority=first["priority"], force=first["force"])
+                csc.enqueue_missing([url], priority=second["priority"], force=second["force"])
+                first_item = csc._url_queue.get_nowait()
+                items = csc._drain_queued_items(first_item)
+                self.assertEqual(len(items), 1)
+                self.assertEqual(items[0][0], 0)
+                self.assertTrue(items[0][3])
+                csc._reset_worker_state_for_tests()
 
     def test_failed_entry_returned_within_failure_ttl(self) -> None:
         url = "https://example.test/missing.yaml"
@@ -137,7 +548,7 @@ training:
             self.assertFalse(csc.catalogue_stems_enabled())
             self.assertIsNone(csc.lookup_stems(url))
 
-    def test_expired_success_entry_returns_none(self) -> None:
+    def test_expired_success_entry_retains_lkg_and_is_due(self) -> None:
         stale_url = "https://example.test/old.yaml"
         fresh_url = "https://example.test/fresh.yaml"
         stale_key = csc.normalize_config_url(stale_url)
@@ -165,8 +576,12 @@ training:
             json.dump(payload, handle)
         csc._memory_entries = None
         with mock.patch.object(csc.time, "time", return_value=now):
-            self.assertIsNone(csc.lookup_stems(stale_url))
+            stale = csc.lookup_stems(stale_url)
             hit = csc.lookup_stems(fresh_url)
+        self.assertIsNotNone(stale)
+        assert stale is not None
+        self.assertTrue(stale.usable)
+        self.assertTrue(stale.revalidation_due)
         self.assertIsNotNone(hit)
         assert hit is not None
         self.assertEqual(hit.stems, ("other",))
@@ -184,8 +599,8 @@ training:
         opens: list[str] = []
         done = threading.Event()
 
-        def fake_urlopen(u: str) -> _FakeResponse:
-            opens.append(u)
+        def fake_urlopen(u: urllib.request.Request) -> _FakeResponse:
+            opens.append(_request_url(u))
             return _FakeResponse(yaml_bytes)
 
         def on_notify() -> None:
@@ -224,8 +639,8 @@ training:
             calls.append(1)
             notified.set()
 
-        def fake_urlopen(u: str) -> _FakeResponse:
-            return _FakeResponse(bodies[u])
+        def fake_urlopen(u: urllib.request.Request) -> _FakeResponse:
+            return _FakeResponse(bodies[_request_url(u)])
 
         csc.subscribe(on_notify)
         with mock.patch.object(csc, "_urlopen", side_effect=fake_urlopen):
@@ -255,9 +670,9 @@ training:
         done = threading.Event()
         opens = 0
 
-        def fake_urlopen(u: str) -> _FakeResponse:
+        def fake_urlopen(u: urllib.request.Request) -> _FakeResponse:
             nonlocal opens
-            order.append(u)
+            order.append(_request_url(u))
             opens += 1
             if opens >= 2:
                 done.set()
@@ -349,8 +764,8 @@ training:
         order: list[str] = []
         done = threading.Event()
 
-        def fake_urlopen(u: str) -> _FakeResponse:
-            order.append(u)
+        def fake_urlopen(u: urllib.request.Request) -> _FakeResponse:
+            order.append(_request_url(u))
             if len(order) >= len(bulk):
                 done.set()
             return _FakeResponse(body)
@@ -378,7 +793,7 @@ training:
         def on_notify() -> None:
             calls.append(1)
 
-        def fake_urlopen(u: str) -> _FakeResponse:
+        def fake_urlopen(u: urllib.request.Request) -> _FakeResponse:
             return _FakeResponse(body)
 
         csc.subscribe(on_notify)
@@ -407,7 +822,7 @@ training:
         names: set[str] = set()
         lock = threading.Lock()
 
-        def fake_urlopen(u: str) -> _FakeResponse:
+        def fake_urlopen(u: urllib.request.Request) -> _FakeResponse:
             with lock:
                 names.add(threading.current_thread().name)
             return _FakeResponse(body)
@@ -435,7 +850,7 @@ training:
         done = threading.Event()
         finished = 0
 
-        def fake_urlopen(u: str) -> _FakeResponse:
+        def fake_urlopen(u: urllib.request.Request) -> _FakeResponse:
             nonlocal active, max_seen, finished
             with lock:
                 active += 1
