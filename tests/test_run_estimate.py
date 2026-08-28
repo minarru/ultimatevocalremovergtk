@@ -409,7 +409,29 @@ class ProgressEtaTrackerTests(unittest.TestCase):
         assert display is not None
         self.assertAlmostEqual(display, 0.25, delta=0.05)
         text = tracker.format_text(0.25, 40.0, now=40.0)
-        self.assertIn("Model 1/2", text)
+        self.assertIn("%", text)
+        self.assertNotIn("Model 1/2", text)
+
+    def test_overlay_text_keeps_file_and_chunk_but_drops_model_and_stem(self):
+        tracker = ProgressEtaTracker()
+        tracker.update(
+            0.25,
+            40.0,
+            local_step=0.50,
+            pass_index=1,
+            pass_total=2,
+            detail=(
+                "File 2/3 · Chunk 1/4 · Model 1/2 · UVR-MDX-NET Inst HQ 4 · "
+                "Vocals [vocal.vocals; native=vocals; context=full_mix; status=reviewed]"
+            ),
+        )
+        text = tracker.format_text(0.25, 40.0, now=40.0)
+        self.assertIn("File 2/3", text)
+        self.assertIn("Chunk 1/4", text)
+        self.assertNotIn("Model 1/2", text)
+        self.assertNotIn("UVR-MDX-NET", text)
+        self.assertNotIn("native=vocals", text)
+        self.assertNotIn("vocal.vocals", text)
 
     def test_infer_clock_pauses_during_save(self):
         tracker = ProgressEtaTracker()

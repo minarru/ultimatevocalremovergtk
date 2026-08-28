@@ -250,7 +250,7 @@ class AudioTools:
         import matchering as match
 
         target, reference = audio_inputs[0], audio_inputs[1]
-        command_text("Processing... ")
+        command_text("Processing...\n")
         track = sanitize_filename_component(audio_file_base) or "audio"
         save_path = os.path.join(
             f"{self.main_export_path}",

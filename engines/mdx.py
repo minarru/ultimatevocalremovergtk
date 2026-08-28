@@ -22,6 +22,7 @@ from .base import SeperateAttributes
 from .mdx_classic_batch import (
     is_oom_message,
     mdx_hop_starts,
+    mdx_oom_reduce_batch_message,
     next_batch_after_oom,
     resolve_mdx_effective_batch,
 )
@@ -324,7 +325,7 @@ class SeperateMDX(SeperateAttributes):
                             raise
                         effective_batch = smaller
                         self.write_to_console(
-                            f"CUDA OOM — reducing MDX batch size to {effective_batch}"
+                            mdx_oom_reduce_batch_message(effective_batch)
                         )
                         continue
 

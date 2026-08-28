@@ -105,4 +105,4 @@ LOADING_VERSION_INFO_TEXT = 'Loading version information...'
 
 INFO_UNAVAILABLE_TEXT = "Information unavailable."
 
-PROCESS_STOPPED_BY_USER = '\n\nProcess stopped by user.'
+PROCESS_STOPPED_BY_USER = '\n\nProcess stopped by user.\n'

@@ -53,3 +53,8 @@ def next_batch_after_oom(current: int) -> Optional[int]:
     if batch <= 1:
         return None
     return max(1, batch // 2)
+
+
+def mdx_oom_reduce_batch_message(batch: int) -> str:
+    """Complete console line after a hop-batch OOM shrink."""
+    return f"CUDA OOM — reducing MDX batch size to {batch}\n"

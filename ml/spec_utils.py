@@ -1215,7 +1215,7 @@ def align_audio(file1: str,
     #print('Final: ', np.abs(wav_sub).mean())
     wav_sub = np.clip(wav_sub, -1, +1)
     
-    command_Text(f"Saving inverted track... ")
+    command_Text("Saving inverted track...\n")
 
     if is_save_aligned or is_spec_match:
         wav1 = match_mono_array_shapes(wav1, wav_sub) if is_mono else match_array_shapes(wav1, wav_sub, is_swap=True)

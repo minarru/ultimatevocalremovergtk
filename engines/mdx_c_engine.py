@@ -39,7 +39,7 @@ from .mdx_c import (
     mdx_vocal_split_chain_sources,
     select_roformer_ola_window,
 )
-from .mdx_classic_batch import next_batch_after_oom
+from .mdx_classic_batch import mdx_oom_reduce_batch_message, next_batch_after_oom
 from .mix import prepare_mix
 from .orchestration import process_secondary_model
 from .vr_utils import vr_denoiser
@@ -584,7 +584,7 @@ class SeperateMDXC(SeperateAttributes):
                                 raise
                             batch_size = smaller
                             self.write_to_console(
-                                f"CUDA OOM — reducing MDX batch size to {batch_size}"
+                                mdx_oom_reduce_batch_message(batch_size)
                             )
                             continue
                         if torch.is_tensor(x) and x.dtype != torch.float32:
@@ -775,7 +775,7 @@ class SeperateMDXC(SeperateAttributes):
                                     sub_batch = smaller
                                     batch_size = smaller
                                     self.write_to_console(
-                                        f"CUDA OOM — reducing MDX batch size to {batch_size}"
+                                        mdx_oom_reduce_batch_message(batch_size)
                                     )
                                     continue
                                 if torch.is_tensor(x) and x.dtype != torch.float32:

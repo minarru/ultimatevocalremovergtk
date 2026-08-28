@@ -508,6 +508,19 @@ def _format_mmss(seconds: float) -> str:
     return f"{minutes}:{secs:02d}"
 
 
+def overlay_progress_detail(detail: Optional[str]) -> Optional[str]:
+    """Keep only compact File/Chunk status for the floating progress label."""
+    if not detail:
+        return None
+    kept: List[str] = []
+    for part in detail.split(" · "):
+        if part.startswith("File ") or part.startswith("Chunk "):
+            kept.append(part)
+        elif part == "Preparing sample clips":
+            kept.append(part)
+    return " · ".join(kept) or None
+
+
 _LOCAL_INFER_SPAN = _LOCAL_SAVE_START - _LOCAL_LOAD_END
 
 
@@ -756,8 +769,9 @@ class ProgressEtaTracker:
 
         def _with_detail(label: str) -> str:
             parts = [elapsed_part, label]
-            if self._detail:
-                parts.append(self._detail)
+            compact = overlay_progress_detail(self._detail)
+            if compact:
+                parts.append(compact)
             return " · ".join(parts)
 
         if phase == "loading":
@@ -781,8 +795,9 @@ class ProgressEtaTracker:
             display = self._held_display
         percent = int(round(display * 100))
         parts = [f"{percent}%", elapsed_part]
-        if self._detail:
-            parts.append(self._detail)
+        compact = overlay_progress_detail(self._detail)
+        if compact:
+            parts.append(compact)
         raw = self._raw_remaining(fraction, clock)
         smoothed = self._smooth_remaining(raw)
         if smoothed is not None:
