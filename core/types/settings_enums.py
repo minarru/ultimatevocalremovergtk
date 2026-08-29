@@ -23,6 +23,15 @@ class Mp3Bitrate(str, Enum):
     K320 = "320k"
 
 
+class OpusBitrate(str, Enum):
+    K64 = "64k"
+    K96 = "96k"
+    K128 = "128k"
+    K160 = "160k"
+    K192 = "192k"
+    K256 = "256k"
+
+
 class FlacBitDepth(str, Enum):
     BIT_16 = "16-bit"
     BIT_24 = "24-bit"
@@ -136,6 +145,7 @@ __all__ = [
     "ManualEnsembleOption",
     "MdxDenoiseOption",
     "Mp3Bitrate",
+    "OpusBitrate",
     "PhaseShiftsOpt",
     "TimeWindow",
     "WavType",

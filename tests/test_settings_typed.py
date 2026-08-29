@@ -5,7 +5,8 @@ import unittest
 
 from core.settings import SETTINGS_SCHEMA_VERSION, Settings
 from core.settings.coerce import coerce_field
-from core.types import Stem
+from core.types import SaveFormat, Stem
+from core.types.settings_enums import FlacBitDepth, OpusBitrate
 
 
 class TypedSettingsTests(unittest.TestCase):
@@ -18,6 +19,29 @@ class TypedSettingsTests(unittest.TestCase):
         self.assertEqual(restored.process.save_format, settings.process.save_format)
         self.assertEqual(restored.ensemble.type, settings.ensemble.type)
         self.assertEqual(json.loads(json.dumps(payload)), payload)
+
+    def test_export_defaults_to_flac_16bit(self):
+        settings = Settings.defaults()
+        self.assertIs(settings.process.save_format, SaveFormat.FLAC)
+        self.assertIs(settings.process.flac_bit_depth, FlacBitDepth.BIT_16)
+        payload = settings.to_json_dict()["process"]
+        self.assertEqual(payload["save_format"], "FLAC")
+        self.assertEqual(payload["flac_bit_depth"], "16-bit")
+        restored = Settings.from_json_dict({"process": {}})
+        self.assertIs(restored.process.save_format, SaveFormat.FLAC)
+        self.assertIs(restored.process.flac_bit_depth, FlacBitDepth.BIT_16)
+
+    def test_opus_bitrate_defaults_to_192k(self):
+        settings = Settings.defaults()
+        self.assertIs(settings.process.opus_bitrate, OpusBitrate.K192)
+        self.assertEqual(settings.to_json_dict()["process"]["opus_bitrate"], "192k")
+        restored = Settings.from_json_dict({"process": {}})
+        self.assertIs(restored.process.opus_bitrate, OpusBitrate.K192)
+
+    def test_flat_opus_bit_set_round_trips(self):
+        settings = Settings.from_flat({"opus_bit_set": "128k"})
+        self.assertIs(settings.process.opus_bitrate, OpusBitrate.K128)
+        self.assertEqual(settings.get("opus_bit_set"), "128k")
 
     def test_flat_get_set_gpu_conversion(self):
         settings = Settings.defaults()

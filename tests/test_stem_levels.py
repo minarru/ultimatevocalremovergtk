@@ -67,6 +67,7 @@ class FormatClipTests(unittest.TestCase):
         self.assertTrue(export_format_can_clip("WAV", "PCM_16"))
         self.assertTrue(export_format_can_clip("FLAC", "PCM_16"))
         self.assertTrue(export_format_can_clip("MP3", "320k"))
+        self.assertTrue(export_format_can_clip("OPUS", "192k"))
 
 
 if __name__ == "__main__":

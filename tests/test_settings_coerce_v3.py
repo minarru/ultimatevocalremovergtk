@@ -15,6 +15,7 @@ from core.types import ProcessMethod, SaveFormat
 from core.types.settings_enums import (
     ColorScheme,
     MdxDenoiseOption,
+    OpusBitrate,
     WavType,
 )
 
@@ -69,11 +70,14 @@ class EnumCoerceTests(unittest.TestCase):
             MdxDenoiseOption.STANDARD,
         )
         self.assertEqual(coerce_field("ui", "color_scheme", "dark"), ColorScheme.DARK)
+        self.assertEqual(coerce_field("process", "save_format", "OPUS"), SaveFormat.OPUS)
+        self.assertEqual(coerce_field("process", "opus_bitrate", "128k"), OpusBitrate.K128)
 
     def test_unknown_fails_soft_to_default(self) -> None:
         self.assertEqual(coerce_field("process", "method", "not-a-method"), ProcessMethod.MDX)
-        self.assertEqual(coerce_field("process", "save_format", "AIFF"), SaveFormat.WAV)
+        self.assertEqual(coerce_field("process", "save_format", "AIFF"), SaveFormat.FLAC)
         self.assertEqual(coerce_field("process", "wav_type", "bogus"), WavType.PCM_16)
+        self.assertEqual(coerce_field("process", "opus_bitrate", "bogus"), OpusBitrate.K192)
 
 
 class EnumValueTests(unittest.TestCase):
@@ -82,6 +86,7 @@ class EnumValueTests(unittest.TestCase):
     def test_unwraps_settings_enums(self) -> None:
         self.assertEqual(enum_value(WavType.PCM_24), "PCM_24")
         self.assertEqual(enum_value(ColorScheme.DARK), "dark")
+        self.assertEqual(enum_value(OpusBitrate.K192), "192k")
         self.assertEqual(enum_value("pair.karaoke"), "pair.karaoke")
 
     def test_passes_through_non_enums(self) -> None:

@@ -20,6 +20,7 @@ from core.types.settings_enums import (
     ManualEnsembleOption,
     MdxDenoiseOption,
     Mp3Bitrate,
+    OpusBitrate,
     PhaseShiftsOpt,
     TimeWindow,
     WavType,
@@ -325,9 +326,10 @@ _STEM_FOCUS_FIELDS = frozenset({("process", "stem_focus")})
 # (section, field) → (enum type, default member)
 _ENUM_FIELDS: dict[tuple[str, str], tuple[type[Enum], Enum]] = {
     ("process", "method"): (ProcessMethod, ProcessMethod.MDX),
-    ("process", "save_format"): (SaveFormat, SaveFormat.WAV),
+    ("process", "save_format"): (SaveFormat, SaveFormat.FLAC),
     ("process", "wav_type"): (WavType, WavType.PCM_16),
     ("process", "mp3_bitrate"): (Mp3Bitrate, Mp3Bitrate.K320),
+    ("process", "opus_bitrate"): (OpusBitrate, OpusBitrate.K192),
     ("process", "flac_bit_depth"): (FlacBitDepth, FlacBitDepth.BIT_16),
     ("process", "deverb_vocal_opt"): (
         DeverbVocalOpt,

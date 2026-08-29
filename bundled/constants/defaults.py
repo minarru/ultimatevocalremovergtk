@@ -1,4 +1,4 @@
-from .formats import WAV
+from .formats import FLAC
 from .stems import ALL_STEMS
 from .process import AUDIO_TOOL_OPTIONS, AUTO_PHASE, AUTO_SELECT, CHUNKS, DEFAULT, DEF_OPT, DEMUCS_OVERLAP, DEMUCS_SEGMENTS, MANUAL_ENSEMBLE_OPTIONS, MDX_ARCH_TYPE, MDX_OVERLAP, NONE_P
 from .messages import CHOOSE_MODEL, NO_MODEL
@@ -105,9 +105,10 @@ DEFAULT_DATA = {
         'is_wav_ensemble': False,
         'is_create_model_folder': False,
         'mp3_bit_set': '320k',#
+        'opus_bit_set': '192k',#
         'flac_bit_set': '16-bit',#
         'semitone_shift': '0',#
-        'save_format': WAV,
+        'save_format': FLAC,
         'wav_type_set': 'PCM_16',
         'device_set': DEFAULT,
         'export_path': '',

@@ -22,6 +22,7 @@ FLAT_TO_PATH: dict[str, tuple[str, str]] = {
     "save_format": ("process", "save_format"),
     "wav_type_set": ("process", "wav_type"),
     "mp3_bit_set": ("process", "mp3_bitrate"),
+    "opus_bit_set": ("process", "opus_bitrate"),
     "flac_bit_set": ("process", "flac_bit_depth"),
     "export_path": ("process", "export_path"),
     "input_paths": ("process", "input_paths"),

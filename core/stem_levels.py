@@ -106,7 +106,7 @@ def export_format_can_clip(
 ) -> bool:
     """True when the configured export format cannot store peaks above 1.0."""
     fmt = (save_format or "").upper()
-    if fmt in {"FLAC", "MP3"}:
+    if fmt in {"FLAC", "MP3", "OPUS"}:
         return True
     if fmt == "WAV":
         return wav_type_set not in {"32-bit Float", "64-bit Float"}

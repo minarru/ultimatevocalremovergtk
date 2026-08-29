@@ -49,18 +49,29 @@ def replace_audio_suffix(path: str, new_suffix: str) -> str:
     return f"{path}{new_suffix}"
 
 
+def opus_export_parameters() -> list[str]:
+    """Return ffmpeg parameters for Opus export via pydub.
+
+    Opus cannot encode 44.1 kHz; ``-ar 48000`` makes the resample explicit.
+    ``-vbr on`` is libopus's default; the pydub ``bitrate`` is a target.
+    """
+    return ["-application", "audio", "-vbr", "on", "-ar", "48000"]
+
+
 def save_format(
     audio_path: str,
     save_format_sel: str,
     mp3_bit_set: str,
     flac_bit_set: str = "16-bit",
+    opus_bit_set: str = "192k",
 ) -> str:
     """Torch-free port of ``separate.save_format``.
 
-    FLAC prefers a direct libsndfile rewrite; MP3 still goes through ``pydub``
-    so bitrate strings stay exact. Intermediate WAV is removed on success.
+    FLAC prefers a direct libsndfile rewrite; MP3 and Opus still go through
+    ``pydub`` so bitrate strings stay exact. Intermediate WAV is removed on
+    success.
     """
-    from bundled.constants import FLAC, MP3
+    from bundled.constants import FLAC, MP3, OPUS
 
     if not os.path.isfile(audio_path):
         raise AudioExportError(f"Source audio export is missing: {audio_path}")
@@ -68,7 +79,7 @@ def save_format(
     if save_format_sel == WAV:
         return audio_path
 
-    if save_format_sel not in (FLAC, MP3):
+    if save_format_sel not in (FLAC, MP3, OPUS):
         raise AudioExportError(f"Unsupported audio export format: {save_format_sel!r}")
 
     from .debug_log import debug
@@ -126,10 +137,8 @@ def save_format(
         debug("audio", message)
         raise AudioExportError(message) from exc
 
-    output_path = replace_audio_suffix(
-        audio_path,
-        ".flac" if save_format_sel == FLAC else ".mp3",
-    )
+    suffixes = {FLAC: ".flac", MP3: ".mp3", OPUS: ".opus"}
+    output_path = replace_audio_suffix(audio_path, suffixes[save_format_sel])
     try:
         if save_format_sel == FLAC:
             audio_segment.export(
@@ -147,6 +156,14 @@ def save_format(
                 )
             except Exception:  # noqa: BLE001 - fall back to default codec like UVR
                 audio_segment.export(output_path, format="mp3", bitrate=mp3_bit_set)
+        elif save_format_sel == OPUS:
+            audio_segment.export(
+                output_path,
+                format="opus",
+                bitrate=enum_value(opus_bit_set),
+                codec="libopus",
+                parameters=opus_export_parameters(),
+            )
     except Exception as exc:  # noqa: BLE001 - surfaced via missing output file
         message = (
             f"Audio export failed for {os.path.basename(audio_path)!r} as {save_format_sel}: "

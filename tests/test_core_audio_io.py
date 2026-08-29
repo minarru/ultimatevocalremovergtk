@@ -18,6 +18,27 @@ from core.settings import Settings
 _REPO = Path(__file__).resolve().parents[1]
 
 
+def _ffmpeg_has_libopus() -> bool:
+    import subprocess
+
+    from core.external_tools import resolve_ffmpeg
+
+    path = resolve_ffmpeg()
+    if not path:
+        return False
+    try:
+        completed = subprocess.run(
+            [path, "-hide_banner", "-encoders"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return "libopus" in completed.stdout
+
+
 class SaveFormatHomeTests(unittest.TestCase):
     def test_run_loop_imports_audio_io_save_format(self) -> None:
         source = (_REPO / "core" / "run_loop.py").read_text(encoding="utf-8")
@@ -101,6 +122,71 @@ class SaveFormatFlacTests(unittest.TestCase):
     ):
         with self.assertRaisesRegex(RuntimeError, "ffmpeg"):
             save_format("/tmp/stem.wav", "MP3", "320k")
+
+
+class OpusExportTests(unittest.TestCase):
+    @patch("core.external_tools.configure_pydub_ffmpeg", return_value=None)
+    @patch("os.path.isfile", return_value=True)
+    def test_missing_opus_encoder_is_an_export_failure(
+        self, _isfile: typing.Any, _configure: typing.Any
+    ) -> None:
+        with self.assertRaisesRegex(RuntimeError, "ffmpeg"):
+            save_format("/tmp/stem.wav", "OPUS", "320k", opus_bit_set="192k")
+
+    @patch("pydub.AudioSegment")
+    @patch("os.remove")
+    @patch("os.path.isfile", return_value=True)
+    def test_opus_export_uses_libopus_target_bitrate(
+        self,
+        _isfile: typing.Any,
+        remove: typing.Any,
+        audio_segment_cls: typing.Any,
+    ) -> None:
+        segment = MagicMock()
+        audio_segment_cls.from_wav.return_value = segment
+
+        output = save_format("/tmp/stem.wav", "OPUS", "320k", opus_bit_set="128k")
+
+        segment.export.assert_called_once_with(
+            "/tmp/stem.opus",
+            format="opus",
+            bitrate="128k",
+            codec="libopus",
+            parameters=["-application", "audio", "-vbr", "on", "-ar", "48000"],
+        )
+        remove.assert_called_once_with("/tmp/stem.wav")
+        self.assertEqual(output, "/tmp/stem.opus")
+
+    @patch("pydub.AudioSegment")
+    @patch("os.remove")
+    @patch("os.path.isfile", return_value=True)
+    def test_opus_export_defaults_to_192k_target(
+        self,
+        _isfile: typing.Any,
+        _remove: typing.Any,
+        audio_segment_cls: typing.Any,
+    ) -> None:
+        segment = MagicMock()
+        audio_segment_cls.from_wav.return_value = segment
+
+        save_format("/tmp/stem.wav", "OPUS", "320k")
+
+        self.assertEqual(segment.export.call_args.kwargs["bitrate"], "192k")
+
+    @unittest.skipUnless(_ffmpeg_has_libopus(), "ffmpeg with libopus is required")
+    def test_opus_export_writes_ogg_opus_container(self) -> None:
+        import numpy as np
+        import soundfile as sf
+
+        with tempfile.TemporaryDirectory() as folder:
+            wav_path = os.path.join(folder, "stem.wav")
+            sf.write(wav_path, np.zeros((2205, 2), dtype=np.float32), 44100)
+            output = save_format(wav_path, "OPUS", "320k", opus_bit_set="192k")
+            self.assertEqual(output, os.path.join(folder, "stem.opus"))
+            self.assertTrue(os.path.isfile(output))
+            self.assertFalse(os.path.isfile(wav_path))
+            with open(output, "rb") as handle:
+                self.assertEqual(handle.read(4), b"OggS")
 
 
 class ResolveWavTypeSetTests(unittest.TestCase):

@@ -12,7 +12,7 @@ from typing import Any, Optional, Sequence
 
 from core.settings.coerce import enum_value
 from core.settings.access import parse_setting_assignment
-from core.types import FlacBitDepth, Mp3Bitrate, SaveFormat, WavType
+from core.types import FlacBitDepth, Mp3Bitrate, OpusBitrate, SaveFormat, WavType
 
 # dest -> settings path for symmetric BooleanOptionalAction flags.
 _BOOL_FLAG_PATHS: dict[str, str] = {
@@ -30,6 +30,7 @@ _VALUE_FLAG_PATHS: dict[str, str] = {
     "format": "process.save_format",
     "wav_type": "process.wav_type",
     "mp3_bitrate": "process.mp3_bitrate",
+    "opus_bitrate": "process.opus_bitrate",
     "flac_depth": "process.flac_bit_depth",
     "sample_seconds": "process.sample_mode_duration",
 }
@@ -69,6 +70,12 @@ def add_process_args(parser: argparse.ArgumentParser) -> None:
         choices=[rate.value for rate in Mp3Bitrate],
         default=None,
         help="MP3 bitrate",
+    )
+    output.add_argument(
+        "--opus-bitrate",
+        choices=[rate.value for rate in OpusBitrate],
+        default=None,
+        help="Opus target bitrate",
     )
     output.add_argument(
         "--flac-depth",

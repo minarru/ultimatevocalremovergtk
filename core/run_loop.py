@@ -180,6 +180,7 @@ def _write_captured_stems(
     save_format_name: typing.Any,
     mp3_bit_set: typing.Any,
     flac_bit_set: typing.Any,
+    opus_bit_set: typing.Any = "192k",
 ) -> None:
     """Write deferred stem arrays to their original export paths."""
     import soundfile as sf
@@ -208,7 +209,7 @@ def _write_captured_stems(
             )
             continue
         sf.write(path, wave, 44100, subtype=wav_type_set)
-        save_format(path, save_format_name, mp3_bit_set, flac_bit_set)
+        save_format(path, save_format_name, mp3_bit_set, flac_bit_set, opus_bit_set)
 
 
 @dataclass

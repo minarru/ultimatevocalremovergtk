@@ -41,3 +41,13 @@ class ProcessFlagTests(unittest.TestCase):
         settings = Settings.defaults()
         for path in (*_BOOL_FLAG_PATHS.values(), *_VALUE_FLAG_PATHS.values()):
             validate_setting_path(settings, path)
+
+    def test_opus_format_and_bitrate_compile(self) -> None:
+        args = self.parse(["--format", "OPUS", "--opus-bitrate", "128k"])
+        self.assertEqual(
+            dict(collect_overrides(args)),
+            {
+                "process.save_format": "OPUS",
+                "process.opus_bitrate": "128k",
+            },
+        )
