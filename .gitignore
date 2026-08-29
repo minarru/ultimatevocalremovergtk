@@ -131,5 +131,11 @@ resources/icons/scalable/actions/cross-small-symbolic.svg
 docs/plans/
 docs/reviews/
 
+# Superpowers plans/specs: recorded on the `dev` branch with `git add -f`.
+# Ignored so feature branches targeting main do not pick them up. Drop these
+# directories when merging `dev` into `main` (see docs/superpowers/README.md).
+docs/superpowers/plans/
+docs/superpowers/specs/
+
 # Git worktrees (local isolation)
 .worktrees/

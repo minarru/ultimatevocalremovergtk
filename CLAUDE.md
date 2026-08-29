@@ -207,6 +207,12 @@ Three command entry points under `scripts/`, plus `model_tool_support.py` and th
 
 Push to `origin` (**GitHub**: `minarru/ultimatevocalremovergtk`) only. Prefer `gh pr create` / `gh pr merge` for review. The former Codeberg remote may exist locally as `codeberg` until you remove it after archive.
 
+The **`dev`** branch holds in-progress work that is not ready for `main`. Superpowers
+plans and specs under `docs/superpowers/plans/` and `docs/superpowers/specs/` stay
+on `dev` only: gitignore them on feature branches, `git add -f` them on `dev`, and
+strip those directories when merging `dev` into `main`. See
+[docs/superpowers/README.md](docs/superpowers/README.md).
+
 CI is **GitHub Actions** in [`.github/workflows/`](.github/workflows/). `test.yml` runs unittest + basedpyright on push/PR to `main`. `release.yml` fires on `v*` tags and **asserts the tag equals all three version strings**: `VERSION` in [__version__.py](__version__.py), and `latest_version` in both [packaging/release.json](packaging/release.json) and [bundled/release.json](bundled/release.json). Bump all four together or the release check fails.
 
 ```bash
