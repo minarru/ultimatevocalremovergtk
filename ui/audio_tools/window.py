@@ -694,10 +694,22 @@ class AudioToolsPage:
     def _on_audio_banner_clicked(self, *_args: typing.Any) -> None:
         if self._banner_mode == "apollo":
             # Apollo models are downloadable now, so the empty state sends users
-            # to the Download Center. Manual placement stays available via the
-            # folder button in the Apollo group header (shown once a model
-            # exists) and the Download Center's own "Open models folder".
-            self.window.activate_action("win.download", None)
+            # to Restore with the Apollo network filter. Manual placement stays
+            # available via the folder button in the Apollo group header (shown
+            # once a model exists) and the Download Center's own
+            # "Open models folder".
+            from bundled.constants import APOLLO_ARCH_TYPE
+            from core.model_scores import download_center_hint_for_method
+
+            from ..download import open_download_center
+
+            purpose, arch = download_center_hint_for_method(APOLLO_ARCH_TYPE)
+            open_download_center(
+                self.window,
+                self.context,
+                purpose=purpose,
+                arch=arch,
+            )
         elif self._banner_mode == "dual":
             self._on_open_dual_editor()
 

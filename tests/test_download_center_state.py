@@ -9,10 +9,10 @@ Covers two fixes:
 """
 
 from __future__ import annotations
-import typing
 
 import os
 import threading
+import typing
 import unittest
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
@@ -35,8 +35,9 @@ class DownloadCenterStateTests(unittest.TestCase):
         cls._app.register()
 
     def _make_bare_window(self):
-        from core.model_scores import PURPOSE_ALL, SORT_NAME
         from gi.repository import Adw, Gtk
+
+        from core.model_scores import ARCH_FILTER_ALL, PURPOSE_ALL, SORT_NAME
         from ui.download_center import _NETWORKS, DownloadCenterWindow
 
         # Derived from _NETWORKS rather than hardcoded so adding a network tab
@@ -54,6 +55,7 @@ class DownloadCenterStateTests(unittest.TestCase):
         win._refreshing = False
         win._sort_mode = SORT_NAME
         win._purpose = PURPOSE_ALL
+        win._arch_filter = ARCH_FILTER_ALL
         win._row_checks = {}
         win._row_actions = {}
         win._size_lookup_ids = {}

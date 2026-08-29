@@ -29,15 +29,29 @@ from core.model_catalogue import (
 from core.model_identity import FAMILY_BY_ARCH
 from core.model_naming import canonical_display_name
 from core.model_scores import (
+    ARCH_FILTER_ALL,
+    MDX_NETWORK_SUBTYPES,
+    NETWORK_FILTER_OPTIONS,
     PURPOSE_ALL,
     PURPOSE_FILTER_OPTIONS,
+    PURPOSE_INSTRUMENTAL,
+    PURPOSE_PAGE_OPTIONS,
+    PURPOSE_VOCALS,
     SORT_NAME,
     SORT_OPTIONS,
     SORT_SDR,
+    catalogue_network_id,
+    family_arch_for_network_filter,
     format_sdr_subtitle,
+    label_matches_purpose,
+    network_filter_hides_headers,
+    network_filter_matches,
     parse_sdr_score,
     primary_sdr,
     purpose_for_label,
+    purpose_pages_for_label,
+    purpose_roles_from_meta,
+    purpose_roles_from_projection,
     sdr_for_files,
 )
 
@@ -54,11 +68,17 @@ _NETWORKS = [
     ("MDX-Net", MDX_ARCH_TYPE),
     ("Demucs", DEMUCS_ARCH_TYPE),
     # Apollo models are restoration (Audio Tools), not separation networks, but
-    # they share the catalogue/queue plumbing so they get their own tab.
+    # they share the catalogue/queue plumbing so they stay in the network filter.
     ("Apollo", APOLLO_ARCH_TYPE),
 ]
 
-_CLAMP_MAX_WIDTH = 800
+_ARCH_FILTER_OPTIONS = NETWORK_FILTER_OPTIONS
+
+_ARCH_ORDER = {
+    value: index
+    for index, (value, _label) in enumerate(NETWORK_FILTER_OPTIONS)
+    if value != ARCH_FILTER_ALL
+}
 
 
 def catalogue_semantics_subtitle(meta: typing.Any) -> str:
@@ -77,14 +97,33 @@ def catalogue_semantics_subtitle(meta: typing.Any) -> str:
         ordered = sorted(routes, key=lambda route: not route.logical_primary)
         stems = ", ".join(route.display for route in ordered)
         intent = str(getattr(meta, "intent", "") or "")
-        purpose_bucket = purpose_for_label(
+        primary_role, output_roles = purpose_roles_from_projection(projection)
+        pages = purpose_pages_for_label(
             str(getattr(meta, "label", "") or ""),
             intent=intent,
+            arch=str(getattr(meta, "arch", "") or ""),
+            primary_role=primary_role,
+            output_roles=output_roles,
         )
-        purpose = next(
-            (label for value, label in PURPOSE_FILTER_OPTIONS if value == purpose_bucket),
-            "Reviewed",
-        )
+        if pages == frozenset({PURPOSE_VOCALS, PURPOSE_INSTRUMENTAL}):
+            purpose = "Vocals & instrumental"
+        else:
+            page = next(iter(pages), "")
+            purpose = next(
+                (label for value, label in PURPOSE_PAGE_OPTIONS if value == page),
+                next(
+                    (
+                        label
+                        for value, label in PURPOSE_FILTER_OPTIONS
+                        if value
+                        == purpose_for_label(
+                            str(getattr(meta, "label", "") or ""),
+                            intent=intent,
+                        )
+                    ),
+                    "Reviewed",
+                ),
+            )
         return f"{purpose} · {stems}"
     if evidence_value == "pending":
         return "Loading output details…"
@@ -107,6 +146,9 @@ def catalogue_matches(
     *,
     purpose: str = PURPOSE_ALL,
     intents: typing.Mapping[str, str] | None = None,
+    arches: typing.Mapping[str, str] | None = None,
+    primary_roles: typing.Mapping[str, str] | None = None,
+    output_roles: typing.Mapping[str, typing.Sequence[str]] | None = None,
 ) -> list[str]:
     """Return selectable catalogue names matching query and purpose filter.
 
@@ -118,6 +160,9 @@ def catalogue_matches(
         query,
         purpose=purpose,
         intents=dict(intents or {}),
+        arches=dict(arches or {}),
+        primary_roles=dict(primary_roles or {}),
+        output_roles={label: tuple(roles) for label, roles in (output_roles or {}).items()},
         sentinels=(NO_NEW_MODELS, NO_CONNECTION),
     )
 
@@ -162,7 +207,8 @@ class DownloadCenterWindow:
         self._list_boxes: dict[str, Gtk.ListBox] = {}
         self._empty_pages: dict[str, Adw.StatusPage] = {}
         self._stack_pages: dict[str, Adw.ViewStackPage] = {}
-        self._purpose = PURPOSE_ALL
+        self._purpose = PURPOSE_VOCALS
+        self._arch_filter = ARCH_FILTER_ALL
         self._sort_mode = SORT_NAME
         self._hide_unsupported = False
         self._stem_refresh_armed = False
@@ -216,18 +262,14 @@ class DownloadCenterWindow:
 
         if hasattr(Adw, "InlineViewSwitcher"):
             self.stack = Adw.ViewStack()
-            self.stack.set_vexpand(True)
-            self.stack.set_hexpand(True)
             if hasattr(self.stack, "set_enable_transitions"):
-                self.stack.set_enable_transitions(True)
+                self.stack.set_enable_transitions(False)
             self.switcher = Adw.InlineViewSwitcher()
             self.switcher.set_stack(self.stack)
             self.switcher.set_display_mode(Adw.InlineViewSwitcherDisplayMode.LABELS)
-            self.switcher.set_homogeneous(True)
+            self.switcher.set_homogeneous(False)
         else:
             self.stack = Gtk.Stack()
-            self.stack.set_vexpand(True)
-            self.stack.set_hexpand(True)
             self.stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
             self.switcher = Gtk.StackSwitcher()
             self.switcher.set_stack(self.stack)
@@ -244,20 +286,21 @@ class DownloadCenterWindow:
 
         toolbar.add_top_bar(header)
 
-        for label, arch in _NETWORKS:
-            page = self._build_catalogue_page(arch, label)
-            self.stack.add_titled(page, arch, label)
+        for value, label in PURPOSE_PAGE_OPTIONS:
+            placeholder = Gtk.Box()
+            self.stack.add_titled(placeholder, value, label)
             if isinstance(self.stack, Adw.ViewStack):
-                self._stack_pages[arch] = self.stack.get_page(page)
-        self.stack.connect("notify::visible-child-name", self._on_catalogue_tab_changed)
+                self._stack_pages[value] = self.stack.get_page(placeholder)
+        self.stack.set_visible_child_name(PURPOSE_VOCALS)
+        self._purpose = PURPOSE_VOCALS
 
         filter_group = Adw.PreferencesGroup()
         set_inset(filter_group, start=12, end=12, top=6)
-        purpose_labels = [label for _value, label in PURPOSE_FILTER_OPTIONS]
-        self.purpose_row = make_combo_row("Purpose", purpose_labels)
-        self.purpose_row.connect("notify::selected", self._on_purpose_changed)
-        set_combo_value(self.purpose_row, PURPOSE_FILTER_OPTIONS[0][1])
-        filter_group.add(self.purpose_row)
+        arch_labels = [label for _value, label in _ARCH_FILTER_OPTIONS]
+        self.arch_row = make_combo_row("Network", arch_labels)
+        self.arch_row.connect("notify::selected", self._on_arch_filter_changed)
+        set_combo_value(self.arch_row, _ARCH_FILTER_OPTIONS[0][1])
+        filter_group.add(self.arch_row)
         sort_labels = [label for _value, label in SORT_OPTIONS]
         self.sort_row = make_combo_row("Sort", sort_labels)
         self.sort_row.connect("notify::selected", self._on_sort_changed)
@@ -304,31 +347,28 @@ class DownloadCenterWindow:
 
         body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         body.set_vexpand(True)
-        body.append(filter_group)
+        self.stack.set_visible(False)
         body.append(self.stack)
+        body.append(filter_group)
+        body.append(self._build_catalogue_page())
         body.append(action_dock)
 
-        clamp = Adw.Clamp(child=body, maximum_size=_CLAMP_MAX_WIDTH)
-        clamp.set_vexpand(True)
-        clamp.set_hexpand(True)
-
-        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
-        content.set_vexpand(True)
-        content.append(clamp)
-
-        toolbar.set_content(content)
+        toolbar.set_content(body)
+        self.stack.connect("notify::visible-child-name", self._on_catalogue_tab_changed)
         return toolbar
 
-    def _build_catalogue_page(self, arch: str, network_label: str) -> Gtk.Widget:
+    def _build_catalogue_page(self) -> Gtk.Widget:
         page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         set_inset(page, top=6, start=12, end=12)
 
         search = Gtk.SearchEntry()
-        search.set_placeholder_text(f"Search {network_label} models")
-        search.connect("search-changed", self._on_search_changed, arch)
+        search.set_placeholder_text("Search models")
+        search.connect("search-changed", self._on_search_changed)
         search.set_hexpand(True)
         page.append(search)
-        self._search_entries[arch] = search
+        self._search_entry = search
+        for _label, arch in _NETWORKS:
+            self._search_entries[arch] = search
 
         empty_page = Adw.StatusPage(
             icon_name="network-offline-symbolic",
@@ -343,55 +383,117 @@ class DownloadCenterWindow:
         retry.connect("clicked", lambda *_: self.start_refresh())
         empty_page.set_child(retry)
         page.append(empty_page)
-        self._empty_pages[arch] = empty_page
+        self._empty_page = empty_page
+        for _label, arch in _NETWORKS:
+            self._empty_pages[arch] = empty_page
 
         list_box = Gtk.ListBox()
         list_box.set_selection_mode(Gtk.SelectionMode.NONE)
         list_box.add_css_class("boxed-list")
-        list_box.set_filter_func(lambda row, a=arch: self._row_matches_filter(row, a))
+        list_box.set_filter_func(self._row_matches_filter)
         list_box.set_sort_func(lambda r1, r2: self._compare_rows(r1, r2))
+        list_box.set_header_func(self._list_header)
         scroller = Gtk.ScrolledWindow(vexpand=True, hexpand=True)
         scroller.set_child(list_box)
         page.append(scroller)
-        self._list_boxes[arch] = list_box
+        self._list_box = list_box
+        for _label, arch in _NETWORKS:
+            self._list_boxes[arch] = list_box
 
         return page
 
     def _catalogue_row_action(self, row: Gtk.ListBoxRow) -> Adw.ActionRow | None:
         return resolve_catalogue_action_row(row)
 
-    def _row_matches_filter(self, row: Gtk.ListBoxRow, arch: str) -> bool:
+    def _row_matches_filter(self, row: Gtk.ListBoxRow, arch: str | None = None) -> bool:
         action = self._catalogue_row_action(row)
         label = fetch(action, "_uvr_model_name", "") if action is not None else ""
         if not label:
             return False
         if self._hide_unsupported and fetch(action, "_uvr_unsupported", False):
             return False
-        intent = self._catalogue_intent(arch, label)
-        if (
-            self._purpose != PURPOSE_ALL
-            and purpose_for_label(label, intent=intent) != self._purpose
+        row_arch = str(arch or fetch(action, "_uvr_arch", "") or "")
+        row_network = str(fetch(action, "_uvr_network", "") or row_arch)
+        arch_filter = getattr(self, "_arch_filter", ARCH_FILTER_ALL)
+        if not network_filter_matches(
+            str(arch_filter or ARCH_FILTER_ALL),
+            family_arch=row_arch,
+            network=row_network,
         ):
             return False
-        search = self._search_entries.get(arch)
-        if search is None:
+        intent = self._catalogue_intent(row_arch, label) if row_arch else None
+        primary_role, output_roles = purpose_roles_from_meta(
+            self._catalogue_row_metadata(row_arch, label) if row_arch else None
+        )
+        if not label_matches_purpose(
+            label,
+            getattr(self, "_purpose", PURPOSE_ALL),
+            intent=intent,
+            arch=row_arch,
+            primary_role=primary_role,
+            output_roles=output_roles,
+        ):
+            return False
+        query = self._search_query(row_arch)
+        if not query:
             return True
-        query = search.get_text().strip().casefold()
         reason = fetch(action, "_uvr_unsupported_reason", "")
         display = fetch(action, "_uvr_display_name", "")
         return catalogue_label_matches(str(label), query, extra=f"{display} {reason}".strip())
 
-    def _row_sort_key(self, row: typing.Any) -> tuple[int, int, float, str]:
-        """Order key: supported first, then the active sort mode, then name."""
+    def _search_query(self, arch: str = "") -> str:
+        entry = getattr(self, "_search_entry", None)
+        if entry is None:
+            entries = getattr(self, "_search_entries", {}) or {}
+            entry = entries.get(arch) if arch else None
+            if entry is None and entries:
+                entry = next(iter(entries.values()))
+        if entry is None:
+            return ""
+        return str(entry.get_text() or "").strip()
+
+    def _list_header(self, row: Gtk.ListBoxRow, before: Gtk.ListBoxRow | None) -> None:
+        if network_filter_hides_headers(getattr(self, "_arch_filter", ARCH_FILTER_ALL)):
+            row.set_header(None)
+            return
+        action = self._catalogue_row_action(row)
+        network = ""
+        if action is not None:
+            network = str(fetch(action, "_uvr_network", "") or fetch(action, "_uvr_arch", "") or "")
+        if before is not None:
+            previous = self._catalogue_row_action(before)
+            if previous is not None:
+                previous_network = str(
+                    fetch(previous, "_uvr_network", "") or fetch(previous, "_uvr_arch", "") or ""
+                )
+                if previous_network == network:
+                    row.set_header(None)
+                    return
+        heading = next(
+            (label for value, label in NETWORK_FILTER_OPTIONS if value == network),
+            next((label for label, value in _NETWORKS if value == network), ""),
+        )
+        if not heading:
+            row.set_header(None)
+            return
+        header = Gtk.Label(label=heading, xalign=0.0)
+        header.add_css_class("heading")
+        header.add_css_class("dim-label")
+        set_inset(header, start=12, top=8, bottom=4)
+        row.set_header(header)
+
+    def _row_sort_key(self, row: typing.Any) -> tuple[int, int, int, float, str]:
+        """Order key: supported first, network, then the active sort mode, then name."""
         unsupported = 1 if fetch(row, "_uvr_unsupported", False) else 0
+        network = fetch(row, "_uvr_network", "") or fetch(row, "_uvr_arch", "")
+        arch_order = _ARCH_ORDER.get(str(network), 99)
         name = fetch(row, "_uvr_sort_name", "")
         if self._sort_mode == SORT_SDR and not unsupported:
             sdr = fetch(row, "_uvr_sdr", None)
             if sdr is None:
-                # Unscored models sink below scored ones, as in the old sort.
-                return (unsupported, 1, 0.0, name)
-            return (unsupported, 0, -float(sdr), name)
-        return (unsupported, 0, 0.0, name)
+                return (unsupported, arch_order, 1, 0.0, name)
+            return (unsupported, arch_order, 0, -float(sdr), name)
+        return (unsupported, arch_order, 0, 0.0, name)
 
     def _compare_rows(self, row1: typing.Any, row2: typing.Any) -> int:
         left = self._row_sort_key(row1)
@@ -401,9 +503,11 @@ class DownloadCenterWindow:
         return 1 if left > right else 0
 
     def _invalidate_all_sorts(self) -> None:
-        for arch, list_box in self._list_boxes.items():
+        for list_box in self._unique_list_boxes():
             list_box.invalidate_sort()
-            self._update_catalogue_page_state(arch)
+            if hasattr(list_box, "invalidate_headers"):
+                list_box.invalidate_headers()
+        self._update_catalogue_page_state()
 
     def _on_hide_unsupported_changed(self, *_args: typing.Any) -> None:
         self._hide_unsupported = bool(self.hide_unsupported_row.get_active())
@@ -411,19 +515,18 @@ class DownloadCenterWindow:
         self._update_tab_counts()
         self._update_status_from_catalogue()
 
-    def _on_search_changed(self, entry: Gtk.SearchEntry, arch: str) -> None:
-        list_box = self._list_boxes.get(arch)
-        if list_box is not None:
+    def _on_search_changed(self, *_args: typing.Any) -> None:
+        for list_box in self._unique_list_boxes():
             list_box.invalidate_filter()
-        self._update_catalogue_page_state(arch)
+        self._update_catalogue_page_state()
         self._update_download_button()
         self._schedule_stem_yaml_fetches()
 
-    def _on_purpose_changed(self, *_args: typing.Any) -> None:
-        label = get_combo_value(self.purpose_row) or PURPOSE_FILTER_OPTIONS[0][1]
-        self._purpose = next(
-            (value for value, text in PURPOSE_FILTER_OPTIONS if text == label),
-            PURPOSE_ALL,
+    def _on_arch_filter_changed(self, *_args: typing.Any) -> None:
+        label = get_combo_value(self.arch_row) or _ARCH_FILTER_OPTIONS[0][1]
+        self._arch_filter = next(
+            (value for value, text in _ARCH_FILTER_OPTIONS if text == label),
+            ARCH_FILTER_ALL,
         )
         self._invalidate_all_filters()
         self._schedule_stem_yaml_fetches()
@@ -438,14 +541,55 @@ class DownloadCenterWindow:
         # filtering always has. Rebuilding dropped the selection.
         self._invalidate_all_sorts()
 
+    def _unique_list_boxes(self) -> list[Gtk.ListBox]:
+        seen: list[Gtk.ListBox] = []
+        for list_box in self._list_boxes.values():
+            if list_box not in seen:
+                seen.append(list_box)
+        extra = getattr(self, "_list_box", None)
+        if extra is not None and extra not in seen:
+            seen.append(extra)
+        return seen
+
     def _invalidate_all_filters(self) -> None:
-        for arch, list_box in self._list_boxes.items():
+        for list_box in self._unique_list_boxes():
             list_box.invalidate_filter()
-            self._update_catalogue_page_state(arch)
+            if hasattr(list_box, "invalidate_headers"):
+                list_box.invalidate_headers()
+        self._update_catalogue_page_state()
         self._update_download_button()
 
     def _on_catalogue_tab_changed(self, *_args: typing.Any) -> None:
-        self._update_download_button()
+        name = self.stack.get_visible_child_name()
+        known = {value for value, _label in PURPOSE_PAGE_OPTIONS}
+        if name in known:
+            self._purpose = str(name)
+        self._invalidate_all_filters()
+        self._update_tab_counts()
+        self._schedule_stem_yaml_fetches()
+
+    def select_catalogue(
+        self,
+        *,
+        purpose: str | None = None,
+        arch: str | None = None,
+    ) -> None:
+        """Show a purpose page and network filter (empty-state banner targeting)."""
+        known_pages = {value for value, _label in PURPOSE_PAGE_OPTIONS}
+        page = purpose or ""
+        if page in known_pages:
+            self._purpose = page
+            if self.stack.get_visible_child_name() != page:
+                self.stack.set_visible_child_name(page)
+        if arch is not None:
+            label = next(
+                (text for value, text in _ARCH_FILTER_OPTIONS if value == arch),
+                None,
+            )
+            if label is not None:
+                set_combo_value(self.arch_row, label)
+        self._invalidate_all_filters()
+        self._update_tab_counts()
 
     def _catalogue_row_metadata(self, arch: str, name: str) -> typing.Any:
         """Resolve one row without flattening equal labels across families."""
@@ -456,6 +600,31 @@ class DownloadCenterWindow:
             if name in family_metadata:
                 return family_metadata[name]
         return getattr(self.manager, "catalogue_meta", {}).get(name)
+
+    def _network_id_for_row(self, arch: str, name: str) -> str:
+        meta = self._catalogue_row_metadata(arch, name)
+        files: tuple[str, ...] = ()
+        if meta is not None:
+            raw_files = getattr(meta, "files", None) or {}
+            if isinstance(raw_files, dict):
+                files = tuple(str(key) for key in raw_files)
+        return catalogue_network_id(family_arch=arch, files=files, label=name)
+
+    def _names_matching_network(self, arch: str, names: list[str]) -> list[str]:
+        arch_filter = getattr(self, "_arch_filter", ARCH_FILTER_ALL)
+        if arch_filter in ("", ARCH_FILTER_ALL, None):
+            return list(names)
+        if str(arch_filter) not in MDX_NETWORK_SUBTYPES:
+            return list(names)
+        return [
+            name
+            for name in names
+            if network_filter_matches(
+                str(arch_filter),
+                family_arch=arch,
+                network=self._network_id_for_row(arch, name),
+            )
+        ]
 
     def _row_score(self, arch: str, name: str) -> tuple[str | None, float | None, str]:
         """Return ``(stem, sdr, stems_text)`` for a catalogue label.
@@ -497,6 +666,8 @@ class DownloadCenterWindow:
         # Identity stays the raw catalogue label: resolve()/download() key on it.
         stash(action, "_uvr_model_name", name)
         stash(action, "_uvr_display_name", display)
+        stash(action, "_uvr_arch", arch)
+        stash(action, "_uvr_network", self._network_id_for_row(arch, name))
         stash(action, "_uvr_check", check)
         stash(action, "_uvr_unsupported", False)
         stash(action, "_uvr_sdr", sdr)
@@ -524,6 +695,8 @@ class DownloadCenterWindow:
         action.set_sensitive(False)
         stash(action, "_uvr_model_name", name)
         stash(action, "_uvr_display_name", display)
+        stash(action, "_uvr_arch", arch)
+        stash(action, "_uvr_network", self._network_id_for_row(arch, name))
         stash(action, "_uvr_unsupported", True)
         stash(action, "_uvr_unsupported_reason", reason)
         stash(action, "_uvr_sdr", parse_sdr_score(name))
@@ -630,24 +803,45 @@ class DownloadCenterWindow:
                 selected.append((name, arch))
         return selected
 
-    def _selected_count_by_arch(self) -> dict[str, int]:
-        counts: dict[str, int] = {}
-        for (arch, _name), check in self._row_checks.items():
-            if check.get_active():
-                counts[arch] = counts.get(arch, 0) + 1
+    def _selected_count_by_purpose(self) -> dict[str, int]:
+        counts = {value: 0 for value, _label in PURPOSE_PAGE_OPTIONS}
+        for (arch, name), check in self._row_checks.items():
+            if not check.get_active():
+                continue
+            intent = self._catalogue_intent(arch, name)
+            primary_role, output_roles = purpose_roles_from_meta(
+                self._catalogue_row_metadata(arch, name)
+            )
+            for page in purpose_pages_for_label(
+                name,
+                intent=intent,
+                arch=arch,
+                primary_role=primary_role,
+                output_roles=output_roles,
+            ):
+                if page in counts:
+                    counts[page] += 1
         return counts
 
     def _update_tab_badges(self) -> None:
         if not self._stack_pages:
             return
-        selected = self._selected_count_by_arch()
-        for _label, arch in _NETWORKS:
-            page = self._stack_pages.get(arch)
+        selected = self._selected_count_by_purpose()
+        for value, _label in PURPOSE_PAGE_OPTIONS:
+            page = self._stack_pages.get(value)
             if page is not None:
-                count = selected.get(arch, 0)
+                count = selected.get(value, 0)
                 page.set_badge_number(count)
-                # Accent badge styling requires needs-attention (see indicatorbin CSS).
                 page.set_needs_attention(count > 0)
+
+    def _filter_archs(self) -> list[str]:
+        arch_filter = getattr(self, "_arch_filter", ARCH_FILTER_ALL)
+        if arch_filter in ("", ARCH_FILTER_ALL, None):
+            return [arch for _label, arch in _NETWORKS]
+        family = family_arch_for_network_filter(str(arch_filter))
+        if family in ("", ARCH_FILTER_ALL, None):
+            return [arch for _label, arch in _NETWORKS]
+        return [family]
 
     def _update_download_button(self) -> None:
         count = len(self._selected_entries())
@@ -664,33 +858,28 @@ class DownloadCenterWindow:
                 for name in models
                 if name not in (NO_NEW_MODELS, NO_CONNECTION)
             )
-            active_arch = self.stack.get_visible_child_name()
-            active_search = self._search_entries.get(active_arch or "")
-            query = active_search.get_text().strip() if active_search is not None else ""
-            if active_arch and (query or self._purpose != PURPOSE_ALL):
-                network_label = next(
-                    (label for label, arch in _NETWORKS if arch == active_arch),
-                    "current network",
-                )
-                shown = self._matching_count(active_arch, query)
+            query = self._search_query()
+            purpose_label = next(
+                (label for value, label in PURPOSE_PAGE_OPTIONS if value == self._purpose),
+                next(
+                    (label for value, label in PURPOSE_FILTER_OPTIONS if value == self._purpose),
+                    "selected purpose",
+                ),
+            )
+            arch_filter = getattr(self, "_arch_filter", ARCH_FILTER_ALL)
+            filtered = query or self._purpose not in ("", PURPOSE_ALL, None)
+            if filtered:
+                shown = sum(self._matching_count(arch, query) for arch in self._filter_archs())
                 if query:
-                    message = (
-                        f"{shown} match{'es' if shown != 1 else ''} for “{query}” "
-                        f"in {network_label}"
-                    )
+                    message = f"{shown} match{'es' if shown != 1 else ''} for “{query}”"
                 else:
-                    purpose_label = next(
-                        (
-                            label
-                            for value, label in PURPOSE_FILTER_OPTIONS
-                            if value == self._purpose
-                        ),
-                        "selected purpose",
+                    message = f"{shown} {purpose_label.casefold()} model{'s' if shown != 1 else ''}"
+                if arch_filter not in ("", ARCH_FILTER_ALL, None):
+                    network_label = next(
+                        (label for value, label in NETWORK_FILTER_OPTIONS if value == arch_filter),
+                        "current network",
                     )
-                    message = (
-                        f"{shown} {purpose_label.casefold()} "
-                        f"model{'s' if shown != 1 else ''} in {network_label}"
-                    )
+                    message += f" in {network_label}"
                 self._set_catalogue_status(message)
             elif count:
                 self._set_catalogue_status(
@@ -911,28 +1100,32 @@ class DownloadCenterWindow:
 
     def _visible_catalogue_entries(self) -> list[tuple[str, str]]:
         """Return visible canonical selections with their catalogue family."""
-        active = self.stack.get_visible_child_name()
-        if active is not None and active in self._available:
-            archs = [active]
-        else:
+        archs = [
+            arch
+            for arch in self._filter_archs()
+            if arch in (self._available or {}) or arch in (self._unsupported or {})
+        ]
+        if not archs:
             archs = list(self._available)
         entries: list[tuple[str, str]] = []
+        query = self._search_query()
         for arch in archs:
             family = FAMILY_BY_ARCH.get(arch)
             if family is None:
                 continue
+            names = self._names_matching_network(arch, list(self._available.get(arch) or []))
             intents = self._catalogue_intents(family)
-            query = ""
-            entry = self._search_entries.get(arch)
-            if entry is not None:
-                query = entry.get_text() or ""
+            primaries, outputs = self._catalogue_role_maps(family)
             entries.extend(
                 (family, label)
                 for label in catalogue_matches(
-                    list(self._available.get(arch) or []),
+                    names,
                     query,
                     purpose=self._purpose,
                     intents=intents,
+                    arches={name: arch for name in names},
+                    primary_roles=primaries,
+                    output_roles=outputs,
                 )
             )
         return entries
@@ -954,6 +1147,23 @@ class DownloadCenterWindow:
         metadata = scoped.get(family, {}) if isinstance(scoped, dict) else {}
         return {label: meta.intent for label, meta in metadata.items() if meta.intent}
 
+    def _catalogue_role_maps(
+        self, family: str
+    ) -> tuple[dict[str, str], dict[str, tuple[str, ...]]]:
+        """Return reviewed stem roles keyed by catalogue label."""
+        manager = getattr(self, "manager", None)
+        scoped = getattr(manager, "catalogue_meta_by_family", {})
+        metadata = scoped.get(family, {}) if isinstance(scoped, dict) else {}
+        primaries: dict[str, str] = {}
+        outputs: dict[str, tuple[str, ...]] = {}
+        for label, meta in metadata.items():
+            primary_role, roles = purpose_roles_from_meta(meta)
+            if primary_role:
+                primaries[label] = primary_role
+            if roles:
+                outputs[label] = roles
+        return primaries, outputs
+
     def _catalogue_intent(self, arch: str, label: str) -> str | None:
         manager = getattr(self, "manager", None)
         scoped = getattr(manager, "catalogue_meta_by_family", {})
@@ -961,6 +1171,17 @@ class DownloadCenterWindow:
         metadata = scoped.get(family, {}) if isinstance(scoped, dict) and family else {}
         meta = metadata.get(label)
         return meta.intent if meta is not None else None
+
+    def _purpose_kwargs_for_row(self, arch: str, label: str) -> dict[str, typing.Any]:
+        primary_role, output_roles = purpose_roles_from_meta(
+            self._catalogue_row_metadata(arch, label)
+        )
+        return {
+            "intent": self._catalogue_intent(arch, label),
+            "arch": arch,
+            "primary_role": primary_role,
+            "output_roles": output_roles,
+        }
 
     def _pending_stem_yaml_urls(self, labels: list[str] | None = None) -> list[str]:
         """YAML URLs still missing from the stem cache for ``labels`` (or all)."""
@@ -1093,20 +1314,17 @@ class DownloadCenterWindow:
         self.status_label.set_label(f"{notice}{message}")
 
     def _update_tab_counts(self) -> None:
-        for network_label, arch in _NETWORKS:
-            models = self._available.get(arch) or []
-            count = sum(1 for name in models if name not in (NO_NEW_MODELS, NO_CONNECTION))
-            unsupported = 0 if self._hide_unsupported else len(self._unsupported.get(arch) or [])
-            search = self._search_entries.get(arch)
-            if search is not None:
-                if unsupported:
-                    search.set_placeholder_text(
-                        f"Search {network_label} — {count} available, {unsupported} unsupported"
-                    )
-                else:
-                    search.set_placeholder_text(
-                        f"Search {network_label} models — {count} available"
-                    )
+        search = getattr(self, "_search_entry", None)
+        if search is None and self._search_entries:
+            search = next(iter(self._search_entries.values()))
+        if search is None:
+            return
+        purpose_label = next(
+            (label for value, label in PURPOSE_PAGE_OPTIONS if value == self._purpose),
+            "models",
+        )
+        count = sum(self._matching_count(arch, "") for arch in self._filter_archs())
+        search.set_placeholder_text(f"Search {purpose_label.casefold()} — {count} available")
 
     def _clear_catalogue(self) -> None:
         self._row_checks.clear()
@@ -1124,8 +1342,8 @@ class DownloadCenterWindow:
         description: str = "",
         offline: bool = False,
     ) -> None:
-        page = self._empty_pages.get(arch)
-        list_box = self._list_boxes.get(arch)
+        page = self._empty_pages.get(arch) or getattr(self, "_empty_page", None)
+        list_box = self._list_boxes.get(arch) or getattr(self, "_list_box", None)
         if page is None:
             return
         list_parent = list_box.get_parent() if list_box is not None else None
@@ -1144,10 +1362,11 @@ class DownloadCenterWindow:
         if list_parent is not None:
             list_parent.set_visible(False)
 
-    def _update_catalogue_page_state(self, arch: str) -> None:
+    def _update_catalogue_page_state(self, arch: str | None = None) -> None:
+        message_arch = arch or next(iter(self._empty_pages), "")
         if self._catalogue_online is False and not self._available:
             self._set_catalogue_page_message(
-                arch,
+                message_arch,
                 "Catalogue unavailable",
                 description="Check your connection and try again.",
                 offline=True,
@@ -1155,55 +1374,87 @@ class DownloadCenterWindow:
             return
         if self._catalogue_online is None:
             self._set_catalogue_page_message(
-                arch,
+                message_arch,
                 "Catalogue is still loading…",
                 description="Please wait.",
             )
             return
-        names = self._available.get(arch) or []
-        search = self._search_entries.get(arch)
-        query = search.get_text().strip() if search is not None else ""
-        matches = catalogue_matches(
-            names,
-            query,
-            purpose=self._purpose,
-            intents=self._catalogue_intents(FAMILY_BY_ARCH[arch]),
-        )
-        unsupported_matches = self._unsupported_matches(arch, query)
-        if (query or self._purpose != PURPOSE_ALL) and not matches and not unsupported_matches:
+        query = self._search_query()
+        match_count = 0
+        unsupported_count = 0
+        any_rows = False
+        for check_arch in self._filter_archs():
+            names = self._names_matching_network(
+                check_arch, list(self._available.get(check_arch) or [])
+            )
+            family = FAMILY_BY_ARCH.get(check_arch)
+            if family is None:
+                continue
+            if names or self._unsupported.get(check_arch):
+                any_rows = True
+            primaries, outputs = self._catalogue_role_maps(family)
+            match_count += len(
+                catalogue_matches(
+                    names,
+                    query,
+                    purpose=self._purpose,
+                    intents=self._catalogue_intents(family),
+                    arches={name: check_arch for name in names},
+                    primary_roles=primaries,
+                    output_roles=outputs,
+                )
+            )
+            unsupported_count += len(self._unsupported_matches(check_arch, query))
+        if (
+            (query or self._purpose not in ("", PURPOSE_ALL, None))
+            and not match_count
+            and not unsupported_count
+        ):
             if query:
                 self._set_catalogue_page_message(
-                    arch,
+                    message_arch,
                     "No matching models",
                     description=f'Try a broader search than “{query}”.',
                 )
             else:
                 self._set_catalogue_page_message(
-                    arch,
+                    message_arch,
                     "No matching models",
                     description="No models match this purpose filter.",
                 )
-        elif not catalogue_matches(names, "", purpose=PURPOSE_ALL) and not (
-            self._unsupported.get(arch) or []
-        ):
+        elif not any_rows:
             self._set_catalogue_page_message(
-                arch,
+                message_arch,
                 "All installed",
-                description="All models for this network are already installed.",
+                description="All models for this purpose are already installed.",
             )
         else:
-            self._set_catalogue_page_message(arch, "")
+            self._set_catalogue_page_message(message_arch, "")
 
     def _unsupported_matches(self, arch: str, query: str) -> list[tuple[str, str]]:
         if self._hide_unsupported:
             return []
         rows = list(self._unsupported.get(arch) or [])
-        if self._purpose != PURPOSE_ALL:
+        arch_filter = getattr(self, "_arch_filter", ARCH_FILTER_ALL)
+        if arch_filter not in ("", ARCH_FILTER_ALL, None):
             rows = [
                 (label, reason)
                 for label, reason in rows
-                if purpose_for_label(label, intent=self._catalogue_intent(arch, label))
-                == self._purpose
+                if network_filter_matches(
+                    str(arch_filter),
+                    family_arch=arch,
+                    network=self._network_id_for_row(arch, label),
+                )
+            ]
+        if self._purpose not in ("", PURPOSE_ALL, None):
+            rows = [
+                (label, reason)
+                for label, reason in rows
+                if label_matches_purpose(
+                    label,
+                    self._purpose,
+                    **self._purpose_kwargs_for_row(arch, label),
+                )
             ]
         return [
             (label, reason)
@@ -1212,11 +1463,17 @@ class DownloadCenterWindow:
         ]
 
     def _matching_count(self, arch: str, query: str) -> int:
+        family = FAMILY_BY_ARCH.get(arch)
+        names = self._names_matching_network(arch, list(self._available.get(arch) or []))
+        primaries, outputs = self._catalogue_role_maps(family) if family else ({}, {})
         supported = catalogue_matches(
-            self._available.get(arch) or [],
+            names,
             query,
             purpose=self._purpose,
-            intents=self._catalogue_intents(FAMILY_BY_ARCH[arch]),
+            intents=self._catalogue_intents(family) if family else {},
+            arches={name: arch for name in names},
+            primary_roles=primaries,
+            output_roles=outputs,
         )
         return len(supported) + len(self._unsupported_matches(arch, query))
 
@@ -1313,11 +1570,14 @@ class DownloadCenterWindow:
         open_manual_downloads(self.window, self.context)
 
     def _open_models_folder(self) -> None:
-        """Open the model folder for the visible network, or the parent folder."""
+        """Open the model folder for the network filter, or the models root."""
         from .files import open_folder_in_file_manager
 
-        arch = self.stack.get_visible_child_name()
-        target = self.manager.model_directory(arch) if arch else paths.MODELS_DIR
+        arch = family_arch_for_network_filter(str(getattr(self, "_arch_filter", ARCH_FILTER_ALL)))
+        if arch in ("", ARCH_FILTER_ALL, None):
+            target = paths.MODELS_DIR
+        else:
+            target = self.manager.model_directory(arch)
         if not target:
             target = paths.MODELS_DIR
         try:

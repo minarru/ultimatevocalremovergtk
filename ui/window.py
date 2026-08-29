@@ -548,7 +548,12 @@ class MainWindow(Adw.ApplicationWindow):
         self._refresh_start_readiness()
 
     def _on_sep_banner_clicked(self, _banner: Adw.Banner) -> None:
-        self._on_download(None, None)
+        from core.model_scores import download_center_hint_for_method
+
+        from .download import open_download_center
+
+        purpose, arch = download_center_hint_for_method(self._active_view().method_key)
+        open_download_center(self, self.context, purpose=purpose, arch=arch)
 
     def _on_breakpoint_narrow(self, _breakpoint: typing.Any) -> None:
         # Single stacked column on every page: drop homogeneity so groups size

@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import unittest
 from types import SimpleNamespace
+from typing import Any, cast
 from unittest import mock
 
 
@@ -24,9 +25,7 @@ class DownloadCenterPublicUiTests(unittest.TestCase):
         from ui.download_center import DownloadCenterWindow
 
         context = SimpleNamespace(settings=Settings.defaults())
-        center = DownloadCenterWindow(
-            None, context, DownloadManager(), mock.MagicMock()
-        )
+        center = DownloadCenterWindow(None, context, DownloadManager(), mock.MagicMock())
         self.addCleanup(center.window.destroy)
 
         icon_names: list[str] = []
@@ -45,6 +44,151 @@ class DownloadCenterPublicUiTests(unittest.TestCase):
         self.assertIn("open-menu-symbolic", icon_names)
         self.assertNotIn("dialog-password-symbolic", icon_names)
 
+    def test_header_switcher_uses_purpose_pages(self) -> None:
+        import gi
 
-if __name__ == "__main__":
-    unittest.main()
+        gi.require_version("Gtk", "4.0")
+        gi.require_version("Adw", "1")
+        from gi.repository import Adw
+
+        from core.downloads import DownloadManager
+        from core.model_scores import PURPOSE_PAGE_OPTIONS, PURPOSE_VOCALS
+        from core.settings import Settings
+        from ui.download_center import DownloadCenterWindow
+
+        context = SimpleNamespace(settings=Settings.defaults())
+        center = DownloadCenterWindow(None, context, DownloadManager(), mock.MagicMock())
+        self.addCleanup(center.window.destroy)
+
+        self.assertEqual(center.stack.get_visible_child_name(), PURPOSE_VOCALS)
+        self.assertIsInstance(center.stack, Adw.ViewStack)
+        child = center.stack.get_first_child()
+        names: list[str] = []
+        while child is not None:
+            page = center.stack.get_page(child)
+            names.append(page.get_title() or "")
+            child = child.get_next_sibling()
+        self.assertEqual(names, [label for _value, label in PURPOSE_PAGE_OPTIONS])
+        if isinstance(center.switcher, Adw.InlineViewSwitcher):
+            self.assertFalse(center.switcher.get_homogeneous())
+
+    def test_network_filter_options_are_arch_value_then_label(self) -> None:
+        from bundled.constants import MDX_ARCH_TYPE, VR_ARCH_TYPE
+        from core.model_scores import (
+            ARCH_FILTER_ALL,
+            NETWORK_FILTER_OPTIONS,
+            NETWORK_MEL_BAND,
+        )
+        from ui.download_center import _ARCH_FILTER_OPTIONS
+
+        self.assertEqual(_ARCH_FILTER_OPTIONS, NETWORK_FILTER_OPTIONS)
+        mapping = dict(_ARCH_FILTER_OPTIONS)
+        self.assertEqual(mapping[ARCH_FILTER_ALL], "Any network")
+        self.assertEqual(mapping[VR_ARCH_TYPE], "VR Arch")
+        self.assertEqual(mapping[MDX_ARCH_TYPE], "MDX-Net")
+        self.assertEqual(mapping[NETWORK_MEL_BAND], "Mel-Band Roformer")
+
+    def test_select_catalogue_opens_restore_and_apollo_network(self) -> None:
+        from bundled.constants import APOLLO_ARCH_TYPE
+        from core.downloads import DownloadManager
+        from core.model_scores import PURPOSE_RESTORE
+        from core.settings import Settings
+        from ui.download_center import DownloadCenterWindow
+        from ui.widgets.rows import get_combo_value
+
+        context = SimpleNamespace(settings=Settings.defaults())
+        center = DownloadCenterWindow(None, context, DownloadManager(), mock.MagicMock())
+        self.addCleanup(center.window.destroy)
+
+        center.select_catalogue(purpose=PURPOSE_RESTORE, arch=APOLLO_ARCH_TYPE)
+
+        self.assertEqual(center.stack.get_visible_child_name(), PURPOSE_RESTORE)
+        self.assertEqual(center._purpose, PURPOSE_RESTORE)
+        self.assertEqual(center._arch_filter, APOLLO_ARCH_TYPE)
+        self.assertEqual(get_combo_value(center.arch_row), "Apollo")
+
+    def test_select_catalogue_vr_uses_vr_arch_type_not_display_label(self) -> None:
+        from bundled.constants import VR_ARCH_TYPE
+        from core.downloads import DownloadManager
+        from core.model_scores import PURPOSE_VOCALS
+        from core.settings import Settings
+        from ui.download_center import DownloadCenterWindow
+        from ui.widgets.rows import get_combo_value
+
+        context = SimpleNamespace(settings=Settings.defaults())
+        center = DownloadCenterWindow(None, context, DownloadManager(), mock.MagicMock())
+        self.addCleanup(center.window.destroy)
+
+        center.select_catalogue(purpose=PURPOSE_VOCALS, arch=VR_ARCH_TYPE)
+
+        self.assertEqual(center.stack.get_visible_child_name(), PURPOSE_VOCALS)
+        self.assertEqual(center._arch_filter, VR_ARCH_TYPE)
+        self.assertEqual(get_combo_value(center.arch_row), "VR Arch")
+
+
+class DownloadCenterOpenTests(unittest.TestCase):
+    def test_open_applies_hint_to_existing_window(self) -> None:
+        from bundled.constants import DEMUCS_ARCH_TYPE
+        from core.model_scores import PURPOSE_STEMS
+        from ui.download import open_download_center
+
+        existing = mock.MagicMock()
+        context = SimpleNamespace(_download_center_window=existing)
+        with mock.patch("ui.download.start_download_size_cache_warmup"):
+            open_download_center(
+                mock.MagicMock(),
+                context,
+                purpose=PURPOSE_STEMS,
+                arch=DEMUCS_ARCH_TYPE,
+            )
+
+        existing.present.assert_called_once()
+        existing.select_catalogue.assert_called_once_with(
+            purpose=PURPOSE_STEMS, arch=DEMUCS_ARCH_TYPE
+        )
+
+    def test_open_without_hint_does_not_reset_existing_window(self) -> None:
+        from ui.download import open_download_center
+
+        existing = mock.MagicMock()
+        context = SimpleNamespace(_download_center_window=existing)
+        with mock.patch("ui.download.start_download_size_cache_warmup"):
+            open_download_center(mock.MagicMock(), context)
+
+        existing.present.assert_called_once()
+        existing.select_catalogue.assert_not_called()
+
+    def test_sep_banner_passes_method_hint(self) -> None:
+        from bundled.constants import MDX_ARCH_TYPE
+        from core.model_scores import PURPOSE_VOCALS
+        from ui.window import MainWindow
+
+        win = SimpleNamespace(
+            _active_view=lambda: SimpleNamespace(method_key=MDX_ARCH_TYPE),
+            context=mock.MagicMock(),
+        )
+        with mock.patch("ui.download.open_download_center") as opener:
+            MainWindow._on_sep_banner_clicked(cast(Any, win), mock.MagicMock())
+
+        opener.assert_called_once()
+        self.assertIs(opener.call_args.args[0], win)
+        self.assertEqual(opener.call_args.kwargs["purpose"], PURPOSE_VOCALS)
+        self.assertEqual(opener.call_args.kwargs["arch"], MDX_ARCH_TYPE)
+
+    def test_apollo_banner_opens_restore_with_apollo_network(self) -> None:
+        from bundled.constants import APOLLO_ARCH_TYPE
+        from core.model_scores import PURPOSE_RESTORE
+        from ui.audio_tools.window import AudioToolsPage
+
+        page = object.__new__(AudioToolsPage)
+        page._banner_mode = "apollo"
+        page.window = mock.MagicMock()
+        page.context = mock.MagicMock()
+        with mock.patch("ui.download.open_download_center") as opener:
+            AudioToolsPage._on_audio_banner_clicked(page)
+
+        opener.assert_called_once()
+        self.assertIs(opener.call_args.args[0], page.window)
+        self.assertIs(opener.call_args.args[1], page.context)
+        self.assertEqual(opener.call_args.kwargs["purpose"], PURPOSE_RESTORE)
+        self.assertEqual(opener.call_args.kwargs["arch"], APOLLO_ARCH_TYPE)
