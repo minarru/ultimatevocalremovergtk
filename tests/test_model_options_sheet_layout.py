@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import time
 import unittest
+from collections.abc import Callable
 
 
 class SheetConstantsTests(unittest.TestCase):
@@ -121,7 +122,9 @@ class SheetLayoutTests(unittest.TestCase):
     # gets a real GTK size allocation, rather than asserting on the frozen
     # requested size the way the old (dead) coverage did.
 
-    def _wait_until(self, predicate, description: str, timeout: float = 2.0) -> None:
+    def _wait_until(
+        self, predicate: Callable[[], bool], description: str, timeout: float = 2.0
+    ) -> None:
         from gi.repository import GLib
 
         deadline = time.monotonic() + timeout
