@@ -33,6 +33,7 @@ ENSEMBLE_ALGORITHM_BLURBS: Dict[str, str] = {
 
 CUSTOM_PRESET = "Custom"
 RECOMMENDED_PRESET = "Recommended (Max / Min)"
+PAIR_CONSISTENT_PRESET = "Pair-consistent (native / mix residual)"
 FULL_MAX_PRESET = "Full Max"
 SOFT_BLEND_PRESET = "Soft blend"
 HYBRID_CLEAN_PRESET = "Hybrid clean"
@@ -50,6 +51,7 @@ ENSEMBLE_PRESET_PAIRS: Dict[str, Tuple[str, str]] = {
 ENSEMBLE_PRESET_OPTIONS: Tuple[str, ...] = (
     CUSTOM_PRESET,
     RECOMMENDED_PRESET,
+    PAIR_CONSISTENT_PRESET,
     FULL_MAX_PRESET,
     SOFT_BLEND_PRESET,
     HYBRID_CLEAN_PRESET,
@@ -147,7 +149,23 @@ def pair_for_preset(preset: Optional[str]) -> Optional[Tuple[str, str]]:
     """Return ``(primary, secondary)`` for a named preset, or None for Custom/unknown."""
     if not preset or preset == CUSTOM_PRESET:
         return None
+    if preset == PAIR_CONSISTENT_PRESET:
+        return (_DEFAULT_PRIMARY, _DEFAULT_PRIMARY)
     return ENSEMBLE_PRESET_PAIRS.get(preset)
+
+
+def preset_for_state(
+    primary: str,
+    secondary: str,
+    *,
+    derive_complement_from_mix: bool = False,
+) -> str:
+    """Return the preset label for a pair plus the mix-residual flag."""
+    if derive_complement_from_mix:
+        if (primary, secondary) == (_DEFAULT_PRIMARY, _DEFAULT_PRIMARY):
+            return PAIR_CONSISTENT_PRESET
+        return CUSTOM_PRESET
+    return preset_for_pair(primary, secondary)
 
 
 def algorithm_row_titles(
