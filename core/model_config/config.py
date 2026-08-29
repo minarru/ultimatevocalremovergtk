@@ -123,6 +123,7 @@ class ModelConfig:
         self.device_set = device_set.split(":")[-1].strip() if ":" in device_set else device_set
         self.mp3_bit_set = enum_value(process.mp3_bitrate)
         self.flac_bit_set = enum_value(process.flac_bit_depth)
+        self.opus_bit_set = enum_value(process.opus_bitrate)
         self.save_format = process.save_format.value
         self.is_invert_spec = mdx.is_invert_spec
         self.is_mixer_mode = False
@@ -1075,6 +1076,7 @@ class ModelConfig:
             wav_type_set=self.wav_type_set,
             mp3_bit_set=self.mp3_bit_set,
             flac_bit_set=self.flac_bit_set,
+            opus_bit_set=self.opus_bit_set,
             save_format=self.save_format,
             is_normalization=bool(self.is_normalization),
             is_match_mix_level=bool(self.is_match_mix_level),

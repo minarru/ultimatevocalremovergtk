@@ -2,8 +2,8 @@
 
 A single :class:`Adw.ActionRow` carrying two side-by-side :class:`Gtk.DropDown`
 widgets. The second dropdown's model, label and settings key swap with the
-selected format (WAV type / MP3 bitrate / FLAC bit depth), so the three
-processing pages expose the complete export choice in one row instead of
+selected format (WAV type / MP3 bitrate / FLAC bit depth / Opus bitrate), so the
+three processing pages expose the complete export choice in one row instead of
 sending the user to a separate Preferences page.
 
 The unselected formats' settings keys are left untouched, so switching WAV ->
@@ -11,8 +11,8 @@ MP3 -> WAV restores the previously chosen WAV type.
 """
 
 from __future__ import annotations
-import typing
 
+import typing
 from dataclasses import dataclass
 from typing import Callable, Optional
 
@@ -23,12 +23,13 @@ from bundled.constants import (
     FLAC_BIT_DEPTHS,
     MP3,
     MP3_BIT_RATES,
+    OPUS,
+    OPUS_BIT_RATES,
     WAV,
     WAV_TYPE,
 )
 from core.settings import Settings
 from core.types import SaveFormat
-
 from ui.help_text import FLAC_BIT_DEPTH_HINT, OUTPUT_FORMAT_HINT, WAV_TYPE_HINT
 
 from ..settings_bind import enum_value, get_flat, set_flat
@@ -39,12 +40,15 @@ from .rows import set_row_icon
 _QUALITY_MIN_WIDTH = 132
 _FORMAT_MIN_WIDTH = 96
 
-FORMATS = (WAV, FLAC, MP3)
+FORMATS = (WAV, FLAC, MP3, OPUS)
 
 #: No existing constant covers MP3 bitrate; ``ui/help_text.py`` has a style
 #: validator test (``tests/test_help_text.py``) so it stays local to this
 #: widget rather than widening that module's surface.
 MP3_BITRATE_HINT = "Bitrate used when encoding MP3 output"
+OPUS_BITRATE_HINT = (
+    "Target bitrate for Opus output; encoding varies around this value and resamples to 48 kHz"
+)
 
 
 @dataclass(frozen=True)
@@ -59,18 +63,21 @@ class QualitySpec:
 
 
 _QUALITY_SPECS = {
-    WAV: QualitySpec(
-        "WAV type", tuple(WAV_TYPE), "wav_type_set", "PCM_16", WAV_TYPE_HINT
-    ),
-    MP3: QualitySpec(
-        "MP3 bitrate", tuple(MP3_BIT_RATES), "mp3_bit_set", "320k", MP3_BITRATE_HINT
-    ),
+    WAV: QualitySpec("WAV type", tuple(WAV_TYPE), "wav_type_set", "PCM_16", WAV_TYPE_HINT),
+    MP3: QualitySpec("MP3 bitrate", tuple(MP3_BIT_RATES), "mp3_bit_set", "320k", MP3_BITRATE_HINT),
     FLAC: QualitySpec(
         "FLAC bit depth",
         tuple(FLAC_BIT_DEPTHS),
         "flac_bit_set",
         "16-bit",
         FLAC_BIT_DEPTH_HINT,
+    ),
+    OPUS: QualitySpec(
+        "Opus bitrate",
+        tuple(OPUS_BIT_RATES),
+        "opus_bit_set",
+        "192k",
+        OPUS_BITRATE_HINT,
     ),
 }
 
@@ -126,9 +133,7 @@ class OutputFormatRow(Adw.ActionRow):
 
         self._format_drop = _dropdown(FORMATS, _FORMAT_MIN_WIDTH)
         self._format_drop.set_tooltip_text(OUTPUT_FORMAT_HINT)
-        self._format_drop.update_property(
-            [Gtk.AccessibleProperty.LABEL], ["Output format"]
-        )
+        self._format_drop.update_property([Gtk.AccessibleProperty.LABEL], ["Output format"])
         self._format_drop.connect("notify::selected", self._on_format_selected)
         box.append(self._format_drop)
 
@@ -198,9 +203,7 @@ class OutputFormatRow(Adw.ActionRow):
     def _apply_quality_labels(self, save_format: str) -> None:
         spec = quality_spec(save_format)
         self._quality_drop.set_tooltip_text(spec.hint)
-        self._quality_drop.update_property(
-            [Gtk.AccessibleProperty.LABEL], [spec.label]
-        )
+        self._quality_drop.update_property([Gtk.AccessibleProperty.LABEL], [spec.label])
 
     def _on_format_selected(self, *_args: typing.Any) -> None:
         if self._syncing:

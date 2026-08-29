@@ -1,12 +1,12 @@
 """Combined output-format + quality row."""
 
 from __future__ import annotations
-import typing
 
 import os
+import typing
 import unittest
 
-from bundled.constants import FLAC, MP3, WAV
+from bundled.constants import FLAC, MP3, OPUS, WAV
 from ui.widgets.format_row import quality_spec
 
 
@@ -32,11 +32,18 @@ class QualitySpecTests(unittest.TestCase):
         self.assertIn("24-bit", spec.values)
         self.assertEqual(spec.default, "16-bit")
 
+    def test_opus_maps_to_target_bitrate(self):
+        spec = quality_spec(OPUS)
+        self.assertEqual(spec.setting_key, "opus_bit_set")
+        self.assertEqual(spec.label, "Opus bitrate")
+        self.assertEqual(spec.default, "192k")
+        self.assertEqual(spec.values, ("64k", "96k", "128k", "160k", "192k", "256k"))
+
     def test_unknown_format_falls_back_to_wav(self):
         self.assertEqual(quality_spec("OGG").setting_key, "wav_type_set")
 
     def test_every_default_is_a_valid_choice(self):
-        for fmt in (WAV, MP3, FLAC):
+        for fmt in (WAV, MP3, FLAC, OPUS):
             spec = quality_spec(fmt)
             self.assertIn(spec.default, spec.values)
 
@@ -71,6 +78,14 @@ class OutputFormatRowTests(unittest.TestCase):
         row = OutputFormatRow(lambda: None)
         row.apply_from_settings(self._settings(save_format=MP3, mp3_bit_set="128k"))
         self.assertEqual(row.save_format, MP3)
+        self.assertEqual(row.quality_value, "128k")
+
+    def test_applies_stored_opus_bitrate(self):
+        from ui.widgets.format_row import OutputFormatRow
+
+        row = OutputFormatRow(lambda: None)
+        row.apply_from_settings(self._settings(save_format=OPUS, opus_bit_set="128k"))
+        self.assertEqual(row.save_format, OPUS)
         self.assertEqual(row.quality_value, "128k")
 
     def test_switching_format_swaps_the_quality_model(self):

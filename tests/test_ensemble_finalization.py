@@ -16,7 +16,7 @@ from core.settings import Settings
 from core.stem_roles import StemRoleId
 from core.stems import StemId, StemRoute, StemRouteKind
 from core.types import SaveFormat
-from core.types.settings_enums import FlacBitDepth, Mp3Bitrate
+from core.types.settings_enums import FlacBitDepth, Mp3Bitrate, OpusBitrate
 
 
 def _ensembler(export_path: str) -> Ensembler:
@@ -32,6 +32,7 @@ def _ensembler(export_path: str) -> Ensembler:
     ensembler.wav_type_set = "PCM_16"
     ensembler.mp3_bit_set = Mp3Bitrate.K320
     ensembler.flac_bit_set = FlacBitDepth.BIT_16
+    ensembler.opus_bit_set = OpusBitrate.K192
     ensembler.save_format = WAV
     ensembler.main_export_path = export_path
     ensembler.ensemble_folder_name = export_path

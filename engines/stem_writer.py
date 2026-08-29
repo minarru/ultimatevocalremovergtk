@@ -153,7 +153,13 @@ def _save_audio_file(
     sf.write(path, source, samplerate, subtype=sep.wav_type_set)
 
     if is_not_ensemble:
-        save_format(path, sep.save_format, sep.mp3_bit_set, sep.flac_bit_set)
+        save_format(
+            path,
+            sep.save_format,
+            sep.mp3_bit_set,
+            sep.flac_bit_set,
+            getattr(sep, "opus_bit_set", "192k"),
+        )
 
 
 def _deverb_vocals(

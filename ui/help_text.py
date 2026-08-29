@@ -492,7 +492,7 @@ VIEW_TAB_HINTS: Dict[str, str] = {
     ),
 }
 
-OUTPUT_FORMAT_HINT = "Choose the audio format for saved output files (WAV, FLAC, or MP3)"
+OUTPUT_FORMAT_HINT = "Choose the audio format for saved output files (WAV, FLAC, MP3, or OPUS)"
 
 # --- Separation / method views ---
 

@@ -104,7 +104,7 @@ class AudioCliSurfaceTests(unittest.TestCase):
             self.assertEqual(code, 0)
             self.assertFalse(os.path.exists(output))
             self.assertEqual(payload["plan"]["units"][0]["outputs"], [
-                os.path.join(output, "song time stretched.wav")
+                os.path.join(output, "song time stretched.flac")
             ])
 
     def test_manual_ensemble_requires_two_inputs(self) -> None:
@@ -148,7 +148,7 @@ class AudioPlanTests(unittest.TestCase):
             settings.audio_tools.pitch_rate = 5
             self.assertTrue(plan.ok)
             self.assertEqual(plan.settings.audio_tools.pitch_rate, -3)
-            self.assertEqual(plan.units[0].outputs, (os.path.join(output, "track pitch shifted.wav"),))
+            self.assertEqual(plan.units[0].outputs, (os.path.join(output, "track pitch shifted.flac"),))
 
 
 if __name__ == "__main__":

@@ -7,10 +7,10 @@ from bundled.constants import (
     CHOOSE_ENSEMBLE_OPTION,
     CHOOSE_MODEL,
     DEMUCS_OVERLAP,
+    FLAC,
     MAX_MIN,
     MDX_ARCH_TYPE,
     NO_MODEL,
-    WAV,
 )
 
 # v4: persistent diagnostic level and sensitive-detail policy.
@@ -36,9 +36,10 @@ def default_process() -> dict:
         "amplification_threshold": 0.0,
         "create_model_folder": False,
         "auto_update_model_params": True,
-        "save_format": WAV,
+        "save_format": FLAC,
         "wav_type": "PCM_16",
         "mp3_bitrate": "320k",
+        "opus_bitrate": "192k",
         "flac_bit_depth": "16-bit",
         "export_path": "",
         "input_paths": [],

@@ -30,6 +30,7 @@ class ExportOptions:
     wav_type_set: Any = None
     mp3_bit_set: str = ""
     flac_bit_set: str = "16-bit"
+    opus_bit_set: str = "192k"
     save_format: str = ""
     is_normalization: bool = False
     is_match_mix_level: bool = False

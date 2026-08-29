@@ -28,6 +28,7 @@ from core.types.settings_enums import (
     ManualEnsembleOption,
     MdxDenoiseOption,
     Mp3Bitrate,
+    OpusBitrate,
     PhaseShiftsOpt,
     TimeWindow,
     WavType,
@@ -103,9 +104,10 @@ class ProcessSettings:
     amplification_threshold: float = 0.0
     create_model_folder: bool = False
     auto_update_model_params: bool = True
-    save_format: SaveFormat = SaveFormat.WAV
+    save_format: SaveFormat = SaveFormat.FLAC
     wav_type: WavType = WavType.PCM_16
     mp3_bitrate: Mp3Bitrate = Mp3Bitrate.K320
+    opus_bitrate: OpusBitrate = OpusBitrate.K192
     flac_bit_depth: FlacBitDepth = FlacBitDepth.BIT_16
     export_path: str = ""
     input_paths: list[str] = field(default_factory=list)

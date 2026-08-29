@@ -278,6 +278,7 @@ def export_ensemble_salvage(runner: Any, callbacks: Any) -> None:
     save_format_name = runner.settings.process.save_format.value
     mp3_bit_set = runner.settings.process.mp3_bitrate
     flac_bit_set = runner.settings.process.flac_bit_depth
+    opus_bit_set = runner.settings.process.opus_bitrate
     try:
         amplification_threshold = float(runner.settings.process.amplification_threshold or 0.0)
     except (TypeError, ValueError):
@@ -305,7 +306,7 @@ def export_ensemble_salvage(runner: Any, callbacks: Any) -> None:
                         import shutil
 
                         shutil.copy2(path, dest)
-                    save_format(dest, save_format_name, mp3_bit_set, flac_bit_set)
+                    save_format(dest, save_format_name, mp3_bit_set, flac_bit_set, opus_bit_set)
                     written += 1
             continue
         _write_captured_stems(
@@ -317,6 +318,7 @@ def export_ensemble_salvage(runner: Any, callbacks: Any) -> None:
             save_format_name=save_format_name,
             mp3_bit_set=mp3_bit_set,
             flac_bit_set=flac_bit_set,
+            opus_bit_set=opus_bit_set,
         )
         written += len(arrays)
     if written == 0:

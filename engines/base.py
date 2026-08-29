@@ -126,6 +126,7 @@ class SeperateAttributes:
         self.wav_type_set = model_data.wav_type_set
         self.mp3_bit_set = model_data.mp3_bit_set
         self.flac_bit_set = model_data.flac_bit_set
+        self.opus_bit_set = getattr(model_data, "opus_bit_set", "192k")
         self.save_format = model_data.save_format
         self.is_gpu_conversion = model_data.is_gpu_conversion
         self.is_normalization = model_data.is_normalization

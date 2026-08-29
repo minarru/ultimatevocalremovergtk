@@ -20,6 +20,7 @@ from bundled.constants import (
     MEDIAN_SPEC,
     MIN_SPEC,
     MP3,
+    OPUS,
     OTHER_STEM,
     PIANO_STEM,
     SOFT_SPEC,
@@ -59,7 +60,7 @@ class EnumParityTests(unittest.TestCase):
     def test_save_formats_match_bundled_labels(self):
         self.assertEqual(
             [item.value for item in SaveFormat],
-            [WAV, FLAC, MP3],
+            [WAV, FLAC, MP3, OPUS],
         )
 
     def test_ensemble_algorithms_match_bundled_labels(self):

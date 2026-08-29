@@ -132,6 +132,7 @@ class _SingleRunHooks:
             save_format_name=runner.settings.process.save_format.value,
             mp3_bit_set=runner.settings.process.mp3_bitrate,
             flac_bit_set=runner.settings.process.flac_bit_depth,
+            opus_bit_set=runner.settings.process.opus_bitrate,
         )
 
     def after_file(self, runner: Any, state: FileState) -> None:
@@ -260,6 +261,7 @@ class _EnsembleRunHooks:
                     save_format_name=WAV,
                     mp3_bit_set=runner.settings.process.mp3_bitrate,
                     flac_bit_set=runner.settings.process.flac_bit_depth,
+                    opus_bit_set=runner.settings.process.opus_bitrate,
                 )
                 for key, path in scratch["member_paths"].items():
                     if os.path.isfile(path):

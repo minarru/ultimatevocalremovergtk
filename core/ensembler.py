@@ -208,6 +208,7 @@ class Ensembler:
         self.wav_type_set = resolve_wav_type_set(settings)
         self.mp3_bit_set = settings.process.mp3_bitrate
         self.flac_bit_set = settings.process.flac_bit_depth
+        self.opus_bit_set = settings.process.opus_bitrate
         self.save_format = settings.process.save_format.value
         os.makedirs(self.ensemble_folder_name, exist_ok=True)
 
@@ -287,6 +288,7 @@ class Ensembler:
                 self.save_format,
                 self.mp3_bit_set,
                 self.flac_bit_set,
+                self.opus_bit_set,
             )
         elif len(stem_outputs) > 1:
             spec_utils.ensemble_inputs(
@@ -303,6 +305,7 @@ class Ensembler:
                 self.save_format,
                 self.mp3_bit_set,
                 self.flac_bit_set,
+                self.opus_bit_set,
             )
         else:
             raise RuntimeError(
@@ -312,7 +315,13 @@ class Ensembler:
 
         if self.is_save_all_outputs_ensemble:
             for stem_output in stem_outputs:
-                _save_format(stem_output, self.save_format, self.mp3_bit_set, self.flac_bit_set)
+                _save_format(
+                    stem_output,
+                    self.save_format,
+                    self.mp3_bit_set,
+                    self.flac_bit_set,
+                    self.opus_bit_set,
+                )
         else:
             for stem_output in stem_outputs:
                 try:

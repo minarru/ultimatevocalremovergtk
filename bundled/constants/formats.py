@@ -13,7 +13,11 @@ FLAC = 'FLAC'
 
 MP3 = 'MP3'
 
+OPUS = 'OPUS'
+
 MP3_BIT_RATES = ('96k', '128k', '160k', '224k', '256k', '320k')
+
+OPUS_BIT_RATES = ('64k', '96k', '128k', '160k', '192k', '256k')
 
 FLAC_BIT_DEPTHS = ('16-bit', '24-bit')
 

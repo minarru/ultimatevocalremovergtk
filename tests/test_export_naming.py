@@ -134,16 +134,9 @@ class EnsembleFinalBaseTests(unittest.TestCase):
 
 class PreviewOutputNameTests(unittest.TestCase):
     def test_defaults(self):
-        settings = Settings.from_flat(
-            {
-                "is_testing_audio": False,
-                "is_add_model_name": False,
-                "save_format": "WAV",
-            }
-        )
         self.assertEqual(
-            preview_output_name(settings),
-            "song (Vocals).wav",
+            preview_output_name(Settings.defaults()),
+            "song (Vocals).flac",
         )
 
     def test_model_and_timestamp(self):
@@ -161,6 +154,12 @@ class PreviewOutputNameTests(unittest.TestCase):
         self.assertEqual(
             preview_output_name(Settings.from_flat({"save_format": "WAV"}), multi_file=True),
             "1-song (Vocals).wav",
+        )
+
+    def test_opus_extension(self):
+        self.assertEqual(
+            preview_output_name(Settings.from_flat({"save_format": "OPUS"})),
+            "song (Vocals).opus",
         )
 
 

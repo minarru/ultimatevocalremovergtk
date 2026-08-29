@@ -38,3 +38,4 @@ class SaveFormat(str, Enum):
     WAV = "WAV"
     FLAC = "FLAC"
     MP3 = "MP3"
+    OPUS = "OPUS"

@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from bundled.constants import FLAC, WAV
+from bundled.constants import FLAC
 from core.settings import Settings
 from ui.shared_settings import (
     INPUT_FILES_MAX,
@@ -217,7 +217,7 @@ class ReadSharedFileOptionsTests(unittest.TestCase):
             SharedFileOptions(
                 input_paths=[],
                 export_path="",
-                save_format=WAV,
+                save_format=FLAC,
                 is_gpu_conversion=False,
                 is_autocast=False,
                 sample_duration=30,
