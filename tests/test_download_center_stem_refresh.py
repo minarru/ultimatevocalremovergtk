@@ -1046,8 +1046,8 @@ class StemSubtitleDebounceTests(unittest.TestCase):
         )
         projection = stem_semantics_projection(semantics)
         for intent, purpose in (
-            (INTENT_DUAL_VOC_INST, "Vocals"),
-            (INTENT_SPECIALTY_STEM, "Specialty"),
+            (INTENT_DUAL_VOC_INST, "Vocals & instrumental"),
+            (INTENT_SPECIALTY_STEM, "Stems"),
         ):
             for state in (CatalogueEvidenceState.READY, CatalogueEvidenceState.STALE):
                 with self.subTest(intent=intent, state=state):
@@ -1479,39 +1479,44 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
             DownloadCenterWindow._schedule_stem_yaml_fetches(win)
         self.assertEqual(timeout_add2.call_count, 1)
 
-    def test_visible_labels_scoped_to_active_tab(self) -> None:
-        """ "Visible" must mean the tab on screen, not every tab's filter result."""
-        from ui.download_center import PURPOSE_ALL, DownloadCenterWindow
+    def test_visible_labels_scoped_to_active_purpose(self) -> None:
+        """Visible means the purpose page on screen, not every catalogue row."""
+        from core.model_scores import ARCH_FILTER_ALL, PURPOSE_VOCALS
+        from ui.download_center import DownloadCenterWindow
 
         win = object.__new__(DownloadCenterWindow)
         win._available = {
-            MDX_ARCH_TYPE: ["MDX Model"],
-            "VR Arc": ["VR Model"],
+            MDX_ARCH_TYPE: ["Lead Vocal Model", "Karaoke Model"],
         }
+        win._unsupported = {}
         win._search_entries = {}
-        win._purpose = PURPOSE_ALL
+        win._purpose = PURPOSE_VOCALS
+        win._arch_filter = ARCH_FILTER_ALL
         win.stack = mock.MagicMock()
-        win.stack.get_visible_child_name.return_value = MDX_ARCH_TYPE
+        win.stack.get_visible_child_name.return_value = PURPOSE_VOCALS
 
-        self.assertEqual(win._visible_catalogue_labels(), ["MDX Model"])
+        self.assertEqual(win._visible_catalogue_labels(), ["Lead Vocal Model"])
 
     def test_visible_entries_keep_family_with_canonical_selection(self) -> None:
-        from ui.download_center import PURPOSE_ALL, DownloadCenterWindow
+        from core.model_scores import PURPOSE_ALL
+        from ui.download_center import DownloadCenterWindow
 
         win = object.__new__(DownloadCenterWindow)
         win._available = {
             MDX_ARCH_TYPE: ["Shared Model"],
             VR_ARCH_TYPE: ["Shared Model"],
         }
+        win._unsupported = {}
         win._search_entries = {}
         win._purpose = PURPOSE_ALL
+        win._arch_filter = MDX_ARCH_TYPE
         win.stack = mock.MagicMock()
-        win.stack.get_visible_child_name.return_value = MDX_ARCH_TYPE
+        win.stack.get_visible_child_name.return_value = PURPOSE_ALL
 
         self.assertEqual(win._visible_catalogue_entries(), [("mdx", "Shared Model")])
 
     def test_priority_flush_filters_colliding_label_with_active_family_intent(self) -> None:
-        from core.model_scores import PURPOSE_VOCALS
+        from core.model_scores import ARCH_FILTER_ALL, PURPOSE_VOCALS
         from core.model_stem_semantics import INTENT_DUAL_VOC_INST, INTENT_SPECIALTY_STEM
         from ui.download_center import DownloadCenterWindow
 
@@ -1540,11 +1545,13 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
             MDX_ARCH_TYPE: [shared],
             VR_ARCH_TYPE: [shared],
         }
+        win._unsupported = {}
         win._search_entries = {}
         win._purpose = PURPOSE_VOCALS
+        win._arch_filter = ARCH_FILTER_ALL
         win._stem_fetch_armed = True
         win.stack = mock.MagicMock()
-        win.stack.get_visible_child_name.return_value = MDX_ARCH_TYPE
+        win.stack.get_visible_child_name.return_value = PURPOSE_VOCALS
 
         DownloadCenterWindow._flush_stem_yaml_fetches(win)
 
@@ -1557,7 +1564,7 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
         )
 
     def test_row_filter_uses_family_intent_for_colliding_label(self) -> None:
-        from core.model_scores import PURPOSE_VOCALS
+        from core.model_scores import ARCH_FILTER_ALL, PURPOSE_VOCALS
         from core.model_stem_semantics import INTENT_DUAL_VOC_INST, INTENT_SPECIALTY_STEM
         from ui.download_center import DownloadCenterWindow
 
@@ -1580,6 +1587,7 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
         )
         win._purpose = PURPOSE_VOCALS
         win._hide_unsupported = False
+        win._arch_filter = ARCH_FILTER_ALL
         win._search_entries = {}
         action = object()
 
@@ -1598,12 +1606,15 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
             self.assertFalse(win._row_matches_filter(mock.MagicMock(), VR_ARCH_TYPE))
 
     def test_visible_labels_fall_back_when_no_active_tab(self) -> None:
+        from core.model_scores import ARCH_FILTER_ALL
         from ui.download_center import PURPOSE_ALL, DownloadCenterWindow
 
         win = object.__new__(DownloadCenterWindow)
         win._available = {MDX_ARCH_TYPE: ["MDX Model"], "VR Arc": ["VR Model"]}
+        win._unsupported = {}
         win._search_entries = {}
         win._purpose = PURPOSE_ALL
+        win._arch_filter = ARCH_FILTER_ALL
         win.stack = mock.MagicMock()
         win.stack.get_visible_child_name.return_value = None
 
@@ -1717,12 +1728,15 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
         win.manager = mock.MagicMock()
         win.manager.catalogue_meta = catalogue_meta
         win._available = {MDX_ARCH_TYPE: list(catalogue_meta)}
+        win._unsupported = {}
         # Stands in for a Gtk.SearchEntry, which needs a display to construct;
         # _visible_catalogue_labels only ever calls get_text() on it.
         win._search_entries = typing.cast("dict[str, Any]", {MDX_ARCH_TYPE: _Entry("kim")})
+        win._search_entry = win._search_entries[MDX_ARCH_TYPE]
         win._purpose = PURPOSE_ALL
+        win._arch_filter = MDX_ARCH_TYPE
         win.stack = mock.MagicMock()
-        win.stack.get_visible_child_name.return_value = MDX_ARCH_TYPE
+        win.stack.get_visible_child_name.return_value = PURPOSE_ALL
 
         with tempfile.TemporaryDirectory() as tmp:
             cache_path = os.path.join(tmp, "catalogue_stem_cache.json")

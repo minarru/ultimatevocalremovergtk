@@ -382,24 +382,34 @@ def start_download_size_cache_warmup(app_context: typing.Any) -> None:
     threading.Thread(target=worker, daemon=True).start()
 
 
-def open_download_center(parent_window: typing.Any, app_context: typing.Any):
-    """Open or raise the Download Center utility window."""
+def open_download_center(
+    parent_window: typing.Any,
+    app_context: typing.Any,
+    *,
+    purpose: str | None = None,
+    arch: str | None = None,
+):
+    """Open or raise the Download Center utility window.
+
+    ``purpose`` and ``arch`` target a catalogue page and network filter when
+    an empty-state banner opens the window. Omit them for the menu and
+    shortcut so an already-open window is not reset.
+    """
     start_download_size_cache_warmup(app_context)
     center = getattr(app_context, "_download_center_window", None)
-    if center is not None:
-        center.present()
-        return center
-
-    manager = _get_manager(app_context)
-    queue = _get_queue(app_context, manager)
-    center = DownloadCenterWindow(
-        parent_window,
-        app_context,
-        manager,
-        queue,
-    )
-    app_context._download_center_window = center
+    if center is None:
+        manager = _get_manager(app_context)
+        queue = _get_queue(app_context, manager)
+        center = DownloadCenterWindow(
+            parent_window,
+            app_context,
+            manager,
+            queue,
+        )
+        app_context._download_center_window = center
     center.present()
+    if purpose is not None or arch is not None:
+        center.select_catalogue(purpose=purpose, arch=arch)
     return center
 
 

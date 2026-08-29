@@ -9,8 +9,14 @@ import statistics
 import time
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
-from bundled.constants import MODEL_SCORES_URL
-
+from bundled.constants import (
+    APOLLO_ARCH_TYPE,
+    DEMUCS_ARCH_TYPE,
+    MDX_ARCH_TYPE,
+    MODEL_SCORES_URL,
+    VR_ARCH_PM,
+    VR_ARCH_TYPE,
+)
 from core.model_stem_semantics import (
     INTENT_DRUM_BASS_SEP,
     INTENT_DUAL_VOC_INST,
@@ -36,6 +42,10 @@ PURPOSE_VOCALS = "vocals"
 PURPOSE_INSTRUMENTAL = "instrumental"
 PURPOSE_KARAOKE = "karaoke"
 PURPOSE_SPECIALTY = "specialty"
+PURPOSE_STEMS = "stems"
+PURPOSE_FX = "fx"
+PURPOSE_REMOVAL = "removal"
+PURPOSE_RESTORE = "restore"
 PURPOSE_OTHER = "other"
 
 PURPOSE_FILTER_OPTIONS: Tuple[Tuple[str, str], ...] = (
@@ -44,7 +54,83 @@ PURPOSE_FILTER_OPTIONS: Tuple[Tuple[str, str], ...] = (
     (PURPOSE_INSTRUMENTAL, "Instrumental"),
     (PURPOSE_KARAOKE, "Karaoke"),
     (PURPOSE_SPECIALTY, "Specialty"),
+    (PURPOSE_STEMS, "Stems"),
+    (PURPOSE_FX, "FX"),
+    (PURPOSE_REMOVAL, "Removal"),
+    (PURPOSE_RESTORE, "Restore"),
     (PURPOSE_OTHER, "Other"),
+)
+
+PURPOSE_PAGE_OPTIONS: Tuple[Tuple[str, str], ...] = (
+    (PURPOSE_VOCALS, "Vocals"),
+    (PURPOSE_INSTRUMENTAL, "Instrumental"),
+    (PURPOSE_KARAOKE, "Karaoke"),
+    (PURPOSE_STEMS, "Stems"),
+    (PURPOSE_FX, "FX"),
+    (PURPOSE_REMOVAL, "Removal"),
+    (PURPOSE_RESTORE, "Restore"),
+)
+
+_REMOVAL_PRIMARY_ROLES = frozenset(
+    {
+        "vocal.aspiration",
+        "vocal.aspiration.removed",
+        "mix.music.removed",
+    }
+)
+
+_FX_LABEL_HINTS = (
+    "crowd",
+    "sfx",
+    "explosion",
+    "fighting",
+    "foley",
+    "footsteps",
+    "ambiance",
+    "ambience",
+    "speechsep",
+    "speech sep",
+    "surround",
+    "cinematic",
+    "toon by",
+    "anime",
+)
+
+ARCH_FILTER_ALL = "all"
+
+NETWORK_CLASSIC_MDX = "classic_onnx"
+NETWORK_MDX23C = "mdx23c"
+NETWORK_MEL_BAND = "mel_band_roformer"
+NETWORK_BS_ROFORMER = "bs_roformer"
+NETWORK_SCNET = "scnet"
+NETWORK_BANDIT = "bandit"
+
+_MDX_NETWORK_COLLAPSE = {
+    "scnet_masked": NETWORK_SCNET,
+    "scnet_tran": NETWORK_SCNET,
+    "bandit_v2": NETWORK_BANDIT,
+}
+
+MDX_NETWORK_FILTER_OPTIONS: Tuple[Tuple[str, str], ...] = (
+    (MDX_ARCH_TYPE, "MDX-Net"),
+    (NETWORK_CLASSIC_MDX, "Classic MDX"),
+    (NETWORK_MDX23C, "MDX23C"),
+    (NETWORK_MEL_BAND, "Mel-Band Roformer"),
+    (NETWORK_BS_ROFORMER, "BS-Roformer"),
+    (NETWORK_SCNET, "SCNet"),
+    (NETWORK_BANDIT, "Bandit"),
+)
+
+NETWORK_FILTER_OPTIONS: Tuple[Tuple[str, str], ...] = (
+    (ARCH_FILTER_ALL, "Any network"),
+    (VR_ARCH_TYPE, "VR Arch"),
+    *MDX_NETWORK_FILTER_OPTIONS,
+    (DEMUCS_ARCH_TYPE, "Demucs"),
+    (APOLLO_ARCH_TYPE, "Apollo"),
+)
+
+MDX_NETWORK_SUBTYPES = frozenset(
+    value for value, _label in MDX_NETWORK_FILTER_OPTIONS if value != MDX_ARCH_TYPE
 )
 
 SORT_NAME = "name"
@@ -300,20 +386,198 @@ def purpose_bucket(intent: str) -> str:
         return PURPOSE_INSTRUMENTAL
     if intent in (
         INTENT_SPECIALTY_STEM,
-        INTENT_SPECIAL_FX,
         INTENT_DRUM_BASS_SEP,
         INTENT_MULTI_STEM,
     ):
         return PURPOSE_SPECIALTY
+    if intent == INTENT_SPECIAL_FX:
+        return PURPOSE_REMOVAL
     return PURPOSE_OTHER
 
 
 def purpose_for_label(label: str, *, intent: Optional[str] = None) -> str:
-    """Return the purpose bucket, preferring curated catalogue intent."""
+    """Return the primary purpose bucket, preferring curated catalogue intent."""
     resolved = str(intent or INTENT_UNKNOWN)
     if resolved == INTENT_UNKNOWN:
         resolved = infer_name_intent_from_label(label or "")
     return purpose_bucket(resolved)
+
+
+def _role_is_cinematic(role: Optional[str]) -> bool:
+    return str(role or "").startswith("cinematic.")
+
+
+def _role_is_effect(role: Optional[str]) -> bool:
+    return str(role or "").startswith("effect.")
+
+
+def _is_removal_primary(role: Optional[str]) -> bool:
+    value = str(role or "")
+    return value in _REMOVAL_PRIMARY_ROLES or _role_is_effect(value)
+
+
+def _cinematic_in_roles(
+    primary_role: Optional[str],
+    output_roles: Optional[Sequence[str]],
+) -> bool:
+    if _role_is_cinematic(primary_role):
+        return True
+    return any(_role_is_cinematic(role) for role in output_roles or ())
+
+
+def purpose_roles_from_projection(
+    projection: Any,
+) -> tuple[Optional[str], tuple[str, ...]]:
+    """Return ``(logical_primary_role, output roles)`` from catalogue semantics."""
+    if projection is None:
+        return None, ()
+    primary = getattr(projection, "logical_primary_role", None)
+    routes = tuple(getattr(projection, "routes", ()) or ())
+    outputs = tuple(
+        str(role) for role in (getattr(route, "role", None) for route in routes) if role
+    )
+    return (str(primary) if primary else None), outputs
+
+
+def purpose_roles_from_meta(meta: Any) -> tuple[Optional[str], tuple[str, ...]]:
+    """Return reviewed stem roles used for Download Center page membership."""
+    if meta is None:
+        return None, ()
+    return purpose_roles_from_projection(getattr(meta, "stem_semantics", None))
+
+
+def purpose_pages_for_label(
+    label: str,
+    *,
+    intent: Optional[str] = None,
+    arch: Optional[str] = None,
+    primary_role: Optional[str] = None,
+    output_roles: Optional[Sequence[str]] = None,
+) -> frozenset[str]:
+    """Return the Download Center pages a catalogue row should appear on.
+
+    Dual vocals/instrumental models belong on both Vocals and Instrumental.
+    Apollo restoration models always belong on Restore, regardless of intent.
+    Reviewed cinematic roles belong on FX; artefact subtraction and
+    aspiration belong on Removal. Musical multi-stem and specialty instruments
+    stay on Stems.
+    """
+    if arch == APOLLO_ARCH_TYPE:
+        return frozenset({PURPOSE_RESTORE})
+    resolved = str(intent or INTENT_UNKNOWN)
+    if resolved == INTENT_UNKNOWN:
+        resolved = infer_name_intent_from_label(label or "")
+    if resolved == INTENT_KARAOKE:
+        return frozenset({PURPOSE_KARAOKE})
+    if resolved == INTENT_VOCALS:
+        return frozenset({PURPOSE_VOCALS})
+    if resolved == INTENT_DUAL_VOC_INST:
+        return frozenset({PURPOSE_VOCALS, PURPOSE_INSTRUMENTAL})
+    if resolved == INTENT_INSTRUMENTAL:
+        return frozenset({PURPOSE_INSTRUMENTAL})
+    if resolved == INTENT_SPECIAL_FX or _is_removal_primary(primary_role):
+        return frozenset({PURPOSE_REMOVAL})
+    if _cinematic_in_roles(primary_role, output_roles):
+        return frozenset({PURPOSE_FX})
+    folded = (label or "").casefold()
+    if "aspiration" in folded or "musicless" in folded:
+        return frozenset({PURPOSE_REMOVAL})
+    if any(hint in folded for hint in _FX_LABEL_HINTS):
+        return frozenset({PURPOSE_FX})
+    return frozenset({PURPOSE_STEMS})
+
+
+def label_matches_purpose(
+    label: str,
+    purpose: str,
+    *,
+    intent: Optional[str] = None,
+    arch: Optional[str] = None,
+    primary_role: Optional[str] = None,
+    output_roles: Optional[Sequence[str]] = None,
+) -> bool:
+    """Return whether ``label`` belongs on a purpose filter or page."""
+    if purpose in ("", PURPOSE_ALL, None):
+        return True
+    if purpose in (PURPOSE_SPECIALTY, PURPOSE_OTHER):
+        return purpose_for_label(label, intent=intent) == purpose
+    return purpose in purpose_pages_for_label(
+        label,
+        intent=intent,
+        arch=arch,
+        primary_role=primary_role,
+        output_roles=output_roles,
+    )
+
+
+def _collapse_mdx_network_kind(kind: str | None) -> str:
+    if not kind:
+        return MDX_ARCH_TYPE
+    return _MDX_NETWORK_COLLAPSE.get(kind, kind)
+
+
+def catalogue_network_id(
+    *,
+    family_arch: str,
+    files: Iterable[str] = (),
+    label: str = "",
+) -> str:
+    """Return the Download Center Network-filter id for one catalogue row."""
+    if family_arch != MDX_ARCH_TYPE:
+        return family_arch
+    raw = [str(label or ""), *(str(name) for name in files)]
+    folded = [part.casefold().replace("-", "_").replace(" ", "_") for part in raw if part]
+    from core.model_inventory import mdx_kind_from_names
+
+    return _collapse_mdx_network_kind(mdx_kind_from_names((*raw, *folded)))
+
+
+def family_arch_for_network_filter(filter_id: str) -> str:
+    """Map a Network combo value to the family used for downloads and folders."""
+    if filter_id in ("", ARCH_FILTER_ALL, None):
+        return ARCH_FILTER_ALL
+    if filter_id == MDX_ARCH_TYPE or filter_id in MDX_NETWORK_SUBTYPES:
+        return MDX_ARCH_TYPE
+    return str(filter_id)
+
+
+def network_filter_matches(
+    filter_id: str,
+    *,
+    family_arch: str,
+    network: str,
+) -> bool:
+    """Return whether a row belongs under the selected Network filter."""
+    if filter_id in ("", ARCH_FILTER_ALL, None):
+        return True
+    if filter_id == MDX_ARCH_TYPE:
+        return family_arch == MDX_ARCH_TYPE
+    if filter_id in MDX_NETWORK_SUBTYPES:
+        return family_arch == MDX_ARCH_TYPE and network == filter_id
+    return family_arch == filter_id
+
+
+def network_filter_hides_headers(filter_id: str) -> bool:
+    """Section headers stay for Any network and the MDX-Net umbrella."""
+    return filter_id not in ("", ARCH_FILTER_ALL, None, MDX_ARCH_TYPE)
+
+
+def download_center_hint_for_method(method_key: str) -> Tuple[str, str]:
+    """Return ``(purpose_page, network_filter)`` for an empty-model banner.
+
+    Untargeted opens (menu, keyboard shortcut) should omit this hint so the
+    window stays on Vocals / Any network, or on whatever the user last browsed.
+    """
+    key = str(method_key or "")
+    if key in {VR_ARCH_PM, VR_ARCH_TYPE}:
+        return (PURPOSE_VOCALS, VR_ARCH_TYPE)
+    if key == MDX_ARCH_TYPE:
+        return (PURPOSE_VOCALS, MDX_ARCH_TYPE)
+    if key == DEMUCS_ARCH_TYPE:
+        return (PURPOSE_STEMS, DEMUCS_ARCH_TYPE)
+    if key == APOLLO_ARCH_TYPE:
+        return (PURPOSE_RESTORE, APOLLO_ARCH_TYPE)
+    return (PURPOSE_VOCALS, ARCH_FILTER_ALL)
 
 
 def format_sdr_subtitle(
@@ -371,13 +635,31 @@ def filter_labels_by_purpose(
     purpose: str,
     *,
     intents: Optional[Mapping[str, str]] = None,
+    arches: Optional[Mapping[str, str]] = None,
+    primary_roles: Optional[Mapping[str, str]] = None,
+    output_roles: Optional[Mapping[str, Sequence[str]]] = None,
 ) -> List[str]:
-    """Filter catalogue labels by purpose bucket (``all`` returns everything)."""
+    """Filter catalogue labels by purpose page or legacy bucket.
+
+    ``all`` returns everything. Vocals and Instrumental both include dual
+    vocals/instrumental models. ``specialty`` / ``other`` keep their original
+    single-bucket meaning for CLI callers.
+    """
     if purpose in ("", PURPOSE_ALL, None):
         return list(labels)
     known = intents or {}
+    arch_map = arches or {}
+    role_map = primary_roles or {}
+    outputs_map = output_roles or {}
     return [
         label
         for label in labels
-        if purpose_for_label(label, intent=known.get(label)) == purpose
+        if label_matches_purpose(
+            label,
+            purpose,
+            intent=known.get(label),
+            arch=arch_map.get(label),
+            primary_role=role_map.get(label),
+            output_roles=outputs_map.get(label),
+        )
     ]

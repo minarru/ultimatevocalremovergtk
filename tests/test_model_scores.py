@@ -8,18 +8,48 @@ import tempfile
 import unittest
 import unittest.mock
 
+from bundled.constants import (
+    APOLLO_ARCH_TYPE,
+    DEMUCS_ARCH_TYPE,
+    MDX_ARCH_TYPE,
+    VR_ARCH_PM,
+    VR_ARCH_TYPE,
+)
 from core import model_scores
-
 from core.model_scores import (
+    ARCH_FILTER_ALL,
+    NETWORK_BANDIT,
+    NETWORK_BS_ROFORMER,
+    NETWORK_CLASSIC_MDX,
+    NETWORK_FILTER_OPTIONS,
+    NETWORK_MDX23C,
+    NETWORK_MEL_BAND,
+    NETWORK_SCNET,
+    PURPOSE_FX,
     PURPOSE_INSTRUMENTAL,
     PURPOSE_KARAOKE,
+    PURPOSE_REMOVAL,
+    PURPOSE_RESTORE,
     PURPOSE_SPECIALTY,
+    PURPOSE_STEMS,
     PURPOSE_VOCALS,
+    catalogue_network_id,
+    download_center_hint_for_method,
+    family_arch_for_network_filter,
     filter_labels_by_purpose,
     format_sdr_subtitle,
+    network_filter_hides_headers,
+    network_filter_matches,
     parse_sdr_score,
     purpose_for_label,
+    purpose_pages_for_label,
     sort_labels_by_sdr,
+)
+from core.model_stem_semantics import (
+    INTENT_DUAL_VOC_INST,
+    INTENT_MULTI_STEM,
+    INTENT_SPECIAL_FX,
+    INTENT_SPECIALTY_STEM,
 )
 from ui.download_center import catalogue_matches
 
@@ -39,9 +69,7 @@ class ParseSdrScoreTests(unittest.TestCase):
         )
 
     def test_viperx_abbreviation(self) -> None:
-        self.assertAlmostEqual(
-            float(parse_sdr_score("BS-Roformer-Viperx-1297") or 0.0), 12.97
-        )
+        self.assertAlmostEqual(float(parse_sdr_score("BS-Roformer-Viperx-1297") or 0.0), 12.97)
 
     def test_missing_score_returns_none(self) -> None:
         self.assertIsNone(parse_sdr_score("UVR-MDX-NET-Inst_HQ_5.onnx"))
@@ -49,9 +77,7 @@ class ParseSdrScoreTests(unittest.TestCase):
     def test_best_of_multiple_texts(self) -> None:
         self.assertAlmostEqual(
             float(
-                parse_sdr_score(
-                    "friendly name", "model_sdr_10.2.ckpt", "other_sdr_11.5.ckpt"
-                )
+                parse_sdr_score("friendly name", "model_sdr_10.2.ckpt", "other_sdr_11.5.ckpt")
                 or 0.0
             ),
             11.5,
@@ -70,6 +96,7 @@ class PurposeAndSortTests(unittest.TestCase):
             PURPOSE_VOCALS,
         )
         self.assertEqual(purpose_for_label("SCnet: 4-stem model"), PURPOSE_SPECIALTY)
+        self.assertEqual(purpose_for_label("De-Echo Normal"), PURPOSE_REMOVAL)
 
     def test_filter_labels_by_purpose(self) -> None:
         labels = [
@@ -87,9 +114,7 @@ class PurposeAndSortTests(unittest.TestCase):
             PURPOSE_VOCALS,
         )
         self.assertEqual(
-            filter_labels_by_purpose(
-                [label], PURPOSE_VOCALS, intents={label: "vocals"}
-            ),
+            filter_labels_by_purpose([label], PURPOSE_VOCALS, intents={label: "vocals"}),
             [label],
         )
 
@@ -115,10 +140,163 @@ class PurposeAndSortTests(unittest.TestCase):
 
     def test_catalogue_matches_uses_curated_intent(self) -> None:
         label = "Mel-Band Roformer General by Someone"
-        matches = catalogue_matches(
-            [label], "", purpose=PURPOSE_VOCALS, intents={label: "vocals"}
-        )
+        matches = catalogue_matches([label], "", purpose=PURPOSE_VOCALS, intents={label: "vocals"})
         self.assertEqual(matches, [label])
+
+    def test_dual_intent_lists_on_vocals_and_instrumental_pages(self) -> None:
+        label = "MelBand Roformer | InstVoc HQ"
+        pages = purpose_pages_for_label(label, intent=INTENT_DUAL_VOC_INST)
+        self.assertEqual(pages, frozenset({PURPOSE_VOCALS, PURPOSE_INSTRUMENTAL}))
+        self.assertEqual(
+            filter_labels_by_purpose(
+                [label], PURPOSE_VOCALS, intents={label: INTENT_DUAL_VOC_INST}
+            ),
+            [label],
+        )
+        self.assertEqual(
+            filter_labels_by_purpose(
+                [label], PURPOSE_INSTRUMENTAL, intents={label: INTENT_DUAL_VOC_INST}
+            ),
+            [label],
+        )
+
+    def test_musical_stems_stay_on_the_stems_page(self) -> None:
+        self.assertEqual(
+            purpose_pages_for_label("SCnet: 4-stem model"),
+            frozenset({PURPOSE_STEMS}),
+        )
+        self.assertEqual(
+            purpose_pages_for_label(
+                "Demucs v4 Hybrid",
+                intent=INTENT_MULTI_STEM,
+                primary_role="vocal.vocals",
+                output_roles=(
+                    "vocal.vocals",
+                    "instrument.drums",
+                    "instrument.bass",
+                    "residual.other",
+                ),
+            ),
+            frozenset({PURPOSE_STEMS}),
+        )
+        self.assertEqual(
+            purpose_pages_for_label(
+                "BandSplit Roformer | Male-Female by aufr33",
+                intent=INTENT_SPECIALTY_STEM,
+                primary_role="vocal.male",
+                output_roles=("vocal.male", "vocal.female"),
+            ),
+            frozenset({PURPOSE_STEMS}),
+        )
+        self.assertEqual(
+            purpose_pages_for_label(
+                "MDX23C Phantom Centre",
+                intent=INTENT_SPECIALTY_STEM,
+                primary_role="spatial.center",
+            ),
+            frozenset({PURPOSE_STEMS}),
+        )
+
+    def test_cleanup_and_aspiration_land_on_removal_not_restore(self) -> None:
+        self.assertEqual(
+            purpose_pages_for_label("De-Echo Normal", intent=INTENT_SPECIAL_FX),
+            frozenset({PURPOSE_REMOVAL}),
+        )
+        self.assertEqual(
+            purpose_pages_for_label(
+                "MelBand Roformer | Aspiration by Sucial",
+                intent=INTENT_SPECIALTY_STEM,
+                primary_role="vocal.aspiration",
+                output_roles=("vocal.aspiration", "vocal.aspiration.removed"),
+            ),
+            frozenset({PURPOSE_REMOVAL}),
+        )
+        self.assertEqual(
+            purpose_pages_for_label(
+                "Mel-Band Roformer Musicless by Jasper",
+                intent=INTENT_SPECIALTY_STEM,
+                primary_role="mix.music.removed",
+            ),
+            frozenset({PURPOSE_REMOVAL}),
+        )
+        self.assertEqual(
+            purpose_pages_for_label(
+                "MelBand Roformer — DeNoiser Children 16 kHz",
+                intent=INTENT_SPECIAL_FX,
+                primary_role="cinematic.speech",
+            ),
+            frozenset({PURPOSE_REMOVAL}),
+        )
+        self.assertEqual(
+            purpose_pages_for_label("Apollo Universal", arch=APOLLO_ARCH_TYPE),
+            frozenset({PURPOSE_RESTORE}),
+        )
+
+    def test_cinematic_models_land_on_fx(self) -> None:
+        self.assertEqual(
+            purpose_pages_for_label(
+                "MelBand Roformer | Crowd by Aufr33 & Viperx",
+                intent=INTENT_SPECIALTY_STEM,
+                primary_role="cinematic.crowd",
+            ),
+            frozenset({PURPOSE_FX}),
+        )
+        self.assertEqual(
+            purpose_pages_for_label(
+                "MDX-Net — UVR Crowd HQ 1",
+                intent=INTENT_SPECIALTY_STEM,
+                primary_role="cinematic.crowd.removed",
+            ),
+            frozenset({PURPOSE_FX}),
+        )
+        self.assertEqual(
+            purpose_pages_for_label(
+                "Mel-Band Roformer Explosions by jazzpear",
+                intent=INTENT_SPECIALTY_STEM,
+                primary_role="cinematic.explosions",
+            ),
+            frozenset({PURPOSE_FX}),
+        )
+        self.assertEqual(
+            purpose_pages_for_label(
+                "MDX23C SFX by Jasper",
+                intent=INTENT_SPECIALTY_STEM,
+                primary_role="cinematic.foreground_sfx",
+            ),
+            frozenset({PURPOSE_FX}),
+        )
+        self.assertEqual(
+            purpose_pages_for_label(
+                "Bandit Plus by ZFTurbo",
+                intent=INTENT_MULTI_STEM,
+                primary_role="cinematic.speech",
+                output_roles=("cinematic.speech", "mix.music", "cinematic.sfx"),
+            ),
+            frozenset({PURPOSE_FX}),
+        )
+        self.assertEqual(
+            filter_labels_by_purpose(
+                ["De-Echo Normal"],
+                PURPOSE_RESTORE,
+                intents={"De-Echo Normal": INTENT_SPECIAL_FX},
+            ),
+            [],
+        )
+
+    def test_vocal_only_stays_off_the_instrumental_page(self) -> None:
+        label = "BandSplit Roformer | Resurrection Vocals by Unwa"
+        self.assertEqual(
+            purpose_pages_for_label(label),
+            frozenset({PURPOSE_VOCALS}),
+        )
+        self.assertEqual(
+            filter_labels_by_purpose([label], PURPOSE_INSTRUMENTAL),
+            [],
+        )
+        self.assertEqual(
+            catalogue_matches([label], "", purpose=PURPOSE_INSTRUMENTAL),
+            [],
+        )
 
 
 _FIXTURE = os.path.join(os.path.dirname(__file__), "fixtures", "model_scores_sample.json")
@@ -144,9 +322,7 @@ class _IsolatedScoreCache(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         cache_path = os.path.join(self._tmp.name, "model_scores.json")
-        patcher = unittest.mock.patch.object(
-            model_scores, "_cache_path", return_value=cache_path
-        )
+        patcher = unittest.mock.patch.object(model_scores, "_cache_path", return_value=cache_path)
         patcher.start()
         self.addCleanup(patcher.stop)
 
@@ -219,9 +395,7 @@ class SdrStemResolutionTests(unittest.TestCase):
 
     def test_case_mismatch_still_resolves(self) -> None:
         scores = {"vocals": 11.5, "instrumental": 16.25}
-        self.assertEqual(
-            model_scores.primary_sdr(scores, "Vocals", stem_count=2), ("vocals", 11.5)
-        )
+        self.assertEqual(model_scores.primary_sdr(scores, "Vocals", stem_count=2), ("vocals", 11.5))
 
     def test_unknown_target_falls_back_to_highest(self) -> None:
         scores = {"vocals": 11.5, "instrumental": 16.25}
@@ -256,6 +430,176 @@ class SdrSubtitleTests(unittest.TestCase):
         self.assertEqual(
             format_sdr_subtitle(11.43, "1.2 GB", stem="vocals", extra="Vocals, Instrumental"),
             "vocals 11.4 SDR · Vocals, Instrumental · 1.2 GB",
+        )
+
+
+class CatalogueNetworkFilterTests(unittest.TestCase):
+    def test_onnx_checkpoint_is_classic_mdx(self) -> None:
+        self.assertEqual(
+            catalogue_network_id(
+                family_arch=MDX_ARCH_TYPE,
+                files=("UVR-MDX-NET-Inst_HQ_5.onnx",),
+                label="MDX-Net Model: UVR-MDX-NET Inst HQ 5",
+            ),
+            NETWORK_CLASSIC_MDX,
+        )
+
+    def test_melband_label_without_hyphen_is_mel_band(self) -> None:
+        self.assertEqual(
+            catalogue_network_id(
+                family_arch=MDX_ARCH_TYPE,
+                files=("melband_roformer_inst_v1.ckpt", "config.yaml"),
+                label="MelBand Roformer | InstVoc HQ",
+            ),
+            NETWORK_MEL_BAND,
+        )
+
+    def test_mdx23c_filename(self) -> None:
+        self.assertEqual(
+            catalogue_network_id(
+                family_arch=MDX_ARCH_TYPE,
+                files=("MDX23C-8KFFT-InstVoc_HQ.ckpt", "model_2_stem_full_band_8k.yaml"),
+            ),
+            NETWORK_MDX23C,
+        )
+
+    def test_scnet_masked_collapses_to_scnet(self) -> None:
+        self.assertEqual(
+            catalogue_network_id(
+                family_arch=MDX_ARCH_TYPE,
+                files=("scnet_masked_4stem.ckpt", "config.yaml"),
+            ),
+            NETWORK_SCNET,
+        )
+
+    def test_bandit_v2_collapses_to_bandit(self) -> None:
+        self.assertEqual(
+            catalogue_network_id(
+                family_arch=MDX_ARCH_TYPE,
+                files=("bandit_v2_cinema.ckpt",),
+            ),
+            NETWORK_BANDIT,
+        )
+
+    def test_unclassified_mdx_keeps_mdx_net_id(self) -> None:
+        self.assertEqual(
+            catalogue_network_id(
+                family_arch=MDX_ARCH_TYPE,
+                files=("mystery.ckpt", "config.yaml"),
+                label="Custom checkpoint",
+            ),
+            MDX_ARCH_TYPE,
+        )
+
+    def test_vr_family_is_unchanged(self) -> None:
+        self.assertEqual(
+            catalogue_network_id(family_arch=VR_ARCH_TYPE, files=("1_HP-UVR.pth",)),
+            VR_ARCH_TYPE,
+        )
+
+    def test_mdx_net_filter_matches_every_mdx_kind(self) -> None:
+        for network in (
+            NETWORK_CLASSIC_MDX,
+            NETWORK_MDX23C,
+            NETWORK_MEL_BAND,
+            NETWORK_BS_ROFORMER,
+            NETWORK_SCNET,
+            NETWORK_BANDIT,
+            MDX_ARCH_TYPE,
+        ):
+            with self.subTest(network=network):
+                self.assertTrue(
+                    network_filter_matches(
+                        MDX_ARCH_TYPE,
+                        family_arch=MDX_ARCH_TYPE,
+                        network=network,
+                    )
+                )
+
+    def test_mel_band_filter_excludes_classic_mdx(self) -> None:
+        self.assertFalse(
+            network_filter_matches(
+                NETWORK_MEL_BAND,
+                family_arch=MDX_ARCH_TYPE,
+                network=NETWORK_CLASSIC_MDX,
+            )
+        )
+        self.assertTrue(
+            network_filter_matches(
+                NETWORK_MEL_BAND,
+                family_arch=MDX_ARCH_TYPE,
+                network=NETWORK_MEL_BAND,
+            )
+        )
+
+    def test_subtype_filter_does_not_match_vr(self) -> None:
+        self.assertFalse(
+            network_filter_matches(
+                NETWORK_MEL_BAND,
+                family_arch=VR_ARCH_TYPE,
+                network=VR_ARCH_TYPE,
+            )
+        )
+
+    def test_mdx_subtypes_map_to_mdx_folder(self) -> None:
+        self.assertEqual(family_arch_for_network_filter(NETWORK_MEL_BAND), MDX_ARCH_TYPE)
+        self.assertEqual(family_arch_for_network_filter(MDX_ARCH_TYPE), MDX_ARCH_TYPE)
+        self.assertEqual(family_arch_for_network_filter(VR_ARCH_TYPE), VR_ARCH_TYPE)
+
+    def test_mdx_net_and_any_keep_section_headers(self) -> None:
+        self.assertFalse(network_filter_hides_headers(ARCH_FILTER_ALL))
+        self.assertFalse(network_filter_hides_headers(MDX_ARCH_TYPE))
+        self.assertTrue(network_filter_hides_headers(NETWORK_MEL_BAND))
+        self.assertTrue(network_filter_hides_headers(VR_ARCH_TYPE))
+
+    def test_dropdown_lists_mdx_subtypes_after_mdx_net(self) -> None:
+        labels = [label for _value, label in NETWORK_FILTER_OPTIONS]
+        self.assertEqual(
+            labels,
+            [
+                "Any network",
+                "VR Arch",
+                "MDX-Net",
+                "Classic MDX",
+                "MDX23C",
+                "Mel-Band Roformer",
+                "BS-Roformer",
+                "SCNet",
+                "Bandit",
+                "Demucs",
+                "Apollo",
+            ],
+        )
+
+
+class DownloadCenterHintTests(unittest.TestCase):
+    def test_vr_opens_vocals_with_vr_network(self) -> None:
+        expected = (PURPOSE_VOCALS, VR_ARCH_TYPE)
+        self.assertEqual(download_center_hint_for_method(VR_ARCH_PM), expected)
+        self.assertEqual(download_center_hint_for_method(VR_ARCH_TYPE), expected)
+
+    def test_mdx_opens_vocals_with_mdx_network(self) -> None:
+        self.assertEqual(
+            download_center_hint_for_method(MDX_ARCH_TYPE),
+            (PURPOSE_VOCALS, MDX_ARCH_TYPE),
+        )
+
+    def test_demucs_opens_stems_with_demucs_network(self) -> None:
+        self.assertEqual(
+            download_center_hint_for_method(DEMUCS_ARCH_TYPE),
+            (PURPOSE_STEMS, DEMUCS_ARCH_TYPE),
+        )
+
+    def test_apollo_opens_restore_with_apollo_network(self) -> None:
+        self.assertEqual(
+            download_center_hint_for_method(APOLLO_ARCH_TYPE),
+            (PURPOSE_RESTORE, APOLLO_ARCH_TYPE),
+        )
+
+    def test_unknown_method_stays_on_vocals_any_network(self) -> None:
+        self.assertEqual(
+            download_center_hint_for_method("Ensemble Mode"),
+            (PURPOSE_VOCALS, ARCH_FILTER_ALL),
         )
 
 

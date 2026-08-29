@@ -42,19 +42,19 @@ def compute_checkpoint_hash(model_path: str) -> Optional[str]:
             return hashlib.md5(handle.read()).hexdigest()
 
 
-def infer_mdx_c_architecture(yaml_name: str) -> Tuple[str, bool]:
+def infer_mdx_c_architecture(yaml_name: str, *, config_path: str | None = None) -> Tuple[str, bool]:
     """Return ``(architecture label, is_roformer)`` for a bundled MDX-C yaml."""
-    if not yaml_name:
+    if not yaml_name and not config_path:
         return "", False
-    config_path = os.path.join(paths.MDX_C_CONFIG_PATH, yaml_name)
-    if not os.path.isfile(config_path):
+    path = config_path or os.path.join(paths.MDX_C_CONFIG_PATH, yaml_name)
+    if not os.path.isfile(path):
         return "", False
     try:
         from ml_collections import ConfigDict
 
         from .model_data import load_mdx_c_config
 
-        config = ConfigDict(load_mdx_c_config(config_path))
+        config = ConfigDict(load_mdx_c_config(path))
     except Exception:
         return "", False
 

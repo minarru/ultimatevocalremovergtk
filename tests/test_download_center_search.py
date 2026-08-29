@@ -165,6 +165,163 @@ class CatalogueActionRowResolveTests(unittest.TestCase):
 
         self.assertTrue(win._row_matches_filter(row, VR_ARCH_TYPE))
 
+    def test_dual_model_matches_vocals_and_instrumental_pages(self) -> None:
+        from types import SimpleNamespace
+
+        from gi.repository import Adw
+
+        from bundled.constants import MDX_ARCH_TYPE
+        from core.catalog_sources import EntryMeta
+        from core.model_scores import (
+            ARCH_FILTER_ALL,
+            PURPOSE_INSTRUMENTAL,
+            PURPOSE_KARAOKE,
+            PURPOSE_VOCALS,
+        )
+        from core.model_stem_semantics import INTENT_DUAL_VOC_INST
+        from ui.download_center import DownloadCenterWindow
+
+        label = "MelBand Roformer | InstVoc HQ"
+        win = cast(Any, object.__new__(DownloadCenterWindow))
+        win._hide_unsupported = False
+        win._arch_filter = ARCH_FILTER_ALL
+        win.manager = SimpleNamespace(
+            catalogue_meta={
+                label: EntryMeta(
+                    label=label,
+                    display=label,
+                    arch=MDX_ARCH_TYPE,
+                    intent=INTENT_DUAL_VOC_INST,
+                )
+            },
+            catalogue_meta_by_family={
+                "mdx": {
+                    label: EntryMeta(
+                        label=label,
+                        display=label,
+                        arch=MDX_ARCH_TYPE,
+                        intent=INTENT_DUAL_VOC_INST,
+                    )
+                }
+            },
+        )
+        win._search_entries = {}
+        row = Adw.ActionRow()
+        stash(row, "_uvr_model_name", label)
+        stash(row, "_uvr_arch", MDX_ARCH_TYPE)
+
+        win._purpose = PURPOSE_VOCALS
+        self.assertTrue(win._row_matches_filter(row, MDX_ARCH_TYPE))
+        win._purpose = PURPOSE_INSTRUMENTAL
+        self.assertTrue(win._row_matches_filter(row, MDX_ARCH_TYPE))
+        win._purpose = PURPOSE_KARAOKE
+        self.assertFalse(win._row_matches_filter(row, MDX_ARCH_TYPE))
+
+    def test_cinematic_and_cleanup_use_fx_and_removal_pages(self) -> None:
+        from types import SimpleNamespace
+
+        from gi.repository import Adw
+
+        from bundled.constants import MDX_ARCH_TYPE
+        from core.catalog_sources import EntryMeta
+        from core.catalogue_types import StemSemanticProjection
+        from core.model_scores import (
+            ARCH_FILTER_ALL,
+            PURPOSE_FX,
+            PURPOSE_REMOVAL,
+            PURPOSE_STEMS,
+        )
+        from core.model_stem_semantics import INTENT_SPECIAL_FX, INTENT_SPECIALTY_STEM
+        from ui.download_center import DownloadCenterWindow
+
+        crowd = "MelBand Roformer | Crowd by Aufr33"
+        echo = "De-Echo Normal"
+        stems = "SCnet: 4-stem model"
+        crowd_meta = EntryMeta(
+            label=crowd,
+            display=crowd,
+            arch=MDX_ARCH_TYPE,
+            intent=INTENT_SPECIALTY_STEM,
+            stem_semantics=StemSemanticProjection(
+                backend_primary_stem=None,
+                backend_target_stem=None,
+                logical_primary_role="cinematic.crowd",
+                logical_secondary_role=None,
+                status="reviewed",
+                context="full_mix",
+                routes=(),
+            ),
+        )
+        echo_meta = EntryMeta(
+            label=echo,
+            display=echo,
+            arch=MDX_ARCH_TYPE,
+            intent=INTENT_SPECIAL_FX,
+        )
+        win = cast(Any, object.__new__(DownloadCenterWindow))
+        win._hide_unsupported = False
+        win._arch_filter = ARCH_FILTER_ALL
+        win.manager = SimpleNamespace(
+            catalogue_meta={crowd: crowd_meta, echo: echo_meta},
+            catalogue_meta_by_family={"mdx": {crowd: crowd_meta, echo: echo_meta}},
+        )
+        win._search_entries = {}
+
+        def _row(name: str) -> Adw.ActionRow:
+            row = Adw.ActionRow()
+            stash(row, "_uvr_model_name", name)
+            stash(row, "_uvr_arch", MDX_ARCH_TYPE)
+            return row
+
+        crowd_row = _row(crowd)
+        echo_row = _row(echo)
+        stem_row = _row(stems)
+
+        win._purpose = PURPOSE_FX
+        self.assertTrue(win._row_matches_filter(crowd_row, MDX_ARCH_TYPE))
+        self.assertFalse(win._row_matches_filter(echo_row, MDX_ARCH_TYPE))
+        self.assertFalse(win._row_matches_filter(stem_row, MDX_ARCH_TYPE))
+        win._purpose = PURPOSE_REMOVAL
+        self.assertFalse(win._row_matches_filter(crowd_row, MDX_ARCH_TYPE))
+        self.assertTrue(win._row_matches_filter(echo_row, MDX_ARCH_TYPE))
+        self.assertFalse(win._row_matches_filter(stem_row, MDX_ARCH_TYPE))
+        win._purpose = PURPOSE_STEMS
+        self.assertFalse(win._row_matches_filter(crowd_row, MDX_ARCH_TYPE))
+        self.assertFalse(win._row_matches_filter(echo_row, MDX_ARCH_TYPE))
+        self.assertTrue(win._row_matches_filter(stem_row, MDX_ARCH_TYPE))
+
+    def test_mel_band_network_filter_excludes_classic_mdx(self) -> None:
+        from types import SimpleNamespace
+
+        from gi.repository import Adw
+
+        from bundled.constants import MDX_ARCH_TYPE
+        from core.model_scores import NETWORK_CLASSIC_MDX, NETWORK_MEL_BAND, PURPOSE_ALL
+        from ui.download_center import DownloadCenterWindow
+
+        win = cast(Any, object.__new__(DownloadCenterWindow))
+        win._hide_unsupported = False
+        win._purpose = PURPOSE_ALL
+        win.manager = SimpleNamespace(catalogue_meta={})
+        win._search_entries = {}
+
+        mel = Adw.ActionRow()
+        stash(mel, "_uvr_model_name", "MelBand Roformer | Inst v1")
+        stash(mel, "_uvr_arch", MDX_ARCH_TYPE)
+        stash(mel, "_uvr_network", NETWORK_MEL_BAND)
+        classic = Adw.ActionRow()
+        stash(classic, "_uvr_model_name", "MDX-Net Model: Kim Vocal 2")
+        stash(classic, "_uvr_arch", MDX_ARCH_TYPE)
+        stash(classic, "_uvr_network", NETWORK_CLASSIC_MDX)
+
+        win._arch_filter = NETWORK_MEL_BAND
+        self.assertTrue(win._row_matches_filter(mel, MDX_ARCH_TYPE))
+        self.assertFalse(win._row_matches_filter(classic, MDX_ARCH_TYPE))
+
+        win._arch_filter = MDX_ARCH_TYPE
+        self.assertTrue(win._row_matches_filter(mel, MDX_ARCH_TYPE))
+        self.assertTrue(win._row_matches_filter(classic, MDX_ARCH_TYPE))
+
 
 class CanonicalSearchTests(unittest.TestCase):
     def test_query_matches_canonical_name(self) -> None:

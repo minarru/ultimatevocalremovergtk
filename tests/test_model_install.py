@@ -364,6 +364,43 @@ class IncompleteIdentityTests(_Base):
         self.assertEqual(repo.invalidations, 0)
         self.assertTrue(result.detail)
 
+    def test_abbreviated_mbr_publishes_when_yaml_is_in_config_path(self) -> None:
+        """Retry after a kept transfer: YAML lives under MDX_C_CONFIG_PATH."""
+        from bundled.constants import MDX_ARCH_TYPE
+        from core import paths
+        from core.catalog_sources import EntryMeta
+
+        ckpt = "mbr_hybrid_arch_aname.ckpt"
+        yaml_name = "mbr_hybrid_arch_aname_config.yaml"
+        selectable = "Roformer Model: Hybrid Arch"
+        files = {ckpt: "u1", yaml_name: "u2"}
+        entry = EntryMeta(
+            label=selectable,
+            display="Hybrid Arch · Aname",
+            arch=MDX_ARCH_TYPE,
+            files=files,
+            checkpoint=ckpt,
+        )
+        snapshot = _snapshot(mdx={selectable: files}, meta={"mdx": {selectable: entry}})
+        repo = _Repo(snapshot, files={"mdx": [ckpt]})
+
+        with tempfile.TemporaryDirectory() as config_dir:
+            yaml_path = os.path.join(config_dir, yaml_name)
+            with open(yaml_path, "w", encoding="utf-8") as handle:
+                handle.write("model:\n  num_bands: 60\n")
+            with mock.patch.object(paths, "MDX_C_CONFIG_PATH", config_dir):
+                result = finalize_downloaded_model(
+                    repo=repo,
+                    family="mdx",
+                    selection=selectable,
+                    jobs=[("u1", self._file(ckpt)), ("u2", yaml_path)],
+                    transfer_result="exists",
+                )
+
+        self.assertTrue(result.ready, result.detail)
+        self.assertTrue(result.published)
+        self.assertEqual(repo.invalidations, 1)
+
     def test_an_unknown_selection_is_reported(self) -> None:
         repo = _Repo(_snapshot())
 

@@ -145,23 +145,78 @@ def _project_vr(selection: str, entry: Any, files: tuple[str, ...]) -> ModelReco
     )
 
 
-def _mdx_kind(files: Iterable[str], yaml_path: str | None = None) -> MdxSpec | None:
+def _fold_mdx_kind_tokens(*parts: str) -> str:
+    """Space-fold names the same way Download Center Network classification does."""
+    return " ".join(
+        str(part).casefold().replace("-", "_").replace(" ", "_") for part in parts if part
+    )
+
+
+def _mdx_yaml_names(names: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(name for name in names if name.casefold().endswith(_YAML_SUFFIXES))
+
+
+def _resolve_mdx_yaml_path(yaml_name: str, yaml_path: str | None) -> str | None:
+    from . import paths
+
+    if yaml_path and os.path.isfile(yaml_path):
+        return yaml_path
+    if not yaml_name:
+        return None
+    candidate = os.path.join(paths.MDX_C_CONFIG_PATH, yaml_name)
+    if os.path.isfile(candidate):
+        return candidate
+    return None
+
+
+def _mdx_kind_from_yaml(names: tuple[str, ...], yaml_path: str | None) -> MdxSpec | None:
+    from .mdx_c_registry import infer_mdx_c_architecture
+
+    yaml_names = _mdx_yaml_names(names)
+    yaml_name = yaml_names[0] if len(yaml_names) == 1 else os.path.basename(yaml_path or "")
+    path = _resolve_mdx_yaml_path(yaml_name, yaml_path)
+    if path is None or not yaml_name:
+        return None
+    architecture, _is_roformer = infer_mdx_c_architecture(yaml_name, config_path=path)
+    return _mdx_spec_from_architecture(architecture, yaml_name)
+
+
+def _mdx_kind(
+    files: Iterable[str],
+    yaml_path: str | None = None,
+    *,
+    labels: Iterable[str] = (),
+) -> MdxSpec | None:
     names = tuple(files)
     if any(name.casefold().endswith(".onnx") for name in names):
         return MdxSpec("classic_onnx")
-    tokens = " ".join(names).casefold().replace("-", "_")
+    spec = _mdx_kind_from_yaml(names, yaml_path)
+    if spec is not None:
+        return spec
+    tokens = _fold_mdx_kind_tokens(*names, *labels)
     if yaml_path:
         try:
             with open(yaml_path, encoding="utf-8") as handle:
                 document = yaml.safe_load(handle)
             if isinstance(document, Mapping):
-                tokens += " " + str(document.get("model_type") or "").casefold()
+                tokens += " " + _fold_mdx_kind_tokens(str(document.get("model_type") or ""))
         except (OSError, yaml.YAMLError):
             pass
     for kind, hints in _MDX_KIND_HINTS:
         if any(hint in tokens for hint in hints):
             return MdxSpec(kind)  # type: ignore[arg-type]
     return None
+
+
+def mdx_kind_from_names(
+    names: Iterable[str],
+    yaml_path: str | None = None,
+    *,
+    labels: Iterable[str] = (),
+) -> str | None:
+    """Return the ``MdxSpec.kind`` suggested by filenames, YAML, or labels."""
+    spec = _mdx_kind(names, yaml_path=yaml_path, labels=labels)
+    return None if spec is None else spec.kind
 
 
 def _project_mdx(selection: str, entry: Any, files: tuple[str, ...]) -> ModelRecord | None:
@@ -172,7 +227,10 @@ def _project_mdx(selection: str, entry: Any, files: tuple[str, ...]) -> ModelRec
     declared = str(getattr(entry, "checkpoint", "") or "")
     primary = declared if declared in checkpoints else checkpoints[0]
     ambiguous = len(checkpoints) != 1 or len(yamls) > 1
-    kind = _mdx_kind(files)
+    kind = _mdx_kind(
+        files,
+        labels=(selection, str(getattr(entry, "display", "") or "")),
+    )
     complete = not ambiguous and (primary.casefold().endswith(".onnx") or kind is not None)
     error = None
     if ambiguous:

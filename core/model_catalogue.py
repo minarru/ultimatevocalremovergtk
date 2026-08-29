@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Any, Iterable, Mapping
+from typing import Any, Iterable, Mapping, Sequence
 from urllib.parse import quote, unquote
 
 from bundled.constants import APOLLO_ARCH_TYPE, DEMUCS_ARCH_TYPE, MDX_ARCH_TYPE, VR_ARCH_TYPE
@@ -15,9 +15,11 @@ from .model_naming import canonical_display_name
 from .model_scores import (
     PURPOSE_ALL,
     filter_labels_by_purpose,
+    label_matches_purpose,
     parse_sdr_score,
     primary_sdr,
     purpose_for_label,
+    purpose_roles_from_meta,
     sdr_for_files,
 )
 
@@ -155,11 +157,21 @@ def filter_catalogue_labels(
     *,
     purpose: str = PURPOSE_ALL,
     intents: dict[str, str] | None = None,
+    arches: dict[str, str] | None = None,
+    primary_roles: dict[str, str] | None = None,
+    output_roles: dict[str, Sequence[str]] | None = None,
     sentinels: Iterable[str] = (),
 ) -> list[str]:
     blocked = set(sentinels)
     selectable = [name for name in names if name not in blocked]
-    selectable = filter_labels_by_purpose(selectable, purpose, intents=intents)
+    selectable = filter_labels_by_purpose(
+        selectable,
+        purpose,
+        intents=intents,
+        arches=arches,
+        primary_roles=primary_roles,
+        output_roles=output_roles,
+    )
     return [name for name in selectable if catalogue_label_matches(name, query)]
 
 
@@ -259,21 +271,37 @@ class ModelCatalogueService:
         supported: bool | None = None,
         installed: bool | None = None,
     ) -> tuple[ModelCatalogueRecord, ...]:
-        return tuple(
-            row
-            for row in self.records()
-            if (family is None or row.family == family)
-            and (purpose in {"", PURPOSE_ALL} or row.purpose == purpose)
-            and (supported is None or row.supported is supported)
-            and (installed is None or row.installed is installed)
-            and catalogue_label_matches(
+        matched: list[ModelCatalogueRecord] = []
+        for row in self.records():
+            if family is not None and row.family != family:
+                continue
+            if purpose not in {"", PURPOSE_ALL}:
+                primary_role, output_roles = purpose_roles_from_meta(
+                    catalogue_entry_meta(self.manager, row.family, row.selection)
+                )
+                if not label_matches_purpose(
+                    row.selection,
+                    purpose,
+                    intent=row.intent,
+                    arch=FAMILY_ARCH.get(row.family),
+                    primary_role=primary_role,
+                    output_roles=output_roles,
+                ):
+                    continue
+            if supported is not None and row.supported is not supported:
+                continue
+            if installed is not None and row.installed is not installed:
+                continue
+            if not catalogue_label_matches(
                 row.selection,
                 query,
                 extra=" ".join(
                     value for value in (row.display, row.unsupported_reason or "") if value
                 ),
-            )
-        )
+            ):
+                continue
+            matched.append(row)
+        return tuple(matched)
 
     def resolve(self, reference: str) -> ModelCatalogueRecord:
         raw = str(reference).strip()
