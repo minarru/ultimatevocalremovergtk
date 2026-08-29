@@ -242,6 +242,7 @@ _BOOL_FIELDS: frozenset[tuple[str, str]] = frozenset(
         ("ensemble", "append_ensemble_name"),
         ("ensemble", "wav_ensemble"),
         ("ensemble", "cleanup_temps"),
+        ("ensemble", "derive_complement_from_mix"),
         ("audio_tools", "is_time_correction"),
         ("ui", "window_maximized"),
         ("ui", "notify_process_complete"),

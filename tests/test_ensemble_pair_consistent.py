@@ -9,7 +9,6 @@ from core.ensemble_pair_consistent import (
 from core.stem_roles import StemLiteral, StemRoleId
 from core.stems import StemId, StemRoute, StemRouteKind
 
-
 VOCALS = StemRoleId("vocal.vocals")
 INST = StemRoleId("mix.instrumental")
 LEAD = StemRoleId("vocal.lead")
@@ -100,3 +99,21 @@ class ResolvePairConsistentPlanTests(unittest.TestCase):
     def test_one_native_predictor_is_noop(self) -> None:
         members = ((_native(VOCALS, "vocals"), _complement(INST, VOCALS)),)
         self.assertIsNone(resolve_pair_consistent_plan((VOCALS, INST), members))
+
+
+class DeriveComplementSettingTests(unittest.TestCase):
+    def test_default_is_false(self) -> None:
+        from core.settings import Settings
+
+        self.assertFalse(Settings.defaults().ensemble.derive_complement_from_mix)
+
+    def test_set_path_coerces_and_flat_key_round_trips(self) -> None:
+        from core.settings import Settings
+        from core.settings.access import get_flat, set_flat, set_path
+
+        settings = Settings.defaults()
+        set_path(settings, "ensemble.derive_complement_from_mix", "true")
+        self.assertTrue(settings.ensemble.derive_complement_from_mix)
+        self.assertTrue(get_flat(settings, "is_derive_complement_from_mix"))
+        set_flat(settings, "is_derive_complement_from_mix", False)
+        self.assertFalse(settings.ensemble.derive_complement_from_mix)

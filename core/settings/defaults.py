@@ -155,6 +155,7 @@ def default_ensemble() -> dict:
         "append_ensemble_name": False,
         "wav_ensemble": False,
         "cleanup_temps": True,
+        "derive_complement_from_mix": False,
     }
 
 
