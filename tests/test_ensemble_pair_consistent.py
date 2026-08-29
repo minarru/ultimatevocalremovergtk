@@ -122,6 +122,7 @@ class DeriveComplementSettingTests(unittest.TestCase):
 class MixComplementTests(unittest.TestCase):
     def test_waveform_residual_matches_mdx_time_path(self) -> None:
         import numpy as np
+
         from ml.spec_utils import mix_complement, to_shape
 
         rng = np.random.default_rng(1)
@@ -134,8 +135,10 @@ class MixComplementTests(unittest.TestCase):
         )
 
     def test_invert_spec_calls_invert_stem(self) -> None:
-        import numpy as np
         from unittest.mock import patch
+
+        import numpy as np
+
         from ml.spec_utils import mix_complement
 
         mix = np.ones((2, 8), dtype=np.float64)

@@ -204,9 +204,7 @@ def ensemble_options_summary(
     if not stem_chosen:
         return "Choose a stem pair · select 2+ models"
 
-    models_bit = (
-        f"{model_count} model" if model_count == 1 else f"{model_count} models"
-    )
+    models_bit = f"{model_count} model" if model_count == 1 else f"{model_count} models"
     if model_count < 2:
         models_bit = f"{models_bit} (need 2+)"
 
