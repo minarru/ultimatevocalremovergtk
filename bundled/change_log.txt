@@ -1,4 +1,9 @@
-Most Recent Changes (v1.1.1 — Linux GTK4 port):
+Most Recent Changes (v1.2.0 — Linux GTK4 port):
+
+~ Added Opus export (.opus via libopus). Quality is a VBR target (64k–256k, default 192k) and ffmpeg resamples to 48 kHz.
+~ Changed the default save format for new installs and missing settings to 16-bit FLAC. Existing settings.json values are left unchanged.
+
+Previous Release (v1.1.1 — Linux GTK4 port):
 
 Highlights:
 
