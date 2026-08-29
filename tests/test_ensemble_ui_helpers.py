@@ -169,11 +169,88 @@ class SummaryAndBlurbTests(unittest.TestCase):
         )
         self.assertNotIn("← Min Spec", text)
 
+    def test_karaoke_shaped_summary_uses_stacked_role_on_the_left(self) -> None:
+        """pair.karaoke is accompaniment-first; stacked lead must be the left stem."""
+        text = ensemble_options_summary(
+            stem_chosen=True,
+            main_stem="Instrumental with Backing Vocals/Lead Vocals",
+            primary_stem="Lead Vocals",
+            secondary_stem="Instrumental with Backing Vocals",
+            primary_algo=MAX_SPEC,
+            secondary_algo=MIN_SPEC,
+            model_count=2,
+            multi_stem=False,
+            derive_complement_from_mix=True,
+            leftover_label="Instrumental with Backing Vocals",
+        )
+        self.assertEqual(
+            text,
+            "Lead Vocals ← Max Spec · Instrumental with Backing Vocals · 2 models",
+        )
+
     def test_algorithm_blurb_and_wav_subtitle(self) -> None:
         self.assertIn("agreement", algorithm_blurb(SOFT_SPEC).casefold())
         self.assertIn("chunk", wav_ensemble_subtitle(uses_chunk_min=True).casefold())
         self.assertIn("time domain", wav_ensemble_subtitle(uses_chunk_min=False).casefold())
         self.assertTrue(algorithm_blurb(CHUNK_MIN))
+
+
+class EnsembleOptionsSummaryCallSiteTests(unittest.TestCase):
+    """The group description must follow the same plan as the algorithm rows."""
+
+    def _page(self, *, pair_id: str, pair_label: str, pair_stems: tuple[str, str]):
+        from unittest import mock
+
+        from core.settings import Settings
+        from ui.ensemble.window import EnsemblePage
+
+        page = object.__new__(EnsemblePage)
+        page.settings = Settings.defaults()
+        page.settings.ensemble.derive_complement_from_mix = True
+        page.settings.ensemble.type = "Max Spec/Min Spec"
+        page.ensemble_group = mock.Mock()
+        page._lock_leftover_algo = False
+        page._pair_consistent_leftover_label = None
+        page._ensemble_pair = mock.Mock(return_value=pair_id)
+        page._stem_pair_chosen = mock.Mock(return_value=True)
+        page._ensemble_pair_label = mock.Mock(return_value=pair_label)
+        page._ensemble_stem_pair = mock.Mock(return_value=pair_stems)
+        page._effective_selected_models = mock.Mock(return_value=["mdx:a", "mdx:b"])
+        return page
+
+    def test_karaoke_plan_summary_uses_stacked_role_on_the_left(self) -> None:
+        page = self._page(
+            pair_id="pair.karaoke",
+            pair_label="Instrumental with Backing Vocals/Lead Vocals",
+            pair_stems=("Instrumental with Backing Vocals", "Lead Vocals"),
+        )
+        page._lock_leftover_algo = True
+        page._pair_consistent_leftover_label = "Instrumental with Backing Vocals"
+        page._pair_consistent_stacked_label = "Lead Vocals"
+        page._describe_mix_residual = True
+
+        page._update_ensemble_options_summary()
+
+        page.ensemble_group.set_description.assert_called_once_with(
+            "Lead Vocals ← Max Spec · Instrumental with Backing Vocals · 2 models"
+        )
+
+    def test_noop_dual_native_keeps_independent_algorithm_summary(self) -> None:
+        page = self._page(
+            pair_id="pair.center_side",
+            pair_label="Center/Side",
+            pair_stems=("Center", "Side"),
+        )
+        page._lock_leftover_algo = False
+        page._pair_consistent_leftover_label = None
+        page._pair_consistent_stacked_label = None
+        page._describe_mix_residual = False
+
+        page._update_ensemble_options_summary()
+
+        page.ensemble_group.set_description.assert_called_once_with(
+            "Center ← Max Spec · Side ← Min Spec · 2 models"
+        )
 
 
 class MainStemChangedOrderTests(unittest.TestCase):

@@ -190,6 +190,8 @@ class EnsemblePage:
         self._syncing_preset = False
         self._lock_leftover_algo = False
         self._pair_consistent_leftover_label: str | None = None
+        self._pair_consistent_stacked_label: str | None = None
+        self._describe_mix_residual = False
         self._model_checks: Dict[str, Gtk.CheckButton] = {}
         self._model_row_text: Dict[str, tuple[str, str]] = {}
         self._models_write_gated = False
@@ -700,10 +702,13 @@ class EnsemblePage:
         primary_stem, secondary_stem = self._ensemble_stem_pair()
         derive = bool(self.settings.ensemble.derive_complement_from_mix) and not multi
         leftover_label: str | None = None
+        stacked_label: str | None = None
         lock_leftover = False
+        describe_mix = False
         if derive:
             member_routes = self._dry_resolved_member_routes()
             if member_routes is None:
+                describe_mix = True
                 primary_title, secondary_title = algorithm_row_titles(
                     None,
                     None,
@@ -718,15 +723,17 @@ class EnsemblePage:
                 if definition is not None and len(definition.roles) == 2:
                     plan = resolve_pair_consistent_plan(definition.roles, member_routes)
                 if plan is not None:
+                    stacked_label = self._role_display(plan.stacked_role)
                     leftover_label = self._role_display(plan.leftover_role)
                     primary_title, secondary_title = algorithm_row_titles(
-                        self._role_display(plan.stacked_role),
+                        stacked_label,
                         leftover_label,
                         multi_stem=False,
                         derive_complement_from_mix=True,
                         leftover_label=leftover_label,
                     )
                     lock_leftover = True
+                    describe_mix = True
                 else:
                     primary_title, secondary_title = algorithm_row_titles(
                         primary_stem, secondary_stem, multi_stem=False
@@ -737,6 +744,8 @@ class EnsemblePage:
             )
         self._lock_leftover_algo = lock_leftover
         self._pair_consistent_leftover_label = leftover_label
+        self._pair_consistent_stacked_label = stacked_label
+        self._describe_mix_residual = describe_mix
         set_row_title(primary_row, primary_title)
         set_row_title(secondary_row, secondary_title)
 
@@ -1217,20 +1226,26 @@ class EnsemblePage:
             return
         pair = self._ensemble_pair()
         multi = is_stem_mode(pair)
-        primary_stem, secondary_stem = self._ensemble_stem_pair()
+        pair_primary, pair_secondary = self._ensemble_stem_pair()
+        stacked = getattr(self, "_pair_consistent_stacked_label", None)
+        leftover = getattr(self, "_pair_consistent_leftover_label", None)
+        lock_leftover = bool(getattr(self, "_lock_leftover_algo", False))
+        describe_mix = bool(
+            getattr(self, "_describe_mix_residual", False) or lock_leftover or leftover
+        )
         primary, secondary = parse_ensemble_type(self.settings.ensemble.type or MAX_MIN)
         group.set_description(
             ensemble_options_summary(
                 stem_chosen=self._stem_pair_chosen(),
                 main_stem=self._ensemble_pair_label(),
-                primary_stem=primary_stem,
-                secondary_stem=secondary_stem,
+                primary_stem=stacked if describe_mix and stacked else pair_primary,
+                secondary_stem=pair_secondary,
                 primary_algo=primary,
                 secondary_algo=secondary,
                 model_count=len(self._effective_selected_models()),
                 multi_stem=multi,
-                derive_complement_from_mix=bool(self.settings.ensemble.derive_complement_from_mix),
-                leftover_label=getattr(self, "_pair_consistent_leftover_label", None),
+                derive_complement_from_mix=describe_mix,
+                leftover_label=leftover,
             )
         )
 
