@@ -67,6 +67,7 @@ def save_ensemble(
     *,
     wav_ensemble: bool = False,
     save_all_outputs: bool = True,
+    derive_complement_from_mix: bool = False,
 ) -> str:
     """Persist an ensemble with an exact current semantic pair/mode id."""
     pair_id = normalize_stem_pair_id(ensemble_main_stem)
@@ -77,6 +78,7 @@ def save_ensemble(
         "selected_models": list(selected_models),
         "is_wav_ensemble": bool(wav_ensemble),
         "save_all_outputs": bool(save_all_outputs),
+        "derive_complement_from_mix": bool(derive_complement_from_mix),
     }
     path = _saved_ensemble_path(name)
     cache_dir = paths.ENSEMBLE_CACHE_DIR
@@ -179,6 +181,7 @@ class ResolvedEnsemblePreset:
     description: str = ""
     wav_ensemble: bool = False
     save_all_outputs: bool = True
+    derive_complement_from_mix: bool = False
     validation_warnings: tuple[str, ...] = ()
 
 
@@ -258,6 +261,7 @@ class EnsembleService:
             str(data.get("description") or "").strip(),
             bool(data.get("is_wav_ensemble", False)),
             bool(data.get("save_all_outputs", True)),
+            bool(data.get("derive_complement_from_mix", False)),
             tuple(validation_warnings),
         )
 
@@ -270,6 +274,7 @@ class EnsembleService:
         settings.ensemble.chosen_ensemble = preset.display
         settings.ensemble.wav_ensemble = preset.wav_ensemble
         settings.ensemble.save_all_outputs = preset.save_all_outputs
+        settings.ensemble.derive_complement_from_mix = preset.derive_complement_from_mix
         return preset
 
     def create(
@@ -281,6 +286,7 @@ class EnsembleService:
         algorithm: str,
         wav_ensemble: bool = False,
         save_all_outputs: bool = True,
+        derive_complement_from_mix: bool = False,
         replace: bool = False,
     ) -> ResolvedEnsemblePreset:
         if load_ensemble(name) is not None and not replace:
@@ -303,6 +309,7 @@ class EnsembleService:
             canonical,
             wav_ensemble=wav_ensemble,
             save_all_outputs=save_all_outputs,
+            derive_complement_from_mix=derive_complement_from_mix,
         )
         return self.resolve(name)
 

@@ -112,6 +112,44 @@ class SavedEnsemblePersistenceTests(unittest.TestCase):
             self.assertTrue(resaved["is_wav_ensemble"])
             self.assertFalse(resaved["save_all_outputs"])
 
+    def test_derive_complement_round_trips_and_legacy_defaults_false(self) -> None:
+        from core.settings import Settings
+
+        with tempfile.TemporaryDirectory() as tmp, patch.object(paths, "ENSEMBLE_CACHE_DIR", tmp):
+            ensemble_service.save_ensemble(
+                "PairConsistent",
+                "pair.karaoke",
+                "Max Spec/Max Spec",
+                ["mdx:first", "mdx:second"],
+                derive_complement_from_mix=True,
+            )
+            loaded = ensemble_service.load_ensemble("PairConsistent")
+            assert loaded is not None
+            self.assertEqual(loaded["schema_version"], 2)
+            self.assertTrue(loaded["derive_complement_from_mix"])
+
+            settings = Settings.defaults()
+            self.assertFalse(settings.ensemble.derive_complement_from_mix)
+            service = ensemble_service.EnsembleService(object())
+            service.apply(settings, "PairConsistent")
+            self.assertTrue(settings.ensemble.derive_complement_from_mix)
+
+            with open(os.path.join(tmp, "LegacyFlag.json"), "w", encoding="utf-8") as handle:
+                json.dump(
+                    {
+                        "schema_version": 2,
+                        "ensemble_main_stem": "pair.karaoke",
+                        "ensemble_type": "Max Spec",
+                        "selected_models": ["mdx:first", "mdx:second"],
+                        "is_wav_ensemble": False,
+                        "save_all_outputs": True,
+                    },
+                    handle,
+                )
+            settings.ensemble.derive_complement_from_mix = True
+            service.apply(settings, "LegacyFlag")
+            self.assertFalse(settings.ensemble.derive_complement_from_mix)
+
 
 @unittest.skipUnless(
     os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"),

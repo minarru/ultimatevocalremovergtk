@@ -880,6 +880,7 @@ class EnsemblePage:
                 algorithm=self.settings.ensemble.type or MAX_MIN,
                 wav_ensemble=self.settings.ensemble.wav_ensemble,
                 save_all_outputs=self.settings.ensemble.save_all_outputs,
+                derive_complement_from_mix=self.settings.ensemble.derive_complement_from_mix,
                 replace=True,
             )
         except (OSError, ValueError) as exc:

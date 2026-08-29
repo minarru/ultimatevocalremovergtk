@@ -424,6 +424,7 @@ def resolve_ensemble_job(args: argparse.Namespace, *, validation_level: Any = No
                 "ensemble.selected_models",
                 "ensemble.wav_ensemble",
                 "ensemble.save_all_outputs",
+                "ensemble.derive_complement_from_mix",
             }
         )
         sources.update({path: "preset" for path in preset_paths})
