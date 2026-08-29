@@ -574,6 +574,17 @@ def invert_stem(mixture: np.ndarray, stem: np.ndarray) -> np.ndarray:
 
     return -output.T
 
+def mix_complement(
+    mix: np.ndarray,
+    stem: np.ndarray,
+    *,
+    invert_spec: bool = False,
+) -> np.ndarray:
+    shaped = to_shape(stem, mix.shape)
+    if invert_spec:
+        return invert_stem(mix, shaped)
+    return -shaped.T + mix.T
+
 def _pad_ensemble_members(inputs: Sequence[np.ndarray], is_wavs: bool = False) -> list[np.ndarray]:
     """Pad members to the longest time axis (no truncation)."""
     if not inputs:

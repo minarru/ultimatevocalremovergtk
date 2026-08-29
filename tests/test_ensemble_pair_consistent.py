@@ -117,3 +117,31 @@ class DeriveComplementSettingTests(unittest.TestCase):
         self.assertTrue(get_flat(settings, "is_derive_complement_from_mix"))
         set_flat(settings, "is_derive_complement_from_mix", False)
         self.assertFalse(settings.ensemble.derive_complement_from_mix)
+
+
+class MixComplementTests(unittest.TestCase):
+    def test_waveform_residual_matches_mdx_time_path(self) -> None:
+        import numpy as np
+        from ml.spec_utils import mix_complement, to_shape
+
+        rng = np.random.default_rng(1)
+        mix = rng.standard_normal((2, 32)).astype(np.float64)
+        stem = rng.standard_normal((2, 30)).astype(np.float64)
+        shaped = to_shape(stem, mix.shape)
+        np.testing.assert_array_equal(
+            mix_complement(mix, stem, invert_spec=False),
+            -shaped.T + mix.T,
+        )
+
+    def test_invert_spec_calls_invert_stem(self) -> None:
+        import numpy as np
+        from unittest.mock import patch
+        from ml.spec_utils import mix_complement
+
+        mix = np.ones((2, 8), dtype=np.float64)
+        stem = np.zeros((2, 8), dtype=np.float64)
+        sentinel = np.full((8, 2), 7.0)
+        with patch("ml.spec_utils.invert_stem", return_value=sentinel) as invert:
+            out = mix_complement(mix, stem, invert_spec=True)
+        invert.assert_called_once()
+        np.testing.assert_array_equal(out, sentinel)
