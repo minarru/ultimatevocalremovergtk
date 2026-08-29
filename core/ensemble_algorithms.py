@@ -173,11 +173,16 @@ def algorithm_row_titles(
     secondary_stem: Optional[str],
     *,
     multi_stem: bool,
+    derive_complement_from_mix: bool = False,
+    leftover_label: str | None = None,
 ) -> Tuple[str, str]:
     """Titles for primary/secondary algorithm combo rows."""
     if multi_stem:
         return "Ensemble algorithm", "Secondary algorithm"
     primary = f"{primary_stem} algorithm" if primary_stem else "Primary algorithm"
+    if derive_complement_from_mix:
+        leftover = leftover_label or "Complement"
+        return primary, f"{leftover} (from mix)"
     secondary = f"{secondary_stem} algorithm" if secondary_stem else "Secondary algorithm"
     return primary, secondary
 
@@ -192,6 +197,8 @@ def ensemble_options_summary(
     secondary_algo: str,
     model_count: int,
     multi_stem: bool,
+    derive_complement_from_mix: bool = False,
+    leftover_label: str | None = None,
 ) -> str:
     """Live description for the Ensemble options group."""
     if not stem_chosen:
@@ -207,6 +214,9 @@ def ensemble_options_summary(
         return f"{main_stem} · {primary_algo} · {models_bit}"
 
     left = primary_stem or "Primary"
+    if derive_complement_from_mix:
+        right = leftover_label or "mix residual"
+        return f"{left} ← {primary_algo} · {right} · {models_bit}"
     right = secondary_stem or "Secondary"
     return f"{left} ← {primary_algo} · {right} ← {secondary_algo} · {models_bit}"
 

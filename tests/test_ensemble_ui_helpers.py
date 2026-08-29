@@ -65,6 +65,27 @@ class StemTitleTests(unittest.TestCase):
         primary, _secondary = algorithm_row_titles("Vocals", "Instrumental", multi_stem=True)
         self.assertEqual(primary, "Ensemble algorithm")
 
+    def test_pair_consistent_titles_generic_when_unresolved(self) -> None:
+        primary, secondary = algorithm_row_titles(
+            None,
+            None,
+            multi_stem=False,
+            derive_complement_from_mix=True,
+        )
+        self.assertEqual(primary, "Primary algorithm")
+        self.assertEqual(secondary, "Complement (from mix)")
+
+    def test_pair_consistent_titles_use_leftover_from_mix(self) -> None:
+        primary, secondary = algorithm_row_titles(
+            "Vocals",
+            "Instrumental",
+            multi_stem=False,
+            derive_complement_from_mix=True,
+            leftover_label="Instrumental",
+        )
+        self.assertEqual(primary, "Vocals algorithm")
+        self.assertEqual(secondary, "Instrumental (from mix)")
+
 
 class FilterAndStatusTests(unittest.TestCase):
     def test_model_row_matches_query(self) -> None:
@@ -109,6 +130,44 @@ class SummaryAndBlurbTests(unittest.TestCase):
             text,
             "Vocals ← Max Spec · Instrumental ← Min Spec · 3 models",
         )
+
+    def test_pair_consistent_summary_uses_mix_residual_not_min_spec(self) -> None:
+        """Flag on must not describe the leftover as an independent Min Spec combine."""
+        text = ensemble_options_summary(
+            stem_chosen=True,
+            main_stem="Vocals/Instrumental",
+            primary_stem="Vocals",
+            secondary_stem="Instrumental",
+            primary_algo=MAX_SPEC,
+            secondary_algo=MIN_SPEC,
+            model_count=2,
+            multi_stem=False,
+            derive_complement_from_mix=True,
+        )
+        self.assertEqual(
+            text,
+            "Vocals ← Max Spec · mix residual · 2 models",
+        )
+        self.assertNotIn("← Min Spec", text)
+
+    def test_pair_consistent_summary_uses_leftover_label(self) -> None:
+        text = ensemble_options_summary(
+            stem_chosen=True,
+            main_stem="Vocals/Instrumental",
+            primary_stem="Vocals",
+            secondary_stem="Instrumental",
+            primary_algo=MAX_SPEC,
+            secondary_algo=MIN_SPEC,
+            model_count=3,
+            multi_stem=False,
+            derive_complement_from_mix=True,
+            leftover_label="Instrumental",
+        )
+        self.assertEqual(
+            text,
+            "Vocals ← Max Spec · Instrumental · 3 models",
+        )
+        self.assertNotIn("← Min Spec", text)
 
     def test_algorithm_blurb_and_wav_subtitle(self) -> None:
         self.assertIn("agreement", algorithm_blurb(SOFT_SPEC).casefold())

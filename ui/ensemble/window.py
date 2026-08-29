@@ -51,6 +51,7 @@ from core import (
 )
 from core.ensemble_algorithms import (
     ENSEMBLE_PRESET_OPTIONS,
+    PAIR_CONSISTENT_PRESET,
     algorithm_blurb,
     algorithm_row_titles,
     ensemble_options_summary,
@@ -59,7 +60,7 @@ from core.ensemble_algorithms import (
     models_selection_status,
     pair_for_preset,
     parse_ensemble_type,
-    preset_for_pair,
+    preset_for_state,
     wav_ensemble_subtitle,
 )
 from core.ensemble_presets import (
@@ -89,6 +90,7 @@ from core.types import ProcessMethod
 
 from ..dialogs.utils import present_modal_dialog, set_dialog_content
 from ..help_text import (
+    DERIVE_COMPLEMENT_FROM_MIX_HELP,
     ENSEMBLE_DELETE_BUTTON_HINT,
     ENSEMBLE_MEMBER_MODEL_OPTIONS_HINT,
     ENSEMBLE_SAVE_BUTTON_HINT,
@@ -186,6 +188,8 @@ class EnsemblePage:
         self.settings = context.settings
         self._loading = False
         self._syncing_preset = False
+        self._lock_leftover_algo = False
+        self._pair_consistent_leftover_label: str | None = None
         self._model_checks: Dict[str, Gtk.CheckButton] = {}
         self._model_row_text: Dict[str, tuple[str, str]] = {}
         self._models_write_gated = False
@@ -301,6 +305,11 @@ class EnsemblePage:
         )
         self.preset_row.connect("notify::selected", self._on_preset_changed)
         group.add(self.preset_row)
+
+        self.derive_complement_row = make_switch_row("Derive complement from mix")
+        set_tooltip(self.derive_complement_row, DERIVE_COMPLEMENT_FROM_MIX_HELP)
+        self.derive_complement_row.connect("notify::active", self._on_derive_complement_changed)
+        group.add(self.derive_complement_row)
 
         self.primary_algo_row = make_combo_row(
             "Primary algorithm",
@@ -504,6 +513,9 @@ class EnsemblePage:
                 self.main_stem_row,
                 self.settings.ensemble.main_stem,
             )
+            self.derive_complement_row.set_active(
+                bool(self.settings.ensemble.derive_complement_from_mix)
+            )
             self._refresh_ensemble_type_values()
 
             self._rebuild_stem_only_toggles()
@@ -629,14 +641,10 @@ class EnsemblePage:
             )
         return tuple(routes)
 
-    def _resolve_ensemble_semantics_model(self):
-        """Best-effort model resolve for export-semantics hints (first member)."""
+    def _resolve_ensemble_member_model(self, tag: str):
+        """Dry-resolve one member tag without prompting for checkpoint hashes."""
         from core.model_display import parse_model_tag
 
-        tags = self._selected_model_tags()
-        if not tags:
-            return None
-        tag = tags[0]
         process_method, model_name = parse_model_tag(tag)
         if not process_method:
             return None
@@ -644,7 +652,93 @@ class EnsemblePage:
 
         prefix = str(tag).partition(":")[0].casefold()
         reference = tag if prefix in FAMILIES else model_name
-        return self.window.context.repo.resolve_model_dry(self.settings, process_method, reference)
+        context = getattr(self, "context", None) or getattr(
+            getattr(self, "window", None), "context", None
+        )
+        repo = getattr(context, "repo", None)
+        if repo is None:
+            return None
+        return repo.resolve_model_dry(self.settings, process_method, reference)
+
+    def _resolve_ensemble_semantics_model(self):
+        """Best-effort model resolve for export-semantics hints (first member)."""
+        tags = self._selected_model_tags()
+        if not tags:
+            return None
+        return self._resolve_ensemble_member_model(tags[0])
+
+    def _dry_resolved_member_routes(self):
+        """Export routes for selected members, or None if any tag is unresolved."""
+        from core.stems import run_export_routes
+
+        tags = self._effective_selected_models()
+        if not tags:
+            return None
+        routes = []
+        for tag in tags:
+            model = self._resolve_ensemble_member_model(tag)
+            if model is None:
+                return None
+            routes.append(tuple(run_export_routes(model)))
+        return tuple(routes)
+
+    def _role_display(self, role: object) -> str | None:
+        from core.stem_roles import StemRoleId
+
+        if not isinstance(role, StemRoleId):
+            return None
+        registry = load_bundled_stem_semantics()
+        definition = registry.roles.get(role)
+        return None if definition is None else definition.display
+
+    def _apply_algorithm_row_presentation(self) -> None:
+        primary_row = getattr(self, "primary_algo_row", None)
+        secondary_row = getattr(self, "secondary_algo_row", None)
+        if primary_row is None or secondary_row is None:
+            return
+        multi = self._ensemble_is_multi_or_four()
+        primary_stem, secondary_stem = self._ensemble_stem_pair()
+        derive = bool(self.settings.ensemble.derive_complement_from_mix) and not multi
+        leftover_label: str | None = None
+        lock_leftover = False
+        if derive:
+            member_routes = self._dry_resolved_member_routes()
+            if member_routes is None:
+                primary_title, secondary_title = algorithm_row_titles(
+                    None,
+                    None,
+                    multi_stem=False,
+                    derive_complement_from_mix=True,
+                )
+            else:
+                from core.ensemble_pair_consistent import resolve_pair_consistent_plan
+
+                definition = stem_pair_definition(self._ensemble_pair())
+                plan = None
+                if definition is not None and len(definition.roles) == 2:
+                    plan = resolve_pair_consistent_plan(definition.roles, member_routes)
+                if plan is not None:
+                    leftover_label = self._role_display(plan.leftover_role)
+                    primary_title, secondary_title = algorithm_row_titles(
+                        self._role_display(plan.stacked_role),
+                        leftover_label,
+                        multi_stem=False,
+                        derive_complement_from_mix=True,
+                        leftover_label=leftover_label,
+                    )
+                    lock_leftover = True
+                else:
+                    primary_title, secondary_title = algorithm_row_titles(
+                        primary_stem, secondary_stem, multi_stem=False
+                    )
+        else:
+            primary_title, secondary_title = algorithm_row_titles(
+                primary_stem, secondary_stem, multi_stem=multi
+            )
+        self._lock_leftover_algo = lock_leftover
+        self._pair_consistent_leftover_label = leftover_label
+        set_row_title(primary_row, primary_title)
+        set_row_title(secondary_row, secondary_title)
 
     def _rebuild_stem_only_toggles(self) -> None:
         primary_stem, secondary_stem = self._ensemble_stem_pair()
@@ -960,10 +1054,7 @@ class EnsemblePage:
         multi = self._ensemble_is_multi_or_four()
         current = self.settings.ensemble.type or MAX_MIN
         primary, secondary = parse_ensemble_type(current)
-        primary_stem, secondary_stem = self._ensemble_stem_pair()
-        primary_title, secondary_title = algorithm_row_titles(
-            primary_stem, secondary_stem, multi_stem=multi
-        )
+        derive = bool(self.settings.ensemble.derive_complement_from_mix)
 
         was_loading = self._loading
         self._loading = True
@@ -973,27 +1064,39 @@ class EnsemblePage:
             set_combo_values(self.secondary_algo_row, list(ENSEMBLE_ALGORITHMS))
             set_combo_value(self.primary_algo_row, primary)
             set_combo_value(self.secondary_algo_row, secondary)
-            set_row_title(self.primary_algo_row, primary_title)
-            set_row_title(self.secondary_algo_row, secondary_title)
             set_row_subtitle(self.primary_algo_row, algorithm_blurb(primary))
             set_row_subtitle(self.secondary_algo_row, algorithm_blurb(secondary))
 
+            derive_row = getattr(self, "derive_complement_row", None)
             if multi:
                 self.preset_row.set_visible(False)
                 self.secondary_algo_row.set_visible(False)
+                if derive_row is not None:
+                    derive_row.set_visible(False)
                 if current != primary:
                     self.settings.ensemble.type = primary
             else:
                 self.preset_row.set_visible(True)
                 self.secondary_algo_row.set_visible(True)
+                if derive_row is not None:
+                    derive_row.set_visible(True)
+                    derive_row.set_active(derive)
                 paired = format_ensemble_type(primary, secondary)
                 if current != paired:
                     self.settings.ensemble.type = paired
-                set_combo_value(self.preset_row, preset_for_pair(primary, secondary))
+                set_combo_value(
+                    self.preset_row,
+                    preset_for_state(
+                        primary,
+                        secondary,
+                        derive_complement_from_mix=derive,
+                    ),
+                )
         finally:
             self._syncing_preset = False
             self._loading = was_loading
 
+        self._apply_algorithm_row_presentation()
         self._update_algo_sensitivity()
         self._update_wav_ensemble_subtitle()
         self._update_ensemble_options_summary()
@@ -1021,9 +1124,14 @@ class EnsemblePage:
         pair = pair_for_preset(preset)
         if pair is None:
             return
+        derive = preset == PAIR_CONSISTENT_PRESET
         primary, secondary = pair
         self._syncing_preset = True
         try:
+            self._set_bool("is_derive_complement_from_mix", derive)
+            derive_row = getattr(self, "derive_complement_row", None)
+            if derive_row is not None:
+                derive_row.set_active(derive)
             set_combo_value(self.primary_algo_row, primary)
             set_combo_value(self.secondary_algo_row, secondary)
             set_row_subtitle(self.primary_algo_row, algorithm_blurb(primary))
@@ -1031,8 +1139,19 @@ class EnsemblePage:
             self.settings.ensemble.type = format_ensemble_type(primary, secondary)
         finally:
             self._syncing_preset = False
+        self._apply_algorithm_row_presentation()
+        self._update_algo_sensitivity()
         self._update_wav_ensemble_subtitle()
         self._update_ensemble_options_summary()
+
+    def _on_derive_complement_changed(self, *_args: typing.Any) -> None:
+        if self._loading or self._syncing_preset:
+            return
+        self._set_bool(
+            "is_derive_complement_from_mix",
+            self.derive_complement_row.get_active(),
+        )
+        self._refresh_ensemble_type_values()
 
     def _on_ensemble_type_changed(self, *_args: typing.Any) -> None:
         if self._loading or self._syncing_preset:
@@ -1047,7 +1166,16 @@ class EnsemblePage:
             self.settings.ensemble.type = format_ensemble_type(primary, secondary)
             self._syncing_preset = True
             try:
-                set_combo_value(self.preset_row, preset_for_pair(primary, secondary))
+                set_combo_value(
+                    self.preset_row,
+                    preset_for_state(
+                        primary,
+                        secondary,
+                        derive_complement_from_mix=bool(
+                            self.settings.ensemble.derive_complement_from_mix
+                        ),
+                    ),
+                )
             finally:
                 self._syncing_preset = False
         self._update_wav_ensemble_subtitle()
@@ -1055,14 +1183,18 @@ class EnsemblePage:
 
     def _update_algo_sensitivity(self) -> None:
         enabled = self._stem_pair_chosen()
+        lock_leftover = bool(getattr(self, "_lock_leftover_algo", False))
         for row in (
             getattr(self, "preset_row", None),
             getattr(self, "primary_algo_row", None),
-            getattr(self, "secondary_algo_row", None),
+            getattr(self, "derive_complement_row", None),
         ):
             if row is None:
                 continue
             row.set_sensitive(enabled)
+        secondary = getattr(self, "secondary_algo_row", None)
+        if secondary is not None:
+            secondary.set_sensitive(enabled and not lock_leftover)
 
     def _sync_gpu_dependent_rows(self) -> None:
         """Dim GPU-only options while GPU conversion is off."""
@@ -1097,6 +1229,8 @@ class EnsemblePage:
                 secondary_algo=secondary,
                 model_count=len(self._effective_selected_models()),
                 multi_stem=multi,
+                derive_complement_from_mix=bool(self.settings.ensemble.derive_complement_from_mix),
+                leftover_label=getattr(self, "_pair_consistent_leftover_label", None),
             )
         )
 
@@ -1327,6 +1461,7 @@ class EnsemblePage:
         row = getattr(self, "models_trigger_row", None)
         if row is not None:
             row.set_subtitle(self._models_summary())
+        self._apply_algorithm_row_presentation()
         self._update_member_models_sensitivity()
         self._update_ensemble_options_summary()
         self._update_ensemble_banner()
