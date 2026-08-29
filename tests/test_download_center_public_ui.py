@@ -9,6 +9,21 @@ from typing import Any, cast
 from unittest import mock
 
 
+def _purpose_page_titles(stack: Any) -> list[str]:
+    """Titles in PURPOSE_PAGE_OPTIONS order, for Adw.ViewStack or Gtk.Stack."""
+    from core.model_scores import PURPOSE_PAGE_OPTIONS
+
+    titles: list[str] = []
+    for value, _label in PURPOSE_PAGE_OPTIONS:
+        child = stack.get_child_by_name(value)
+        if child is None:
+            titles.append("")
+            continue
+        page = stack.get_page(child)
+        titles.append(page.get_title() or "")
+    return titles
+
+
 @unittest.skipUnless(
     os.environ.get("WAYLAND_DISPLAY") or os.environ.get("DISPLAY"),
     "GTK widget construction needs a display",
@@ -49,7 +64,7 @@ class DownloadCenterPublicUiTests(unittest.TestCase):
 
         gi.require_version("Gtk", "4.0")
         gi.require_version("Adw", "1")
-        from gi.repository import Adw
+        from gi.repository import Adw, Gtk
 
         from core.downloads import DownloadManager
         from core.model_scores import PURPOSE_PAGE_OPTIONS, PURPOSE_VOCALS
@@ -61,16 +76,49 @@ class DownloadCenterPublicUiTests(unittest.TestCase):
         self.addCleanup(center.window.destroy)
 
         self.assertEqual(center.stack.get_visible_child_name(), PURPOSE_VOCALS)
-        self.assertIsInstance(center.stack, Adw.ViewStack)
-        child = center.stack.get_first_child()
-        names: list[str] = []
-        while child is not None:
-            page = center.stack.get_page(child)
-            names.append(page.get_title() or "")
-            child = child.get_next_sibling()
-        self.assertEqual(names, [label for _value, label in PURPOSE_PAGE_OPTIONS])
+        # libadwaita 1.7+ uses InlineViewSwitcher + ViewStack; CI's Ubuntu
+        # gir1.2-adw-1 does not, so Download Center falls back to Gtk.Stack.
+        self.assertIsInstance(center.stack, (Adw.ViewStack, Gtk.Stack))
+        self.assertEqual(
+            _purpose_page_titles(center.stack),
+            [label for _value, label in PURPOSE_PAGE_OPTIONS],
+        )
         if isinstance(center.switcher, Adw.InlineViewSwitcher):
             self.assertFalse(center.switcher.get_homogeneous())
+        else:
+            self.assertIsInstance(center.switcher, Gtk.StackSwitcher)
+
+    def test_header_switcher_falls_back_without_inline_view_switcher(self) -> None:
+        import gi
+
+        gi.require_version("Gtk", "4.0")
+        gi.require_version("Adw", "1")
+        from gi.repository import Gtk
+
+        from core.downloads import DownloadManager
+        from core.model_scores import PURPOSE_PAGE_OPTIONS, PURPOSE_VOCALS
+        from core.settings import Settings
+        from ui.download_center import DownloadCenterWindow
+
+        real_hasattr = hasattr
+
+        def _hasattr(obj: object, name: str) -> bool:
+            if name == "InlineViewSwitcher":
+                return False
+            return real_hasattr(obj, name)
+
+        context = SimpleNamespace(settings=Settings.defaults())
+        with mock.patch("ui.download_center.hasattr", _hasattr):
+            center = DownloadCenterWindow(None, context, DownloadManager(), mock.MagicMock())
+        self.addCleanup(center.window.destroy)
+
+        self.assertIsInstance(center.stack, Gtk.Stack)
+        self.assertIsInstance(center.switcher, Gtk.StackSwitcher)
+        self.assertEqual(center.stack.get_visible_child_name(), PURPOSE_VOCALS)
+        self.assertEqual(
+            _purpose_page_titles(center.stack),
+            [label for _value, label in PURPOSE_PAGE_OPTIONS],
+        )
 
     def test_network_filter_options_are_arch_value_then_label(self) -> None:
         from bundled.constants import MDX_ARCH_TYPE, VR_ARCH_TYPE

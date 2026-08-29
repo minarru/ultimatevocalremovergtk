@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import unittest
 from collections.abc import Iterable
+from typing import Any
 
 from bundled.constants import (
     CHUNK_MIN,
@@ -202,13 +203,13 @@ class SummaryAndBlurbTests(unittest.TestCase):
 class EnsembleOptionsSummaryCallSiteTests(unittest.TestCase):
     """The group description must follow the same plan as the algorithm rows."""
 
-    def _page(self, *, pair_id: str, pair_label: str, pair_stems: tuple[str, str]):
+    def _page(self, *, pair_id: str, pair_label: str, pair_stems: tuple[str, str]) -> Any:
         from unittest import mock
 
         from core.settings import Settings
         from ui.ensemble.window import EnsemblePage
 
-        page = object.__new__(EnsemblePage)
+        page: Any = object.__new__(EnsemblePage)
         page.settings = Settings.defaults()
         page.settings.ensemble.derive_complement_from_mix = True
         page.settings.ensemble.type = "Max Spec/Min Spec"
@@ -277,13 +278,13 @@ def _complement_route(role: StemRoleId, of_role: StemRoleId) -> StemRoute:
 
 
 class PairConsistentPlanAvailabilityTests(unittest.TestCase):
-    def _page(self):
+    def _page(self) -> Any:
         from unittest import mock
 
         from core.settings import Settings
         from ui.ensemble.window import EnsemblePage
 
-        page = object.__new__(EnsemblePage)
+        page: Any = object.__new__(EnsemblePage)
         page.settings = Settings.defaults()
         page._syncing_preset = False
         page._lock_leftover_algo = False
