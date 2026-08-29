@@ -50,11 +50,11 @@ from core import (
     list_saved_ensembles,
 )
 from core.ensemble_algorithms import (
-    ENSEMBLE_PRESET_OPTIONS,
     PAIR_CONSISTENT_PRESET,
     algorithm_blurb,
     algorithm_row_titles,
     ensemble_options_summary,
+    ensemble_preset_options,
     format_ensemble_type,
     model_row_matches_query,
     models_selection_status,
@@ -63,6 +63,7 @@ from core.ensemble_algorithms import (
     preset_for_state,
     wav_ensemble_subtitle,
 )
+from core.ensemble_pair_consistent import PairConsistentPlan
 from core.ensemble_presets import (
     classify_preset_members,
     curated_combo_label,
@@ -298,7 +299,7 @@ class EnsemblePage:
 
         self.preset_row = make_combo_row(
             "Algorithm preset",
-            list(ENSEMBLE_PRESET_OPTIONS),
+            list(ensemble_preset_options(include_pair_consistent=False)),
             icon_name="emblem-favorite-symbolic",
         )
         set_tooltip(
@@ -311,6 +312,7 @@ class EnsemblePage:
         self.derive_complement_row = make_switch_row("Derive complement from mix")
         set_tooltip(self.derive_complement_row, DERIVE_COMPLEMENT_FROM_MIX_HELP)
         self.derive_complement_row.connect("notify::active", self._on_derive_complement_changed)
+        self.derive_complement_row.set_visible(False)
         group.add(self.derive_complement_row)
 
         self.primary_algo_row = make_combo_row(
@@ -693,6 +695,50 @@ class EnsemblePage:
         definition = registry.roles.get(role)
         return None if definition is None else definition.display
 
+    def _pair_consistent_plan(self) -> PairConsistentPlan | None:
+        """Mix-residual plan for the current pair and members, or None."""
+        if self._ensemble_is_multi_or_four():
+            return None
+        member_routes = self._dry_resolved_member_routes()
+        if member_routes is None:
+            return None
+        definition = stem_pair_definition(self._ensemble_pair())
+        if definition is None or len(definition.roles) != 2:
+            return None
+        from core.ensemble_pair_consistent import resolve_pair_consistent_plan
+
+        return resolve_pair_consistent_plan(definition.roles, member_routes)
+
+    def _sync_pair_consistent_controls(self, plan: PairConsistentPlan | None) -> None:
+        """Show the mix-residual switch only when a plan exists."""
+        derive_row = getattr(self, "derive_complement_row", None)
+        if derive_row is not None:
+            derive_row.set_visible(plan is not None)
+        preset_row = getattr(self, "preset_row", None)
+        if preset_row is None or self._ensemble_is_multi_or_four():
+            return
+        was_syncing = self._syncing_preset
+        self._syncing_preset = True
+        try:
+            set_combo_values(
+                preset_row,
+                ensemble_preset_options(include_pair_consistent=plan is not None),
+            )
+            primary, secondary = parse_ensemble_type(self.settings.ensemble.type)
+            set_combo_value(
+                preset_row,
+                preset_for_state(
+                    primary,
+                    secondary,
+                    derive_complement_from_mix=bool(
+                        self.settings.ensemble.derive_complement_from_mix
+                    )
+                    and plan is not None,
+                ),
+            )
+        finally:
+            self._syncing_preset = was_syncing
+
     def _apply_algorithm_row_presentation(self) -> None:
         primary_row = getattr(self, "primary_algo_row", None)
         secondary_row = getattr(self, "secondary_algo_row", None)
@@ -700,44 +746,29 @@ class EnsemblePage:
             return
         multi = self._ensemble_is_multi_or_four()
         primary_stem, secondary_stem = self._ensemble_stem_pair()
-        derive = bool(self.settings.ensemble.derive_complement_from_mix) and not multi
+        plan = None if multi else self._pair_consistent_plan()
+        self._sync_pair_consistent_controls(plan)
+        derive = (
+            bool(self.settings.ensemble.derive_complement_from_mix)
+            and not multi
+            and plan is not None
+        )
         leftover_label: str | None = None
         stacked_label: str | None = None
         lock_leftover = False
         describe_mix = False
-        if derive:
-            member_routes = self._dry_resolved_member_routes()
-            if member_routes is None:
-                describe_mix = True
-                primary_title, secondary_title = algorithm_row_titles(
-                    None,
-                    None,
-                    multi_stem=False,
-                    derive_complement_from_mix=True,
-                )
-            else:
-                from core.ensemble_pair_consistent import resolve_pair_consistent_plan
-
-                definition = stem_pair_definition(self._ensemble_pair())
-                plan = None
-                if definition is not None and len(definition.roles) == 2:
-                    plan = resolve_pair_consistent_plan(definition.roles, member_routes)
-                if plan is not None:
-                    stacked_label = self._role_display(plan.stacked_role)
-                    leftover_label = self._role_display(plan.leftover_role)
-                    primary_title, secondary_title = algorithm_row_titles(
-                        stacked_label,
-                        leftover_label,
-                        multi_stem=False,
-                        derive_complement_from_mix=True,
-                        leftover_label=leftover_label,
-                    )
-                    lock_leftover = True
-                    describe_mix = True
-                else:
-                    primary_title, secondary_title = algorithm_row_titles(
-                        primary_stem, secondary_stem, multi_stem=False
-                    )
+        if derive and plan is not None:
+            stacked_label = self._role_display(plan.stacked_role)
+            leftover_label = self._role_display(plan.leftover_role)
+            primary_title, secondary_title = algorithm_row_titles(
+                stacked_label,
+                leftover_label,
+                multi_stem=False,
+                derive_complement_from_mix=True,
+                leftover_label=leftover_label,
+            )
+            lock_leftover = True
+            describe_mix = True
         else:
             primary_title, secondary_title = algorithm_row_titles(
                 primary_stem, secondary_stem, multi_stem=multi
@@ -1080,27 +1111,16 @@ class EnsemblePage:
             if multi:
                 self.preset_row.set_visible(False)
                 self.secondary_algo_row.set_visible(False)
-                if derive_row is not None:
-                    derive_row.set_visible(False)
                 if current != primary:
                     self.settings.ensemble.type = primary
             else:
                 self.preset_row.set_visible(True)
                 self.secondary_algo_row.set_visible(True)
                 if derive_row is not None:
-                    derive_row.set_visible(True)
                     derive_row.set_active(derive)
                 paired = format_ensemble_type(primary, secondary)
                 if current != paired:
                     self.settings.ensemble.type = paired
-                set_combo_value(
-                    self.preset_row,
-                    preset_for_state(
-                        primary,
-                        secondary,
-                        derive_complement_from_mix=derive,
-                    ),
-                )
         finally:
             self._syncing_preset = False
             self._loading = was_loading
@@ -1182,7 +1202,8 @@ class EnsemblePage:
                         secondary,
                         derive_complement_from_mix=bool(
                             self.settings.ensemble.derive_complement_from_mix
-                        ),
+                        )
+                        and self._pair_consistent_plan() is not None,
                     ),
                 )
             finally:

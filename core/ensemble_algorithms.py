@@ -58,6 +58,14 @@ ENSEMBLE_PRESET_OPTIONS: Tuple[str, ...] = (
     MEDIAN_ROBUST_PRESET,
 )
 
+
+def ensemble_preset_options(*, include_pair_consistent: bool) -> Tuple[str, ...]:
+    """Algorithm-preset labels, optionally omitting the mix-residual preset."""
+    if include_pair_consistent:
+        return ENSEMBLE_PRESET_OPTIONS
+    return tuple(label for label in ENSEMBLE_PRESET_OPTIONS if label != PAIR_CONSISTENT_PRESET)
+
+
 _DEFAULT_WAV_ENSEMBLE_SUBTITLE = "Combine in the time domain instead of spectrograms"
 _CHUNK_MIN_WAV_SUBTITLE = (
     "Chunk Min always uses the time/chunk path (this toggle is ignored for that atom)"

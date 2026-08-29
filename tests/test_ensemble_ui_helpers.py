@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unittest
+from collections.abc import Iterable
 
 from bundled.constants import (
     CHUNK_MIN,
@@ -15,6 +16,7 @@ from bundled.constants import (
 from core.ensemble_algorithms import (
     CUSTOM_PRESET,
     HYBRID_CLEAN_PRESET,
+    PAIR_CONSISTENT_PRESET,
     RECOMMENDED_PRESET,
     SOFT_BLEND_PRESET,
     algorithm_blurb,
@@ -26,6 +28,8 @@ from core.ensemble_algorithms import (
     preset_for_pair,
     wav_ensemble_subtitle,
 )
+from core.stem_roles import StemRoleId
+from core.stems import StemId, StemRoute, StemRouteKind
 from tests.private_gtk import require_private_gtk
 
 
@@ -251,6 +255,157 @@ class EnsembleOptionsSummaryCallSiteTests(unittest.TestCase):
         page.ensemble_group.set_description.assert_called_once_with(
             "Center ← Max Spec · Side ← Min Spec · 2 models"
         )
+
+
+_VOCALS = StemRoleId("vocal.vocals")
+_INST = StemRoleId("mix.instrumental")
+
+
+def _native_route(role: StemRoleId, key: str) -> StemRoute:
+    return StemRoute(StemId(key), role, key, key, StemRouteKind.NATIVE)
+
+
+def _complement_route(role: StemRoleId, of_role: StemRoleId) -> StemRoute:
+    return StemRoute(
+        None,
+        role,
+        str(role),
+        str(role),
+        StemRouteKind.DERIVED,
+        complement_of=of_role,
+    )
+
+
+class PairConsistentPlanAvailabilityTests(unittest.TestCase):
+    def _page(self):
+        from unittest import mock
+
+        from core.settings import Settings
+        from ui.ensemble.window import EnsemblePage
+
+        page = object.__new__(EnsemblePage)
+        page.settings = Settings.defaults()
+        page._syncing_preset = False
+        page._lock_leftover_algo = False
+        page._pair_consistent_leftover_label = None
+        page._pair_consistent_stacked_label = None
+        page._describe_mix_residual = False
+        page._ensemble_is_multi_or_four = mock.Mock(return_value=False)
+        page._ensemble_pair = mock.Mock(return_value="pair.vocals_instrumental")
+        page._ensemble_stem_pair = mock.Mock(return_value=("Vocals", "Instrumental"))
+        page._dry_resolved_member_routes = mock.Mock(return_value=None)
+        page.derive_complement_row = mock.Mock()
+        page.preset_row = mock.Mock()
+        page.primary_algo_row = mock.Mock()
+        page.secondary_algo_row = mock.Mock()
+        return page
+
+    def test_voc_primary_members_yield_a_plan(self) -> None:
+        page = self._page()
+        voc_member = (_native_route(_VOCALS, "vocals"), _complement_route(_INST, _VOCALS))
+        page._dry_resolved_member_routes.return_value = (voc_member, voc_member)
+
+        plan = page._pair_consistent_plan()
+
+        self.assertIsNotNone(plan)
+        assert plan is not None
+        self.assertEqual(plan.stacked_role, _VOCALS)
+        self.assertEqual(plan.leftover_role, _INST)
+
+    def test_dual_native_or_unresolved_or_multi_has_no_plan(self) -> None:
+        page = self._page()
+        dual = (_native_route(_VOCALS, "vocals"), _native_route(_INST, "instrumental"))
+        page._dry_resolved_member_routes.return_value = (dual, dual)
+        self.assertIsNone(page._pair_consistent_plan())
+
+        page._dry_resolved_member_routes.return_value = None
+        self.assertIsNone(page._pair_consistent_plan())
+
+        page._ensemble_is_multi_or_four.return_value = True
+        page._dry_resolved_member_routes.return_value = (
+            (_native_route(_VOCALS, "vocals"), _complement_route(_INST, _VOCALS)),
+            (_native_route(_VOCALS, "vocals"), _complement_route(_INST, _VOCALS)),
+        )
+        self.assertIsNone(page._pair_consistent_plan())
+
+    def test_switch_visible_only_when_a_plan_exists(self) -> None:
+        from unittest import mock
+
+        import ui.ensemble.window as ensemble_window
+
+        page = self._page()
+        voc_member = (_native_route(_VOCALS, "vocals"), _complement_route(_INST, _VOCALS))
+        page._dry_resolved_member_routes.return_value = (voc_member, voc_member)
+
+        with (
+            mock.patch.object(ensemble_window, "set_combo_values"),
+            mock.patch.object(ensemble_window, "set_combo_value"),
+            mock.patch.object(ensemble_window, "set_row_title"),
+        ):
+            page._apply_algorithm_row_presentation()
+
+        page.derive_complement_row.set_visible.assert_called_with(True)
+
+        page._dry_resolved_member_routes.return_value = None
+        with (
+            mock.patch.object(ensemble_window, "set_combo_values"),
+            mock.patch.object(ensemble_window, "set_combo_value"),
+            mock.patch.object(ensemble_window, "set_row_title"),
+        ):
+            page._apply_algorithm_row_presentation()
+
+        page.derive_complement_row.set_visible.assert_called_with(False)
+
+    def test_leftover_stays_unlocked_until_the_toggle_is_on(self) -> None:
+        from unittest import mock
+
+        import ui.ensemble.window as ensemble_window
+
+        page = self._page()
+        voc_member = (_native_route(_VOCALS, "vocals"), _complement_route(_INST, _VOCALS))
+        page._dry_resolved_member_routes.return_value = (voc_member, voc_member)
+        page.settings.ensemble.derive_complement_from_mix = False
+
+        with (
+            mock.patch.object(ensemble_window, "set_combo_values"),
+            mock.patch.object(ensemble_window, "set_combo_value"),
+            mock.patch.object(ensemble_window, "set_row_title"),
+        ):
+            page._apply_algorithm_row_presentation()
+
+        self.assertFalse(page._lock_leftover_algo)
+
+        page.settings.ensemble.derive_complement_from_mix = True
+        with (
+            mock.patch.object(ensemble_window, "set_combo_values"),
+            mock.patch.object(ensemble_window, "set_combo_value"),
+            mock.patch.object(ensemble_window, "set_row_title"),
+        ):
+            page._apply_algorithm_row_presentation()
+
+        self.assertTrue(page._lock_leftover_algo)
+
+    def test_preset_combo_drops_pair_consistent_when_plan_is_missing(self) -> None:
+        from unittest import mock
+
+        import ui.ensemble.window as ensemble_window
+
+        page = self._page()
+        page._dry_resolved_member_routes.return_value = None
+        captured: list[tuple[str, ...]] = []
+
+        def _capture(_row: object, values: Iterable[str]) -> None:
+            captured.append(tuple(values))
+
+        with (
+            mock.patch.object(ensemble_window, "set_combo_values", side_effect=_capture),
+            mock.patch.object(ensemble_window, "set_combo_value"),
+            mock.patch.object(ensemble_window, "set_row_title"),
+        ):
+            page._apply_algorithm_row_presentation()
+
+        self.assertTrue(captured)
+        self.assertNotIn(PAIR_CONSISTENT_PRESET, captured[-1])
 
 
 class MainStemChangedOrderTests(unittest.TestCase):

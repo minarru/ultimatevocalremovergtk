@@ -202,6 +202,24 @@ class PresetMappingTests(unittest.TestCase):
             PAIR_CONSISTENT_PRESET,
         )
 
+    def test_pair_consistent_preset_omitted_when_plan_unavailable(self) -> None:
+        from core.ensemble_algorithms import (
+            ENSEMBLE_PRESET_OPTIONS,
+            PAIR_CONSISTENT_PRESET,
+            ensemble_preset_options,
+        )
+
+        self.assertEqual(
+            ensemble_preset_options(include_pair_consistent=True),
+            ENSEMBLE_PRESET_OPTIONS,
+        )
+        hidden = ensemble_preset_options(include_pair_consistent=False)
+        self.assertNotIn(PAIR_CONSISTENT_PRESET, hidden)
+        self.assertEqual(
+            len(hidden),
+            len(ENSEMBLE_PRESET_OPTIONS) - 1,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
