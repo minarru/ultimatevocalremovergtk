@@ -145,3 +145,57 @@ class MixComplementTests(unittest.TestCase):
             out = mix_complement(mix, stem, invert_spec=True)
         invert.assert_called_once()
         np.testing.assert_array_equal(out, sentinel)
+
+
+class EnsemblerResidualTests(unittest.TestCase):
+    def test_average_then_mix_minus_not_min_spec_of_leftovers(self) -> None:
+        import numpy as np
+
+        from bundled.constants import AUDIO_AVERAGE, WAV
+        from core.ensembler import CollectedStem, Ensembler
+        from core.settings import Settings
+        from core.stem_roles import StemRoleId
+        from core.types.settings_enums import FlacBitDepth, Mp3Bitrate, OpusBitrate
+
+        vocals = CollectedStem(StemRoleId("vocal.vocals"), "Vocals")
+        inst = CollectedStem(StemRoleId("mix.instrumental"), "Instrumental")
+        mix = np.full((2, 8), 4.0, dtype=np.float64)
+        member_vocals = [
+            np.full((2, 8), 1.0, dtype=np.float64),
+            np.full((2, 8), 3.0, dtype=np.float64),
+        ]
+        member_inst = [
+            np.full((2, 8), 9.0, dtype=np.float64),
+            np.full((2, 8), 0.0, dtype=np.float64),
+        ]
+        ensembler = object.__new__(Ensembler)
+        ensembler.settings = Settings.defaults()
+        ensembler.primary_algorithm = AUDIO_AVERAGE
+        ensembler.secondary_algorithm = "Min Spec"
+        ensembler.pair_stems = (vocals, inst)
+        ensembler.is_normalization = False
+        ensembler.amplification_threshold = 0.0
+        ensembler.is_wav_ensemble = True
+        ensembler.wav_type_set = "PCM_16"
+        ensembler.mp3_bit_set = Mp3Bitrate.K320
+        ensembler.flac_bit_set = FlacBitDepth.BIT_16
+        ensembler.opus_bit_set = OpusBitrate.K192
+        ensembler.save_format = WAV
+        ensembler.main_export_path = ""
+        ensembler.ensemble_folder_name = ""
+        ensembler.append_ensemble_label = None
+        ensembler.is_save_all_outputs_ensemble = False
+        combined = ensembler.combine_stem_waveforms(
+            vocals,
+            is_multi_stem=False,
+            stem_arrays={vocals.group_key: member_vocals},
+            stem_paths={},
+        )
+        leftover = ensembler.mix_residual(mix, combined, invert_spec=False)
+        # combine_ensemble_waveforms is channel-first (2, T); mix_complement is (T, 2).
+        np.testing.assert_allclose(combined, np.full((2, 8), 2.0))
+        np.testing.assert_allclose(leftover, mix.T - combined.T)
+        self.assertEqual(leftover.shape, (8, 2))
+        # leftover must not equal Min Spec of member_inst (zeros)
+        aligned_leftover = leftover.T if leftover.shape != mix.shape else leftover
+        self.assertFalse(np.allclose(aligned_leftover, np.zeros_like(member_inst[0])))

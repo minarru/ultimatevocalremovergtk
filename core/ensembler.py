@@ -212,6 +212,137 @@ class Ensembler:
         self.save_format = settings.process.save_format.value
         os.makedirs(self.ensemble_folder_name, exist_ok=True)
 
+    def _algorithm_for_stem(
+        self,
+        stem: CollectedStem,
+        is_multi_stem: bool,
+        algorithm: str | None = None,
+    ) -> str:
+        """Pair-slot / multi-stem atom, or an explicit override (plan uses primary)."""
+        if algorithm is not None:
+            return algorithm
+        if is_multi_stem:
+            # Single-token algorithm (no slash); never use an empty secondary partition.
+            raw_type = self.settings.ensemble.type
+            return raw_type.partition("/")[0].strip() or MAX_SPEC
+        return (
+            self.primary_algorithm
+            if self.pair_stems and stem.role == self.pair_stems[0].role
+            else self.secondary_algorithm
+        )
+
+    def _collect_member_files(
+        self,
+        stem: CollectedStem,
+        audio_file_base: typing.Any,
+        export_path: typing.Any,
+        stem_paths: typing.Mapping[tuple[object, ...], list[str]] | None,
+    ) -> list[str]:
+        if stem_paths is not None:
+            return list(
+                dict.fromkeys(
+                    path for path in stem_paths.get(stem.group_key, []) if os.path.isfile(path)
+                )
+            )
+        stem_tag = stem.filename_tag
+        stem_suffix = f" ({sanitize_filename_component(stem_tag)}).wav"
+        # Compatibility for older callers that do not provide exact paths.
+        match_prefix = audio_file_base
+        if self.append_ensemble_label and match_prefix.endswith(f" {self.append_ensemble_label}"):
+            match_prefix = match_prefix[: -(len(self.append_ensemble_label) + 1)]
+        stem_outputs = self.get_files_to_ensemble(
+            folder=export_path, prefix=match_prefix, suffix=stem_suffix
+        )
+        if len(stem_outputs) <= 1:
+            stem_outputs = self.get_files_to_ensemble_for_stem(
+                folder=export_path, prefix=match_prefix, stem_tag=stem_tag
+            )
+        return stem_outputs
+
+    def combine_stem_waveforms(
+        self,
+        stem: CollectedStem,
+        *,
+        is_multi_stem: bool,
+        stem_arrays: typing.Mapping[tuple[object, ...], list[typing.Any]] | None = None,
+        stem_paths: typing.Mapping[tuple[object, ...], list[str]] | None = None,
+        algorithm: str | None = None,
+    ) -> typing.Any:
+        """Combine member waveforms for one stem; do not write."""
+        from ml import spec_utils
+
+        chosen = self._algorithm_for_stem(stem, is_multi_stem, algorithm)
+        array_inputs = list((stem_arrays or {}).get(stem.group_key, []))
+        stem_outputs = (
+            self._collect_member_files(stem, "", "", stem_paths) if stem_paths is not None else []
+        )
+        if len(array_inputs) > 1:
+            wave, _samplerate = spec_utils.combine_ensemble_waveforms(
+                array_inputs,
+                chosen,
+                is_wave=self.is_wav_ensemble,
+                is_array=True,
+            )
+            return wave
+        if len(stem_outputs) > 1:
+            wave, _samplerate = spec_utils.combine_ensemble_waveforms(
+                stem_outputs,
+                chosen,
+                is_wave=self.is_wav_ensemble,
+                is_array=False,
+            )
+            return wave
+        raise RuntimeError(
+            f"Ensemble stem {stem.filename_tag!r} requires at least two usable contributors; "
+            f"captured_arrays={len(array_inputs)}, retained_files={len(stem_outputs)}"
+        )
+
+    def write_stem_waveform(
+        self,
+        audio_file_base: str,
+        stem: CollectedStem,
+        wave: typing.Any,
+    ) -> str:
+        """Write one combined (or residual) wave and convert to the save format."""
+        import numpy as np
+        import soundfile as sf
+
+        from core.audio_io import save_format as _save_format
+        from ml import spec_utils
+
+        output = np.asarray(wave)
+        if output.ndim == 2 and output.shape[0] != 2 and output.shape[-1] == 2:
+            output = output.T
+        audio_file_output = format_stem_basename(audio_file_base, stem.filename_tag)
+        stem_save_path = os.path.join(f"{self.main_export_path}", f"{audio_file_output}.wav")
+        sf.write(
+            stem_save_path,
+            spec_utils.normalize(
+                output.T, self.is_normalization, min_peak=self.amplification_threshold
+            ),
+            44100,
+            subtype=self.wav_type_set,
+        )
+        return _save_format(
+            stem_save_path,
+            self.save_format,
+            self.mp3_bit_set,
+            self.flac_bit_set,
+            self.opus_bit_set,
+        )
+
+    def mix_residual(
+        self,
+        mix: typing.Any,
+        stem: typing.Any,
+        *,
+        invert_spec: bool = False,
+    ) -> typing.Any:
+        """Mix minus combined native, matching ``spec_utils.mix_complement``."""
+        from ml import spec_utils
+
+        return spec_utils.mix_complement(mix, stem, invert_spec=invert_spec)
+
     def ensemble_outputs(
         self,
         audio_file_base: typing.Any,
@@ -235,65 +366,26 @@ class Ensembler:
         from core.audio_io import save_format as _save_format
         from ml import spec_utils
 
-        if is_multi_stem:
-            # Single-token algorithm (no slash); never use an empty secondary partition.
-            raw_type = self.settings.ensemble.type
-            algorithm = raw_type.partition("/")[0].strip() or MAX_SPEC
-        else:
-            algorithm = (
-                self.primary_algorithm
-                if self.pair_stems and stem.role == self.pair_stems[0].role
-                else self.secondary_algorithm
-            )
-
         stem_tag = stem.filename_tag
         array_inputs = list((stem_arrays or {}).get(stem.group_key, []))
-        if stem_paths is not None:
-            stem_outputs = list(
-                dict.fromkeys(
-                    path for path in stem_paths.get(stem.group_key, []) if os.path.isfile(path)
-                )
-            )
-        else:
-            stem_suffix = f" ({sanitize_filename_component(stem_tag)}).wav"
-            # Compatibility for older callers that do not provide exact paths.
-            match_prefix = audio_file_base
-            if self.append_ensemble_label and match_prefix.endswith(
-                f" {self.append_ensemble_label}"
-            ):
-                match_prefix = match_prefix[: -(len(self.append_ensemble_label) + 1)]
-            stem_outputs = self.get_files_to_ensemble(
-                folder=export_path, prefix=match_prefix, suffix=stem_suffix
-            )
-            if len(stem_outputs) <= 1:
-                stem_outputs = self.get_files_to_ensemble_for_stem(
-                    folder=export_path, prefix=match_prefix, stem_tag=stem_tag
-                )
-        audio_file_output = format_stem_basename(audio_file_base, stem_tag)
-        stem_save_path = os.path.join(f"{self.main_export_path}", f"{audio_file_output}.wav")
+        stem_outputs = self._collect_member_files(stem, audio_file_base, export_path, stem_paths)
 
         if len(array_inputs) > 1:
-            spec_utils.ensemble_inputs(
-                array_inputs,
-                algorithm,
-                self.is_normalization,
-                self.wav_type_set,
-                stem_save_path,
-                is_wave=self.is_wav_ensemble,
-                is_array=True,
-                min_peak=self.amplification_threshold,
+            wave = self.combine_stem_waveforms(
+                stem,
+                is_multi_stem=is_multi_stem,
+                stem_arrays=stem_arrays,
+                stem_paths=stem_paths if stem_paths is not None else {},
             )
-            final_path = _save_format(
-                stem_save_path,
-                self.save_format,
-                self.mp3_bit_set,
-                self.flac_bit_set,
-                self.opus_bit_set,
-            )
+            final_path = self.write_stem_waveform(audio_file_base, stem, wave)
         elif len(stem_outputs) > 1:
+            stem_save_path = os.path.join(
+                f"{self.main_export_path}",
+                f"{format_stem_basename(audio_file_base, stem_tag)}.wav",
+            )
             spec_utils.ensemble_inputs(
                 stem_outputs,
-                algorithm,
+                self._algorithm_for_stem(stem, is_multi_stem),
                 self.is_normalization,
                 self.wav_type_set,
                 stem_save_path,

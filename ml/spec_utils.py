@@ -700,17 +700,14 @@ def _load_ensemble_waves(audio_input: Sequence[str | np.ndarray], is_array: bool
     return wavs_, int(samplerate)
 
 
-def ensemble_inputs(
+def combine_ensemble_waveforms(
     audio_input: Sequence[str | np.ndarray],
     algorithm: str,
-    is_normalization: bool,
-    wav_type_set: str,
-    save_path: str,
     is_wave: bool = False,
     is_array: bool = False,
-    min_peak: float = 0.0,
     on_progress: Callable[[float], None] | None = None,
-) -> None:
+) -> tuple[np.ndarray, int]:
+    """Combine ensemble members to a channel-first ``(2, T)`` wave and samplerate."""
 
     def _tick(fraction: float) -> None:
         if on_progress is not None:
@@ -750,6 +747,32 @@ def ensemble_inputs(
         output = to_shape(output, target_shape)
         _tick(0.9)
 
+    return output, int(samplerate)
+
+
+def ensemble_inputs(
+    audio_input: Sequence[str | np.ndarray],
+    algorithm: str,
+    is_normalization: bool,
+    wav_type_set: str,
+    save_path: str,
+    is_wave: bool = False,
+    is_array: bool = False,
+    min_peak: float = 0.0,
+    on_progress: Callable[[float], None] | None = None,
+) -> None:
+
+    def _tick(fraction: float) -> None:
+        if on_progress is not None:
+            on_progress(max(0.0, min(1.0, float(fraction))))
+
+    output, samplerate = combine_ensemble_waveforms(
+        audio_input,
+        algorithm,
+        is_wave=is_wave,
+        is_array=is_array,
+        on_progress=on_progress,
+    )
     sf.write(
         save_path,
         cast(Any, normalize(output.T, is_normalization, min_peak=min_peak)),
