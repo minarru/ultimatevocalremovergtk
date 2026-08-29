@@ -2,7 +2,7 @@
 
 How separation and Audio Tools drive the log-panel progress bar.
 
-Dispatch and GTK backlog issues use `latest_main_thread` in [ui/dispatch.py](../ui/dispatch.py). This page is about **engine/tool ticks** and the live ETA.
+Dispatch and GTK backlog issues use `latest_main_thread` in [ui/dispatch.py](../../../ui/dispatch.py). This page is about **engine/tool ticks** and the live ETA.
 
 ## Pipeline
 
@@ -16,11 +16,11 @@ engine / tool
             LogPanel.set_progress_fraction / set_progress_text
 ```
 
-Hops fill **10% → 80%**. Extra work in the same pass (match-mix, Denoise Model) continues through **80% → 89%** via [core/progress_ticks.py](../core/progress_ticks.py) so the bar never rewinds and stays under the 0.90 save cutoff. `JobRunner` maps that onto a slice of the global bar using `true_model_count` × long-file chunks.
+Hops fill **10% → 80%**. Extra work in the same pass (match-mix, Denoise Model) continues through **80% → 89%** via [core/progress_ticks.py](../../../core/progress_ticks.py) so the bar never rewinds and stays under the 0.90 save cutoff. `JobRunner` maps that onto a slice of the global bar using `true_model_count` × long-file chunks.
 
 Save uses `save_progress_local_step` (0.90–0.96). The UI paints those ticks instead of holding the last inference fill. Load with no prior fill still pulses.
 
-ETA remaining time is `t * (1 - p) / p` after about **2 seconds** of inference-only elapsed (`ProgressEtaTracker` in [core/run_estimate.py](../core/run_estimate.py)). The infer clock pauses during save.
+ETA remaining time is `t * (1 - p) / p` after about **2 seconds** of inference-only elapsed (`ProgressEtaTracker` in [core/run_estimate.py](../../../core/run_estimate.py)). The infer clock pauses during save.
 
 ## What ticks during inference
 
@@ -49,4 +49,4 @@ Roformer Denoise Model is still not wired (the option does not run). That is a b
 
 ## Related
 
-- [tracked-issues.md](tracked-issues.md) **F24** — closed by this work.
+- [tracked-issues.md](../../tracked-issues.md) **F24** — closed by this work.
