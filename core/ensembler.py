@@ -364,41 +364,19 @@ class Ensembler:
             f"is_multi_stem={is_multi_stem}",
         )
         from core.audio_io import save_format as _save_format
-        from ml import spec_utils
 
         stem_tag = stem.filename_tag
         array_inputs = list((stem_arrays or {}).get(stem.group_key, []))
         stem_outputs = self._collect_member_files(stem, audio_file_base, export_path, stem_paths)
 
-        if len(array_inputs) > 1:
+        if len(array_inputs) > 1 or len(stem_outputs) > 1:
             wave = self.combine_stem_waveforms(
                 stem,
                 is_multi_stem=is_multi_stem,
                 stem_arrays=stem_arrays,
-                stem_paths=stem_paths if stem_paths is not None else {},
+                stem_paths={stem.group_key: stem_outputs} if stem_outputs else (stem_paths or {}),
             )
             final_path = self.write_stem_waveform(audio_file_base, stem, wave)
-        elif len(stem_outputs) > 1:
-            stem_save_path = os.path.join(
-                f"{self.main_export_path}",
-                f"{format_stem_basename(audio_file_base, stem_tag)}.wav",
-            )
-            spec_utils.ensemble_inputs(
-                stem_outputs,
-                self._algorithm_for_stem(stem, is_multi_stem),
-                self.is_normalization,
-                self.wav_type_set,
-                stem_save_path,
-                is_wave=self.is_wav_ensemble,
-                min_peak=self.amplification_threshold,
-            )
-            final_path = _save_format(
-                stem_save_path,
-                self.save_format,
-                self.mp3_bit_set,
-                self.flac_bit_set,
-                self.opus_bit_set,
-            )
         else:
             raise RuntimeError(
                 f"Ensemble stem {stem_tag!r} requires at least two usable contributors; "
