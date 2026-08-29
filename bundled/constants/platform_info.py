@@ -22,7 +22,7 @@ if OPERATING_SYSTEM == "Darwin":
                               '• Application functionality for systems running macOS Mojave or lower is not guaranteed.\n' +\
                               '• Application functionality for older or budget Mac systems is not guaranteed.\n\n'
 elif OPERATING_SYSTEM=="Linux":
-   LICENSE_OS_SPECIFIC_TEXT = '• This application is intended for those running Linux Ubuntu 18.04+.\n' +\
+   LICENSE_OS_SPECIFIC_TEXT = '• This application is intended for those running Ubuntu 22.04 LTS or later.\n' +\
                               '• Application functionality for systems running other Linux platforms is not guaranteed.\n' +\
                               '• Application functionality for older or budget systems is not guaranteed.\n\n'
 elif OPERATING_SYSTEM=="Windows":
