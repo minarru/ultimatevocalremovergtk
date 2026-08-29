@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import tempfile
 import typing
 import unittest
 from pathlib import Path
@@ -15,6 +17,8 @@ _REPO = Path(__file__).resolve().parents[1]
 
 VOCALS = StemRoleId("vocal.vocals")
 INST = StemRoleId("mix.instrumental")
+LEAD = StemRoleId("vocal.lead")
+KARAOKE_INST = StemRoleId("mix.instrumental_with_backing_vocals")
 CENTER = StemRoleId("spatial.center")
 SIDE = StemRoleId("spatial.side")
 
@@ -104,6 +108,7 @@ class _RecordingEnsembler:
         self.write_calls: list[tuple[str, object, object]] = []
         self.residual_calls: list[tuple[object, object, bool]] = []
         self.ensemble_output_calls: list[object] = []
+        self.publish_calls: list[list[str]] = []
 
     def combine_stem_waveforms(self, stem: object, **kwargs: object) -> object:
         self.combine_calls.append((stem, kwargs))
@@ -126,6 +131,9 @@ class _RecordingEnsembler:
     ) -> None:
         self.ensemble_output_calls.append(stem)
 
+    def publish_member_files(self, stem_outputs: typing.Sequence[str]) -> None:
+        self.publish_calls.append(list(stem_outputs))
+
 
 def _voc_inst_pair() -> tuple[CollectedStem, CollectedStem]:
     return (
@@ -136,6 +144,18 @@ def _voc_inst_pair() -> tuple[CollectedStem, CollectedStem]:
 
 def _voc_primary_routes() -> dict[str, tuple[StemRoute, ...]]:
     member = (_native(VOCALS, "vocals"), _complement(INST, VOCALS))
+    return {"mdx:a": member, "mdx:b": member}
+
+
+def _karaoke_pair() -> tuple[CollectedStem, CollectedStem]:
+    return (
+        CollectedStem(KARAOKE_INST, "Instrumental with Backing Vocals"),
+        CollectedStem(LEAD, "Lead Vocals"),
+    )
+
+
+def _karaoke_routes() -> dict[str, tuple[StemRoute, ...]]:
+    member = (_complement(KARAOKE_INST, LEAD), _native(LEAD, "vocals"))
     return {"mdx:a": member, "mdx:b": member}
 
 
@@ -366,6 +386,7 @@ class PairConsistentHookTests(unittest.TestCase):
         self.assertEqual(recorded.combine_calls, [])
         self.assertEqual(recorded.write_calls, [])
         self.assertEqual(recorded.residual_calls, [])
+        self.assertEqual(recorded.publish_calls, [])
 
     def test_voc_primary_combines_vocals_and_writes_mix_residual_instrumental(self) -> None:
         vocals, instrumental = _voc_inst_pair()
@@ -398,6 +419,59 @@ class PairConsistentHookTests(unittest.TestCase):
         self.assertEqual(recorded.residual_calls, [(mix, recorded.combined, True)])
         self.assertEqual(recorded.ensemble_output_calls, [])
 
+    def test_karaoke_stacks_lead_with_max_spec_not_pair_slot_min(self) -> None:
+        karaoke_inst, lead = _karaoke_pair()
+        mix = object()
+        recorded = _run_recorded_after_file(
+            _RecordingEnsembler((karaoke_inst, lead), "Max Spec"),
+            derive=True,
+            is_multi_stem=False,
+            member_routes=_karaoke_routes(),
+            decoded_mix=mix,
+        )
+        self.assertEqual(len(recorded.combine_calls), 1)
+        combined_stem, kwargs = recorded.combine_calls[0]
+        self.assertEqual(combined_stem, lead)
+        self.assertEqual(kwargs["algorithm"], "Max Spec")
+        self.assertEqual(
+            recorded.write_calls,
+            [
+                ("Song", lead, recorded.combined),
+                ("Song", karaoke_inst, recorded.residual),
+            ],
+        )
+        self.assertEqual(recorded.residual_calls, [(mix, recorded.combined, False)])
+        self.assertEqual(recorded.ensemble_output_calls, [])
+        self.assertEqual(recorded.publish_calls, [])
+
+    def test_residual_path_publishes_stacked_and_leftover_member_files(self) -> None:
+        vocals, instrumental = _voc_inst_pair()
+        with tempfile.TemporaryDirectory() as folder:
+            stacked_a = os.path.join(folder, "a-voc.wav")
+            stacked_b = os.path.join(folder, "b-voc.wav")
+            leftover_a = os.path.join(folder, "a-inst.wav")
+            leftover_b = os.path.join(folder, "b-inst.wav")
+            for path in (stacked_a, stacked_b, leftover_a, leftover_b):
+                Path(path).write_bytes(b"x")
+            missing = os.path.join(folder, "gone.wav")
+            recorded = _run_recorded_after_file(
+                _RecordingEnsembler((vocals, instrumental), "Max Spec"),
+                derive=True,
+                is_multi_stem=False,
+                member_routes=_voc_primary_routes(),
+                decoded_mix=object(),
+                stem_paths={
+                    vocals.group_key: [stacked_a, stacked_b, stacked_a],
+                    instrumental.group_key: [leftover_a, leftover_b, missing],
+                },
+            )
+        self.assertEqual(recorded.ensemble_output_calls, [])
+        self.assertEqual(len(recorded.publish_calls), 1)
+        self.assertEqual(
+            recorded.publish_calls[0],
+            [stacked_a, stacked_b, leftover_a, leftover_b],
+        )
+
     def test_flag_on_four_stem_still_calls_ensemble_outputs_per_native(self) -> None:
         vocals, instrumental = _voc_inst_pair()
         recorded = _run_recorded_after_file(
@@ -411,6 +485,7 @@ class PairConsistentHookTests(unittest.TestCase):
         self.assertEqual(recorded.combine_calls, [])
         self.assertEqual(recorded.write_calls, [])
         self.assertEqual(recorded.residual_calls, [])
+        self.assertEqual(recorded.publish_calls, [])
 
     def test_leftover_focus_combines_vocals_and_writes_only_instrumental(self) -> None:
         vocals, instrumental = _voc_inst_pair()

@@ -387,5 +387,16 @@ class _EnsembleRunHooks:
                 detail=f"Combining {combine_idx + 1}/{combine_total}",
             )
 
+        if plan is not None and ensemble_stem_paths:
+            published: list[str] = []
+            seen: set[str] = set()
+            for paths in ensemble_stem_paths.values():
+                for path in paths:
+                    if path in seen or not os.path.isfile(path):
+                        continue
+                    seen.add(path)
+                    published.append(path)
+            self.ensemble.publish_member_files(published)
+
         debug_elapsed("worker", "ensemble combine", combine_started)
         callbacks.console("Done\n")

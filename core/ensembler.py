@@ -343,6 +343,26 @@ class Ensembler:
 
         return spec_utils.mix_complement(mix, stem, invert_spec=invert_spec)
 
+    def publish_member_files(self, stem_outputs: Sequence[str]) -> None:
+        """Convert retained member WAVs to ``save_format``, or delete them."""
+        from core.audio_io import save_format as _save_format
+
+        if self.is_save_all_outputs_ensemble:
+            for stem_output in stem_outputs:
+                _save_format(
+                    stem_output,
+                    self.save_format,
+                    self.mp3_bit_set,
+                    self.flac_bit_set,
+                    self.opus_bit_set,
+                )
+            return
+        for stem_output in stem_outputs:
+            try:
+                os.remove(stem_output)
+            except OSError:
+                pass
+
     def ensemble_outputs(
         self,
         audio_file_base: typing.Any,
@@ -363,8 +383,6 @@ class Ensembler:
             f"ensemble_outputs role={stem.role!s} tag={stem.filename_tag!r} "
             f"is_multi_stem={is_multi_stem}",
         )
-        from core.audio_io import save_format as _save_format
-
         stem_tag = stem.filename_tag
         array_inputs = list((stem_arrays or {}).get(stem.group_key, []))
         stem_outputs = self._collect_member_files(stem, audio_file_base, export_path, stem_paths)
@@ -383,21 +401,7 @@ class Ensembler:
                 f"captured_arrays={len(array_inputs)}, retained_files={len(stem_outputs)}"
             )
 
-        if self.is_save_all_outputs_ensemble:
-            for stem_output in stem_outputs:
-                _save_format(
-                    stem_output,
-                    self.save_format,
-                    self.mp3_bit_set,
-                    self.flac_bit_set,
-                    self.opus_bit_set,
-                )
-        else:
-            for stem_output in stem_outputs:
-                try:
-                    os.remove(stem_output)
-                except OSError:
-                    pass
+        self.publish_member_files(stem_outputs)
         return final_path
 
     def get_files_to_ensemble(
