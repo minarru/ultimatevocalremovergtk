@@ -451,10 +451,9 @@ def derive_mdx_complement(
     match_frequency_pitch: typing.Any = None,
 ):
     raw_mix = match_frequency_pitch(mix) if match_frequency_pitch is not None else mix
-    shaped = spec_utils.to_shape(native_source, raw_mix.shape)
-    if invert_spec:
-        return spec_utils.invert_stem(raw_mix, shaped)
-    return -shaped.T + raw_mix.T
+    return spec_utils.mix_complement(
+        raw_mix, native_source, invert_spec=bool(invert_spec)
+    )
 
 
 def derive_mdx_multi_complement(

@@ -33,6 +33,7 @@ ENSEMBLE_ALGORITHM_BLURBS: Dict[str, str] = {
 
 CUSTOM_PRESET = "Custom"
 RECOMMENDED_PRESET = "Recommended (Max / Min)"
+PAIR_CONSISTENT_PRESET = "Pair-consistent (native / mix residual)"
 FULL_MAX_PRESET = "Full Max"
 SOFT_BLEND_PRESET = "Soft blend"
 HYBRID_CLEAN_PRESET = "Hybrid clean"
@@ -50,11 +51,20 @@ ENSEMBLE_PRESET_PAIRS: Dict[str, Tuple[str, str]] = {
 ENSEMBLE_PRESET_OPTIONS: Tuple[str, ...] = (
     CUSTOM_PRESET,
     RECOMMENDED_PRESET,
+    PAIR_CONSISTENT_PRESET,
     FULL_MAX_PRESET,
     SOFT_BLEND_PRESET,
     HYBRID_CLEAN_PRESET,
     MEDIAN_ROBUST_PRESET,
 )
+
+
+def ensemble_preset_options(*, include_pair_consistent: bool) -> Tuple[str, ...]:
+    """Algorithm-preset labels, optionally omitting the mix-residual preset."""
+    if include_pair_consistent:
+        return ENSEMBLE_PRESET_OPTIONS
+    return tuple(label for label in ENSEMBLE_PRESET_OPTIONS if label != PAIR_CONSISTENT_PRESET)
+
 
 _DEFAULT_WAV_ENSEMBLE_SUBTITLE = "Combine in the time domain instead of spectrograms"
 _CHUNK_MIN_WAV_SUBTITLE = (
@@ -147,7 +157,23 @@ def pair_for_preset(preset: Optional[str]) -> Optional[Tuple[str, str]]:
     """Return ``(primary, secondary)`` for a named preset, or None for Custom/unknown."""
     if not preset or preset == CUSTOM_PRESET:
         return None
+    if preset == PAIR_CONSISTENT_PRESET:
+        return (_DEFAULT_PRIMARY, _DEFAULT_PRIMARY)
     return ENSEMBLE_PRESET_PAIRS.get(preset)
+
+
+def preset_for_state(
+    primary: str,
+    secondary: str,
+    *,
+    derive_complement_from_mix: bool = False,
+) -> str:
+    """Return the preset label for a pair plus the mix-residual flag."""
+    if derive_complement_from_mix:
+        if (primary, secondary) == (_DEFAULT_PRIMARY, _DEFAULT_PRIMARY):
+            return PAIR_CONSISTENT_PRESET
+        return CUSTOM_PRESET
+    return preset_for_pair(primary, secondary)
 
 
 def algorithm_row_titles(
@@ -155,11 +181,16 @@ def algorithm_row_titles(
     secondary_stem: Optional[str],
     *,
     multi_stem: bool,
+    derive_complement_from_mix: bool = False,
+    leftover_label: str | None = None,
 ) -> Tuple[str, str]:
     """Titles for primary/secondary algorithm combo rows."""
     if multi_stem:
         return "Ensemble algorithm", "Secondary algorithm"
     primary = f"{primary_stem} algorithm" if primary_stem else "Primary algorithm"
+    if derive_complement_from_mix:
+        leftover = leftover_label or "Complement"
+        return primary, f"{leftover} (from mix)"
     secondary = f"{secondary_stem} algorithm" if secondary_stem else "Secondary algorithm"
     return primary, secondary
 
@@ -174,14 +205,14 @@ def ensemble_options_summary(
     secondary_algo: str,
     model_count: int,
     multi_stem: bool,
+    derive_complement_from_mix: bool = False,
+    leftover_label: str | None = None,
 ) -> str:
     """Live description for the Ensemble options group."""
     if not stem_chosen:
         return "Choose a stem pair · select 2+ models"
 
-    models_bit = (
-        f"{model_count} model" if model_count == 1 else f"{model_count} models"
-    )
+    models_bit = f"{model_count} model" if model_count == 1 else f"{model_count} models"
     if model_count < 2:
         models_bit = f"{models_bit} (need 2+)"
 
@@ -189,6 +220,9 @@ def ensemble_options_summary(
         return f"{main_stem} · {primary_algo} · {models_bit}"
 
     left = primary_stem or "Primary"
+    if derive_complement_from_mix:
+        right = leftover_label or "mix residual"
+        return f"{left} ← {primary_algo} · {right} · {models_bit}"
     right = secondary_stem or "Secondary"
     return f"{left} ← {primary_algo} · {right} ← {secondary_algo} · {models_bit}"
 

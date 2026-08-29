@@ -163,5 +163,63 @@ class EnsemblingAtomTests(unittest.TestCase):
         self.assertIn(AUDIO_AVERAGE, ENSEMBLE_ALGORITHMS)
 
 
+class PresetMappingTests(unittest.TestCase):
+    def test_pair_consistent_preset_is_flag_plus_max_spec(self) -> None:
+        from bundled.constants import MAX_SPEC, MIN_SPEC
+        from core.ensemble_algorithms import (
+            CUSTOM_PRESET,
+            ENSEMBLE_PRESET_OPTIONS,
+            ENSEMBLE_PRESET_PAIRS,
+            PAIR_CONSISTENT_PRESET,
+            RECOMMENDED_PRESET,
+            pair_for_preset,
+            preset_for_pair,
+            preset_for_state,
+        )
+
+        self.assertEqual(pair_for_preset(PAIR_CONSISTENT_PRESET), (MAX_SPEC, MAX_SPEC))
+        self.assertEqual(
+            preset_for_state(MAX_SPEC, MAX_SPEC, derive_complement_from_mix=True),
+            PAIR_CONSISTENT_PRESET,
+        )
+        self.assertEqual(
+            preset_for_state(MAX_SPEC, MAX_SPEC, derive_complement_from_mix=False),
+            "Full Max",
+        )
+        self.assertEqual(
+            preset_for_state(MAX_SPEC, MIN_SPEC, derive_complement_from_mix=True),
+            CUSTOM_PRESET,
+        )
+        self.assertEqual(
+            preset_for_state(MAX_SPEC, MIN_SPEC, derive_complement_from_mix=False),
+            RECOMMENDED_PRESET,
+        )
+        self.assertEqual(preset_for_pair(MAX_SPEC, MAX_SPEC), "Full Max")
+        self.assertNotIn(PAIR_CONSISTENT_PRESET, ENSEMBLE_PRESET_PAIRS)
+        recommended_idx = ENSEMBLE_PRESET_OPTIONS.index(RECOMMENDED_PRESET)
+        self.assertEqual(
+            ENSEMBLE_PRESET_OPTIONS[recommended_idx + 1],
+            PAIR_CONSISTENT_PRESET,
+        )
+
+    def test_pair_consistent_preset_omitted_when_plan_unavailable(self) -> None:
+        from core.ensemble_algorithms import (
+            ENSEMBLE_PRESET_OPTIONS,
+            PAIR_CONSISTENT_PRESET,
+            ensemble_preset_options,
+        )
+
+        self.assertEqual(
+            ensemble_preset_options(include_pair_consistent=True),
+            ENSEMBLE_PRESET_OPTIONS,
+        )
+        hidden = ensemble_preset_options(include_pair_consistent=False)
+        self.assertNotIn(PAIR_CONSISTENT_PRESET, hidden)
+        self.assertEqual(
+            len(hidden),
+            len(ENSEMBLE_PRESET_OPTIONS) - 1,
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

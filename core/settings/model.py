@@ -219,6 +219,7 @@ class EnsembleSettings:
     append_ensemble_name: bool = False
     wav_ensemble: bool = False
     cleanup_temps: bool = True
+    derive_complement_from_mix: bool = False
 
 
 @dataclass

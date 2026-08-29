@@ -10,12 +10,13 @@ from __future__ import annotations
 
 import os
 import time
-from typing import Any, List
+from typing import Any, List, cast
 
 from bundled.constants import WAV
 
 from .audio_io import resolve_wav_type_set
 from .debug_log import debug_elapsed
+from .ensemble_pair_consistent import resolve_pair_consistent_plan
 from .ensembler import (
     CollectedStem,
     Ensembler,
@@ -24,7 +25,8 @@ from .ensembler import (
 from .model_config import ModelConfig
 from .run_estimate import combine_progress_local_step
 from .run_loop import FileState, _write_captured_stems
-from .stems import StemRoute, StemRouteKind, select_stem_routes
+from .stem_roles import StemRoleId
+from .stems import StemRoute, StemRouteKind, run_export_routes, select_stem_routes
 
 
 def _filter_final_collected_stems(stems: list[CollectedStem], focus: str) -> list[CollectedStem]:
@@ -209,6 +211,7 @@ class _EnsembleRunHooks:
             or getattr(model, "model_and_process_tag", "")
             or id(model)
         )
+        scratch.setdefault("ensemble_member_routes", {})[member_id] = run_export_routes(model)
         for collected in planned.values():
             scratch["ensemble_stems"][collected.group_key] = collected
             scratch["ensemble_contributors"].setdefault(collected.group_key, set()).add(member_id)
@@ -289,8 +292,52 @@ class _EnsembleRunHooks:
         ensemble_stem_paths = state.scratch.get("ensemble_stem_paths", {})
         ensemble_final_base = state.scratch["ensemble_final_base"]
         export_path = self.export_path
+        pair_roles = tuple(stem.role for stem in self.ensemble.pair_stems)
+        plan = None
+        if (
+            not self.is_multi_stem
+            and runner.settings.ensemble.derive_complement_from_mix
+            and len(pair_roles) == 2
+            and all(isinstance(role, StemRoleId) for role in pair_roles)
+        ):
+            plan = resolve_pair_consistent_plan(
+                cast(tuple[StemRoleId, StemRoleId], pair_roles),
+                tuple(state.scratch.get("ensemble_member_routes", {}).values()),
+            )
         combine_steps: List[tuple] = []
-        if self.is_multi_stem:
+        if plan is not None:
+            focus = str(runner.settings.process.stem_focus or "")
+            output_stems = _filter_final_collected_stems(list(self.ensemble.pair_stems), focus)
+            stacked = next(
+                stem for stem in self.ensemble.pair_stems if stem.role == plan.stacked_role
+            )
+            leftover = next(
+                stem for stem in self.ensemble.pair_stems if stem.role == plan.leftover_role
+            )
+            writes: List[tuple[CollectedStem, Any]] = []
+            if stacked in output_stems or leftover in output_stems:
+                combined = self.ensemble.combine_stem_waveforms(
+                    stacked,
+                    is_multi_stem=self.is_multi_stem,
+                    stem_arrays=ensemble_stem_arrays,
+                    stem_paths=ensemble_stem_paths,
+                    algorithm=self.ensemble.primary_algorithm,
+                )
+                if stacked in output_stems:
+                    writes.append((stacked, combined))
+                if leftover in output_stems:
+                    writes.append(
+                        (
+                            leftover,
+                            self.ensemble.mix_residual(
+                                state.decoded_mix,
+                                combined,
+                                invert_spec=runner.settings.mdx.is_invert_spec,
+                            ),
+                        )
+                    )
+            combine_steps = writes
+        elif self.is_multi_stem:
             contributors = state.scratch["ensemble_contributors"]
             collected_stems = state.scratch["ensemble_stems"]
             output_stems = [
@@ -312,16 +359,19 @@ class _EnsembleRunHooks:
         combine_total = max(1, len(combine_steps))
         combine_start = state.progress_sink.fraction
         combine_end = state.file_num / max(1, state.total_files)
-        for combine_idx, (stem_name, kwargs) in enumerate(combine_steps):
-            self.ensemble.ensemble_outputs(
-                ensemble_final_base,
-                export_path,
-                stem_name,
-                stem_arrays=ensemble_stem_arrays,
-                stem_paths=ensemble_stem_paths,
-                is_multi_stem=self.is_multi_stem,
-                **kwargs,
-            )
+        for combine_idx, (stem_name, payload) in enumerate(combine_steps):
+            if plan is not None:
+                self.ensemble.write_stem_waveform(ensemble_final_base, stem_name, payload)
+            else:
+                self.ensemble.ensemble_outputs(
+                    ensemble_final_base,
+                    export_path,
+                    stem_name,
+                    stem_arrays=ensemble_stem_arrays,
+                    stem_paths=ensemble_stem_paths,
+                    is_multi_stem=self.is_multi_stem,
+                    **payload,
+                )
             span = max(combine_end - combine_start, 0.0)
             fraction = combine_start + span * ((combine_idx + 1) / combine_total)
             local_step = combine_progress_local_step(combine_idx, combine_total)
@@ -336,6 +386,17 @@ class _EnsembleRunHooks:
                 combine_total=combine_total,
                 detail=f"Combining {combine_idx + 1}/{combine_total}",
             )
+
+        if plan is not None and ensemble_stem_paths:
+            published: list[str] = []
+            seen: set[str] = set()
+            for paths in ensemble_stem_paths.values():
+                for path in paths:
+                    if path in seen or not os.path.isfile(path):
+                        continue
+                    seen.add(path)
+                    published.append(path)
+            self.ensemble.publish_member_files(published)
 
         debug_elapsed("worker", "ensemble combine", combine_started)
         callbacks.console("Done\n")
