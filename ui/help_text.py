@@ -285,13 +285,13 @@ DONATE_HELP = "Open the official UVR donation page in the default browser"
 
 DERIVE_COMPLEMENT_FROM_MIX_HELP = (
     "Combine native stems with the first algorithm, then derive the other "
-    "pair file from the mix (mix minus the combined native, or Spectral inversion)."
+    "pair file from the mix (mix minus the combined native, or Spectral inversion)"
 )
 
 IS_INVERT_SPEC_HELP = (
     "Derive the complement by subtracting spectrograms instead of waveforms. "
     "This is slower and may improve some outputs. Ensemble leftovers use the "
-    "same WAV-level invert."
+    "same WAV-level invert"
 )
 
 IS_TESTING_AUDIO_HELP = "Add a timestamp to output names to avoid overwrites"
