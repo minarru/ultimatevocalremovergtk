@@ -83,8 +83,9 @@ class DownloadCenterPublicUiTests(unittest.TestCase):
             _purpose_page_titles(center.stack),
             [label for _value, label in PURPOSE_PAGE_OPTIONS],
         )
-        if isinstance(center.switcher, Adw.InlineViewSwitcher):
-            self.assertFalse(center.switcher.get_homogeneous())
+        inline_switcher_type = getattr(Adw, "InlineViewSwitcher", None)
+        if inline_switcher_type is not None and isinstance(center.switcher, inline_switcher_type):
+            self.assertFalse(cast(Any, center.switcher).get_homogeneous())
         else:
             self.assertIsInstance(center.switcher, Gtk.StackSwitcher)
 
