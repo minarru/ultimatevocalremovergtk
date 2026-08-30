@@ -210,7 +210,10 @@ Push to `origin` (**GitHub**: `minarru/ultimatevocalremovergtk`) only. Prefer `g
 The **`dev`** branch holds in-progress work that is not ready for `main`. Superpowers
 plans and specs under `docs/superpowers/plans/` and `docs/superpowers/specs/` stay
 on `dev` only: gitignore them on feature branches, `git add -f` them on `dev`, and
-strip those directories when merging `dev` into `main`. See
+promote through `scripts/dev_docs_policy.py prepare`, which strips them before a
+PR to `main`; the existing unittest job rejects them on `main` as a backstop. Do
+not merge `main` back into `dev`, because its intentional removals would propagate;
+cherry-pick any main-only hotfix into `dev` instead. See
 [docs/superpowers/README.md](docs/superpowers/README.md).
 
 CI is **GitHub Actions** in [`.github/workflows/`](.github/workflows/). `test.yml` runs unittest + basedpyright on push/PR to `main`. `release.yml` fires on `v*` tags and **asserts the tag equals all three version strings**: `VERSION` in [__version__.py](__version__.py), and `latest_version` in both [packaging/release.json](packaging/release.json) and [bundled/release.json](bundled/release.json). Bump all four together or the release check fails.

@@ -11,6 +11,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Enforce main dev-doc boundary
+        run: python3 scripts/dev_docs_policy.py check
+
       - name: Verify tag matches VERSION and release.json
         run: |
           TAG="${GITHUB_REF_NAME}"
