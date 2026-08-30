@@ -20,6 +20,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Enforce main dev-doc boundary
+        if: github.ref == 'refs/heads/main' || github.base_ref == 'main'
+        run: python3 scripts/dev_docs_policy.py check
+
       - name: Install system dependencies
         timeout-minutes: 4
         run: |

@@ -100,6 +100,7 @@ scripts/*
 !scripts/model_sweep.py
 !scripts/model_probe.py
 !scripts/model_tool_support.py
+!scripts/dev_docs_policy.py
 
 # Machine-readable sidecar for docs/models-catalogue.md. Regenerated with the
 # document and tied to it by digest, so a checked-in copy would only ever go
@@ -130,6 +131,12 @@ resources/icons/scalable/actions/cross-small-symbolic.svg
 # Obsolete agent archives — local only; do not re-commit
 docs/plans/
 docs/reviews/
+
+# Superpowers plans/specs: recorded on the `dev` branch with `git add -f`.
+# Ignored so feature branches targeting main do not pick them up. Promotion
+# tooling strips them and CI rejects them on main (see docs/superpowers/README.md).
+docs/superpowers/plans/
+docs/superpowers/specs/
 
 # Git worktrees (local isolation)
 .worktrees/
