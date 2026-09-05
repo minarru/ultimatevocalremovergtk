@@ -177,7 +177,7 @@ def restore_process(
         final_output = final_output[..., border:-border]
 
     # Leave weights in the process LRU (sticky device residency when on GPU).
-    del result, counter, audio_data, model
+    del result, counter, audio_data
     gc.collect()
 
     return final_output

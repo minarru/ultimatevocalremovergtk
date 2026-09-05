@@ -12,6 +12,7 @@ import sys
 import threading
 import time
 from dataclasses import dataclass, field
+from functools import partial
 from typing import Any, Callable, Sequence, cast
 
 from core.blocking_runner import RunResult, run_blocking
@@ -510,9 +511,9 @@ def run_batch(args: Any, job: ResolvedJob) -> BatchOutcome:
             shared_runner.last_outcomes = ()
             result = run_runner_cli(
                 shared_runner,
-                lambda callbacks: shared_runner.start_resolved(
+                partial(
+                    shared_runner.start_resolved,
                     item_job,
-                    callbacks,
                     models=shared_models,
                     fail_fast=True,
                     export_paths=(stage,),

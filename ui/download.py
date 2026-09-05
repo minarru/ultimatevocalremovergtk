@@ -461,12 +461,13 @@ def open_manual_downloads(parent: typing.Any, app_context: typing.Any):
             dir_row = Adw.ActionRow()
             dir_row.set_use_markup(False)
             dir_row.set_title("Install folder")
-            dir_row.set_subtitle(DownloadManager.model_directory(arch, selectable))
+            install_folder = DownloadManager.model_directory(arch, selectable)
+            dir_row.set_subtitle(install_folder)
             dir_button = Gtk.Button(label="Open", valign=Gtk.Align.CENTER)
             set_icon_button_a11y(dir_button, OPEN_INSTALL_FOLDER_HINT)
             dir_button.connect(
                 "clicked",
-                lambda _b, d=DownloadManager.model_directory(arch, selectable): open_folder_in_file_manager(
+                lambda _b, d=install_folder: open_folder_in_file_manager(
                     parent, d
                 ),
             )

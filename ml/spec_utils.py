@@ -322,7 +322,9 @@ def wave_to_spectrogram(wave: np.ndarray, hop_length: int, n_fft: int, mp: Any, 
 
     return spec
 
-def spectrogram_to_wave(spec: np.ndarray, hop_length: int = 1024, mp: Any = {}, band: int = 0, is_v51_model: bool = True) -> np.ndarray:
+def spectrogram_to_wave(spec: np.ndarray, hop_length: int = 1024, mp: Any = None, band: int = 0, is_v51_model: bool = True) -> np.ndarray:
+    if mp is None:
+        raise ValueError("model parameters are required for spectrogram_to_wave")
     spec_left = np.asfortranarray(spec[0])
     spec_right = np.asfortranarray(spec[1])
     

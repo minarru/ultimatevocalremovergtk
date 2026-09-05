@@ -24,9 +24,11 @@ class AccessPolicy:
             )
 
 
+_DEFAULT_POLICY = AccessPolicy(allow_network=True, allow_metadata_writes=True)
+
 _CURRENT = contextvars.ContextVar(
     "uvr_access_policy",
-    default=AccessPolicy(allow_network=True, allow_metadata_writes=True),
+    default=_DEFAULT_POLICY,
 )
 
 

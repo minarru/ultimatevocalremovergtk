@@ -8,6 +8,7 @@ import os
 import shutil
 import sys
 import time
+from functools import partial
 from typing import Any
 
 from bundled.constants import (
@@ -339,8 +340,8 @@ def _run_audio(args: argparse.Namespace, plan: Any) -> BatchOutcome:
                     manual_name = f"{manual_name} ({algorithm})"
             result = run_runner_cli(
                 runner,
-                lambda callbacks: runner.start(
-                    plan.tool, singles, pairs, callbacks,
+                partial(
+                    runner.start, plan.tool, singles, pairs,
                     apollo_params=apollo_params,
                     output_name=manual_name,
                 ),
