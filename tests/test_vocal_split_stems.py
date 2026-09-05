@@ -931,7 +931,7 @@ class MdxcVocalSplitSourceTests(unittest.TestCase):
                 "engines.mdx_c_engine.prepare_mix", return_value=np.ones((2, 441), dtype=np.float32)
             ),
             patch(
-                "engines.mdx_c_engine.librosa.resample",
+                "engines.mdx_c_runtime.librosa.resample",
                 side_effect=lambda audio, *, orig_sr, target_sr, axis: np.ones(
                     (2, 480 if target_sr == 48000 else 441), dtype=np.float32
                 ),

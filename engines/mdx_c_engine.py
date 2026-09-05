@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import typing
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
-import librosa
-import numpy as np
 import torch
 import torch.nn as nn
 
@@ -14,7 +13,6 @@ from bundled.constants import *
 from bundled.error_handling import *
 from core.debug_log import trace_phase
 from core.model_stem_semantics import is_vocal_target
-from core.stem_roles import StemRoleId
 from core.stems import (
     exports_named_stem,
     route_matches_stem,
@@ -24,21 +22,20 @@ from ml import spec_utils
 
 from .base import SeperateAttributes
 from .mdx_c import (
-    _channel_last_for_write,
-    _exact_mdx_source_key,
-    _load_torch_checkpoint,
     _mdx_c_hop_length,
     _mdx_pitch_reference_sr,
-    build_mdx_c_model,
-    derive_mdx_complement,
-    derive_mdx_multi_complement,
-    materialize_mdx_route_sources,
-    mdx_combined_secondary_key,
-    mdx_export_routing_flags,
     mdx_selected_stems,
-    mdx_vocal_split_chain_sources,
     select_roformer_ola_window,
 )
+from .mdx_c_export import (
+    MDXCExportRequest,
+    plan_mdx_c_export,
+    prepare_mdx_c_export,
+    resolve_mdx_c_export,
+    select_mdx_c_primary,
+    vocal_split_pair_sources,
+)
+from .mdx_c_runtime import acquire_mdx_c_model, infer_mdx_c_native
 from .mdx_classic_batch import mdx_oom_reduce_batch_message, next_batch_after_oom
 from .mix import prepare_mix
 from .orchestration import process_secondary_model
@@ -47,62 +44,14 @@ from .vr_utils import vr_denoiser
 if TYPE_CHECKING:
     from engines.stem_writer import ExportPlan
 
-from ml.tfc_tdf_v3 import TFC_TDF_net
-
 
 class SeperateMDXC(SeperateAttributes):
+    is_vocal_main_target: bool
+
     def seperate(self) -> ExportPlan:
-        # A *roformer* model whose single target_instrument is the vocal stem is
-        # treated as a vocals+instrumental model: ``demix`` derives the
-        # instrumental as ``mixture - vocals``. Classic (non-roformer) MDX-C
-        # models are excluded so their original single-stem output is preserved.
-        target = str(getattr(self.mdx_c_configs.training, "target_instrument", None) or "")
-        self.is_vocal_main_target = self.is_roformer and is_vocal_target(target)
-        samplerate = 44100
-        sources = None
-
-        if self.primary_model_name == self.model_cache_key and isinstance(
-            self.primary_sources, tuple
-        ):
-            mix, sources = self.primary_sources
-            self.load_cached_sources()
-        else:
-            with trace_phase(
-                "separate", "seperate", engine="SeperateMDXC", model=self.model_display_label
-            ):
-                self.start_inference_console_write()
-                self.write_to_console(LOADING_MODEL)
-                mix = prepare_mix(self.audio_file)
-                export_mix = mix
-                export_rate = samplerate
-                model_rate = int(
-                    getattr(self.mdx_c_configs.audio, 'sample_rate', export_rate) or export_rate
-                )
-                if model_rate != export_rate:
-                    mix = librosa.resample(mix, orig_sr=export_rate, target_sr=model_rate, axis=1)
-                sources = self.demix(mix)
-                if model_rate != export_rate:
-                    if isinstance(sources, dict):
-                        for key, stem_audio in list(sources.items()):
-                            sources[key] = librosa.resample(
-                                stem_audio, orig_sr=model_rate, target_sr=export_rate, axis=1
-                            )
-                    else:
-                        sources = librosa.resample(
-                            sources, orig_sr=model_rate, target_sr=export_rate, axis=1
-                        )
-                    # Downstream subtraction, level matching, caching, and the
-                    # splitter complement must share the exported source rate.
-                    mix = export_mix
-                if not self.is_vocal_split_model:
-                    self.cache_source((mix, sources))
-                self.write_to_console(DONE, base_text='')
-
-        stem_list = (
-            [self.mdx_c_configs.training.target_instrument]
-            if self.mdx_c_configs.training.target_instrument and not self.is_vocal_main_target
-            else [i for i in self.mdx_c_configs.training.instruments]
-        )
+        native = infer_mdx_c_native(self, prepare_mix=prepare_mix)
+        mix, sources, samplerate = native.mix, native.sources, native.samplerate
+        stem_list = native.stem_list
 
         from engines.stem_writer import ExportPlan, vocal_split_export_routes
 
@@ -140,51 +89,6 @@ class SeperateMDXC(SeperateAttributes):
             self.secondary_stem = secondary_stem(str(self.mdxnet_stem_select or ""))
 
         export_routes = run_export_routes(self)
-        available_routes = tuple(getattr(self, "available_stem_routes", ()) or export_routes)
-        target_native_routes = tuple(
-            route for route in available_routes if route.native is not None
-        )
-        target_route = target_native_routes[0] if len(target_native_routes) == 1 else None
-        target_native_key = (
-            target_route.native.raw
-            if target_route is not None and target_route.native is not None
-            else ""
-        )
-        dependent_routes = tuple(
-            route
-            for route in available_routes
-            if route.native is None
-            and target_route is not None
-            and route.complement_of == target_route.role
-        )
-        is_reviewed_target_pair = bool(target_native_key and dependent_routes)
-        native_source_map: dict[str, Any]
-        if isinstance(sources, dict):
-            native_source_map = sources
-        elif target_route is not None and target_route.native is not None:
-            native_source_map = {target_route.native.raw: sources}
-        else:
-            native_source_map = {}
-        reviewed_recipe_routes = tuple(
-            route
-            for route in export_routes
-            if route.native is None
-            and isinstance(route.role, StemRoleId)
-            and (route.complement_of is not None or route.derived_from)
-        )
-        is_reviewed_recipe_only = bool(reviewed_recipe_routes) and not any(
-            route.native is not None for route in export_routes
-        )
-
-        def _export_source_key(stem: str) -> str:
-            route = next(
-                (route for route in export_routes if route_matches_stem(route, stem, self)),
-                None,
-            )
-            if route is None:
-                return stem
-            return route.native.raw if route.native is not None else route.concept
-
         selected_stems = mdx_selected_stems(
             stem_list,
             [route.native.raw for route in export_routes if route.native is not None],
@@ -192,222 +96,75 @@ class SeperateMDXC(SeperateAttributes):
         if not self.is_secondary_model and len(selected_stems) == 1:
             self.mdxnet_stem_select = selected_stems[0]
 
-        routing = mdx_export_routing_flags(
-            stem_list=stem_list,
+        source_keys = {}
+        for stem in (self.mdxnet_stem_select, self.primary_stem, self.secondary_stem):
+            key = str(stem or "")
+            route = next(
+                (route for route in export_routes if route_matches_stem(route, key, self)), None
+            )
+            source_keys[key] = (
+                key
+                if route is None
+                else (route.native.raw if route.native is not None else route.concept)
+            )
+        request = MDXCExportRequest(
+            native=native,
             export_routes=export_routes,
+            available_routes=tuple(getattr(self, "available_stem_routes", ()) or export_routes),
+            selected_stems=tuple(selected_stems),
+            source_keys=source_keys,
             mdxnet_stem_select=self.mdxnet_stem_select,
+            primary_stem=self.primary_stem,
+            secondary_stem=self.secondary_stem,
             is_secondary_model=self.is_secondary_model,
             is_pre_proc_model=self.is_pre_proc_model,
             is_ensemble_master=self.process_data.is_ensemble_master,
             is_4_stem_ensemble=self.is_4_stem_ensemble,
-            include_stem_complement=getattr(self, "is_mdx_include_stem_complement", False),
+            is_multi_stem_ensemble=self.is_multi_stem_ensemble,
+            is_mdx_include_stem_complement=getattr(self, "is_mdx_include_stem_complement", False),
+            is_mdx_combine_stems=self.is_mdx_combine_stems,
+            is_invert_spec=self.is_invert_spec,
+            exports_primary=exports_named_stem(self, self.primary_stem),
+            exports_secondary=exports_named_stem(self, self.secondary_stem),
+            blend=self.process_secondary_stem,
+            match_frequency_pitch=self.match_frequency_pitch,
+            primary_source=self.primary_source,
+            secondary_source=self.secondary_source,
+            secondary_source_primary=self.secondary_source_primary,
+            secondary_source_secondary=self.secondary_source_secondary,
         )
-        is_complement_export = routing["is_complement_export"]
-        export_sources: dict[str, Any] = {}
-
-        if is_reviewed_recipe_only and not is_reviewed_target_pair:
-            pass
-        elif is_complement_export:
-            stem = selected_stems[0]
-            complement_stem = secondary_stem(stem)
-            source_key = _exact_mdx_source_key(native_source_map, stem)
-            if source_key is None:
-                raise KeyError(
-                    f"stem {stem!r} not in sources {sorted(map(str, native_source_map))}"
-                )
-            export_sources[stem] = native_source_map[source_key].T
-            export_sources[complement_stem] = derive_mdx_complement(
-                native_source_map[source_key],
-                mix,
-                invert_spec=self.is_invert_spec,
-                match_frequency_pitch=self.match_frequency_pitch,
-            )
-        elif routing["multi_stem_export"]:
-            export_stems = routing["export_stems"]
+        prepared = prepare_mdx_c_export(request)
+        if (
+            not (prepared.is_reviewed_recipe_only and not prepared.is_reviewed_target_pair)
+            and not prepared.is_complement_export
+            and prepared.flags["multi_stem_export"]
+        ):
+            export_stems = prepared.flags["export_stems"]
             if isinstance(sources, dict):
-                # Match-mix only when exporting the model's full stem set so a
-                # partial selection is not forced to reconstruct the whole mix.
+                # Keep the original mapping and shared array mutation before planning.
                 allow_match = set(export_stems) == set(stem_list)
                 self.apply_export_stem_levels(
-                    sources,
-                    mix,
-                    stem_keys=export_stems,
-                    allow_match_mix=allow_match,
+                    sources, mix, stem_keys=export_stems, allow_match_mix=allow_match
                 )
-            for stem in export_stems:
-                source_key = _exact_mdx_source_key(native_source_map, stem)
-                if source_key is None:
-                    raise KeyError(
-                        f"stem {stem!r} not in sources {sorted(map(str, native_source_map))}"
-                    )
-                self.primary_source = native_source_map[source_key].T
-                export_sources[stem] = self.primary_source
-        else:
-            working_sources: Any = dict(sources) if isinstance(sources, dict) else sources
-            if is_reviewed_target_pair and target_route is not None:
-                if isinstance(working_sources, dict):
-                    resolved = _exact_mdx_source_key(working_sources, target_native_key)
-                    if resolved is None:
-                        raise KeyError(
-                            f"stem {target_native_key!r} not in sources "
-                            f"{sorted(map(str, working_sources.keys()))}"
-                        )
-                    source_primary = working_sources[resolved]
-                else:
-                    source_primary = working_sources
-            elif len(stem_list) == 1:
-                source_primary = working_sources
-            else:
-                select = str(self.mdxnet_stem_select or "")
-                primary = str(self.primary_stem or "")
-                if self.is_multi_stem_ensemble or len(stem_list) == 2:
-                    stem_key = str(stem_list[0])
-                elif select == ALL_STEMS:
-                    stem_key = primary
-                elif (
-                    isinstance(working_sources, dict)
-                    and _exact_mdx_source_key(working_sources, _export_source_key(select))
-                    is not None
-                ):
-                    stem_key = _export_source_key(select)
-                else:
-                    stem_key = _export_source_key(primary)
-                if isinstance(working_sources, dict):
-                    resolved = _exact_mdx_source_key(working_sources, stem_key)
-                    if resolved is None:
-                        raise KeyError(
-                            f"stem {stem_key!r} not in sources "
-                            f"{sorted(map(str, working_sources.keys()))}"
-                        )
-                    source_primary = working_sources[resolved]
-                else:
-                    source_primary = working_sources[stem_key]
-            if self.is_secondary_model_activated and self.secondary_model:
-                self.secondary_source_primary, self.secondary_source_secondary = (
-                    process_secondary_model(
-                        self.secondary_model,
-                        self.process_data,
-                        main_process_method=self.process_method,
-                        main_model_primary=self.primary_stem,
-                    )
+        primary_selection = select_mdx_c_primary(request, prepared)
+        if prepared.pair_export and self.is_secondary_model_activated and self.secondary_model:
+            self.secondary_source_primary, self.secondary_source_secondary = (
+                process_secondary_model(
+                    self.secondary_model,
+                    self.process_data,
+                    main_process_method=self.process_method,
+                    main_model_primary=self.primary_stem,
                 )
-
-            if is_reviewed_target_pair and target_route is not None:
-                if target_route in export_routes:
-                    if not isinstance(self.primary_source, np.ndarray):
-                        self.primary_source = source_primary.T
-                    export_sources[target_native_key] = self.process_secondary_stem(
-                        self.primary_source,
-                        self.secondary_source_primary,
-                    )
-
-                selected_derived = tuple(
-                    route for route in export_routes if route in dependent_routes
-                )
-                if selected_derived:
-                    if not isinstance(self.secondary_source, np.ndarray):
-                        materialized_complement = materialize_mdx_route_sources(
-                            available_routes=available_routes,
-                            export_routes=selected_derived,
-                            native_sources=native_source_map,
-                            mix=mix,
-                            invert_spec=bool(self.is_invert_spec),
-                            match_frequency_pitch=self.match_frequency_pitch,
-                        )
-                        self.secondary_source = materialized_complement[selected_derived[0].concept]
-                    derived_audio = self.process_secondary_stem(
-                        self.secondary_source,
-                        self.secondary_source_secondary,
-                    )
-                    for route in selected_derived:
-                        export_sources[route.concept] = derived_audio
-            elif exports_named_stem(self, self.secondary_stem):
-                if not isinstance(self.secondary_source, np.ndarray):
-                    if isinstance(working_sources, dict) and len(stem_list) > 2:
-                        self.secondary_source = derive_mdx_multi_complement(
-                            working_sources,
-                            _export_source_key(str(self.primary_stem or "")),
-                            mix,
-                            combine_stems=bool(self.is_mdx_combine_stems),
-                            invert_spec=bool(self.is_invert_spec),
-                            match_frequency_pitch=self.match_frequency_pitch,
-                        )
-                    elif self.is_mdx_combine_stems and len(stem_list) == 2:
-                        if isinstance(working_sources, dict):
-                            sec_key = mdx_combined_secondary_key(
-                                working_sources, stem_list, self.secondary_stem
-                            )
-                            secondary_source = working_sources[sec_key]
-                        else:
-                            secondary_source = working_sources
-
-                        self.secondary_source = secondary_source.T
-                    elif isinstance(working_sources, dict) and _exact_mdx_source_key(
-                        working_sources, _export_source_key(self.secondary_stem)
-                    ):
-                        sec_key = _exact_mdx_source_key(
-                            working_sources, _export_source_key(self.secondary_stem)
-                        )
-                        assert sec_key is not None
-                        self.secondary_source = working_sources[sec_key].T
-                    else:
-                        self.secondary_source, raw_mix = (
-                            source_primary,
-                            self.match_frequency_pitch(mix),
-                        )
-                        self.secondary_source = spec_utils.to_shape(
-                            self.secondary_source, raw_mix.shape
-                        )
-
-                        if self.is_invert_spec:
-                            self.secondary_source = spec_utils.invert_stem(
-                                raw_mix, self.secondary_source
-                            )
-                        else:
-                            self.secondary_source = -self.secondary_source.T + raw_mix.T
-                export_sources[_export_source_key(self.secondary_stem)] = (
-                    self.process_secondary_stem(
-                        self.secondary_source, self.secondary_source_secondary
-                    )
-                )
-
-            if not is_reviewed_target_pair and exports_named_stem(self, self.primary_stem):
-                if not isinstance(self.primary_source, np.ndarray):
-                    self.primary_source = source_primary.T
-
-                export_sources[_export_source_key(self.primary_stem)] = self.process_secondary_stem(
-                    self.primary_source, self.secondary_source_primary
-                )
-
-        routes_to_materialize = tuple(
-            route
-            for route in reviewed_recipe_routes
-            if route.derived_from or route.concept not in export_sources
-        )
-        materialized_routes = materialize_mdx_route_sources(
-            available_routes=available_routes,
-            export_routes=routes_to_materialize,
-            native_sources=native_source_map,
-            mix=mix,
-            invert_spec=bool(self.is_invert_spec),
-            match_frequency_pitch=self.match_frequency_pitch,
-        )
-        for route in routes_to_materialize:
-            export_sources[route.concept] = materialized_routes[route.concept]
-
-        secondary_sources = mdx_vocal_split_chain_sources(
-            export_sources,
-            sources,
-            routes=export_routes,
-        )
-        plan = ExportPlan(
-            sources=export_sources,
-            samplerate=samplerate,
-            split_sources=secondary_sources,
-        )
-        if self.is_secondary_model or self.is_pre_proc_model:
-            plan.return_sources = {**export_sources, **secondary_sources}
-        return plan
+            )
+            request = replace(
+                request,
+                secondary_source_primary=self.secondary_source_primary,
+                secondary_source_secondary=self.secondary_source_secondary,
+            )
+        resolved = resolve_mdx_c_export(request, prepared, primary_selection)
+        self.primary_source = resolved.primary_source
+        self.secondary_source = resolved.secondary_source
+        return plan_mdx_c_export(resolved)
 
     def _vocal_split_pair_sources(
         self,
@@ -416,45 +173,7 @@ class SeperateMDXC(SeperateAttributes):
         *,
         routes: typing.Sequence[Any] | None = None,
     ) -> dict[str, Any]:
-        """Build lead/backing from yaml-keyed demix output for export."""
-        if routes is not None:
-            from engines.stem_writer import vocal_split_pair_routes
-
-            routes = vocal_split_pair_routes(tuple(routes))
-            route_sources: dict[str, Any] = {}
-            sources_by_role: dict[StemRoleId, Any] = {}
-            for route in routes:
-                if route.native is None:
-                    continue
-                wanted = route.native.raw.casefold()
-                source_key = next(
-                    (key for key in sources if str(key).casefold() == wanted),
-                    None,
-                )
-                if source_key is None:
-                    continue
-                audio = _channel_last_for_write(sources[source_key])
-                route_sources[route.native.raw] = audio
-                if isinstance(route.role, StemRoleId):
-                    sources_by_role[route.role] = audio
-
-            mix_arr = np.asarray(mix) if mix is not None else None
-            if mix_arr is not None:
-                for route in routes:
-                    if route.native is not None or not isinstance(route.role, StemRoleId):
-                        continue
-                    dependency = route.complement_of
-                    existing = sources_by_role.get(dependency) if dependency is not None else None
-                    if existing is None:
-                        continue
-                    derived = _channel_last_for_write(
-                        mix_arr - spec_utils.to_shape(np.asarray(existing).T, mix_arr.shape)
-                    )
-                    route_sources[route.concept] = derived
-                    sources_by_role[route.role] = derived
-            return route_sources
-
-        return {str(key): _channel_last_for_write(source) for key, source in sources.items()}
+        return vocal_split_pair_sources(sources, mix, routes=routes)
 
     def overlap_add(
         self,
@@ -498,7 +217,6 @@ class SeperateMDXC(SeperateAttributes):
 
             from engines.model_weight_cache import (
                 get_weight_cache,
-                materialize_module,
                 weight_cache_key,
             )
 
@@ -509,13 +227,10 @@ class SeperateMDXC(SeperateAttributes):
                 getattr(self.mdx_c_configs.inference, "dim_t", None),
             )
             self._weight_cache_key = key
-            cached = get_weight_cache().get(key)
-            if cached and cached.module is not None:
-                model: Any = materialize_module(cached.module, self.device)
-            else:
-                model = TFC_TDF_net(self.mdx_c_configs, device=self.device)
-                model.load_state_dict(_load_torch_checkpoint(self.model_path))
-                model.to(self.device).eval()
+            model = acquire_mdx_c_model(
+                self.context, self.device, weight_cache=get_weight_cache(), cache_key=key,
+                roformer=False,
+            )
             self._inference_model = model
             mix = torch.as_tensor(mix, dtype=torch.float32, device=self.device)
 
@@ -657,7 +372,6 @@ class SeperateMDXC(SeperateAttributes):
 
             from engines.model_weight_cache import (
                 get_weight_cache,
-                materialize_module,
                 weight_cache_key,
             )
 
@@ -669,20 +383,10 @@ class SeperateMDXC(SeperateAttributes):
                 getattr(self.mdx_c_configs.inference, "dim_t", None),
             )
             self._weight_cache_key = key
-            cached = get_weight_cache().get(key)
-            if cached and cached.module is not None:
-                model: Any = materialize_module(cached.module, device)
-            else:
-                # Load first: the checkpoint's keys decide whether this is a
-                # HyperACE variant, which upstream configs do not declare.
-                checkpoint = _load_torch_checkpoint(self.model_path)
-                model = build_mdx_c_model(
-                    self.roformer_config, state_dict_keys=list(checkpoint.keys())
-                )
-                model = model if not isinstance(model, torch.nn.DataParallel) else model.module
-                model.load_state_dict(checkpoint)
-                del checkpoint
-                model.to(device).eval()
+            model = acquire_mdx_c_model(
+                self.context, device, weight_cache=get_weight_cache(), cache_key=key,
+                roformer=True,
+            )
             self._inference_model = model
             mix = torch.as_tensor(mix, dtype=torch.float32, device=device)
 

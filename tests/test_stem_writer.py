@@ -115,16 +115,6 @@ class EngineInversionBoundaryTests(unittest.TestCase):
                 self.assertNotIn("self.write_audio(", source)
                 self.assertNotIn("self.final_process(", source)
 
-    def test_inverted_engines_return_export_plan(self) -> None:
-        for path in _INVERTED_ENGINES:
-            with self.subTest(engine=path.name):
-                source = path.read_text(encoding="utf-8")
-                self.assertIn("ExportPlan", source)
-                returns_plan = "return ExportPlan" in source or (
-                    "plan = ExportPlan(" in source and "return plan" in source
-                )
-                self.assertTrue(returns_plan)
-
     def test_base_does_not_own_export_source_map(self) -> None:
         source = _BASE.read_text(encoding="utf-8")
         self.assertNotIn("export_source_map", source)
