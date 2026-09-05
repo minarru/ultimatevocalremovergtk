@@ -10,12 +10,15 @@ from bundled.constants import (
     DRUM_STEM,
     VOCAL_STEM,
 )
-from core.job_plan import JobResolver, JobSpec, ModelDescriptor, planned_output_stems
+from core.export_naming import OutputNamingContext
+from core.job_plan import JobSpec, ModelDescriptor, planned_output_stems
+from core.job_projection import project_input, select_output_routes
 from core.model_identity import ModelArtifacts
 from core.settings import Settings
 from core.stem_roles import StemId, StemRoleId
 from core.stems import FOCUS_PRIMARY, FOCUS_SECONDARY, StemLiteral, StemRoute
 from core.types import ProcessMethod
+from tests.planning_fixtures import resolver_with_ports
 
 
 def _desc(stem: str, secondary: str = "Instrumental", identifier: str = "mdx:a") -> ModelDescriptor:
@@ -209,7 +212,7 @@ class PlannedOutputStemTests(unittest.TestCase):
         self.assertIn("signature-mismatch", plan["models"][0]["stem_semantics_warning"])
 
     def test_stem_semantic_diagnostics_log_reviewed_and_fallback_context(self) -> None:
-        from core.job_plan import _stem_semantics_diagnostics
+        from core.job_diagnostics import stem_semantics_diagnostics as _stem_semantics_diagnostics
         from core.model_stem_semantics import resolve_catalogue_stem_semantics
 
         reviewed = ModelDescriptor(
@@ -250,7 +253,7 @@ class PlannedOutputStemTests(unittest.TestCase):
         self.assertEqual(calls["stem_semantics_signature_mismatch"]["level"], "warning")
 
     def test_pair_selection_requires_two_distinct_reviewed_members(self) -> None:
-        from core.job_plan import _ensemble_pair_diagnostics
+        from core.job_diagnostics import ensemble_pair_diagnostics as _ensemble_pair_diagnostics
 
         settings = Settings.defaults()
         settings.ensemble.main_stem = "pair.vocals_instrumental"
@@ -261,7 +264,7 @@ class PlannedOutputStemTests(unittest.TestCase):
         self.assertIn("two distinct", diagnostics[0].message)
 
     def test_pair_selection_rejects_an_incomplete_additional_member(self) -> None:
-        from core.job_plan import _ensemble_pair_diagnostics
+        from core.job_diagnostics import ensemble_pair_diagnostics as _ensemble_pair_diagnostics
 
         settings = Settings.defaults()
         settings.ensemble.main_stem = "pair.vocals_instrumental"
@@ -279,7 +282,7 @@ class PlannedOutputStemTests(unittest.TestCase):
         self.assertIn("Every selected member", diagnostics[0].message)
 
     def test_unknown_pair_selection_requests_an_explicit_repick(self) -> None:
-        from core.job_plan import _ensemble_pair_diagnostics
+        from core.job_diagnostics import ensemble_pair_diagnostics as _ensemble_pair_diagnostics
 
         settings = Settings.defaults()
         settings.ensemble.main_stem = "pair.nearby_but_wrong"
@@ -485,7 +488,7 @@ class PlannedOutputStemTests(unittest.TestCase):
         )
 
     def test_multi_stem_explicit_single_contributor_is_an_error(self) -> None:
-        from core.job_plan import _stem_focus_diagnostics
+        from core.job_diagnostics import assess_stem_focus as _stem_focus_diagnostics
 
         settings = Settings.defaults()
         settings.ensemble.main_stem = "mode.multi_stem"
@@ -605,13 +608,11 @@ class PlannedOutputStemTests(unittest.TestCase):
             stem_count=4,
             routes=routes,
         )
-        planned = JobResolver(Mock())._plan_inputs(
-            settings,
-            JobSpec("separate", settings, ("/tmp/song.wav",), "/tmp/out"),
-            (desc,),
-        )
+        selected = select_output_routes(settings, (desc,), command="separate")
+        planned = project_input("/tmp/song.wav", OutputNamingContext(
+            "/tmp/song.wav", "song", "song", "/tmp/out", "wav"), selected.routes, command="separate")
         self.assertEqual(
-            [(output.stem, output.conditional) for output in planned[0].outputs],
+            [(output.stem, output.conditional) for output in planned.outputs],
             [("Bass", False), ("No bass", True)],
         )
 
@@ -620,16 +621,11 @@ class PlannedOutputStemTests(unittest.TestCase):
         settings.process.method = ProcessMethod.ENSEMBLE
         settings.ensemble.main_stem = "pair.vocals_instrumental"
         settings.ensemble.selected_models = ["mdx:a", "mdx:b"]
-        resolver = JobResolver(Mock())
-        spec = JobSpec("ensemble", settings, ("/tmp/song.wav",), "/tmp/out")
-        # Bypass assemble: feed descriptors through _plan_inputs.
-        planned = resolver._plan_inputs(
-            settings,
-            spec,
-            (_desc("Drums", "Bass"), _desc("Vocals")),
-        )
+        selected = select_output_routes(settings, (_desc("Drums", "Bass"), _desc("Vocals")), command="ensemble")
+        planned = project_input("/tmp/song.wav", OutputNamingContext(
+            "/tmp/song.wav", "song", "song", "/tmp/out", "wav"), selected.routes, command="ensemble")
         self.assertEqual(
-            [output.stem for output in planned[0].outputs],
+            [output.stem for output in planned.outputs],
             [VOCAL_STEM, "Instrumental"],
         )
 
@@ -637,18 +633,14 @@ class PlannedOutputStemTests(unittest.TestCase):
         settings = Settings.defaults()
         settings.process.method = ProcessMethod.ENSEMBLE
         settings.ensemble.main_stem = "pair.karaoke"
-        resolver = JobResolver(Mock())
-        spec = JobSpec("ensemble", settings, ("/tmp/song.wav",), "/tmp/out")
-        planned = resolver._plan_inputs(
-            settings,
-            spec,
-            (_desc("Vocals"), _desc("Vocals")),
-        )
+        selected = select_output_routes(settings, (_desc("Vocals"), _desc("Vocals")), command="ensemble")
+        planned = project_input("/tmp/song.wav", OutputNamingContext(
+            "/tmp/song.wav", "song", "song", "/tmp/out", "wav"), selected.routes, command="ensemble")
         self.assertEqual(
-            [output.stem for output in planned[0].outputs],
+            [output.stem for output in planned.outputs],
             ["Instrumental_with_Backing_Vocals", "Lead_Vocals"],
         )
-        self.assertIn("(Instrumental_with_Backing_Vocals)", planned[0].outputs[0].path)
+        self.assertIn("(Instrumental_with_Backing_Vocals)", planned.outputs[0].path)
 
     def test_adhoc_ensemble_sentinel_label_is_ensembled(self) -> None:
         from bundled.constants import CHOOSE_ENSEMBLE_OPTION
@@ -658,9 +650,9 @@ class PlannedOutputStemTests(unittest.TestCase):
         settings.ensemble.chosen_ensemble = CHOOSE_ENSEMBLE_OPTION
         settings.ensemble.append_ensemble_name = True
         settings.ensemble.main_stem = "pair.vocals_instrumental"
-        resolver = JobResolver(Mock())
+        resolver = resolver_with_ports(Mock())
         spec = JobSpec("ensemble", settings, ("/tmp/song.wav",), "/tmp/out")
-        planned = resolver._plan_inputs(
+        planned = resolver.plan_inputs(
             settings,
             spec,
             (_desc("Vocals"), _desc("Vocals")),
@@ -679,7 +671,6 @@ class MdxCOfflinePlanningTests(unittest.TestCase):
         fetch.assert_not_called()
 
     def test_dependency_map_uses_exact_canonical_id(self) -> None:
-        from core.job_plan import JobResolver
         from core.model_identity import ModelRecord
         from core.settings import Settings
         from core.types import ProcessMethod
@@ -696,28 +687,27 @@ class MdxCOfflinePlanningTests(unittest.TestCase):
         settings = Settings.defaults()
         settings.process.method = ProcessMethod.MDX
         settings.mdx.model = record.id
-        resolver = JobResolver(Mock())
-        resolver.identities = Mock()
+        resolver = resolver_with_ports(Mock())
+        resolver.identities.lookup = Mock()
         resolver.identities.lookup.return_value = record
         self.assertEqual(
-            resolver._dependency_map(settings, "separate"),
+            resolver.dependencies.dependencies(settings, "separate"),
             {"mdx.model": record},
         )
         resolver.identities.lookup.assert_called_once_with(record.id)
 
     def test_job_assemble_honors_mdx_c_network_policy(self) -> None:
         from core.access_policy import current_access_policy
-        from core.job_plan import JobResolver
         from core.model_identity import ModelRecord
         from core.settings import Settings
 
-        seen: list[bool] = []
+        seen: list[tuple[bool, bool]] = []
 
         def fake_assemble(*_args: object, **_kwargs: object) -> list[object]:
-            seen.append(current_access_policy().allow_network)
+            seen.append((current_access_policy().allow_network, current_access_policy().allow_metadata_writes))
             return []
 
-        resolver = JobResolver(Mock())
+        resolver = resolver_with_ports(Mock())
         record = ModelRecord(
             id='mdx:test',
             family='mdx',
@@ -727,17 +717,17 @@ class MdxCOfflinePlanningTests(unittest.TestCase):
             artifacts=ModelArtifacts('test.ckpt'),
             installed=True,
         )
-        with patch("core.job_plan.assemble_model", side_effect=fake_assemble):
-            resolver._assemble(Settings.defaults(), "separate", [record], allow_network=True)
-        self.assertEqual(seen, [True])
+        with patch("core.job_materialization.assemble_model", side_effect=fake_assemble):
+            resolver.materializer.assemble(Settings.defaults(), "separate", [record], allow_network=True, model_dependencies=None)
+        self.assertEqual(seen, [(True, True)])
 
         seen.clear()
-        with patch("core.job_plan.assemble_model", side_effect=fake_assemble):
-            resolver._assemble(Settings.defaults(), "separate", [record], allow_network=False)
-        self.assertEqual(seen, [False])
+        with patch("core.job_materialization.assemble_model", side_effect=fake_assemble):
+            resolver.materializer.assemble(Settings.defaults(), "separate", [record], allow_network=False, model_dependencies=None)
+        self.assertEqual(seen, [(False, False)])
 
     def test_resolve_unavailable_model_status_is_configuration_diagnostic(self) -> None:
-        from core.job_plan import JobResolver, ValidationLevel
+        from core.job_plan import ValidationLevel
         from core.model_identity import ModelRecord
 
         settings = Settings.defaults()
@@ -759,14 +749,12 @@ class MdxCOfflinePlanningTests(unittest.TestCase):
             primary_stem="Vocals",
             secondary_stem="Instrumental",
         )
-        resolver = JobResolver(Mock(inventory_generation=0))
-        resolver._dependency_map = Mock(  # type: ignore[method-assign]
-            return_value={"mdx.model": record}
-        )
+        resolver = resolver_with_ports(Mock(inventory_generation=0))
+        resolver.identities.lookup = Mock(return_value=record)
 
         with tempfile.NamedTemporaryFile(suffix=".wav") as handle:
             spec = JobSpec("separate", settings, (handle.name,), "/tmp/out")
-            with patch.object(resolver, "_assemble", return_value=[unavailable]):
+            with patch.object(resolver.materializer, "assemble", return_value=[unavailable]):
                 resolved = resolver.resolve(spec, ValidationLevel.MODEL)
 
         config_diags = [item for item in resolved.diagnostics if item.code == "model.configuration"]
@@ -814,9 +802,7 @@ class PlanningDiagnosticsTests(unittest.TestCase):
         from core.job_plan import ValidationLevel
 
         settings = Settings.defaults()
-        resolver = JobResolver(Mock(inventory_generation=3))
-        resolver._dependency_map = Mock(return_value={})  # type: ignore[method-assign]
-        resolver._primary_dependency_map = Mock(return_value={})  # type: ignore[method-assign]
+        resolver = resolver_with_ports(Mock(inventory_generation=3))
         with (
             tempfile.NamedTemporaryFile(suffix=".wav") as source,
             tempfile.TemporaryDirectory() as tmp,

@@ -625,7 +625,7 @@ class CatalogueDisplayProjectionTests(unittest.TestCase):
         raw = {"1_HP-UVR.pth": "https://example.invalid/1_HP-UVR.pth"}
         manager = SimpleNamespace(
             _coordinator=SimpleNamespace(
-                _latest=SimpleNamespace(
+                latest_snapshot=SimpleNamespace(
                     revision=None,
                     meta_by_family={
                         "vr": {
@@ -678,7 +678,7 @@ class CatalogueDisplayProjectionTests(unittest.TestCase):
         )
         manager = SimpleNamespace(
             _coordinator=SimpleNamespace(
-                _latest=SimpleNamespace(revision=None, meta_by_family={"vr": {selection: meta}})
+                latest_snapshot=SimpleNamespace(revision=None, meta_by_family={"vr": {selection: meta}})
             ),
             vr_download_list={selection: raw},
             mdx_download_list={},
@@ -716,7 +716,7 @@ class CatalogueDisplayProjectionTests(unittest.TestCase):
         )
         manager = SimpleNamespace(
             _coordinator=SimpleNamespace(
-                _latest=SimpleNamespace(
+                latest_snapshot=SimpleNamespace(
                     revision=None,
                     meta_by_family={
                         "vr": {selection: vr_meta},
@@ -761,7 +761,7 @@ class CatalogueDisplayProjectionTests(unittest.TestCase):
         )
         manager = SimpleNamespace(
             _coordinator=SimpleNamespace(
-                _latest=SimpleNamespace(
+                latest_snapshot=SimpleNamespace(
                     revision=None,
                     meta_by_family={"mdx": {selection: meta}},
                 )
@@ -1044,7 +1044,7 @@ class DisplayIndexPrimaryOnlyTests(unittest.TestCase):
             apollo_download_list=catalogues["apollo"],
             unsupported_download_list={},
             catalogue_meta={},
-            _coordinator=SimpleNamespace(_latest=snapshot),
+            _coordinator=SimpleNamespace(latest_snapshot=snapshot),
             resolve=lambda *_args, **_kwargs: (),
         )
         with patch("core.model_catalogue.sdr_for_files", return_value={}):
@@ -1140,7 +1140,7 @@ class DisplayIndexPrimaryOnlyTests(unittest.TestCase):
         manager = SimpleNamespace(
             catalogue_meta={label: mdx_meta},
             _coordinator=SimpleNamespace(
-                _latest=SimpleNamespace(
+                latest_snapshot=SimpleNamespace(
                     meta_by_family={"vr": {label: vr_meta}, "mdx": {label: mdx_meta}}
                 )
             ),

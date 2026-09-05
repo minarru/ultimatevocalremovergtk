@@ -11,6 +11,7 @@ vocal-splitter / Demucs pre-process machinery. Audio tools live in
 :mod:`core.audio_tools`.
 """
 
+import copy
 import os
 import time
 import typing
@@ -269,6 +270,7 @@ class JobRunner:
         """
         if self.is_running():
             return
+        self.settings = copy.deepcopy(job.settings)
         from kthread import KThread
 
         self._reset_run_state()

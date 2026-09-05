@@ -88,7 +88,7 @@ def _candidate_record(repo: Any, family: str, selection: str) -> Any | None:
 
 def _catalogue_source(repo: Any, family: str, selection: str) -> str:
     coordinator = getattr(repo, "catalogue", None)
-    snapshot = getattr(coordinator, "_latest", None)
+    snapshot = getattr(coordinator, "latest_snapshot", None)
     by_family = getattr(snapshot, "entry_sources", None)
     if isinstance(by_family, Mapping):
         sources = by_family.get(family)

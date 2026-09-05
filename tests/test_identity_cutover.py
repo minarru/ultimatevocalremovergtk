@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import unittest
 from typing import Any
+from unittest.mock import Mock
 
-from core.job_plan import JobResolver, JobSpec, ValidationLevel
+from core.job_plan import JobSpec, ValidationLevel
 from core.model_identity import IdentityIndex, ModelArtifacts, ModelRecord
 from core.settings import Settings
 from core.settings.defaults import default_settings_dict
 from core.types import ProcessMethod
+from tests.planning_fixtures import resolver_with_ports
 
 
 class KeepTextCutoverTests(unittest.TestCase):
@@ -248,8 +250,8 @@ class KeepTextCutoverTests(unittest.TestCase):
         settings = Settings.defaults()
         settings.process.method = ProcessMethod.MDX
         settings.mdx.model = record.id
-        resolver = JobResolver(object())
-        resolver.identities = IdentityIndex({record.id: record})  # type: ignore[assignment]
+        resolver = resolver_with_ports(object())
+        resolver.identities.lookup = Mock(side_effect=IdentityIndex({record.id: record}).lookup)
         with tempfile.TemporaryDirectory() as root:
             source = os.path.join(root, "song.wav")
             open(source, "wb").close()
@@ -892,7 +894,7 @@ class ReplayManifestContractTests(unittest.TestCase):
             installed=True,
         )
         resolver = AudioJobResolver(Mock())
-        resolver.identities = Mock()
+        resolver.identities.lookup = Mock()
         resolver.identities.lookup.return_value = record
         settings = Settings.defaults()
         settings.audio_tools.apollo_model = record.id

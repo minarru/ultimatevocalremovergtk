@@ -258,7 +258,7 @@ class _ModelInventory:
         coordinator = getattr(self.repo, "catalogue", None)
         if coordinator is None:
             return None
-        latest = getattr(coordinator, "_latest", None)
+        latest = getattr(coordinator, "latest_snapshot", None)
         if latest is not None:
             return latest
         ensure = getattr(coordinator, "ensure", None)

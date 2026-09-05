@@ -77,7 +77,7 @@ def catalogue_entry_meta(
 ) -> Any:
     """Read family-scoped metadata, optionally rejecting legacy flat fallback."""
     coordinator = getattr(manager, "_coordinator", None)
-    snapshot = getattr(coordinator, "_latest", None)
+    snapshot = getattr(coordinator, "latest_snapshot", None)
     by_family = getattr(snapshot, "meta_by_family", None)
     if isinstance(by_family, Mapping):
         family_meta = by_family.get(family)
@@ -193,7 +193,7 @@ class ModelCatalogueService:
 
     def _snapshot_key(self) -> object:
         coordinator = getattr(self.manager, "_coordinator", None)
-        snapshot = getattr(coordinator, "_latest", None) if coordinator is not None else None
+        snapshot = getattr(coordinator, "latest_snapshot", None) if coordinator is not None else None
         revision = getattr(snapshot, "revision", None)
         digest = revision.digest() if revision is not None and hasattr(revision, "digest") else None
         return (

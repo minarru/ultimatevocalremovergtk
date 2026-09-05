@@ -96,7 +96,7 @@ class ModelRepository:
         coordinator = self._catalogue
         if coordinator is None:
             return ""
-        snapshot = getattr(coordinator, "_latest", None)
+        snapshot = getattr(coordinator, "latest_snapshot", None)
         revision = getattr(snapshot, "revision", None)
         digest = getattr(revision, "digest", None)
         if not callable(digest):

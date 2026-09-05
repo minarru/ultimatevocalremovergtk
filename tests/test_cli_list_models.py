@@ -452,7 +452,7 @@ class DiscoveryTests(unittest.TestCase):
         )
         manager: Any = SimpleNamespace(
             _coordinator=SimpleNamespace(
-                _latest=SimpleNamespace(
+                latest_snapshot=SimpleNamespace(
                     revision=None,
                     meta_by_family={
                         "vr": {},
@@ -1184,9 +1184,11 @@ class ModelsListInstalledDefaultTests(unittest.TestCase):
         )
         coordinator = Mock()
         coordinator._latest = None
+        coordinator.latest_snapshot = None
 
         def ensure_snapshot(**_kwargs: object) -> object:
             coordinator._latest = snapshot
+            coordinator.latest_snapshot = snapshot
             return snapshot
 
         coordinator.ensure.side_effect = ensure_snapshot

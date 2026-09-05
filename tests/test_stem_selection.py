@@ -126,7 +126,8 @@ class UnmatchedFocusDiagnosticTests(unittest.TestCase):
     """An unhonorable focus falls back to exporting everything; say so up front."""
 
     def _diagnose(self, focus: str, model: _StubModel) -> list[str]:
-        from core.job_plan import ModelDescriptor, _stem_focus_diagnostics
+        from core.job_diagnostics import assess_stem_focus as _stem_focus_diagnostics
+        from core.job_plan import ModelDescriptor
 
         settings = Settings.defaults()
         settings.process.stem_focus = focus
@@ -159,7 +160,8 @@ class UnmatchedFocusDiagnosticTests(unittest.TestCase):
         self.assertEqual(self._diagnose(BASS_STEM, model), [])
 
     def test_cli_unmatched_focus_is_error_but_inherited_is_warning(self) -> None:
-        from core.job_plan import ModelDescriptor, _stem_focus_diagnostics
+        from core.job_diagnostics import assess_stem_focus as _stem_focus_diagnostics
+        from core.job_plan import ModelDescriptor
 
         settings = Settings.defaults()
         settings.process.stem_focus = BASS_STEM
