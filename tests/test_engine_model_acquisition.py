@@ -6,8 +6,8 @@ from typing import Any
 from unittest.mock import patch
 
 from bundled.constants import DEMUCS_V1, DEMUCS_V2, DEMUCS_V3, DEMUCS_V4
-from engines.demucs_runtime import acquire_demucs_model
-from engines.mdx_c_runtime import acquire_mdx_c_model
+from engines.demucs_runtime import DemucsAcquisitionRequest, acquire_demucs_model
+from engines.mdx_c_runtime import MDXCAcquisitionRequest, acquire_mdx_c_model
 from tests.test_model_option_parity import partial_model
 from tests.test_stem_writer import _copy_engine_attributes
 
@@ -30,14 +30,42 @@ class FakeModule:
 
 
 class AcquisitionTests(unittest.TestCase):
+    def test_flat_demucs_v2_acquisition_uses_public_source_reference(self):
+        from engines.runtime import EngineInvocation, EngineRunContext
+        from engines.runtime_compat import EngineLegacyOptions
+
+        sources = ['bass', 'drums', 'other', 'vocals']
+        flat: Any = SimpleNamespace(
+            model_path='/tmp/fixture.th',
+            demucs_version=DEMUCS_V2,
+            demucs_source_list=sources,
+        )
+        context = EngineRunContext(
+            flat, _copy_engine_attributes(partial_model()).process_data, EngineInvocation()
+        )
+        engine = EngineLegacyOptions()
+        engine.context = context
+        engine.segment = 'Default'
+        request = DemucsAcquisitionRequest.from_separator(engine)
+        module = FakeModule([])
+        with (
+            patch('engines.demucs_runtime.auto_load_demucs_model_v2', return_value=module) as load,
+            patch('engines.demucs_runtime.load_torch_checkpoint', return_value={}),
+        ):
+            result = acquire_demucs_model(
+                request, 'cpu', weight_cache=SimpleNamespace(get=lambda key: None), cache_key=()
+            )
+        self.assertIs(result, module)
+        self.assertIs(load.call_args.args[0], sources)
+        self.assertEqual(load.call_args.args[1], '/tmp/fixture.th')
+
     def test_cached_mdx_and_demucs_materialize_without_loading(self):
-        context = _copy_engine_attributes(partial_model()).context
-        for acquire, kwargs in [
-            (acquire_demucs_model, {}),
-            (acquire_mdx_c_model, {'roformer': False}),
-            (acquire_mdx_c_model, {'roformer': True}),
+        for acquire, request in [
+            (acquire_demucs_model, DemucsAcquisitionRequest('/tmp/fixture.th', DEMUCS_V2)),
+            (acquire_mdx_c_model, MDXCAcquisitionRequest('/tmp/fixture.ckpt', None, False, ())),
+            (acquire_mdx_c_model, MDXCAcquisitionRequest('/tmp/fixture.ckpt', None, True, ())),
         ]:
-            with self.subTest(kwargs=kwargs, acquire=acquire):
+            with self.subTest(request=request, acquire=acquire):
                 events = []
                 module = FakeModule(events)
                 key = ('expected-cache-key',)
@@ -54,17 +82,17 @@ class AcquisitionTests(unittest.TestCase):
                     return SimpleNamespace(module=module)
 
                 result = acquire(
-                    context,
+                    request,
                     'cpu',
                     weight_cache=SimpleNamespace(get=cached),
                     cache_key=key,
-                    **kwargs,
                 )
                 self.assertIs(result, module)
                 self.assertEqual(events, [('cache', key), ('to', 'cpu'), ('eval',)])
 
     def test_demucs_loader_branches_preserve_order_and_source_inventory(self):
-        context = _copy_engine_attributes(partial_model()).context
+        engine = _copy_engine_attributes(partial_model())
+        context = engine.context
         context.identity.model_path = '/tmp/fixture-model.th'
         context.demucs.segment = 'Default'
         legacy_sources = ['bass', 'drums', 'other', 'vocals']
@@ -114,7 +142,7 @@ class AcquisitionTests(unittest.TestCase):
                     patch('engines.demucs_runtime.demucs_segments', side_effect=segment),
                 ):
                     result = acquire_demucs_model(
-                        context,
+                        DemucsAcquisitionRequest.from_separator(engine),
                         'cpu',
                         weight_cache=SimpleNamespace(get=lambda key: None),
                         cache_key=('key',),
@@ -173,11 +201,10 @@ class AcquisitionTests(unittest.TestCase):
             patch('engines.mdx_c_runtime.build_mdx_c_model', side_effect=build),
         ):
             result = acquire_mdx_c_model(
-                context,
+                MDXCAcquisitionRequest('/tmp/fixture.ckpt', context.mdx.mdx_c_configs, True, ()),
                 'cpu',
                 weight_cache=SimpleNamespace(get=lambda key: None),
                 cache_key=('key',),
-                roformer=True,
             )
         self.assertIs(result, module)
         self.assertEqual(
@@ -193,6 +220,71 @@ class AcquisitionTests(unittest.TestCase):
 
 
 class AcquisitionKeyIntegrationTests(unittest.TestCase):
+    def test_demucs_effective_overrides_drive_loader_and_key_without_changing_model(self):
+        import numpy as np
+
+        from engines.demucs_engine import SeperateDemucs
+        from engines.demucs_runtime import infer_demucs_native
+
+        for version in (DEMUCS_V2, DEMUCS_V4):
+            with self.subTest(version=version):
+                model = partial_model()
+                model.model_path = '/tmp/task2-configured.th'
+                model.demucs_version = DEMUCS_V1
+                model.segment = 'Default'
+                model.demucs_stem_count = 4
+                engine = SeperateDemucs(model, _copy_engine_attributes(model).process_data)
+                engine.model_path = '/tmp/task2-override.th'
+                engine.demucs_version = version
+                engine.segment = '8'
+                sources = ['bass', 'drums', 'other', 'vocals']
+                engine.demucs_source_list = sources
+                engine.demix_demucs = lambda mix: np.zeros((4, 2, 8))
+                module = FakeModule([])
+                keys = []
+
+                def cached(key: Any, *, keys: list = keys) -> None:
+                    keys.append(key)
+
+                with (
+                    patch(
+                        'engines.model_weight_cache.get_weight_cache',
+                        return_value=SimpleNamespace(get=cached),
+                    ),
+                    patch(
+                        'engines.demucs_runtime.auto_load_demucs_model_v2', return_value=module
+                    ) as v2,
+                    patch(
+                        'engines.demucs_runtime.load_torch_checkpoint', return_value={}
+                    ) as checkpoint,
+                    patch('engines.demucs_runtime._gm', return_value=module) as newer,
+                    patch('engines.demucs_runtime.demucs_segments', return_value=module) as segment,
+                ):
+                    infer_demucs_native(
+                        engine,
+                        prepare_mix=lambda audio: np.zeros((2, 8)),
+                        process_secondary_model=lambda *args, **kwargs: None,
+                    )
+                self.assertEqual(
+                    keys, [('demucs', ('/tmp/task2-override.th', 0, 0), 'cpu', (version, '8'))]
+                )
+                self.assertEqual(engine._weight_cache_key, keys[0])
+                if version == DEMUCS_V2:
+                    self.assertIs(v2.call_args.args[0], sources)
+                    self.assertEqual(v2.call_args.args[1], '/tmp/task2-override.th')
+                    checkpoint.assert_called_once_with('/tmp/task2-override.th')
+                    newer.assert_not_called()
+                else:
+                    self.assertEqual(newer.call_args.kwargs['name'], 'task2-override')
+                    self.assertEqual(str(newer.call_args.kwargs['repo']), '/tmp')
+                    segment.assert_called_once_with('8', module)
+                    v2.assert_not_called()
+                    checkpoint.assert_not_called()
+                self.assertEqual(model.model_path, '/tmp/task2-configured.th')
+                self.assertEqual(model.demucs_version, DEMUCS_V1)
+                self.assertEqual(model.segment, 'Default')
+                self.assertIsNot(model.demucs_source_list, sources)
+
     def test_classic_and_roformer_demix_keep_cache_variants_and_small_array_output(self):
         import numpy as np
 
@@ -204,10 +296,10 @@ class AcquisitionKeyIntegrationTests(unittest.TestCase):
             def __call__(self, batch: Any) -> Any:
                 return batch.clone()
 
-        for roformer in (False, True):
-            with self.subTest(roformer=roformer):
+        for roformer, override in ((False, False), (True, False), (False, True), (True, True)):
+            with self.subTest(roformer=roformer, override=override):
                 model = partial_model()
-                model.model_path = '/tmp/missing-task2-key-fixture.ckpt'
+                model.model_path = '/tmp/task2-configured.ckpt'
                 model.is_mdx_c = True
                 model.is_roformer = roformer
                 model.mdx_c_configs = SimpleNamespace(
@@ -221,6 +313,19 @@ class AcquisitionKeyIntegrationTests(unittest.TestCase):
                 process = _copy_engine_attributes(model).process_data
                 engine = SeperateMDXC(model, process)
                 engine.is_vocal_main_target = False
+                configured = model.mdx_c_configs
+                if override:
+                    engine.model_path = '/tmp/task2-override.ckpt'
+                    engine.mdx_c_configs = SimpleNamespace(
+                        inference=SimpleNamespace(dim_t=65, batch_size=2),
+                        audio=SimpleNamespace(hop_length=4),
+                        training=configured.training,
+                    )
+                    engine.roformer_config = SimpleNamespace(
+                        inference=engine.mdx_c_configs.inference,
+                        audio=SimpleNamespace(hop_length=2),
+                        training=configured.training,
+                    )
                 keys = []
                 module = IdentityModule([])
 
@@ -231,16 +336,23 @@ class AcquisitionKeyIntegrationTests(unittest.TestCase):
                 mix = np.arange(512, dtype=np.float32).reshape(2, 256) / 512
                 with (
                     patch('engines.model_weight_cache.get_weight_cache', return_value=cache),
-                    patch('engines.mdx_c_runtime._load_torch_checkpoint', return_value={}),
-                    patch('engines.mdx_c_runtime.TFC_TDF_net', return_value=module),
-                    patch('engines.mdx_c_runtime.build_mdx_c_model', return_value=module),
+                    patch('engines.mdx_c_runtime._load_torch_checkpoint', return_value={}) as load,
+                    patch('engines.mdx_c_runtime.TFC_TDF_net', return_value=module) as classic,
+                    patch('engines.mdx_c_runtime.build_mdx_c_model', return_value=module) as build,
                 ):
                     output = engine.demix(mix)
                 kind = 'mdx_roformer' if roformer else 'mdx_c'
-                variants = (True, 33) if roformer else (33,)
-                self.assertEqual(
-                    keys, [(kind, ('/tmp/missing-task2-key-fixture.ckpt', 0, 0), 'cpu', variants)]
-                )
+                dim_t = 65 if override else 33
+                variants = (True, dim_t) if roformer else (dim_t,)
+                path = '/tmp/task2-override.ckpt' if override else '/tmp/task2-configured.ckpt'
+                self.assertEqual(keys, [(kind, (path, 0, 0), 'cpu', variants)])
+                load.assert_called_once_with(path)
+                architecture = build if roformer else classic
+                config = engine.roformer_config if roformer else engine.mdx_c_configs
+                self.assertIs(architecture.call_args.args[0], config)
+                self.assertEqual(model.model_path, '/tmp/task2-configured.ckpt')
+                self.assertIs(model.mdx_c_configs, configured)
+                self.assertEqual(model.mdx_c_configs.inference.dim_t, 33)
                 self.assertEqual(engine._weight_cache_key, keys[0])
                 self.assertIs(engine._inference_model, module)
                 assert isinstance(output, np.ndarray)
@@ -264,7 +376,9 @@ class AcquisitionKeyIntegrationTests(unittest.TestCase):
         native_sources = np.zeros((4, 2, 8))
         engine.demix_demucs = lambda mix: native_sources
         engine.start_inference_console_write = lambda: events.append(('start',))
-        engine.running_inference_console_write = lambda is_no_write=False: events.append(('running',))
+        engine.running_inference_console_write = lambda is_no_write=False: events.append(
+            ('running',)
+        )
         engine.write_to_console = lambda *args, **kwargs: events.append(('console',))
         engine.cache_source = lambda secondary_sources: events.append(('cache_sources',))
 

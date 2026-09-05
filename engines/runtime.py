@@ -33,8 +33,6 @@ class EngineInvocation:
     is_return_dual: bool = True
     main_model_primary: str | None = None
     vocal_stem_path: Sequence[Any] | None = None
-    master_inst_source: Any = None
-    master_vocal_source: Any = None
 
 
 @dataclass(frozen=True)

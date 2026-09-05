@@ -42,8 +42,7 @@ class SeperateAttributes(EngineLegacyOptions):
         self.context = EngineRunContext(
             model_data, process_data,
             EngineInvocation(main_model_primary_stem_4_stem, main_process_method,
-                             is_return_dual, main_model_primary, vocal_stem_path,
-                             master_inst_source, master_vocal_source),
+                             is_return_dual, main_model_primary, vocal_stem_path),
         )
         self.state = EngineState()
         self.audio_file_base_voc_split: Any = None

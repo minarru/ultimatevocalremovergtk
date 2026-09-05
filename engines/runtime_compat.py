@@ -107,7 +107,7 @@ class EngineLegacyOptions:
     mp3_bit_set = RunValue(lambda sep: sep.context.export.mp3_bit_set)
     flac_bit_set = RunValue(lambda sep: sep.context.export.flac_bit_set)
     save_format = RunValue(lambda sep: sep.context.export.save_format)
-    is_gpu_conversion = RunValue(lambda sep: sep.context.device.use_gpu)
+    is_gpu_conversion = RunValue(lambda sep: sep.context.model.is_gpu_conversion)
     is_normalization = RunValue(lambda sep: sep.context.export.is_normalization)
     is_ensemble_mode = RunValue(lambda sep: sep.context.ensemble.is_ensemble_mode)
     _ensemble_stem_buffers = RunValue(
@@ -205,10 +205,16 @@ class EngineLegacyOptions:
     batch_size = RunValue(lambda sep: sep.context.vr.batch_size)
     window_size = RunValue(lambda sep: sep.context.vr.window_size)
     post_process_threshold = RunValue(lambda sep: sep.context.vr.post_process_threshold)
-    opus_bit_set = RunValue(lambda sep: sep.context.export.opus_bit_set)
-    is_match_mix_level = RunValue(lambda sep: sep.context.export.is_match_mix_level)
-    is_prevent_export_clipping = RunValue(lambda sep: sep.context.export.is_prevent_export_clipping)
-    amplification_threshold = RunValue(lambda sep: sep.context.export.amplification_threshold)
+    opus_bit_set = RunValue(lambda sep: getattr(sep.context.export, "opus_bit_set", "192k"))
+    is_match_mix_level = RunValue(
+        lambda sep: bool(getattr(sep.context.export, "is_match_mix_level", False))
+    )
+    is_prevent_export_clipping = RunValue(
+        lambda sep: bool(getattr(sep.context.export, "is_prevent_export_clipping", False))
+    )
+    amplification_threshold = RunValue(
+        lambda sep: float(getattr(sep.context.export, "amplification_threshold", 0.0) or 0.0)
+    )
     process_data = RunValue(lambda sep: sep.context.process)
     device: Any = RunValue[Any](
         lambda sep: sep.state.device, write=lambda sep, value: setattr(sep.state, "device", value)

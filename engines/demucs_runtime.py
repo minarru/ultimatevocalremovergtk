@@ -8,8 +8,9 @@ from __future__ import annotations
 
 import gzip
 import os
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, cast
+from typing import TYPE_CHECKING, Any, Callable, Sequence
 
 import numpy as np
 
@@ -33,8 +34,8 @@ from vendor.demucs.apply import demucs_segments
 from vendor.demucs.model_v2 import auto_load_demucs_model_v2
 from vendor.demucs.pretrained import get_model as _gm
 
-from .model_weight_cache import materialize_module
-from .runtime import EngineRunContext
+from .model_weight_cache import materialize_module, weight_cache_key
+from .runtime_compat import EngineLegacyOptions
 
 if TYPE_CHECKING:
     from .demucs_engine import SeperateDemucs
@@ -42,15 +43,36 @@ if TYPE_CHECKING:
 from .demucs_export import DemucsNativeResult
 
 
+@dataclass(frozen=True)
+class DemucsAcquisitionRequest:
+    """Effective pass values; sources retains the caller's public list reference."""
+
+    model_path: str
+    version: str | None
+    segment: Any = None
+    sources: Sequence[str] = ()
+
+    @classmethod
+    def from_separator(cls, separator: EngineLegacyOptions) -> DemucsAcquisitionRequest:
+        return cls(
+            separator.model_path,
+            separator.demucs_version,
+            separator.segment,
+            separator.demucs_source_list if separator.demucs_version == DEMUCS_V2 else (),
+        )
+
+    def cache_key(self, device: Any) -> Any:
+        return weight_cache_key("demucs", str(self.model_path), device, self.version, self.segment)
+
+
 def acquire_demucs_model(
-    context: EngineRunContext, device: Any, *, weight_cache: Any, cache_key: Any
+    request: DemucsAcquisitionRequest, device: Any, *, weight_cache: Any, cache_key: Any
 ) -> Any:
-    options = context.demucs
-    model_path = cast(str, context.identity.model_path)
+    model_path = request.model_path
     cached = weight_cache.get(cache_key)
     if cached and cached.module is not None:
         model = materialize_module(cached.module, device)
-    elif options.demucs_version == DEMUCS_V1:
+    elif request.version == DEMUCS_V1:
         checkpoint_source: Any = model_path
         if str(checkpoint_source).endswith(".gz"):
             checkpoint_source = gzip.open(model_path, "rb")
@@ -59,8 +81,8 @@ def acquire_demucs_model(
         model.to(device)
         model.load_state_dict(state)
         model.eval()
-    elif options.demucs_version == DEMUCS_V2:
-        model = auto_load_demucs_model_v2(context.routing._demucs_source_list, model_path)
+    elif request.version == DEMUCS_V2:
+        model = auto_load_demucs_model_v2(request.sources, model_path)
         model.to(device)
         model.load_state_dict(load_torch_checkpoint(model_path))
         model.eval()
@@ -70,7 +92,7 @@ def acquire_demucs_model(
             name=load_name,
             repo=Path(os.path.dirname(model_path)),
         )
-        model = demucs_segments(options.segment, model)
+        model = demucs_segments(request.segment, model)
         model.to(device)
         model.eval()
 
@@ -118,19 +140,13 @@ def infer_demucs_native(
             version=self.demucs_version,
         ):
             self.write_to_console(LOADING_MODEL)
-            from engines.model_weight_cache import get_weight_cache, weight_cache_key
+            from engines.model_weight_cache import get_weight_cache
 
-            options = self.context.demucs
-            key = weight_cache_key(
-                "demucs",
-                str(self.context.identity.model_path),
-                self.device,
-                options.demucs_version,
-                options.segment,
-            )
+            request = DemucsAcquisitionRequest.from_separator(self)
+            key = request.cache_key(self.device)
             self._weight_cache_key = key
             self.demucs = acquire_demucs_model(
-                self.context,
+                request,
                 self.device,
                 weight_cache=get_weight_cache(),
                 cache_key=key,

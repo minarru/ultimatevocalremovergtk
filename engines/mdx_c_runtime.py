@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Callable, cast
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Callable
 
 import librosa
 import torch
@@ -14,31 +15,57 @@ from ml.tfc_tdf_v3 import TFC_TDF_net
 
 from .mdx_c import _load_torch_checkpoint, build_mdx_c_model
 from .mdx_c_export import MDXCNativeResult
-from .model_weight_cache import materialize_module
-from .runtime import EngineRunContext
+from .model_weight_cache import materialize_module, weight_cache_key
+from .runtime_compat import EngineLegacyOptions
 
 if TYPE_CHECKING:
     from .mdx_c_engine import SeperateMDXC
 
 
+@dataclass(frozen=True)
+class MDXCAcquisitionRequest:
+    """Effective pass values shared by checkpoint loading and cache identity."""
+
+    model_path: str
+    config: Any
+    roformer: bool
+    variants: tuple[Any, ...]
+
+    @classmethod
+    def from_separator(
+        cls, separator: EngineLegacyOptions, *, roformer: bool
+    ) -> MDXCAcquisitionRequest:
+        dim_t = getattr(separator.mdx_c_configs.inference, "dim_t", None)
+        return cls(
+            separator.model_path,
+            separator.roformer_config if roformer else separator.mdx_c_configs,
+            roformer,
+            (bool(separator.is_roformer), dim_t) if roformer else (dim_t,),
+        )
+
+    def cache_key(self, device: Any) -> Any:
+        return weight_cache_key(
+            "mdx_roformer" if self.roformer else "mdx_c", self.model_path, device, *self.variants
+        )
+
+
 def acquire_mdx_c_model(
-    context: EngineRunContext, device: Any, *, weight_cache: Any, cache_key: Any, roformer: bool
+    request: MDXCAcquisitionRequest, device: Any, *, weight_cache: Any, cache_key: Any
 ) -> Any:
-    options = context.mdx
-    model_path = cast(str, context.identity.model_path)
+    model_path = request.model_path
     cached = weight_cache.get(cache_key)
     if cached and cached.module is not None:
         return materialize_module(cached.module, device)
-    if roformer:
+    if request.roformer:
         # Checkpoint keys decide HyperACE before construction, just as before.
         checkpoint = _load_torch_checkpoint(model_path)
-        model = build_mdx_c_model(options.mdx_c_configs, state_dict_keys=list(checkpoint.keys()))
+        model = build_mdx_c_model(request.config, state_dict_keys=list(checkpoint.keys()))
         model = model if not isinstance(model, torch.nn.DataParallel) else model.module
         model.load_state_dict(checkpoint)
         del checkpoint
         model.to(device).eval()
     else:
-        model = TFC_TDF_net(options.mdx_c_configs, device=device)
+        model = TFC_TDF_net(request.config, device=device)
         model.load_state_dict(_load_torch_checkpoint(model_path))
         model.to(device).eval()
     return model

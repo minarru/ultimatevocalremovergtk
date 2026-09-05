@@ -35,7 +35,7 @@ from .mdx_c_export import (
     select_mdx_c_primary,
     vocal_split_pair_sources,
 )
-from .mdx_c_runtime import acquire_mdx_c_model, infer_mdx_c_native
+from .mdx_c_runtime import MDXCAcquisitionRequest, acquire_mdx_c_model, infer_mdx_c_native
 from .mdx_classic_batch import mdx_oom_reduce_batch_message, next_batch_after_oom
 from .mix import prepare_mix
 from .orchestration import process_secondary_model
@@ -215,21 +215,13 @@ class SeperateMDXC(SeperateAttributes):
                     mix, 44100, semitone_shift=-self.semitone_shift
                 )
 
-            from engines.model_weight_cache import (
-                get_weight_cache,
-                weight_cache_key,
-            )
+            from engines.model_weight_cache import get_weight_cache
 
-            key = weight_cache_key(
-                "mdx_c",
-                self.model_path,
-                self.device,
-                getattr(self.mdx_c_configs.inference, "dim_t", None),
-            )
+            request = MDXCAcquisitionRequest.from_separator(self, roformer=False)
+            key = request.cache_key(self.device)
             self._weight_cache_key = key
             model = acquire_mdx_c_model(
-                self.context, self.device, weight_cache=get_weight_cache(), cache_key=key,
-                roformer=False,
+                request, self.device, weight_cache=get_weight_cache(), cache_key=key,
             )
             self._inference_model = model
             mix = torch.as_tensor(mix, dtype=torch.float32, device=self.device)
@@ -370,22 +362,13 @@ class SeperateMDXC(SeperateAttributes):
 
             device = self.device
 
-            from engines.model_weight_cache import (
-                get_weight_cache,
-                weight_cache_key,
-            )
+            from engines.model_weight_cache import get_weight_cache
 
-            key = weight_cache_key(
-                "mdx_roformer",
-                self.model_path,
-                device,
-                bool(self.is_roformer),
-                getattr(self.mdx_c_configs.inference, "dim_t", None),
-            )
+            request = MDXCAcquisitionRequest.from_separator(self, roformer=True)
+            key = request.cache_key(device)
             self._weight_cache_key = key
             model = acquire_mdx_c_model(
-                self.context, device, weight_cache=get_weight_cache(), cache_key=key,
-                roformer=True,
+                request, device, weight_cache=get_weight_cache(), cache_key=key,
             )
             self._inference_model = model
             mix = torch.as_tensor(mix, dtype=torch.float32, device=device)

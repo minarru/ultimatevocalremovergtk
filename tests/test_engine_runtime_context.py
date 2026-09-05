@@ -1,7 +1,9 @@
 """Runtime option ownership and per-pass overrides without inference or weights."""
 
 import unittest
+import weakref
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import patch
 
 from core.separator_run import apply_segment_override
@@ -10,6 +12,81 @@ from tests.test_stem_writer import _copy_engine_attributes
 
 
 class EngineRuntimeContextTests(unittest.TestCase):
+    def test_legacy_flat_constructor_keeps_gpu_alias_and_optional_export_defaults(self):
+        model = partial_model()
+
+        class LegacyModel:
+            def __getattr__(self, name: str) -> Any:
+                if name in {
+                    'use_gpu',
+                    'opus_bit_set',
+                    'is_match_mix_level',
+                    'is_prevent_export_clipping',
+                    'amplification_threshold',
+                }:
+                    raise AttributeError(name)
+                return getattr(model, name)
+
+        engine = _copy_engine_attributes(LegacyModel())
+        self.assertFalse(engine.is_gpu_conversion)
+        self.assertEqual(str(engine.device), 'cpu')
+        self.assertEqual(engine.opus_bit_set, '192k')
+        self.assertIs(engine.is_match_mix_level, False)
+        self.assertIs(engine.is_prevent_export_clipping, False)
+        self.assertEqual(engine.amplification_threshold, 0.0)
+
+    def test_legacy_flat_optional_export_values_keep_normalization(self):
+        from engines.runtime import EngineInvocation, EngineRunContext
+        from engines.runtime_compat import EngineLegacyOptions
+
+        for value, expected in ((None, 0.0), ('1.25', 1.25)):
+            with self.subTest(value=value):
+                flat: Any = SimpleNamespace(
+                    is_gpu_conversion=False,
+                    is_match_mix_level=1,
+                    is_prevent_export_clipping='',
+                    amplification_threshold=value,
+                )
+                engine = EngineLegacyOptions()
+                engine.context = EngineRunContext(
+                    flat, _copy_engine_attributes(partial_model()).process_data, EngineInvocation()
+                )
+                self.assertIs(engine.is_match_mix_level, True)
+                self.assertIs(engine.is_prevent_export_clipping, False)
+                self.assertEqual(engine.amplification_threshold, expected)
+                self.assertIsInstance(engine.amplification_threshold, float)
+
+    def test_cleanup_releases_constructor_audio_without_retaining_invocation_copies(self):
+        import numpy as np
+
+        from core.inference_cleanup import release_separator
+        from engines.base import SeperateAttributes
+
+        for caller_keeps_audio in (False, True):
+            with self.subTest(caller_keeps_audio=caller_keeps_audio):
+                model = partial_model()
+                process = _copy_engine_attributes(model).process_data
+                audio = np.ones((8, 2))
+                reference = weakref.ref(audio)
+                engine = SeperateAttributes(
+                    model, process, master_inst_source=audio, master_vocal_source=audio
+                )
+                self.assertIs(engine.master_inst_source, audio)
+                self.assertIs(engine.master_vocal_source, audio)
+                if not caller_keeps_audio:
+                    del audio
+                with patch(
+                    'engines.model_weight_cache.get_weight_cache',
+                    return_value=SimpleNamespace(stash_separator=lambda separator: False),
+                ):
+                    release_separator(engine)
+                self.assertIsNone(engine.state.master_inst_source)
+                self.assertIsNone(engine.state.master_vocal_source)
+                if caller_keeps_audio:
+                    np.testing.assert_array_equal(reference(), np.ones((8, 2)))
+                else:
+                    self.assertIsNone(reference())
+
     def test_segment_override_reaches_live_engine_and_rebuilt_engine(self):
         model = partial_model()
         engine = _copy_engine_attributes(model)
