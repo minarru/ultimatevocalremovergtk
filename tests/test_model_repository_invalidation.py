@@ -18,6 +18,7 @@ from core import model_display
 from core.model_config import ModelConfig
 from core.model_repository import ModelRepository
 from core.settings import Settings
+from tests.model_config_fixtures import model_config_shell
 
 
 class InvalidateModelsTests(unittest.TestCase):
@@ -68,7 +69,7 @@ class InvalidateModelsTests(unittest.TestCase):
 
         self.repo.invalidate_models()
 
-        cfg = ModelConfig.__new__(ModelConfig)
+        cfg = model_config_shell()
         cfg.settings = self.settings
         cfg.repo = self.repo
         cfg.model_path = path

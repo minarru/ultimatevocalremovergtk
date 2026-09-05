@@ -8,8 +8,8 @@ from unittest.mock import patch
 from bundled.constants import MDX_ARCH_TYPE
 from core import paths
 from core.mdx_c_registry import compute_checkpoint_hash
-from core.model_config import ModelConfig
 from core.model_repository import ModelRepository
+from tests.model_config_fixtures import model_config_shell
 
 
 class ModelDataMergeTests(unittest.TestCase):
@@ -26,7 +26,7 @@ class ModelDataMergeTests(unittest.TestCase):
             with open(os.path.join(tmp, f"{model_hash}.json"), "w", encoding="utf-8") as handle:
                 json.dump({"is_roformer": False}, handle)
 
-            model_data = ModelConfig.__new__(ModelConfig)
+            model_data = model_config_shell()
             model_data.model_hash = model_hash
             model_data.process_method = MDX_ARCH_TYPE
             model_data.is_dry_check = True
@@ -62,7 +62,7 @@ class ModelDataMergeTests(unittest.TestCase):
                 paths.MDX_HASH_DIR = hash_dir
                 paths.MDX_C_CONFIG_PATH = config_dir
 
-                model_data = ModelConfig.__new__(ModelConfig)
+                model_data = model_config_shell()
                 model_data.model_hash = compute_checkpoint_hash(checkpoint)
                 model_data.process_method = MDX_ARCH_TYPE
                 model_data.is_mdx_ckpt = True

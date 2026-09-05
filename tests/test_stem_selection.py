@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import unittest
-from typing import cast
 from unittest.mock import patch
 
 from bundled.constants import ALL_STEMS, BASS_STEM, INST_STEM, VOCAL_STEM
@@ -12,6 +11,7 @@ from core.settings import Settings
 from core.stem_roles import StemId, StemRoleId
 from core.stem_selection import ExclusiveView, StemSelectionState, apply_stem_selection
 from core.stems import FOCUS_SECONDARY, StemBucket, StemRoute, exclusive_flags_for_focus
+from tests.model_config_fixtures import model_config_shell
 
 
 def _giant_shaped_routes(*, vocal_split: bool) -> tuple[StemRoute, ...]:
@@ -196,7 +196,7 @@ class StemSelectionProvenanceTests(unittest.TestCase):
         from core.model_config.config import ModelConfig
 
         def config(model_id: str, natives: list[str], primary: str) -> ModelConfig:
-            assembled = ModelConfig.__new__(ModelConfig)
+            assembled = model_config_shell()
             assembled.settings = settings
             assembled.canonical_id = model_id
             assembled.stem_semantics = None
@@ -222,8 +222,8 @@ class StemSelectionProvenanceTests(unittest.TestCase):
         ModelConfig._apply_stem_focus(reverse)
         ModelConfig._apply_stem_focus(ordinary)
 
-        reverse_routes = cast("tuple[StemRoute, ...]", reverse.selected_stem_routes)
-        ordinary_routes = cast("tuple[StemRoute, ...]", ordinary.selected_stem_routes)
+        reverse_routes = reverse.selected_stem_routes
+        ordinary_routes = ordinary.selected_stem_routes
         self.assertEqual(reverse_routes[0].concept, "mix.instrumental")
         self.assertEqual(ordinary_routes[0].concept, "vocal.vocals")
         self.assertEqual(settings.to_json_dict(), before)
@@ -233,7 +233,7 @@ class StemSelectionProvenanceTests(unittest.TestCase):
 
         settings = Settings.defaults()
         settings.process.stem_focus = "mix.instrumental"
-        model = ModelConfig.__new__(ModelConfig)
+        model = model_config_shell()
         model.settings = settings
         model.canonical_id = "mdx:MDX23C_D1581"
         model.stem_semantics = None
@@ -255,7 +255,7 @@ class StemSelectionProvenanceTests(unittest.TestCase):
             ],
             ["Vocals", "Instrumental"],
         )
-        selected_routes = cast("tuple[StemRoute, ...]", model.selected_stem_routes)
+        selected_routes = model.selected_stem_routes
         self.assertEqual(selected_routes[0].concept, "mix.instrumental")
 
     def test_runtime_positional_secondary_uses_explicit_multi_route_contract(self) -> None:
@@ -264,7 +264,7 @@ class StemSelectionProvenanceTests(unittest.TestCase):
         for vocal_split in (False, True):
             settings = Settings.defaults()
             settings.process.stem_focus = FOCUS_SECONDARY
-            model = ModelConfig.__new__(ModelConfig)
+            model = model_config_shell()
             model.settings = settings
             model.primary_stem = "Backing"
             model.secondary_stem = "Instrumental"
@@ -280,7 +280,7 @@ class StemSelectionProvenanceTests(unittest.TestCase):
             ):
                 ModelConfig._apply_stem_focus(model)
 
-            selected = cast("tuple[StemRoute, ...]", model.selected_stem_routes)
+            selected = model.selected_stem_routes
             self.assertEqual([route.role for route in selected], [StemRoleId("vocal.lead")])
 
     def test_secondary_stem_only_view_uses_explicit_multi_route_contract(self) -> None:

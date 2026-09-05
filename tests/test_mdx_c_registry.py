@@ -19,13 +19,13 @@ from core.mdx_c_registry import (
     try_register_from_catalog,
     yaml_for_checkpoint,
 )
-from core.model_config import ModelConfig
 from core.model_display import (
     build_checkpoint_display_index,
     display_name_for_basename,
     resolve_mdx_model_basename,
     sanitize_catalogue_label,
 )
+from tests.model_config_fixtures import model_config_shell
 
 
 class SanitizeCatalogueLabelTests(unittest.TestCase):
@@ -312,7 +312,7 @@ class ModelDataCatalogFallbackTests(unittest.TestCase):
                 os.path.join(paths.MDX_C_CONFIG_PATH, yaml_name), os.path.join(config_dir, yaml_name)
             )
 
-            model_data = ModelConfig.__new__(ModelConfig)
+            model_data = model_config_shell()
             model_data.model_hash = compute_checkpoint_hash(checkpoint)
             model_data.process_method = "MDX-Net"
             model_data.is_mdx_ckpt = True

@@ -24,7 +24,32 @@ if TYPE_CHECKING:
     from ..model_repository import ModelRepository
 
 
-class ModelConfig:
+from .compat import (
+    CommonRunOptionsLegacyOptions,
+    DemucsOptionsLegacyOptions,
+    DeviceOptionsLegacyOptions,
+    EnsembleMemberFlagsLegacyOptions,
+    ExportOptionsLegacyOptions,
+    MDXOptionsLegacyOptions,
+    ModelIdentityLegacyOptions,
+    SecondaryChainLegacyOptions,
+    StemRoutingLegacyOptions,
+    VROptionsLegacyOptions,
+)
+
+
+class ModelConfig(
+    ModelIdentityLegacyOptions,
+    ExportOptionsLegacyOptions,
+    DeviceOptionsLegacyOptions,
+    EnsembleMemberFlagsLegacyOptions,
+    StemRoutingLegacyOptions,
+    SecondaryChainLegacyOptions,
+    VROptionsLegacyOptions,
+    MDXOptionsLegacyOptions,
+    DemucsOptionsLegacyOptions,
+    CommonRunOptionsLegacyOptions,
+):
     """Configuration consumed by separation engines.
 
     The inherited flat attributes are the stable duck-typed engine API. New
@@ -49,6 +74,31 @@ class ModelConfig:
         identity: "ModelRecord | None" = None,
         model_dependencies: Mapping[str, "ModelRecord"] | None = None,
     ):
+        from .base import (
+            CommonRunOptions,
+            DeviceOptions,
+            EnsembleMemberFlags,
+            ExportOptions,
+            ModelIdentity,
+            SecondaryChain,
+            StemRouting,
+        )
+        from .demucs import DemucsOptions
+        from .mdx import MDXOptions
+        from .vr import VROptions
+
+        self.identity = ModelIdentity()
+        self.export_options = ExportOptions()
+        self.device_options = DeviceOptions()
+        self.ensemble_flags = EnsembleMemberFlags()
+        self.stem_routing = StemRouting()
+        self.secondary_chain = SecondaryChain()
+        self.common_options = CommonRunOptions()
+        # Cross-family legacy defaults remain available to shared engine code.
+        self._vr_options = VROptions()
+        self._mdx_options = MDXOptions(routing=self.stem_routing)
+        self._demucs_options = DemucsOptions(routing=self.stem_routing)
+
         self.settings = settings
         self.repo: Any = repo
         self.model_dependencies = model_dependencies
@@ -499,7 +549,6 @@ class ModelConfig:
         self.is_save_vocal_only = self.check_only_selection_stem(IS_SAVE_VOC_ONLY)
 
         self.vocal_splitter_model_data()
-        self._sync_option_groups()
 
     def _apply_stem_focus(self) -> None:
         """Honor ``process.stem_focus`` as the exclusive-pick (GTK and CLI).
@@ -1045,135 +1094,14 @@ class ModelConfig:
             cache[path] = self.model_hash
             remember(self.settings.process.model_hash_table, path, self.model_hash)
 
-    def _sync_option_groups(self) -> None:
-        """Snapshot flat compatibility attributes into typed option groups."""
-        from .base import (
-            DeviceOptions,
-            EnsembleMemberFlags,
-            ExportOptions,
-            ModelIdentity,
-            SecondaryChain,
-            StemRouting,
-        )
-        from .demucs import DemucsOptions
-        from .mdx import MDXOptions
-        from .vr import VROptions
+    @property
+    def vr_options(self):
+        return self._vr_options if self.process_method == VR_ARCH_TYPE else None
 
-        self.identity = ModelIdentity(
-            model_name=self.model_name,
-            canonical_id=self.canonical_id,
-            model_display_label=self.model_display_label,
-            backend_name=self.backend_name,
-            model_artifacts=self.model_artifacts,
-            process_method=self.process_method,
-            model_path=getattr(self, "model_path", None),
-            model_basename=self.model_basename,
-            model_hash=getattr(self, "model_hash", None),
-            model_status=bool(self.model_status),
-            model_and_process_tag=getattr(self, "model_and_process_tag", None),
-        )
-        self.export_options = ExportOptions(
-            wav_type_set=self.wav_type_set,
-            mp3_bit_set=self.mp3_bit_set,
-            flac_bit_set=self.flac_bit_set,
-            opus_bit_set=self.opus_bit_set,
-            save_format=self.save_format,
-            is_normalization=bool(self.is_normalization),
-            is_match_mix_level=bool(self.is_match_mix_level),
-            is_prevent_export_clipping=bool(self.is_prevent_export_clipping),
-            amplification_threshold=self.amplification_threshold,
-        )
-        self.device_options = DeviceOptions(
-            use_gpu=bool(self.use_gpu),
-            device_set=self.device_set,
-            is_use_directml=bool(self.is_use_directml),
-        )
-        self.ensemble_flags = EnsembleMemberFlags(
-            is_ensemble_mode=bool(self.is_ensemble_mode),
-            is_4_stem_ensemble=bool(self.is_4_stem_ensemble),
-            is_multi_stem_ensemble=bool(self.is_multi_stem_ensemble),
-            ensemble_primary_stem=self.ensemble_primary_stem,
-            ensemble_secondary_stem=self.ensemble_secondary_stem,
-        )
-        self.stem_routing = StemRouting(
-            primary_stem=self.primary_stem,
-            secondary_stem=self.secondary_stem,
-            primary_stem_native=self.primary_stem_native,
-            primary_model_primary_stem=self.primary_model_primary_stem,
-            mdx_model_stems=tuple(self.mdx_model_stems),
-            demucs_source_list=tuple(self.demucs_source_list),
-            available_routes=tuple(getattr(self, "available_stem_routes", ())),
-            selected_routes=tuple(getattr(self, "selected_stem_routes", ())),
-            selected_routes_explicit=bool(getattr(self, "selected_stem_routes_explicit", False)),
-            semantics=self.stem_semantics,
-        )
-        self.secondary_chain = SecondaryChain(
-            secondary_model=self.secondary_model,
-            secondary_model_scale=self.secondary_model_scale,
-            secondary_model_4_stem=tuple(self.secondary_model_4_stem),
-            secondary_model_4_stem_scale=tuple(self.secondary_model_4_stem_scale),
-            pre_proc_model=self.pre_proc_model,
-            vocal_split_model=self.vocal_split_model,
-            is_secondary_model_activated=bool(self.is_secondary_model_activated),
-            pre_proc_model_activated=bool(self.pre_proc_model_activated),
-            is_vocal_split_model_activated=bool(self.is_vocal_split_model_activated),
-        )
-        self.vr_options = (
-            VROptions(
-                aggression_setting=self.aggression_setting,
-                is_tta=bool(self.is_tta),
-                is_post_process=bool(self.is_post_process),
-                window_size=self.window_size,
-                batch_size=self.batch_size,
-                crop_size=self.crop_size,
-                is_high_end_process=self.is_high_end_process,
-                post_process_threshold=self.post_process_threshold,
-                model_capacity=self.model_capacity,
-                model_samplerate=self.model_samplerate,
-                vr_model_param=getattr(self, "vr_model_param", None),
-                is_vr_51_model=bool(self.is_vr_51_model),
-            )
-            if self.process_method == VR_ARCH_TYPE
-            else None
-        )
-        self.mdx_options = (
-            MDXOptions(
-                margin=self.margin,
-                chunks=self.chunks,
-                mdx_segment_size=self.mdx_segment_size,
-                mdx_batch_size=self.mdx_batch_size,
-                mdxnet_stem_select=self.mdxnet_stem_select,
-                mdxnet_stems_selected=tuple(self.mdxnet_stems_selected),
-                overlap_mdx=self.overlap_mdx,
-                overlap_mdx23=self.overlap_mdx23,
-                is_mdx_ckpt=bool(self.is_mdx_ckpt),
-                is_mdx_c=bool(self.is_mdx_c),
-                is_roformer=bool(self.is_roformer),
-                is_target_instrument=bool(self.is_target_instrument),
-                model_type=self.model_type,
-                mdx_c_configs=self.mdx_c_configs,
-                mdx_model_stems=tuple(self.mdx_model_stems),
-                mdx_stem_count=self.mdx_stem_count,
-                compensate=self.compensate,
-                mdx_dim_f_set=self.mdx_dim_f_set,
-                mdx_dim_t_set=self.mdx_dim_t_set,
-                mdx_n_fft_scale_set=self.mdx_n_fft_scale_set,
-            )
-            if self.process_method == MDX_ARCH_TYPE
-            else None
-        )
-        self.demucs_options = (
-            DemucsOptions(
-                shifts=self.shifts,
-                is_split_mode=bool(self.is_split_mode),
-                segment=self.segment,
-                demucs_stems=self.demucs_stems,
-                is_demucs_combine_stems=bool(self.is_demucs_combine_stems),
-                demucs_source_list=tuple(self.demucs_source_list),
-                demucs_source_map=getattr(self, "demucs_source_map", None),
-                demucs_stem_count=self.demucs_stem_count,
-                demucs_version=getattr(self, "demucs_version", None),
-            )
-            if self.process_method == DEMUCS_ARCH_TYPE
-            else None
-        )
+    @property
+    def mdx_options(self):
+        return self._mdx_options if self.process_method == MDX_ARCH_TYPE else None
+
+    @property
+    def demucs_options(self):
+        return self._demucs_options if self.process_method == DEMUCS_ARCH_TYPE else None
