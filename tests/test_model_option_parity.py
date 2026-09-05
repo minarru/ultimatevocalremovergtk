@@ -99,3 +99,23 @@ class ModelOptionParityTests(unittest.TestCase):
         self.assertIsNotNone(model.mdx_options)
         self.assertIsNone(model.vr_options)
         model.repo.on_unrecognized_model.assert_not_called()
+
+
+class TypedOptionConstructorCompatibilityTests(unittest.TestCase):
+    def test_family_inventory_constructor_keywords_are_preserved(self):
+        from core.model_config import DemucsOptions, MDXOptions
+
+        mdx = MDXOptions(mdx_model_stems=('vocals',))
+        demucs = DemucsOptions(demucs_source_list=('bass', 'vocals'))
+        self.assertEqual(mdx.mdx_model_stems, ('vocals',))
+        self.assertEqual(demucs.demucs_source_list, ('bass', 'vocals'))
+
+    def test_secondary_chain_original_positional_parameters_keep_order(self):
+        from core.model_config import SecondaryChain
+
+        pre_proc = object()
+        vocal_split = object()
+        chain = SecondaryChain(None, None, (), (), pre_proc, vocal_split, True, True, True)
+        self.assertIs(chain.pre_proc_model, pre_proc)
+        self.assertIs(chain.vocal_split_model, vocal_split)
+        self.assertTrue(chain.is_secondary_model_activated)

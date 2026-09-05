@@ -139,15 +139,15 @@ class SecondaryChain:
         secondary_model_scale: Optional[float] = None,
         secondary_model_4_stem: Tuple[Any, ...] = (),
         secondary_model_4_stem_scale: Tuple[Optional[float], ...] = (),
-        secondary_model_4_stem_names: Tuple[str, ...] = (),
-        secondary_model_4_stem_model_names_list: Tuple[Any, ...] = (),
-        demucs_4_stem_added_count: int = 0,
-        is_demucs_4_stem_secondaries: bool = False,
         pre_proc_model: Any = None,
         vocal_split_model: Any = None,
         is_secondary_model_activated: bool = False,
         pre_proc_model_activated: bool = False,
         is_vocal_split_model_activated: bool = False,
+        secondary_model_4_stem_names: Tuple[str, ...] = (),
+        secondary_model_4_stem_model_names_list: Tuple[Any, ...] = (),
+        demucs_4_stem_added_count: int = 0,
+        is_demucs_4_stem_secondaries: bool = False,
     ) -> None:
         self.secondary_model = secondary_model
         self.secondary_model_scale = secondary_model_scale

@@ -67,7 +67,7 @@ class MDXOptions:
         is_target_instrument: bool = False,
         model_type: str = '',
         mdx_c_configs: Any = None,
-        routing: StemRouting | None = None,
+        mdx_model_stems: Sequence[str] | None = None,
         mdx_stem_count: int = 1,
         compensate: Optional[float] = None,
         mdx_dim_f_set: Optional[int] = None,
@@ -86,6 +86,8 @@ class MDXOptions:
         mdx_config_sha256: str = '',
         mdx_hash_record_source: str = '',
         mdx_runtime_reconciliation: Any = None,
+        *,
+        routing: StemRouting | None = None,
     ) -> None:
         self.margin = margin
         self.chunks = chunks
@@ -102,6 +104,8 @@ class MDXOptions:
         self.model_type = model_type
         self.mdx_c_configs = mdx_c_configs
         self.routing = routing if routing is not None else StemRouting()
+        if mdx_model_stems is not None:
+            self.mdx_model_stems = mdx_model_stems
         self.mdx_stem_count = mdx_stem_count
         self.compensate = compensate
         self.mdx_dim_f_set = mdx_dim_f_set

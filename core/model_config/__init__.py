@@ -2,6 +2,7 @@
 
 from .assemble import assemble_model
 from .base import (
+    CommonRunOptions,
     DeviceOptions,
     EnsembleMemberFlags,
     ExportOptions,
@@ -21,6 +22,7 @@ from .vr import VROptions
 
 __all__ = [
     "ModelConfig",
+    "CommonRunOptions",
     "assemble_model",
     "process_determine_demucs_pre_proc_model",
     "process_determine_secondary_model",
