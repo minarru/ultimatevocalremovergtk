@@ -8,7 +8,7 @@ import os
 import typing
 from typing import TYPE_CHECKING, Any, Mapping, Optional, Sequence, cast
 
-from bundled.constants import *  # noqa: F401,F403 - mirrors UVR.py's flat constant namespace
+from bundled.constants import *  # mirrors UVR.py's flat constant namespace
 
 from .. import paths
 from ..audio_io import resolve_wav_type_set

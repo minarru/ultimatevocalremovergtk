@@ -9,7 +9,7 @@ import json
 import typing
 from typing import Any
 
-from bundled.constants import *  # noqa: F401,F403 - mirrors UVR.py's flat constant namespace
+from bundled.constants import *  # mirrors UVR.py's flat constant namespace
 
 from .model_stem_semantics import is_vocal_target
 

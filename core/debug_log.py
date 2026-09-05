@@ -754,11 +754,11 @@ def _safe_field_repr(key: str, value: object) -> str:
     """Return a privacy-filtered, single-line representation that cannot raise."""
     try:
         rendered = repr(_safe_value(key, value))
-    except Exception:  # noqa: BLE001 - diagnostics must never break the caller
+    except Exception:  # diagnostics must never break the caller
         rendered = repr("<unavailable>")
     try:
         rendered = redact_text(rendered)
-    except Exception:  # noqa: BLE001 - retain fail-open behavior for hostile reprs
+    except Exception:  # retain fail-open behavior for hostile reprs
         rendered = repr("<unavailable>")
     return rendered.replace("\r", "\\r").replace("\n", "\\n")
 

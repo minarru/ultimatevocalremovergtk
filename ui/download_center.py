@@ -914,7 +914,7 @@ class DownloadCenterWindow:
             usable = is_online or self.manager.ensure_catalogues()
             available = self.manager.available_downloads() if usable else {}
             unsupported = self.manager.unsupported_downloads() if usable else {}
-        except Exception as exc:  # noqa: BLE001 - surfaced through the UI/log
+        except Exception as exc:  # surfaced through the UI/log
             from .errorlog import log_error
 
             log_error("Download Center", exc, context="refreshing catalogue")

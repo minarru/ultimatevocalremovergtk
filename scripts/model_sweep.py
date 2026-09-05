@@ -622,7 +622,7 @@ def run_child(spec_path: str) -> int:
         if outcome.error is not None:
             result["error_type"] = type(outcome.error).__name__
             result["message"] = str(outcome.error)
-    except BaseException as exc:  # noqa: BLE001 - the point is to report anything
+    except BaseException as exc:  # the point is to report anything
         result["error_type"] = type(exc).__name__
         result["message"] = f"{exc}\n{traceback.format_exc()}"
 

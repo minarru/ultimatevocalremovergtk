@@ -29,8 +29,8 @@ from catalogue import (
     collect,
     render,
     stem_audit,
-)  # noqa: E402
-from catalogue.collect import (  # noqa: E402
+)
+from catalogue.collect import (
     DISPLAY_REFERENCE_TSV_PATH,
     OUTPUT_PATH,
     REFERENCE_TSV_PATH,
@@ -42,12 +42,12 @@ from catalogue.collect import (  # noqa: E402
     build_ir,
 )
 
-from core.model_manifest import (  # noqa: E402
+from core.model_manifest import (
     BUNDLED_MODEL_MANIFEST_PATH,
     ModelManifestError,
     load_model_manifest_document,
 )
-from core.model_manifest.loader import _duplicate_aware_mapping  # noqa: E402
+from core.model_manifest.loader import _duplicate_aware_mapping
 
 # Kept as the generator's patchable publication target while callers migrate
 # from the former stem-only manifest name.

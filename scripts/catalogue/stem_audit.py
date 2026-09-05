@@ -1789,7 +1789,7 @@ def _remote_checkpoint_hash(
 
     try:
         digest = checkpoint_tail_hash(checkpoint_url)
-    except Exception as exc:  # noqa: BLE001 - one unreachable checkpoint is a finding, not a crash
+    except Exception as exc:  # one unreachable checkpoint is a finding, not a crash
         return HashLookup(status="fetch_failed", error=f"{type(exc).__name__}: {exc}")
     result = HashLookup(digest=digest, status="ok")
     if cache is not None:
@@ -1839,7 +1839,7 @@ def _confidence_entry_for_target(
 ) -> StemConfidenceEntry:
     try:
         config = _confidence_config(target, policy)
-    except Exception as exc:  # noqa: BLE001 - retain one-row-per-target review output
+    except Exception as exc:  # retain one-row-per-target review output
         return StemConfidenceEntry(
             entry_id=str(target.entry_id), label=str(target.label), error=str(exc)
         )

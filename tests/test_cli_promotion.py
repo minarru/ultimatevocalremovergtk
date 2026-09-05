@@ -546,7 +546,7 @@ class PromotionTests(unittest.TestCase):
             def promote(index: int) -> None:
                 try:
                     _promote(stages[index], targets[index], "fail")
-                except BaseException as exc:  # noqa: BLE001 - reported below
+                except BaseException as exc:  # reported below
                     errors.append(exc)
 
             with mock.patch("cli.execution._move_no_replace", slow_move):

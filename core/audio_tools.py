@@ -427,7 +427,7 @@ class AudioToolRunner:
                 try:
                     thread.terminate()
                     thread.join(timeout=0.25)
-                except Exception:  # noqa: BLE001 - best-effort, like UVR's stop
+                except Exception:  # best-effort, like UVR's stop
                     pass
 
     def release_inference_memory(
@@ -495,7 +495,7 @@ class AudioToolRunner:
             self._finish_active_unit(callbacks, ProcessStopped())
             callbacks.stopped()
             _release_inference_resources(self)
-        except Exception as exc:  # noqa: BLE001 - surfaced through the callback
+        except Exception as exc:  # surfaced through the callback
             if self._is_stopped:
                 log_event("audio", "audio_worker_stopped", tool=tool, stage="error")
                 callbacks.console(PROCESS_STOPPED_BY_USER)

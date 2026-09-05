@@ -1055,7 +1055,7 @@ class MainWindow(Adw.ApplicationWindow):
                     plan.model_dependencies if isinstance(plan, ResolvedJob) else None
                 ),
             )
-        except Exception as exc:  # noqa: BLE001 - surfaced to the user
+        except Exception as exc:  # surfaced to the user
             self.fail_to_start(f"Unable to start separation: {exc}", exc)
 
     def begin_run(self, target: typing.Any) -> None:

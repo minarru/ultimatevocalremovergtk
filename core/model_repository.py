@@ -14,7 +14,7 @@ import threading
 import typing
 from typing import TYPE_CHECKING, AbstractSet, Any, Callable, Dict, List, Optional, Tuple
 
-from bundled.constants import *  # noqa: F401,F403 - mirrors UVR.py's flat constant namespace
+from bundled.constants import *  # mirrors UVR.py's flat constant namespace
 
 from . import paths
 from .demucs_models import (

@@ -892,7 +892,7 @@ class AudioToolsPage:
                 f"audio_tools start tool={tool!r} singles={len(single_inputs)} pairs={len(dual_pairs)}",
             )
             self.runner.start(tool, single_inputs, dual_pairs, callbacks, apollo_params=apollo_params)
-        except Exception as exc:  # noqa: BLE001 - surfaced to the user
+        except Exception as exc:  # surfaced to the user
             self.window.fail_to_start(f"Unable to start: {exc}", exc)
 
     def _resolve_apollo_model(self, planned_backend_name: str | None = None):

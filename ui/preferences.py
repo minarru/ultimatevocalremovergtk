@@ -612,7 +612,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
                     )
                     return
             message = final_message
-        except Exception as exc:  # noqa: BLE001 - shown in Preferences and log
+        except Exception as exc:  # shown in Preferences and log
             from .errorlog import log_error
 
             log_error("Preferences", exc, context="refreshing catalogue cache")

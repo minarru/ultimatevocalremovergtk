@@ -56,8 +56,9 @@ only the Python files touched by a change:
 .venv/bin/ruff format path/to/file.py
 ```
 
-The full-tree commands are useful for auditing, but currently report accepted
-backlog and are **not CI gates**:
+The configured lint backlog is cleared: `ruff check .` should pass. Formatting
+still has an accepted backlog. Both commands remain local checks and are
+**not CI gates**:
 
 ```bash
 .venv/bin/ruff check .
@@ -67,6 +68,9 @@ backlog and are **not CI gates**:
 Do not apply unrestricted `ruff check --fix` or bulk-format the repository as
 part of unrelated work. Existing intentional wildcard and lazy-import patterns
 use scoped configuration or inline `noqa` comments; preserve their rationale.
+`RUF100` checks for obsolete suppressions. Keep explanations as ordinary comments
+when their suppression is no longer needed. Package re-exports should use explicit
+aliases or `__all__` instead of a blanket unused-import exception.
 
 Other:
 

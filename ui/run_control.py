@@ -75,7 +75,7 @@ def target_blocked_reason(target: typing.Any) -> Optional[str]:
         return "Choose a processing mode"
     try:
         return target.start_blocked_reason()
-    except Exception:  # noqa: BLE001 - readiness must never break the UI
+    except Exception:  # readiness must never break the UI
         return None
 
 
@@ -201,7 +201,7 @@ class RunController:
                 target.start(callbacks, plan=plan)
             else:
                 target.start(callbacks)
-        except Exception as exc:  # noqa: BLE001 - surface launch failures in the UI
+        except Exception as exc:  # surface launch failures in the UI
             self.fail_to_start(
                 f"Unable to start {type(target).__name__}: {exc}",
                 exc,
@@ -256,7 +256,7 @@ class RunController:
 
         try:
             spec = target.build_job_spec()
-        except Exception as exc:  # noqa: BLE001 - presented through normal UI
+        except Exception as exc:  # presented through normal UI
             self._window.toast(f"Could not prepare processing plan: {exc}")
             self._finish_operation(
                 "run_preflight_failed",
@@ -289,7 +289,7 @@ class RunController:
                             spec, ValidationLevel.RUNTIME
                         )
                     error: BaseException | None = None
-                except Exception as exc:  # noqa: BLE001 - marshalled to GTK
+                except Exception as exc:  # marshalled to GTK
                     plan, error = None, exc
             idle_on_main(
                 self._finish_preflight, target, fingerprint, plan, error
@@ -368,7 +368,7 @@ class RunController:
 
         try:
             current = target.build_job_spec()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             self._window.toast(f"Could not recheck processing plan: {exc}")
             self._finish_operation(
                 "run_preflight_failed",
@@ -403,7 +403,7 @@ class RunController:
                         else JobResolver(self._window.context.repo).is_current(plan)
                     )
                     error: BaseException | None = None
-                except Exception as exc:  # noqa: BLE001 - marshalled to GTK
+                except Exception as exc:  # marshalled to GTK
                     is_current, error = False, exc
             idle_on_main(
                 self._finish_plan_recheck,
@@ -436,7 +436,7 @@ class RunController:
             settings_unchanged = (
                 settings_fingerprint(current.settings) == fingerprint
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             self._window.toast(f"Could not recheck processing plan: {exc}")
             self._finish_operation(
                 "run_preflight_failed",

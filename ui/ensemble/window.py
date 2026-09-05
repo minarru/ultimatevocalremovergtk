@@ -1064,7 +1064,7 @@ class EnsemblePage:
         stored = normalize_stem_pair_id(stored_raw)
         try:
             choices = installed_ensemble_pair_choices(self.context.repo, self.settings)
-        except Exception as exc:  # noqa: BLE001 - visible fail-closed state
+        except Exception as exc:  # visible fail-closed state
             from ..errorlog import log_error
 
             log_error("Ensemble", exc, context="listing stem pairs")
@@ -1289,7 +1289,7 @@ class EnsemblePage:
         identity_error: Exception | None = None
         try:
             all_records = tuple(ModelIdentityService(self.context.repo).records())
-        except Exception as exc:  # noqa: BLE001 - surfaced below for a chosen pair
+        except Exception as exc:  # surfaced below for a chosen pair
             all_records = ()
             identity_error = exc
         installed_ids = {record.id for record in all_records if record.installed}
@@ -1387,7 +1387,7 @@ class EnsemblePage:
                 ),
                 key=lambda record: (record.display.casefold(), record.id),
             )
-        except Exception as exc:  # noqa: BLE001 - surfaced to the user
+        except Exception as exc:  # surfaced to the user
             from ..errorlog import log_error
 
             log_error("Ensemble", exc, context="listing models")
@@ -1751,7 +1751,7 @@ class EnsemblePage:
                     plan.model_dependencies if isinstance(plan, ResolvedJob) else None
                 ),
             )
-        except Exception as exc:  # noqa: BLE001 - surfaced to the user
+        except Exception as exc:  # surfaced to the user
             self.window.fail_to_start(f"Unable to start ensemble: {exc}", exc)
 
     def stop(self) -> None:

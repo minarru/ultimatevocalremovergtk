@@ -131,7 +131,7 @@ class InputFilesRow(Adw.ExpanderRow):
             return False
         try:
             return bool(self._accept_any_getter())
-        except Exception:  # noqa: BLE001
+        except Exception:
             return False
 
     def _initial_folder(self) -> Optional[str]:
@@ -140,7 +140,7 @@ class InputFilesRow(Adw.ExpanderRow):
         if self._initial_folder_getter is not None:
             try:
                 return self._initial_folder_getter()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 return None
         return None
 

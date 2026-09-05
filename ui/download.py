@@ -257,7 +257,7 @@ def _seed_debug_queue(queue: DownloadQueue) -> None:
         )
         for index, (name, arch, status, progress, detail) in enumerate(samples)
     ]
-    with queue._lock:  # noqa: SLF001 - dev-only seeding of the shared queue
+    with queue._lock:  # dev-only seeding of the shared queue
         queue._items.extend(items)
     debug("download", f"seeded debug queue with {len(items)} items")
 
@@ -327,10 +327,10 @@ def chip_debug_items_for(scenario: str) -> list[DownloadQueueItem]:
 
 
 def _replace_queue_items(queue: DownloadQueue, items: list[DownloadQueueItem]) -> None:
-    with queue._lock:  # noqa: SLF001 - dev-only queue seeding
+    with queue._lock:  # dev-only queue seeding
         queue._items.clear()
         queue._items.extend(items)
-    queue._notify()  # noqa: SLF001 - dev-only queue seeding
+    queue._notify()  # dev-only queue seeding
 
 
 def _start_chip_debug_cycle(
@@ -345,7 +345,7 @@ def _start_chip_debug_cycle(
     Interval seconds: ``UVR_DEBUG_QUEUE_CHIP_INTERVAL`` (default 4).
     """
     interval_s = max(1, int(os.environ.get("UVR_DEBUG_QUEUE_CHIP_INTERVAL", "4")))
-    indicator._sticky = True  # noqa: SLF001 - dev-only sticky chip
+    indicator._sticky = True  # dev-only sticky chip
     index = 0
 
     def apply_scenario() -> None:

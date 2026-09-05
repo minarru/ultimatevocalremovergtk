@@ -56,7 +56,7 @@ def _estimate_wrapped_text_height(text: str, width_px: int) -> int:
         layout.set_text(text, -1)
         _width, height = layout.get_pixel_size()
         return height + _ERROR_SUMMARY_PAD_Y
-    except Exception:  # noqa: BLE001 - fall back without cairo/pango layout
+    except Exception:  # fall back without cairo/pango layout
         chars_per_line = max(20, width_px // 8)
         lines = max(1, summary_line_count(text, chars_per_line))
         return lines * _ERROR_SUMMARY_LINE_FALLBACK + _ERROR_SUMMARY_PAD_Y

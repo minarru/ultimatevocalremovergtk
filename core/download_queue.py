@@ -304,7 +304,7 @@ class DownloadQueue:
                 on_info=on_info,
                 stop_event=item.stop_event,
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             if item.stop_event.is_set():
                 log_event(
                     "download",
@@ -338,7 +338,7 @@ class DownloadQueue:
                     exc,
                     context=f"selection={item.selection!r} arch={item.arch_type!r}",
                 )
-            except Exception:  # noqa: BLE001 - logging must not abort the queue
+            except Exception:  # logging must not abort the queue
                 pass
             self._notify()
             return False
@@ -402,7 +402,7 @@ class DownloadQueue:
                 jobs=list(item.jobs),
                 transfer_result=result,
             )
-        except Exception as exc:  # noqa: BLE001 - a bad item must not kill the queue
+        except Exception as exc:  # a bad item must not kill the queue
             debug("download", f"finalize failed id={item.item_id}: {exc}")
             from core.model_install import ModelInstallResult
 

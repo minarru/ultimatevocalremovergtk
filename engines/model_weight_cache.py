@@ -43,7 +43,7 @@ def _release_module(model: Any) -> None:
         cpu = getattr(model, "cpu", None)
         if callable(cpu):
             cpu()
-    except Exception:  # noqa: BLE001
+    except Exception:
         pass
 
 
@@ -54,7 +54,7 @@ def _close_ort(session: Any) -> None:
     if callable(close):
         try:
             close()
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
 
 
@@ -341,7 +341,7 @@ def _cuda_device_index(device: Any = None) -> int:
 
         if device == DEFAULT or device == "":
             return 0
-    except Exception:  # noqa: BLE001
+    except Exception:
         pass
     try:
         import torch
@@ -350,7 +350,7 @@ def _cuda_device_index(device: Any = None) -> int:
         if device_obj.type != "cuda":
             return 0
         return int(device_obj.index or 0)
-    except Exception:  # noqa: BLE001
+    except Exception:
         text = str(device).split(":")[-1].strip()
         try:
             return int(text)
@@ -370,7 +370,7 @@ def cuda_mem_info(device: Any = None) -> Optional[Tuple[int, int]]:
             return None
         free, total = torch.cuda.mem_get_info(index)
         return int(free), int(total)
-    except Exception:  # noqa: BLE001
+    except Exception:
         return None
 
 
@@ -394,7 +394,7 @@ def _flush_cuda_allocator() -> None:
         from engines.gpu_cache import clear_gpu_cache
 
         clear_gpu_cache("cuda")
-    except Exception:  # noqa: BLE001
+    except Exception:
         pass
     try:
         import gc
@@ -404,7 +404,7 @@ def _flush_cuda_allocator() -> None:
         gc.collect()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
-    except Exception:  # noqa: BLE001
+    except Exception:
         pass
 
 
