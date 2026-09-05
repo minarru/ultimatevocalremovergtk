@@ -28,6 +28,18 @@ through the caller-supplied callbacks (built with
 :func:`ui.dispatch.gtk_job_callbacks`). Options bind to the shared typed
 settings.
 """
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from ui.run_error_context import RunErrorContext
+
+if TYPE_CHECKING:
+    from core.audio_plan import AudioJobSpec, ResolvedAudioJob
+    from core.job_callbacks import JobCallbacks
+    from core.job_plan import ResolvedJob
+    from core.settings import Settings
 import os
 import typing
 from typing import List, Optional, Tuple
@@ -838,7 +850,7 @@ class AudioToolsPage:
             return self._apollo_blocked_reason()
         return None
 
-    def build_job_spec(self) -> typing.Any:
+    def build_job_spec(self) -> AudioJobSpec:
         """Snapshot the active Audio Tools page for shared runtime preflight."""
         import copy
 
@@ -876,7 +888,7 @@ class AudioToolsPage:
             return _REASON_APOLLO_MODEL
         return None
 
-    def start(self, callbacks: typing.Any, plan: typing.Any = None) -> None:
+    def start(self, callbacks: JobCallbacks, plan: ResolvedJob | ResolvedAudioJob | None = None) -> None:
         assert self._shared_session is not None
         self._shared_session.commit()
         # Input/output/tool readiness is validated by ``MainWindow._on_start``
@@ -895,10 +907,9 @@ class AudioToolsPage:
         else:
             single_inputs = list(self.inputs_row.paths)
             if tool == APOLLO_RESTORE:
-                backend_name = (
-                    plan.model.backend_name
-                    if plan is not None and plan.model is not None else None
-                )
+                audio_plan = typing.cast("ResolvedAudioJob | None", plan)
+                planned_model = audio_plan.model if audio_plan is not None else None
+                backend_name = planned_model.backend_name if planned_model is not None else None
                 apollo_params = self._resolve_apollo_model(backend_name)
                 if apollo_params is None:
                     return
@@ -955,6 +966,36 @@ class AudioToolsPage:
             self._toast(APOLLO_MODEL_FAIL_TEXT.strip())
             return None
         return {"extracted_params": model_data.extracted_params, "config": model_data.config}
+
+    run_label = 'Audio tools'
+
+    def worker_is_running(self) -> bool:
+        return self.runner.is_running()
+
+    def snapshot_error_context(self) -> RunErrorContext:
+        from core.audio_tools import DUAL_INPUT_TOOLS
+        from core.error_context import build_audio_tools_context
+
+        tool = self._current_tool()
+        paths = (
+            [os.path.basename(left) for left, _right in self._dual_pairs]
+            if tool in DUAL_INPUT_TOOLS
+            else list(self.inputs_row.paths)
+        )
+        return RunErrorContext.from_fields(build_audio_tools_context(self.settings, tool, paths))
+
+    def bind_run_settings(self, settings: Settings) -> None:
+        import copy
+
+        self.runner.settings = copy.deepcopy(settings)
+
+    def restore_runner_settings(self) -> None:
+        if self._runner is not None:
+            self._runner.settings = self.settings
+
+    def stop_started_worker(self, *, force: bool = False) -> None:
+        if self._runner is not None:
+            self._runner.stop(force=force)
 
     def stop(self) -> None:
         if self._runner is not None:

@@ -66,6 +66,13 @@ class DownloadQueue:
     def set_on_changed(self, callback: Optional[Callable[[], None]]) -> None:
         self._on_changed = callback
 
+    def clear_callbacks(self, *, on_changed: Callable[[], None], on_batch_complete: Callable[[], None]) -> None:
+        """Detach only callbacks still owned by the disposing consumer."""
+        if self._on_changed is on_changed:
+            self._on_changed = None
+        if self._on_batch_complete is on_batch_complete:
+            self._on_batch_complete = None
+
     def items(self) -> List[DownloadQueueItem]:
         with self._lock:
             return list(self._items)

@@ -25,6 +25,7 @@ from core.stem_selection import (
 )
 from core.stems import StemRoute, model_stem_routes
 from tests.private_gtk import require_private_gtk
+from tests.stem_ui_helpers import _DemucsFocusProxy, _QuickExportProxy, _SubsetProxy
 from ui.widget_state import fetch
 from ui.widgets.stem_only import (
     _LEAD_VOCAL_PAIR_LABELS,
@@ -575,8 +576,8 @@ class SaveStemsSectionTests(unittest.TestCase):
         )
         self.section.sync_from_settings()
         self.assertEqual(self.section._subset_mode, _QUICK_INSTRUMENTAL)
-        self.assertFalse(self.section._subset._chips[VOCAL_STEM].get_active())
-        self.assertFalse(self.section._subset.is_all_active())
+        self.assertFalse(_SubsetProxy(self.section)._chips[VOCAL_STEM].get_active())
+        self.assertFalse(_SubsetProxy(self.section).is_all_active())
         self.section.persist_to_settings()
         self.assertEqual(self.settings["mdx_stems_selected"], [VOCAL_STEM])
         self.assertEqual(self.settings.process.stem_focus, "mix.instrumental")
@@ -593,7 +594,7 @@ class SaveStemsSectionTests(unittest.TestCase):
         )
         self.section.sync_from_settings()
         self.assertEqual(self.section._subset_mode, _QUICK_VOCALS)
-        self.assertTrue(self.section._subset._chips[VOCAL_STEM].get_active())
+        self.assertTrue(_SubsetProxy(self.section)._chips[VOCAL_STEM].get_active())
 
     def test_subset_rows_use_reviewed_route_ids_and_labels(self) -> None:
         routes = (
@@ -632,10 +633,10 @@ class SaveStemsSectionTests(unittest.TestCase):
             secondary_key="is_secondary_stem_only",
             has_model=True,
         )
-        self.section._quick_export.set_active(_QUICK_INSTRUMENTAL)
+        _QuickExportProxy(self.section).set_active(_QUICK_INSTRUMENTAL)
         self.section._on_quick_export_changed()
-        self.assertFalse(self.section._subset._chips[VOCAL_STEM].get_active())
-        self.assertFalse(self.section._subset.is_all_active())
+        self.assertFalse(_SubsetProxy(self.section)._chips[VOCAL_STEM].get_active())
+        self.assertFalse(_SubsetProxy(self.section).is_all_active())
 
     def test_subset_custom_single_stem_persist(self):
         self.section.configure_subset(
@@ -646,8 +647,8 @@ class SaveStemsSectionTests(unittest.TestCase):
             has_model=True,
         )
         self.section._subset_mode = "custom"
-        self.section._subset.rebuild([VOCAL_STEM, BASS_STEM, DRUM_STEM])
-        self.section._subset.set_selection(
+        _SubsetProxy(self.section).rebuild([VOCAL_STEM, BASS_STEM, DRUM_STEM])
+        _SubsetProxy(self.section).set_selection(
             {BASS_STEM}, full_stems=[VOCAL_STEM, BASS_STEM, DRUM_STEM]
         )
         self.section.persist_to_settings()
@@ -676,7 +677,7 @@ class SaveStemsSectionTests(unittest.TestCase):
             has_model=True,
         )
         self.section.sync_from_settings()
-        self.assertFalse(self.section._demucs_export_block.get_visible())
+        self.assertFalse(self.section._demucs_export_row.get_visible())
 
     def test_demucs_bass_focus_defaults_primary_only(self):
         self.section.configure_demucs(
@@ -685,7 +686,7 @@ class SaveStemsSectionTests(unittest.TestCase):
             secondary_key="is_secondary_stem_only_Demucs",
             has_model=True,
         )
-        self.section._demucs_focus.set_active_name(BASS_STEM)
+        _DemucsFocusProxy(self.section).set_active_name(BASS_STEM)
         self.section._on_demucs_focus_changed()
         self.section.persist_to_settings()
         self.assertEqual(self.settings["demucs_stems"], BASS_STEM)
@@ -699,8 +700,8 @@ class SaveStemsSectionTests(unittest.TestCase):
             secondary_key="is_secondary_stem_only",
             has_model=True,
         )
-        self.assertFalse(self.section._quick_block.get_visible())
-        self.assertTrue(self.section._subset_block.get_visible())
+        self.assertFalse(self.section._quick_row.get_visible())
+        self.assertTrue(self.section._custom_row.get_visible())
 
     def test_mode_switch_hides_rows(self):
         self.section.configure_subset(
@@ -710,8 +711,8 @@ class SaveStemsSectionTests(unittest.TestCase):
             secondary_key="is_secondary_stem_only",
             has_model=True,
         )
-        self.assertTrue(self.section._subset_block.get_visible())
-        self.assertFalse(self.section._exclusive_block.get_visible())
+        self.assertTrue(self.section._custom_row.get_visible())
+        self.assertFalse(self.section._exclusive_row.get_visible())
         self.section.configure_exclusive(
             primary_stem=VOCAL_STEM,
             secondary_stem=INST_STEM,
@@ -719,8 +720,8 @@ class SaveStemsSectionTests(unittest.TestCase):
             secondary_key="is_secondary_stem_only",
             has_model=True,
         )
-        self.assertFalse(self.section._subset_block.get_visible())
-        self.assertTrue(self.section._exclusive_block.get_visible())
+        self.assertFalse(self.section._custom_row.get_visible())
+        self.assertTrue(self.section._exclusive_row.get_visible())
 
     def test_configure_exclusive_accepts_and_stores_confidence_kwargs(self) -> None:
         self.section.configure_exclusive(

@@ -21,6 +21,20 @@ Every control binds to the same settings keys the Tk app uses
 ensembles are interchangeable with ``UVR.py``.
 """
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from ui.run_error_context import RunErrorContext
+
+if TYPE_CHECKING:
+    from core.audio_plan import ResolvedAudioJob
+    from core.job_callbacks import JobCallbacks
+    from core.job_plan import JobSpec, ResolvedJob
+    from core.settings import Settings
+
+    from .member_projection import MemberProjection
+
 import typing
 from typing import Dict, List, Optional
 
@@ -527,7 +541,7 @@ class EnsemblePage:
             self._loading = False
         self._sync_gpu_dependent_rows()
 
-        self._rebuild_model_list(self.settings.ensemble.selected_models or [])
+        self._reconcile_member_list(self.settings.ensemble.selected_models or [])
 
     def _install_shared_session(self) -> None:
         self._shared_session = SharedSettingsSession(
@@ -904,7 +918,7 @@ class EnsemblePage:
         finally:
             self._loading = False
         self._rebuild_stem_only_toggles()
-        self._rebuild_model_list(list(preset.members))
+        self._reconcile_member_list(list(preset.members))
         self._persist_selected_models()
         self._ensemble_validation_warnings = preset.validation_warnings
         self._update_ensemble_banner()
@@ -927,7 +941,7 @@ class EnsemblePage:
         selected = list(data.get("selected_models") or [])
         if curated_id is not None:
             selected = resolve_member_tags(selected, self.context.repo)
-        self._rebuild_model_list(selected)
+        self._reconcile_member_list(selected)
         self._persist_selected_models()
         if curated_id is not None:
             description = (data.get("description") or "").strip()
@@ -939,10 +953,8 @@ class EnsemblePage:
         _installed, missing = classify_preset_members(tags, self.context.repo)
         if not missing:
             return
-        from ..download import _get_manager, _get_queue
-
-        manager = _get_manager(self.context)
-        queue = _get_queue(self.context, manager)
+        manager = self.context.download_manager
+        queue = self.context.download_queue
         entries, unresolved = download_entries_for_missing(missing, manager, self.context.repo)
         if not entries and not unresolved:
             return
@@ -1163,7 +1175,7 @@ class EnsemblePage:
         # Rebuild the model list for the new stem pair first: stem-only
         # toggles resolve export-semantics hints from _selected_model_tags(),
         # which otherwise still reflects the previous stem pair's checklist.
-        self._rebuild_model_list(self._model_members_for_rebuild())
+        self._reconcile_member_list(self._model_members_for_rebuild())
         self._rebuild_stem_only_toggles()
         self._update_ensemble_options_summary()
 
@@ -1293,63 +1305,58 @@ class EnsemblePage:
 
     # -- Model multi-select list ------------------------------------------------
 
-    def _rebuild_model_list(self, preselected: List[typing.Any]) -> None:
-        from core.model_identity import (
-            ARCH_BY_FAMILY,
-            ModelIdentityService,
-            parse_stored_model_id,
-        )
+    def _acquire_member_projection(self, preselected: List[typing.Any]) -> MemberProjection:
+        from core.model_identity import ModelIdentityService
 
-        preserve_presented_gate = bool(
+        from .member_projection import project_members
+
+        preserve_gate = bool(
             getattr(self, "_models_write_gated", False)
             and preselected == getattr(self, "_models_gated_values", None)
         )
-        prior_gated_ids = set(
-            getattr(self, "_models_gated_ids", ()) if preserve_presented_gate else ()
-        )
-        identity_error: Exception | None = None
+        prior_ids = getattr(self, "_models_gated_ids", ()) if preserve_gate else ()
+        pair = self._ensemble_pair()
+        stored_pair = getattr(getattr(self.settings, "ensemble", None), "main_stem", "")
+        records = ()
+        eligible_ids = None
+        error = None
         try:
-            all_records = tuple(ModelIdentityService(self.context.repo).records())
-        except Exception as exc:  # surfaced below for a chosen pair
-            all_records = ()
-            identity_error = exc
-        installed_ids = {record.id for record in all_records if record.installed}
-        preselected_ids = {value for value in preselected if isinstance(value, str)}
+            records = tuple(ModelIdentityService(self.context.repo).records())
+            if pair:
+                pair_id = normalize_stem_pair_id(stored_pair)
+                eligible_ids = set(self.context.repo.ensemble_model_list(self.settings, pair_id))
+        except Exception as exc:
+            error = exc
+            if pair:
+                from ..errorlog import log_error
 
-        def member_warning(
-            index: int,
-            value: typing.Any,
-            eligible_ids: set[str] | None = None,
-        ) -> str | None:
-            path = f"ensemble.selected_models[{index}]"
-            if not isinstance(value, str):
-                return f"{path}: expected a canonical model ID; excluding {value!r}"
-            try:
-                model_id = parse_stored_model_id(value).value
-            except ValueError:
-                return f"{path}: expected a canonical model ID; excluding {value!r}"
-            if model_id not in installed_ids:
-                return f"{path}: model {value!r} is not installed; excluding it"
-            if eligible_ids is not None and model_id not in eligible_ids:
-                return (
-                    f"{path}: model {value!r} is not eligible for "
-                    f"{self.settings.ensemble.main_stem!r}; excluding it"
-                )
-            return None
+                log_error("Ensemble", exc, context="listing models")
+        projection = project_members(
+            records,
+            preselected,
+            pair_id=stored_pair,
+            pair_chosen=bool(pair),
+            eligible_ids=eligible_ids,
+            prior_gated_ids=prior_ids,
+            load_error=error is not None,
+        )
+        if projection.replace_gate:
+            log_model_picker_items(
+                f"Ensemble members ({pair})",
+                ((record.id, record.display) for record in projection.records),
+            )
+        return projection
 
-        def collect_member_warnings(
-            eligible_ids: set[str] | None = None,
-        ) -> tuple[str, ...]:
-            warnings: list[str] = []
-            for index, value in enumerate(preselected):
-                warning = member_warning(index, value, eligible_ids)
-                if warning is not None:
-                    warnings.append(warning)
-            return tuple(warnings)
+    def _render_member_projection(
+        self, projection: MemberProjection, preselected: List[typing.Any]
+    ) -> None:
+        from core.model_identity import ARCH_BY_FAMILY
 
-        member_warnings = collect_member_warnings()
-        self._ensemble_member_warnings = member_warnings
-        self._models_write_gated = bool(member_warnings)
+        self._ensemble_member_warnings = projection.warnings
+        self._models_write_gated = projection.write_gated
+        if projection.replace_gate:
+            self._models_gated_values = list(preselected) if projection.write_gated else None
+            self._models_gated_ids = projection.gated_ids
         child = self.models_listbox.get_first_child()
         while child is not None:
             nxt = child.get_next_sibling()
@@ -1357,81 +1364,13 @@ class EnsemblePage:
             child = nxt
         self._model_checks = {}
         self._model_row_text = {}
-
-        pair = self._ensemble_pair()
-        if not pair:
-            self.models_listbox.append(Adw.ActionRow(title="Choose a stem pair to list models"))
-            self._update_models_dialog_status()
-            self._update_models_summary()
-            return
-
-        try:
-            if identity_error is not None:
-                raise identity_error
-            pair_id = normalize_stem_pair_id(
-                getattr(getattr(self.settings, "ensemble", None), "main_stem", "")
-            )
-            eligible_ids = set(self.context.repo.ensemble_model_list(self.settings, pair_id))
-            member_warnings = collect_member_warnings(eligible_ids)
-            gated_ids = {
-                value
-                for index, value in enumerate(preselected)
-                if isinstance(value, str) and member_warning(index, value, eligible_ids) is not None
-            }
-            if preserve_presented_gate:
-                gated_ids.update(prior_gated_ids)
-                newly_available = sorted(
-                    prior_gated_ids
-                    - {
-                        value
-                        for index, value in enumerate(preselected)
-                        if isinstance(value, str)
-                        and member_warning(index, value, eligible_ids) is not None
-                    }
-                )
-                member_warnings = (
-                    *member_warnings,
-                    *(
-                        f"ensemble member {value!r} is now available; pick it to select it"
-                        for value in newly_available
-                    ),
-                )
-            self._ensemble_member_warnings = member_warnings
-            self._models_write_gated = bool(member_warnings) or bool(gated_ids)
-            self._models_gated_values = list(preselected) if self._models_write_gated else None
-            self._models_gated_ids = tuple(sorted(gated_ids))
-            records = sorted(
-                (
-                    record
-                    for record in all_records
-                    if record.installed and record.id in eligible_ids
-                ),
-                key=lambda record: (record.display.casefold(), record.id),
-            )
-        except Exception as exc:  # surfaced to the user
-            from ..errorlog import log_error
-
-            log_error("Ensemble", exc, context="listing models")
-            row = Adw.ActionRow()
-            set_row_title(row, "Could not list models")
-            set_row_subtitle(row, "See Error Log for details")
+        if projection.placeholder:
+            row = Adw.ActionRow(title=projection.placeholder)
+            if projection.placeholder == "Could not list models":
+                set_row_subtitle(row, "See Error Log for details")
             self.models_listbox.append(row)
-            self._update_models_dialog_status()
-            self._update_models_summary()
             return
-
-        log_model_picker_items(
-            f"Ensemble members ({pair})",
-            ((record.id, record.display) for record in records),
-        )
-
-        if not records:
-            self.models_listbox.append(Adw.ActionRow(title="No compatible models found"))
-            self._update_models_dialog_status()
-            self._update_models_summary()
-            return
-
-        for record in records:
+        for record in projection.records:
             tag = record.id
             title = record.display
             subtitle = ARCH_BY_FAMILY[record.family]
@@ -1439,7 +1378,7 @@ class EnsemblePage:
             set_row_title(row, title)
             row.set_subtitle(subtitle)
             check = Gtk.CheckButton(valign=Gtk.Align.CENTER)
-            check.set_active(tag in preselected_ids and tag not in gated_ids)
+            check.set_active(tag in projection.selected_ids)
             check.connect("toggled", self._on_model_toggled)
             row.add_prefix(check)
             row.set_activatable_widget(check)
@@ -1448,21 +1387,24 @@ class EnsemblePage:
             self._model_checks[tag] = check
             self._model_row_text[tag] = (title, subtitle)
 
-        # A preset saved before a model became ineligible for this stem pair
-        # does not render that member. The persist boundary below drops it so
-        # a later install cannot silently reactivate it.
-        dropped = preselected_ids - {record.id for record in records}
-        if dropped:
-            from core.debug_log import debug
-
-            debug(
-                "settings",
-                f"ensemble preset members not eligible for {self.settings.ensemble.main_stem!r}, "
-                f"skipping {sorted(dropped)}",
-            )
-
         self.models_listbox.invalidate_filter()
-        self._persist_selected_models()
+
+    def _reconcile_member_list(self, preselected: List[typing.Any]) -> None:
+        """Refresh presentation and retain the existing successful-list write boundary."""
+        projection = self._acquire_member_projection(preselected)
+        self._render_member_projection(projection, preselected)
+        if projection.reconcile_after_render:
+            dropped = {value for value in preselected if isinstance(value, str)} - {
+                record.id for record in projection.records
+            }
+            if dropped:
+                from core.debug_log import debug
+
+                debug(
+                    "settings",
+                    f"ensemble preset members not eligible for {self.settings.ensemble.main_stem!r}, skipping {sorted(dropped)}",
+                )
+            self._persist_selected_models()
         self._update_models_dialog_status()
         self._update_models_summary()
 
@@ -1584,7 +1526,7 @@ class EnsemblePage:
         search = getattr(self, "models_search", None)
         if search is not None:
             search.set_text("")
-        self._rebuild_model_list(self._model_members_for_rebuild())
+        self._reconcile_member_list(self._model_members_for_rebuild())
         present_modal_dialog(self.models_dialog, self.window)
 
     def _open_member_model_options(self, *_args: typing.Any) -> None:
@@ -1642,7 +1584,7 @@ class EnsemblePage:
             # The user is looking at the list right now; a dirty flag consumed
             # at the next activation would leave stale labels on screen.
             self._models_dirty = False
-            self._rebuild_model_list(self._model_members_for_rebuild())
+            self._reconcile_member_list(self._model_members_for_rebuild())
         else:
             self._models_dirty = True
 
@@ -1657,7 +1599,7 @@ class EnsemblePage:
         self.settings.process.method = ProcessMethod.ENSEMBLE
         self._sync_shared_from_settings()
         self._models_dirty = False
-        self._rebuild_model_list(self._model_members_for_rebuild())
+        self._reconcile_member_list(self._model_members_for_rebuild())
 
     def on_deactivated(self) -> None:
         # Method restoration is owned by the main window's tab handler.
@@ -1699,7 +1641,7 @@ class EnsemblePage:
         self._shared_session.commit()
         self.save_stems.persist_to_settings()
 
-    def build_job_spec(self) -> typing.Any:
+    def build_job_spec(self) -> JobSpec:
         import copy
 
         from core.job_plan import JobSpec
@@ -1739,7 +1681,7 @@ class EnsemblePage:
         banner.set_revealed(reason is not None)
         self.window._refresh_start_readiness()
 
-    def start(self, callbacks: typing.Any, plan: typing.Any = None) -> None:
+    def start(self, callbacks: JobCallbacks, plan: ResolvedJob | ResolvedAudioJob | None = None) -> None:
         # Readiness is validated by ``MainWindow._on_start`` before dispatch.
         from core.job_plan import ResolvedJob
 
@@ -1775,6 +1717,23 @@ class EnsemblePage:
             )
         except Exception as exc:  # surfaced to the user
             self.window.fail_to_start(f"Unable to start ensemble: {exc}", exc)
+
+    run_label = 'Ensemble'
+
+    def worker_is_running(self) -> bool:
+        return self.context.runner.is_running()
+
+    def snapshot_error_context(self) -> RunErrorContext:
+        from core.error_context import build_ensemble_context
+
+        return RunErrorContext.from_fields(
+            build_ensemble_context(
+                self.settings, list(self.input_row.paths), repo=self.context.repo
+            )
+        )
+
+    def bind_run_settings(self, settings: Settings) -> None:
+        pass  # The shared separation runner is bound by the host.
 
     def stop(self) -> None:
         self.context.runner.stop()

@@ -210,6 +210,7 @@ class DownloadQueueIndicator:
 
     def __init__(self) -> None:
         self._queue: Optional[DownloadQueue] = None
+        self._binding_owner: object | None = None
         self._queue_rows: dict[str, Gtk.ListBoxRow] = {}
         self._remove_finished_timeout_id: int = 0
         self._attention_timeout_id: int = 0
@@ -281,8 +282,9 @@ class DownloadQueueIndicator:
         """
         self._popover.set_autohide(False)
 
-    def bind(self, queue: DownloadQueue) -> None:
+    def bind(self, queue: DownloadQueue, *, owner: object | None = None) -> None:
         self._queue = queue
+        self._binding_owner = owner
 
     def refresh(self) -> None:
         if self._queue is None:
@@ -322,6 +324,14 @@ class DownloadQueueIndicator:
                 defer_remove_on_close=self._defer_remove_on_close,
             ):
                 self._schedule_remove_finished()
+
+    def dispose(self, *, owner: object | None = None) -> None:
+        if self._binding_owner is not owner:
+            return
+        self._binding_owner = None
+        self._unschedule_remove_finished()
+        self._remove_attention(immediate=True)
+        self._queue = None
 
     def on_batch_complete(self) -> None:
         if not self._popover_visible:

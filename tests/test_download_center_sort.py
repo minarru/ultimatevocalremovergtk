@@ -28,9 +28,11 @@ class DownloadCenterSortTests(unittest.TestCase):
         cls._app.register()
 
     def _window(self):
+        from ui.catalogue_browser import CatalogueBrowserState
         from ui.download_center import DownloadCenterWindow
-
-        return DownloadCenterWindow.__new__(DownloadCenterWindow)
+        window = DownloadCenterWindow.__new__(DownloadCenterWindow)
+        window.browser = CatalogueBrowserState()
+        return window
 
     def test_sort_change_does_not_rebuild(self) -> None:
         from ui.download_center import SORT_OPTIONS
@@ -72,6 +74,9 @@ class DownloadCenterSortTests(unittest.TestCase):
         stash(low, "_uvr_sdr", 3.0)
         stash(low, "_uvr_unsupported", False)
 
+        from tests.browser_ui_helpers import seed_browser_row
+        seed_browser_row(window, high)
+        seed_browser_row(window, low)
         self.assertLess(window._compare_rows(high, low), 0)
 
     def test_unsupported_rows_sort_last(self) -> None:
@@ -93,6 +98,9 @@ class DownloadCenterSortTests(unittest.TestCase):
         stash(unsupported, "_uvr_sdr", None)
         stash(unsupported, "_uvr_unsupported", True)
 
+        from tests.browser_ui_helpers import seed_browser_row
+        seed_browser_row(window, supported)
+        seed_browser_row(window, unsupported)
         self.assertLess(window._compare_rows(supported, unsupported), 0)
 
     def test_set_sort_func_accepts_compare_rows_signature(self) -> None:
@@ -119,6 +127,9 @@ class DownloadCenterSortTests(unittest.TestCase):
         stash(b, "_uvr_sort_name", "beta")
         stash(b, "_uvr_sdr", None)
         stash(b, "_uvr_unsupported", False)
+        from tests.browser_ui_helpers import seed_browser_row
+        seed_browser_row(window, a)
+        seed_browser_row(window, b)
         list_box.append(a)
         list_box.append(b)
         list_box.invalidate_sort()

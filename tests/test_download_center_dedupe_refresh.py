@@ -23,17 +23,25 @@ def _bare_window() -> Any:
     from ui.download_center import DownloadCenterWindow
 
     win = object.__new__(DownloadCenterWindow)
+    from ui.catalogue_browser import CatalogueBrowserState
+    win.browser = CatalogueBrowserState()
+    from ui.lifetime import UiLifetime
+    win._lifetime = UiLifetime()
+    win._listening = False
+    win._sort_mode = "name"
+    win._arch_filter = "all"
     win.manager = mock.MagicMock()
+    win.manager.latest_snapshot = None
     win._catalogue_refresh_armed = False
     win._row_checks = {}
     win._row_actions = {}
     win._size_lookup_ids = {}
     win._list_boxes = {}
-    win._available = {}
-    win._unsupported = {}
+    win.browser.available = {}
+    win.browser.unsupported = {}
     win._downloads_dirty = False
-    win._pinned_snapshot = None
-    win._pending_source_delta = False
+    win.browser.snapshot = None
+    win.browser.pending_source = False
     return win
 
 
@@ -60,6 +68,9 @@ def _seed_row(win: Any, arch: str, name: str, *, checked: bool = False) -> Any:
     check.get_active.return_value = checked
     win._row_actions[(arch, name)] = action
     win._row_checks[(arch, name)] = check
+    from ui.catalogue_browser import BrowserRow
+    win.browser.rows[(arch, name)] = BrowserRow((arch, name), name, arch)
+    win.browser.set_selected((arch, name), checked)
     win._size_lookup_ids[(arch, name)] = 1
     win._list_boxes.setdefault(arch, mock.MagicMock(name=f"listbox:{arch}"))
     return action
@@ -225,7 +236,7 @@ class DownloadCompletionRefreshTests(unittest.TestCase):
 
         win = _bare_window()
         win.window = mock.MagicMock()
-        win._available = {MDX_ARCH_TYPE: ["Still available"]}
+        win.browser.available = {MDX_ARCH_TYPE: ["Still available"]}
         win._downloads_dirty = True
         win._apply_download_completion_refresh = mock.MagicMock()
         win.start_refresh = mock.MagicMock()
@@ -259,14 +270,14 @@ class PinnedSnapshotDeltaTests(unittest.TestCase):
         from ui.download_center import DownloadCenterWindow
 
         win = _bare_window()
-        win._pending_source_delta = False
+        win.browser.pending_source = False
         win._rebuild_catalogue = mock.MagicMock()
         win._schedule_catalogue_row_refresh = mock.MagicMock()
 
         delta = CatalogueDelta(kind=DeltaKind.SOURCES_CHANGED, added={"mdx": ("New",)})
         DownloadCenterWindow._on_catalogue_delta(win, delta)
 
-        self.assertTrue(win._pending_source_delta)
+        self.assertTrue(win.browser.pending_source)
         win._rebuild_catalogue.assert_not_called()
         win._schedule_catalogue_row_refresh.assert_not_called()
 
@@ -295,19 +306,19 @@ class PinnedSnapshotDeltaTests(unittest.TestCase):
         coordinator._latest = public
 
         win = _bare_window()
-        win.manager._coordinator = coordinator
+        win.manager.latest_snapshot = public
         DownloadCenterWindow._pin_current_snapshot(win)
-        self.assertIs(win._pinned_snapshot, public)
+        self.assertIs(win.browser.snapshot, public)
 
     def test_queue_resolve_uses_pinned_snapshot_not_live_manager(self) -> None:
         from ui.download_center import DownloadCenterWindow
 
         win = _bare_window()
-        win._pinned_snapshot = mock.MagicMock()
-        win._pinned_snapshot.vr = {}
-        win._pinned_snapshot.mdx = {"Pinned": {"p.ckpt": "https://pin/p.ckpt"}}
-        win._pinned_snapshot.demucs = {}
-        win._pinned_snapshot.apollo = {}
+        win.browser.snapshot = mock.MagicMock()
+        win.browser.snapshot.vr = {}
+        win.browser.snapshot.mdx = {"Pinned": {"p.ckpt": "https://pin/p.ckpt"}}
+        win.browser.snapshot.demucs = {}
+        win.browser.snapshot.apollo = {}
         win.manager.mdx_download_list = {"Live": {"l.ckpt": "https://live/l.ckpt"}}
         win.manager.resolve.return_value = [("https://pin/p.ckpt", "/tmp/p.ckpt")]
         jobs = DownloadCenterWindow._resolve_pinned(win, "Pinned", MDX_ARCH_TYPE)
@@ -321,8 +332,8 @@ class PinnedSnapshotDeltaTests(unittest.TestCase):
 
         win = _bare_window()
         win.window = mock.MagicMock()
-        win._available = {MDX_ARCH_TYPE: ["Still available"]}
-        win._pending_source_delta = True
+        win.browser.available = {MDX_ARCH_TYPE: ["Still available"]}
+        win.browser.pending_source = True
         win.start_refresh = mock.MagicMock()
         win._apply_download_completion_refresh = mock.MagicMock()
         DownloadCenterWindow.present(win)
@@ -363,7 +374,7 @@ class ComposedPublicJourneyTests(unittest.TestCase):
         win = _bare_window()
         win.manager = self.manager
         DownloadCenterWindow._pin_current_snapshot(win)
-        self.assertIs(win._pinned_snapshot, self.public)
+        self.assertIs(win.browser.snapshot, self.public)
 
         jobs = DownloadCenterWindow._resolve_pinned(win, label, MDX_ARCH_TYPE)
         self.assertEqual(

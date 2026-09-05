@@ -148,6 +148,10 @@ class JobRunner:
 
     # -- Public control ---------------------------------------------------------
 
+    @property
+    def last_oom_exported(self) -> bool:
+        return bool(self._last_oom_exported)
+
     def is_running(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
 

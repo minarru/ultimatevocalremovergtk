@@ -24,6 +24,12 @@ from core.download_status import (
 )
 from core.downloads import DownloadManager
 
+from .lifetime import UiLifetime
+
+if typing.TYPE_CHECKING:
+    from .context import AppContext
+    from .window import MainWindow
+
 from .dialogs.utils import (
     configure_dialog_width,
     fill_dialog_width,
@@ -68,25 +74,6 @@ def download_batch_message(items: typing.Any) -> tuple[str, bool]:
             False,
         )
     return "Downloads finished", False
-
-
-def _get_manager(app_context: typing.Any) -> DownloadManager:
-    manager = getattr(app_context, "download_manager", None)
-    if isinstance(manager, DownloadManager):
-        return manager
-    existing = getattr(app_context, "_download_manager", None)
-    if existing is None:
-        existing = DownloadManager()
-        app_context._download_manager = existing
-    return existing
-
-
-def _get_queue(app_context: typing.Any, manager: DownloadManager) -> DownloadQueue:
-    queue = getattr(app_context, "_download_queue", None)
-    if queue is None:
-        queue = DownloadQueue(manager, on_changed=lambda: None, repo=app_context.repo)
-        app_context._download_queue = queue
-    return queue
 
 
 def _send_download_notifications(
@@ -137,48 +124,49 @@ def _send_download_notifications(
         )
 
 
-def init_download_queue_ui(main_window: typing.Any, app_context: typing.Any) -> DownloadQueueIndicator:
-    """Wire the header download indicator and app-level queue callbacks.
+class DownloadQueueUiBinding:
+    """Own the cached browser and the queue's current UI callback deliveries."""
 
-    Batch completion is aggregate UI only. Model publication is per item, owned
-    by the queue's finalizer, and reaches the widgets through the repository
-    event -- a batch-level refresh callback here would repaint late and once.
-    """
-    manager = _get_manager(app_context)
-    queue = _get_queue(app_context, manager)
-    indicator = getattr(main_window, "_download_queue_indicator", None)
-    if indicator is None:
-        indicator = DownloadQueueIndicator()
-        main_window._download_queue_indicator = indicator
-    indicator.bind(queue)
-    app_context._download_queue_indicator = indicator
-    terminal_statuses = {
-        STATUS_CANCELLED,
-        STATUS_COMPLETE,
-        STATUS_EXISTS,
-        STATUS_FAILED,
-    }
-    reported_terminal_ids: set[str] = {
-        item.item_id
-        for item in queue.items()
-        if item.status in terminal_statuses
-    }
+    terminal_statuses = {STATUS_CANCELLED, STATUS_COMPLETE, STATUS_EXISTS, STATUS_FAILED}
 
-    def refresh() -> None:
-        indicator.refresh()
+    def __init__(self, main_window: MainWindow, app_context: AppContext):
+        self.window = main_window
+        self.context = app_context
+        self.queue = app_context.download_queue
+        self.indicator = main_window._download_queue_indicator
+        self.center: DownloadCenterWindow | None = None
+        self._lifetime = UiLifetime()
+        self.indicator.bind(self.queue, owner=self)
+        self.reported_terminal_ids = {
+            item.item_id for item in self.queue.items() if item.status in self.terminal_statuses
+        }
+        self._changed_callback = latest_main_thread(self.refresh)
+        self._batch_callback = lambda: idle_on_main(self.after_batch)
+        self.queue.set_on_changed(self._changed_callback)
+        self.queue.set_on_batch_complete(self._batch_callback)
+        self._changed_callback()
 
-    schedule_refresh = latest_main_thread(refresh)
+    def refresh(self) -> None:
+        if not self._lifetime.disposed:
+            self.indicator.refresh()
 
-    def after_batch() -> None:
+    def after_batch(self) -> None:
+        if self._lifetime.disposed:
+            return
+        queue = self.queue
+        indicator = self.indicator
+        reported_terminal_ids = self.reported_terminal_ids
+        terminal_statuses = self.terminal_statuses
+        main_window = self.window
+        app_context = self.context
         batch_items = [
             item
             for item in queue.items()
-            if item.status in terminal_statuses
-            and item.item_id not in reported_terminal_ids
+            if item.status in terminal_statuses and item.item_id not in reported_terminal_ids
         ]
         reported_terminal_ids.update(item.item_id for item in batch_items)
         indicator.on_batch_complete()
-        center = getattr(app_context, "_download_center_window", None)
+        center = self.center
         if center is not None:
             center.refresh_after_downloads()
         message, needs_attention = download_batch_message(batch_items)
@@ -197,8 +185,40 @@ def init_download_queue_ui(main_window: typing.Any, app_context: typing.Any) -> 
             items=batch_items,
         )
 
-    queue.set_on_changed(schedule_refresh)
-    queue.set_on_batch_complete(lambda: idle_on_main(after_batch))
+    def present_center(self) -> DownloadCenterWindow:
+        if self.center is None:
+            self.center = DownloadCenterWindow(
+                self.window, self.context, self.context.download_manager, self.queue
+            )
+        self.center.present()
+        return self.center
+
+    def dispose(self) -> None:
+        if self._lifetime.disposed:
+            return
+        self._lifetime.dispose()
+        self.queue.clear_callbacks(
+            on_changed=self._changed_callback, on_batch_complete=self._batch_callback
+        )
+        if self.center is not None:
+            self.center.dispose()
+        self.indicator.dispose(owner=self)
+
+
+def init_download_queue_ui(
+    main_window: MainWindow, app_context: AppContext
+) -> DownloadQueueIndicator:
+    prior = main_window._download_ui
+    center = None
+    if prior is not None:
+        # Transfer the cache before releasing the old UI binding. Rebinding
+        # callbacks has never meant closing the retained browser.
+        center, prior.center = prior.center, None
+        prior.dispose()
+    binding = DownloadQueueUiBinding(main_window, app_context)
+    binding.center = center
+    main_window._download_ui = binding
+    queue, indicator = binding.queue, binding.indicator
     if os.environ.get("UVR_DEBUG_QUEUE"):
         _seed_debug_queue(queue)
     chip_debug_scenarios = parse_chip_debug_scenarios()
@@ -206,7 +226,6 @@ def init_download_queue_ui(main_window: typing.Any, app_context: typing.Any) -> 
         _start_chip_debug_cycle(queue, indicator, chip_debug_scenarios)
     if os.environ.get("UVR_DEBUG_QUEUE_POPUP"):
         _auto_open_popover(main_window, indicator)
-    schedule_refresh()
     return indicator
 
 
@@ -377,7 +396,7 @@ def start_download_size_cache_warmup(app_context: typing.Any) -> None:
     app_context._size_cache_warmup_started = True
 
     def worker() -> None:
-        manager = _get_manager(app_context)
+        manager = app_context.download_manager
         if manager.ensure_catalogues():
             manager.schedule_size_cache_warmup()
         else:
@@ -401,18 +420,11 @@ def open_download_center(
     shortcut so an already-open window is not reset.
     """
     start_download_size_cache_warmup(app_context)
-    center = getattr(app_context, "_download_center_window", None)
-    if center is None:
-        manager = _get_manager(app_context)
-        queue = _get_queue(app_context, manager)
-        center = DownloadCenterWindow(
-            parent_window,
-            app_context,
-            manager,
-            queue,
-        )
-        app_context._download_center_window = center
-    center.present()
+    if parent_window._download_ui is None:
+        init_download_queue_ui(parent_window, app_context)
+    binding = parent_window._download_ui
+    assert binding is not None
+    center = binding.present_center()
     if purpose is not None or arch is not None:
         center.select_catalogue(purpose=purpose, arch=arch)
     return center
@@ -423,7 +435,7 @@ def open_download_center(
 # ---------------------------------------------------------------------------
 
 def open_manual_downloads(parent: typing.Any, app_context: typing.Any):
-    manager = _get_manager(app_context)
+    manager = app_context.download_manager
     data = manager.manual_download_rows()
 
     dialog = Adw.Dialog()

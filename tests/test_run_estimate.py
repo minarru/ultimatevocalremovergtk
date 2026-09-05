@@ -33,6 +33,7 @@ from core.stem_selection import (
     _QUICK_ALL,
     _QUICK_VOCALS,
 )
+from tests.stem_ui_helpers import _DemucsFocusProxy
 from ui.widgets.stem_only import (
     SaveStemsSection,
 )
@@ -352,7 +353,7 @@ class SaveStemsOutputCountTests(unittest.TestCase):
             has_model=True,
             demucs_stem_count=6,
         )
-        self.section._demucs_focus.set_active_name(_QUICK_ALL)
+        _DemucsFocusProxy(self.section).set_active_name(_QUICK_ALL)
         self.assertEqual(self.section.expected_output_count(), 6)
 
 

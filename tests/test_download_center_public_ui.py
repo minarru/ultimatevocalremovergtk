@@ -182,10 +182,14 @@ class DownloadCenterOpenTests(unittest.TestCase):
         from ui.download import open_download_center
 
         existing = mock.MagicMock()
-        context = SimpleNamespace(_download_center_window=existing)
+        context = SimpleNamespace()
+        from ui.download import DownloadQueueUiBinding
+        binding = DownloadQueueUiBinding.__new__(DownloadQueueUiBinding)
+        binding.center = existing
+        parent = SimpleNamespace(_download_ui=binding)
         with mock.patch("ui.download.start_download_size_cache_warmup"):
             open_download_center(
-                mock.MagicMock(),
+                parent,
                 context,
                 purpose=PURPOSE_STEMS,
                 arch=DEMUCS_ARCH_TYPE,
@@ -200,9 +204,13 @@ class DownloadCenterOpenTests(unittest.TestCase):
         from ui.download import open_download_center
 
         existing = mock.MagicMock()
-        context = SimpleNamespace(_download_center_window=existing)
+        context = SimpleNamespace()
+        from ui.download import DownloadQueueUiBinding
+        binding = DownloadQueueUiBinding.__new__(DownloadQueueUiBinding)
+        binding.center = existing
+        parent = SimpleNamespace(_download_ui=binding)
         with mock.patch("ui.download.start_download_size_cache_warmup"):
-            open_download_center(mock.MagicMock(), context)
+            open_download_center(parent, context)
 
         existing.present.assert_called_once()
         existing.select_catalogue.assert_not_called()

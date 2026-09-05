@@ -413,7 +413,7 @@ class MainStemChangedOrderTests(unittest.TestCase):
     def test_model_list_rebuilds_before_stem_toggles(self) -> None:
         """Regression: stem-only toggles resolve export-semantics hints from
         _selected_model_tags(), which reads the model checklist built by
-        _rebuild_model_list(). Rebuilding toggles first meant that checklist
+        _reconcile_member_list(). Rebuilding toggles first meant that checklist
         still reflected the *previous* stem pair for one render pass.
         """
         from unittest import mock
@@ -430,7 +430,7 @@ class MainStemChangedOrderTests(unittest.TestCase):
         page._refresh_ensemble_type_values = mock.Mock(
             side_effect=lambda: order.append("refresh_type")
         )
-        page._rebuild_model_list = mock.Mock(
+        page._reconcile_member_list = mock.Mock(
             side_effect=lambda tags: order.append("rebuild_model_list")
         )
         page._rebuild_stem_only_toggles = mock.Mock(

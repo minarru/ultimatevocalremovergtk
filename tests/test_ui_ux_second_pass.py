@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import unittest
 from types import SimpleNamespace
+from unittest import mock
 
 from bundled.constants import NO_CONNECTION, NO_NEW_MODELS
 from core.download_queue import DownloadQueueItem
@@ -40,7 +41,7 @@ class InputSafetyTests(unittest.TestCase):
 
 class ReadinessTests(unittest.TestCase):
     def test_target_reason_is_returned(self) -> None:
-        target = SimpleNamespace(start_blocked_reason=lambda: "Choose a model")
+        target = mock.Mock(start_blocked_reason=lambda: "Choose a model")
         self.assertEqual(target_blocked_reason(target), "Choose a model")
 
     def test_broken_readiness_check_does_not_break_ui(self) -> None:
@@ -48,7 +49,7 @@ class ReadinessTests(unittest.TestCase):
             raise RuntimeError("bad readiness hook")
 
         self.assertIsNone(
-            target_blocked_reason(SimpleNamespace(start_blocked_reason=fail))
+            target_blocked_reason(mock.Mock(start_blocked_reason=fail))
         )
 
 

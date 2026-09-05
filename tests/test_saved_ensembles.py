@@ -206,7 +206,7 @@ class SavedEnsembleWarningGtkTests(unittest.TestCase):
         page._config_blocked_reason = lambda: None
         page._refresh_ensemble_type_values = lambda: None
         page._rebuild_stem_only_toggles = lambda: None
-        page._rebuild_model_list = lambda preselected: None
+        page._reconcile_member_list = lambda preselected: None
         page._persist_selected_models = lambda: None
         page._toast = lambda message: None
 

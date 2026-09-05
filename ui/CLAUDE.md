@@ -34,3 +34,22 @@ Rules for new UI:
 
 - Add shared controls to the typed binding factory and each page's refresh. Route interactive callbacks through the exact field handle and programmatic loads through `session.refresh`; keep method-specific and Save Stems owners separate. Format events adopt the restored active quality before committing format; quality events edit only that quality. Vocal model writes require the populated canonical picker and its repick gate. Run pages must not call the format/vocal rows' legacy whole-widget persistence methods.
 - **Anti-pattern:** calling `save_stems.persist_to_settings()` from `save_options()` or any path that runs when `include_stem_only=False` (Demucs/MDX regression: inactive Demucs `quick_all` cleared MDX Instrumental focus before plan review).
+
+## Presentation and lifecycle ownership
+
+- Download Center renders `CatalogueBrowserState` rows and keeps its ordered
+  `(arch, name)` selection and public pinned snapshot there. Display search and
+  raw-label totals intentionally have different predicates. Hide retains the
+  cached window; only terminal `DownloadQueueUiBinding.dispose()` releases its
+  subscriptions, timers and late UI deliveries. `AppContext.download_manager`
+  and `download_queue` are the shared lazy service owners.
+- Ensemble acquires records/eligibility, projects members purely, renders them
+  without Settings writes, then explicitly reconciles at the existing successful
+  nonempty-list triggers. Early returns and saved-preset outer persistence keep
+  their separate semantics.
+- RunController consumes `RunTarget`/`RunHost` behaviors, `RunProgressPresenter`
+  and `RunShutdownCoordinator`. Error context snapshots use the visible target
+  at begin_run; polling and cleanup ordering are tested with an injected scheduler.
+- Save Stems keeps core `StemSelectionState` as its reducer; `StemPresentation`
+  supplies immutable summaries, dimming and visibility. Tests own compatibility
+  proxy vocabulary in `tests/stem_ui_helpers.py`.

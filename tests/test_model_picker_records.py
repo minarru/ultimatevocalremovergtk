@@ -348,7 +348,7 @@ class EnsemblePickerTests(unittest.TestCase):
             mock.patch.object(ensemble_window.Adw, "ActionRow", _FakeRow),
             mock.patch.object(ensemble_window, "stash"),
         ):
-            page._rebuild_model_list([])
+            page._reconcile_member_list([])
 
         self.assertEqual(requested, ["pair.vocals_instrumental"])
 
@@ -398,7 +398,7 @@ class EnsemblePickerTests(unittest.TestCase):
                 mock.patch.object(ensemble_window.Gtk, "CheckButton", _FakeCheck),
                 mock.patch.object(ensemble_window, "stash"),
             ):
-                page._rebuild_model_list([])
+                page._reconcile_member_list([])
         finally:
             debug_log._DOMAINS = old_domains
             debug_log._GMD_NORMALIZED = old_normalized
@@ -480,7 +480,7 @@ class EnsemblePickerTests(unittest.TestCase):
                 mock.patch.object(ensemble_window.Gtk, "CheckButton", _FakeCheck),
                 mock.patch.object(ensemble_window, "stash"),
             ):
-                page._rebuild_model_list(page.settings.ensemble.selected_models)
+                page._reconcile_member_list(page.settings.ensemble.selected_models)
         except TypeError as exc:
             self.fail(f"preserved non-string ensemble member crashed the picker: {exc}")
 
@@ -515,7 +515,7 @@ class EnsemblePickerTests(unittest.TestCase):
             mock.patch.object(ensemble_window.Gtk, "CheckButton", _FakeCheck),
             mock.patch.object(ensemble_window, "stash"),
         ):
-            page._rebuild_model_list(list(stored))
+            page._reconcile_member_list(list(stored))
             page.on_activated()
             page.on_activated()
 
@@ -554,7 +554,7 @@ class EnsemblePickerTests(unittest.TestCase):
             mock.patch.object(ensemble_window, "stash"),
             mock.patch.object(ensemble_window, "present_modal_dialog"),
         ):
-            page._rebuild_model_list(list(stored))
+            page._reconcile_member_list(list(stored))
             page._open_models_dialog()
             page._open_models_dialog()
 
@@ -594,8 +594,8 @@ class EnsemblePickerTests(unittest.TestCase):
             mock.patch.object(ensemble_window.Gtk, "CheckButton", _FakeCheck),
             mock.patch.object(ensemble_window, "stash"),
         ):
-            page._rebuild_model_list(list(stored))
-            page._rebuild_model_list(list(settings.ensemble.selected_models))
+            page._reconcile_member_list(list(stored))
+            page._reconcile_member_list(list(settings.ensemble.selected_models))
 
         self.assertFalse(page._models_write_gated)
         self.assertEqual(settings.ensemble.selected_models, ["mdx:first", "mdx:second"])
@@ -631,12 +631,12 @@ class EnsemblePickerTests(unittest.TestCase):
             mock.patch.object(ensemble_window.Gtk, "CheckButton", _FakeCheck),
             mock.patch.object(ensemble_window, "stash"),
         ):
-            page._rebuild_model_list(list(settings.ensemble.selected_models))
+            page._reconcile_member_list(list(settings.ensemble.selected_models))
             self.assertTrue(page._models_write_gated)
 
             records.append(_record(missing_id, "Arrived Later"))
             eligible.append(missing_id)
-            page._rebuild_model_list(list(settings.ensemble.selected_models))
+            page._reconcile_member_list(list(settings.ensemble.selected_models))
 
         self.assertIn(missing_id, page._model_checks)
         self.assertFalse(page._model_checks[missing_id].get_active())
@@ -833,7 +833,7 @@ class EnsembleRefreshLifecycleTests(unittest.TestCase):
         page._models_dirty = False
         page._models_write_gated = False
         page._rebuilds = []
-        page._rebuild_model_list = lambda members: page._rebuilds.append(list(members))
+        page._reconcile_member_list = lambda members: page._rebuilds.append(list(members))
         page._model_members_for_rebuild = lambda: ["mdx:a", "mdx:b"]
         page.models_dialog = mock.MagicMock()
         page.models_dialog.get_mapped.return_value = mapped

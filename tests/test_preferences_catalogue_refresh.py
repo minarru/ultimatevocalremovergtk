@@ -481,6 +481,25 @@ class PreferencesCatalogueRefreshTests(unittest.TestCase):
             "Catalogue cache refreshed, but model parameters could not be updated",
         )
 
+    def test_closed_dialog_suppresses_only_late_ui_deliveries(self) -> None:
+        from ui.preferences import PreferencesDialog
+        dialog = self._dialog()
+        dialog._persist_timeout_id = 1
+        dialog._flush_persist = mock.Mock()
+        with mock.patch('ui.preferences.GLib.source_remove'):
+            dialog._on_dialog_closed()
+        dialog._flush_persist.assert_called_once_with()
+        with mock.patch.object(dialog, 'add_toast') as toast, mock.patch('ui.widgets.rows.set_combo_values') as options:
+            dialog._finish_catalogue_cache_refresh('late refresh')
+            dialog._finish_catalogue_evidence_refresh(mock.Mock())
+            dialog._apply_gpu_devices([('1', 'GPU')])
+            toast.assert_not_called()
+            options.assert_not_called()
+        # The worker still updates the shared cache before its discarded UI delivery.
+        with mock.patch('core.gpu.list_gpu_devices', return_value=[('1', 'GPU')]), mock.patch('ui.preferences.idle_on_main', side_effect=lambda fn, *args: fn(*args)):
+            PreferencesDialog._probe_gpu_devices(dialog)
+        self.assertEqual(dialog.context.gpu_devices, [('1', 'GPU')])
+
 
 if __name__ == "__main__":
     unittest.main()

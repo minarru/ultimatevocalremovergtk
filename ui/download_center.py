@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import threading
 import typing
+from dataclasses import replace
 
 from gi.repository import Adw, Gio, Gtk
 
@@ -20,44 +21,41 @@ from core import paths
 from core.debug_log import debug
 from core.download_queue import DownloadQueue
 from core.downloads import DownloadManager
-from core.model_catalogue import (
-    catalogue_entry_meta,
-    catalogue_label_matches,
-    filter_catalogue_labels,
-    project_catalogue_display,
-)
 from core.model_identity import FAMILY_BY_ARCH
-from core.model_naming import canonical_display_name
 from core.model_scores import (
     ARCH_FILTER_ALL,
     MDX_NETWORK_SUBTYPES,
     NETWORK_FILTER_OPTIONS,
     PURPOSE_ALL,
     PURPOSE_FILTER_OPTIONS,
-    PURPOSE_INSTRUMENTAL,
     PURPOSE_PAGE_OPTIONS,
     PURPOSE_VOCALS,
     SORT_NAME,
     SORT_OPTIONS,
-    SORT_SDR,
     catalogue_network_id,
     family_arch_for_network_filter,
     format_sdr_subtitle,
-    label_matches_purpose,
     network_filter_hides_headers,
     network_filter_matches,
     parse_sdr_score,
     primary_sdr,
-    purpose_for_label,
-    purpose_pages_for_label,
     purpose_roles_from_meta,
-    purpose_roles_from_projection,
     sdr_for_files,
 )
 
+from .catalogue_browser import (
+    BrowserFilters,
+    CatalogueBrowserState,
+    catalogue_evidence_detail,
+    catalogue_matches,
+    catalogue_semantics_subtitle,
+    project_browser,
+    project_row,
+)
 from .dialogs.utils import close_on_escape
 from .dispatch import idle_on_main
 from .hints import set_icon_button_a11y, set_tooltip
+from .lifetime import UiLifetime
 from .markup import set_row_subtitle, set_row_title
 from .spacing import set_inset
 from .widget_state import drop, fetch, stash
@@ -79,92 +77,6 @@ _ARCH_ORDER = {
     for index, (value, _label) in enumerate(NETWORK_FILTER_OPTIONS)
     if value != ARCH_FILTER_ALL
 }
-
-
-def catalogue_semantics_subtitle(meta: typing.Any) -> str:
-    """Render reviewed route labels, or an explicit raw-output fallback."""
-    projection = getattr(meta, "stem_semantics", None)
-    routes = tuple(getattr(projection, "routes", ()) or ())
-    evidence = getattr(meta, "catalogue_evidence_status", "unavailable")
-    evidence_value = str(getattr(evidence, "value", evidence) or "")
-    if evidence_value == "not_applicable":
-        return "Restoration · output details not applicable"
-    if (
-        getattr(projection, "status", "raw") == "reviewed"
-        and routes
-        and evidence_value in {"ready", "stale"}
-    ):
-        ordered = sorted(routes, key=lambda route: not route.logical_primary)
-        stems = ", ".join(route.display for route in ordered)
-        intent = str(getattr(meta, "intent", "") or "")
-        primary_role, output_roles = purpose_roles_from_projection(projection)
-        pages = purpose_pages_for_label(
-            str(getattr(meta, "label", "") or ""),
-            intent=intent,
-            arch=str(getattr(meta, "arch", "") or ""),
-            primary_role=primary_role,
-            output_roles=output_roles,
-        )
-        if pages == frozenset({PURPOSE_VOCALS, PURPOSE_INSTRUMENTAL}):
-            purpose = "Vocals & instrumental"
-        else:
-            page = next(iter(pages), "")
-            purpose = next(
-                (label for value, label in PURPOSE_PAGE_OPTIONS if value == page),
-                next(
-                    (
-                        label
-                        for value, label in PURPOSE_FILTER_OPTIONS
-                        if value
-                        == purpose_for_label(
-                            str(getattr(meta, "label", "") or ""),
-                            intent=intent,
-                        )
-                    ),
-                    "Reviewed",
-                ),
-            )
-        return f"{purpose} · {stems}"
-    if evidence_value == "pending":
-        return "Loading output details…"
-    files = getattr(meta, "files", {}) or {}
-    has_config = any(str(name).casefold().endswith((".yaml", ".yml")) for name in files)
-    if evidence_value == "unavailable" and has_config:
-        return "Output details unavailable"
-    stems = ", ".join(str(stem) for stem in (getattr(meta, "stems", ()) or ()))
-    return f"Raw outputs · {stems}" if stems else "Raw outputs"
-
-
-def catalogue_evidence_detail(meta: typing.Any) -> str:
-    """Return non-destructive evidence detail for a row tooltip."""
-    return str(getattr(meta, "catalogue_evidence_warning", "") or "")
-
-
-def catalogue_matches(
-    names: list[str],
-    query: str,
-    *,
-    purpose: str = PURPOSE_ALL,
-    intents: typing.Mapping[str, str] | None = None,
-    arches: typing.Mapping[str, str] | None = None,
-    primary_roles: typing.Mapping[str, str] | None = None,
-    output_roles: typing.Mapping[str, typing.Sequence[str]] | None = None,
-) -> list[str]:
-    """Return selectable catalogue names matching query and purpose filter.
-
-    Matching covers both the raw catalogue label and its canonical rendering,
-    so a user typing what the row *shows* finds it.
-    """
-    return filter_catalogue_labels(
-        names,
-        query,
-        purpose=purpose,
-        intents=dict(intents or {}),
-        arches=dict(arches or {}),
-        primary_roles=dict(primary_roles or {}),
-        output_roles={label: tuple(roles) for label, roles in (output_roles or {}).items()},
-        sentinels=(NO_NEW_MODELS, NO_CONNECTION),
-    )
 
 
 def resolve_catalogue_action_row(row: Gtk.ListBoxRow) -> Adw.ActionRow | None:
@@ -195,8 +107,9 @@ class DownloadCenterWindow:
         self.manager = manager
         self.queue = queue
 
-        self._available: dict[str, list[str]] = {}
-        self._unsupported: dict[str, list[tuple[str, str]]] = {}
+        self.browser = CatalogueBrowserState()
+        self._lifetime = UiLifetime()
+        self._listening = False
         self._catalogue_online: bool | None = None
         self._catalogue_notice = ""
         self._refreshing = False
@@ -215,9 +128,6 @@ class DownloadCenterWindow:
         self._stem_fetch_armed = False
         self._catalogue_refresh_armed = False
         self._downloads_dirty = False
-        self._pinned_revision = None
-        self._pinned_snapshot = None
-        self._pending_source_delta = False
 
         self.window = Adw.Window()
         self.window.set_title("Download Center")
@@ -241,20 +151,56 @@ class DownloadCenterWindow:
         self.toast_overlay.set_child(self._build_content())
         self.window.set_content(self.toast_overlay)
 
+    @property
+    def _purpose(self) -> str:
+        return self.browser.filters.purpose
+
+    @_purpose.setter
+    def _purpose(self, value: str) -> None:
+        self.browser.filters = replace(self.browser.filters, purpose=value)
+
+    @property
+    def _arch_filter(self) -> str:
+        return self.browser.filters.network
+
+    @_arch_filter.setter
+    def _arch_filter(self, value: str) -> None:
+        self.browser.filters = replace(self.browser.filters, network=value)
+
+    @property
+    def _sort_mode(self) -> str:
+        return self.browser.filters.sort_mode
+
+    @_sort_mode.setter
+    def _sort_mode(self, value: str) -> None:
+        self.browser.filters = replace(self.browser.filters, sort_mode=value)
+
+    @property
+    def _hide_unsupported(self) -> bool:
+        return self.browser.filters.hide_unsupported
+
+    @_hide_unsupported.setter
+    def _hide_unsupported(self, value: bool) -> None:
+        self.browser.filters = replace(self.browser.filters, hide_unsupported=value)
+
     def present(self) -> None:
         self.window.present()
-        if self._pending_source_delta:
-            self._pending_source_delta = False
+        if self.browser.pending_source:
+            self.browser.pending_source = False
             self.start_refresh()
             return
-        if self._downloads_dirty and self._available:
+        if self._downloads_dirty and self.browser.available:
             self._apply_download_completion_refresh()
-        if not self._available:
+        if not self.browser.available:
             self.start_refresh()
 
     def _on_close_request(self, _window: typing.Any) -> bool:
         self.window.set_visible(False)
         return True
+
+    def dispose(self) -> None:
+        """Terminal owner teardown; hiding the cached browser does not call this."""
+        self._lifetime.dispose()
 
     def _build_content(self) -> Gtk.Widget:
         toolbar = Adw.ToolbarView()
@@ -405,41 +351,69 @@ class DownloadCenterWindow:
     def _catalogue_row_action(self, row: Gtk.ListBoxRow) -> Adw.ActionRow | None:
         return resolve_catalogue_action_row(row)
 
+    def _browser_filters(self, query: str | None = None) -> BrowserFilters:
+        return BrowserFilters(
+            self._purpose,
+            self._arch_filter,
+            self._search_query() if query is None else query,
+            self._hide_unsupported,
+            self._sort_mode,
+        )
+
+    def _project_browser_row(self, arch: str, name: str, reason: str | None = None):
+        family = FAMILY_BY_ARCH.get(arch)
+        catalogue = getattr(self.manager, f"{family}_download_list", {}) if family else {}
+        snapshot = self.manager.latest_snapshot
+        by_family = snapshot.meta_by_family if snapshot is not None else {}
+        display_meta = by_family.get(family, {}).get(name) if family else None
+        row = project_row(
+            arch,
+            name,
+            raw=catalogue.get(name),
+            meta=self._catalogue_row_metadata(arch, name),
+            intent=self._catalogue_intent(arch, name),
+            reason=reason,
+            display_meta=display_meta,
+        )
+        return replace(row, count_roles=self._count_roles(arch, name))
+
+    def _count_roles(self, arch: str, name: str) -> tuple[str | None, tuple[str, ...]]:
+        family = FAMILY_BY_ARCH.get(arch)
+        scoped = getattr(self.manager, "catalogue_meta_by_family", {})
+        meta = scoped.get(family, {}).get(name) if isinstance(scoped, dict) and family else None
+        primary, outputs = purpose_roles_from_meta(meta)
+        return primary, tuple(outputs or ())
+
+    def _refresh_browser_metadata(self) -> None:
+        for key, row in tuple(self.browser.rows.items()):
+            primary_role, output_roles = purpose_roles_from_meta(self._catalogue_row_metadata(*key))
+            self.browser.rows[key] = replace(
+                row,
+                intent=self._catalogue_intent(*key),
+                primary_role=primary_role,
+                output_roles=tuple(output_roles or ()),
+                count_roles=self._count_roles(*key),
+            )
+
     def _row_matches_filter(self, row: Gtk.ListBoxRow, arch: str | None = None) -> bool:
         action = self._catalogue_row_action(row)
-        label = fetch(action, "_uvr_model_name", "") if action is not None else ""
-        if not label:
-            return False
-        if self._hide_unsupported and fetch(action, "_uvr_unsupported", False):
-            return False
-        row_arch = str(arch or fetch(action, "_uvr_arch", "") or "")
-        row_network = str(fetch(action, "_uvr_network", "") or row_arch)
-        arch_filter = getattr(self, "_arch_filter", ARCH_FILTER_ALL)
-        if not network_filter_matches(
-            str(arch_filter or ARCH_FILTER_ALL),
-            family_arch=row_arch,
-            network=row_network,
-        ):
-            return False
-        intent = self._catalogue_intent(row_arch, label) if row_arch else None
-        primary_role, output_roles = purpose_roles_from_meta(
-            self._catalogue_row_metadata(row_arch, label) if row_arch else None
+        key = (
+            str(arch or fetch(action, "_uvr_arch", "")),
+            str(fetch(action, "_uvr_model_name", "")),
         )
-        if not label_matches_purpose(
-            label,
-            getattr(self, "_purpose", PURPOSE_ALL),
-            intent=intent,
-            arch=row_arch,
-            primary_role=primary_role,
-            output_roles=output_roles,
-        ):
+        data = self.browser.rows.get(key)
+        if data is None:
             return False
-        query = self._search_query(row_arch)
-        if not query:
-            return True
-        reason = fetch(action, "_uvr_unsupported_reason", "")
-        display = fetch(action, "_uvr_display_name", "")
-        return catalogue_label_matches(str(label), query, extra=f"{display} {reason}".strip())
+        primary_role, output_roles = purpose_roles_from_meta(self._catalogue_row_metadata(*key))
+        data = replace(
+            data,
+            intent=self._catalogue_intent(*key),
+            primary_role=primary_role,
+            output_roles=tuple(output_roles or ()),
+            count_roles=self._count_roles(*key),
+        )
+        self.browser.rows[key] = data
+        return self.browser.matches(data, self._browser_filters(self._search_query(key[0])))
 
     def _search_query(self, arch: str = "") -> str:
         entry = getattr(self, "_search_entry", None)
@@ -483,17 +457,9 @@ class DownloadCenterWindow:
         row.set_header(header)
 
     def _row_sort_key(self, row: typing.Any) -> tuple[int, int, int, float, str]:
-        """Order key: supported first, network, then the active sort mode, then name."""
-        unsupported = 1 if fetch(row, "_uvr_unsupported", False) else 0
-        network = fetch(row, "_uvr_network", "") or fetch(row, "_uvr_arch", "")
-        arch_order = _ARCH_ORDER.get(str(network), 99)
-        name = fetch(row, "_uvr_sort_name", "")
-        if self._sort_mode == SORT_SDR and not unsupported:
-            sdr = fetch(row, "_uvr_sdr", None)
-            if sdr is None:
-                return (unsupported, arch_order, 1, 0.0, name)
-            return (unsupported, arch_order, 0, -float(sdr), name)
-        return (unsupported, arch_order, 0, 0.0, name)
+        key = (fetch(row, "_uvr_arch", ""), fetch(row, "_uvr_model_name", ""))
+        data = self.browser.rows.get(key)
+        return data.sort_key(self._sort_mode) if data else (99, 0, 0, 0.0, "")
 
     def _compare_rows(self, row1: typing.Any, row2: typing.Any) -> int:
         left = self._row_sort_key(row1)
@@ -656,9 +622,11 @@ class DownloadCenterWindow:
         check = Gtk.CheckButton(valign=Gtk.Align.CENTER)
         check.connect("toggled", lambda *_: self._on_row_check_toggled(key))
 
-        stem, sdr, stems_text = self._row_score(arch, name)
-
-        display = self._catalogue_display(arch, name)
+        stem, sdr, _text = self._row_score(arch, name)
+        data = replace(self._project_browser_row(arch, name), sdr_stem=stem, sdr=sdr)
+        self.browser.rows[key] = data
+        stem, sdr, stems_text = data.sdr_stem, data.sdr, data.semantics
+        display = data.display
         action = Adw.ActionRow()
         set_row_title(action, display)
         action.add_prefix(check)
@@ -667,7 +635,7 @@ class DownloadCenterWindow:
         stash(action, "_uvr_model_name", name)
         stash(action, "_uvr_display_name", display)
         stash(action, "_uvr_arch", arch)
-        stash(action, "_uvr_network", self._network_id_for_row(arch, name))
+        stash(action, "_uvr_network", data.network)
         stash(action, "_uvr_check", check)
         stash(action, "_uvr_unsupported", False)
         stash(action, "_uvr_sdr", sdr)
@@ -687,7 +655,9 @@ class DownloadCenterWindow:
         if key in self._row_actions:
             return
 
-        display = self._catalogue_display(arch, name)
+        data = self._project_browser_row(arch, name, reason)
+        self.browser.rows[key] = data
+        display = data.display
         action = Adw.ActionRow()
         set_row_title(action, display)
         set_row_subtitle(action, f"Unsupported — {reason}")
@@ -696,7 +666,7 @@ class DownloadCenterWindow:
         stash(action, "_uvr_model_name", name)
         stash(action, "_uvr_display_name", display)
         stash(action, "_uvr_arch", arch)
-        stash(action, "_uvr_network", self._network_id_for_row(arch, name))
+        stash(action, "_uvr_network", data.network)
         stash(action, "_uvr_unsupported", True)
         stash(action, "_uvr_unsupported_reason", reason)
         stash(action, "_uvr_sdr", parse_sdr_score(name))
@@ -707,18 +677,10 @@ class DownloadCenterWindow:
         self._row_actions[key] = action
         self._list_boxes[arch].append(action)
 
-    def _catalogue_display(self, arch: str, selection: str) -> str:
-        family = FAMILY_BY_ARCH.get(arch)
-        if family is None:
-            return canonical_display_name(selection)
-        catalogue = getattr(self.manager, f"{family}_download_list", {})
-        raw = catalogue.get(selection) if isinstance(catalogue, dict) else None
-        meta = catalogue_entry_meta(self.manager, family, selection)
-        return project_catalogue_display(family, selection, raw, meta)
-
     def _on_row_check_toggled(self, key: tuple[str, str]) -> None:
-        self._update_download_button()
         check = self._row_checks.get(key)
+        self.browser.set_selected(key, check is not None and check.get_active())
+        self._update_download_button()
         if check is None:
             return
         if check.get_active():
@@ -743,6 +705,7 @@ class DownloadCenterWindow:
         if action is None:
             return
         set_row_subtitle(action, "Looking up size…")
+        generation = self.browser.generation
         lookup_id = self._size_lookup_ids.get(key, 0) + 1
         self._size_lookup_ids[key] = lookup_id
         jobs_obj = self._resolve_pinned(name, arch)
@@ -756,7 +719,7 @@ class DownloadCenterWindow:
 
             def worker() -> None:
                 text = self.manager.describe_selection_download_size(name, arch)
-                idle_on_main(self._apply_row_size, lookup_id, key, text)
+                idle_on_main(self._apply_row_size, lookup_id, key, text, generation)
 
             threading.Thread(target=worker, name="uvr-size-lookup", daemon=True).start()
             return
@@ -772,15 +735,17 @@ class DownloadCenterWindow:
                 done = remaining["n"] <= 0
             if done:
                 text = describe_cached_download_size(jobs)
-                idle_on_main(self._apply_row_size, lookup_id, key, text)
+                idle_on_main(self._apply_row_size, lookup_id, key, text, generation)
 
         for url in pending:
             request_url_size(url, on_url)
 
-    def _apply_row_size(self, lookup_id: int, key: tuple[str, str], text: str) -> None:
+    def _apply_row_size(self, lookup_id: int, key: tuple[str, str], text: str, generation: int) -> None:
+        if self._lifetime.disposed:
+            return
         # Guard is keyed per-row: checking another model must not discard this
         # row's own in-flight lookup result.
-        if self._size_lookup_ids.get(key) != lookup_id:
+        if generation != self.browser.generation or self._size_lookup_ids.get(key) != lookup_id:
             return
         action = self._row_actions.get(key)
         if action is not None:
@@ -797,31 +762,11 @@ class DownloadCenterWindow:
             )
 
     def _selected_entries(self) -> list[tuple[str, str]]:
-        selected: list[tuple[str, str]] = []
-        for (arch, name), check in self._row_checks.items():
-            if check.get_active():
-                selected.append((name, arch))
-        return selected
+        return [(name, arch) for arch, name in self.browser.selected_keys()]
 
     def _selected_count_by_purpose(self) -> dict[str, int]:
-        counts = {value: 0 for value, _label in PURPOSE_PAGE_OPTIONS}
-        for (arch, name), check in self._row_checks.items():
-            if not check.get_active():
-                continue
-            intent = self._catalogue_intent(arch, name)
-            primary_role, output_roles = purpose_roles_from_meta(
-                self._catalogue_row_metadata(arch, name)
-            )
-            for page in purpose_pages_for_label(
-                name,
-                intent=intent,
-                arch=arch,
-                primary_role=primary_role,
-                output_roles=output_roles,
-            ):
-                if page in counts:
-                    counts[page] += 1
-        return counts
+        self._refresh_browser_metadata()
+        return self.browser.selected_counts()
 
     def _update_tab_badges(self) -> None:
         if not self._stack_pages:
@@ -851,10 +796,10 @@ class DownloadCenterWindow:
         else:
             self.download_button.set_label("Download")
             self.download_button.set_sensitive(False)
-        if self._available:
+        if self.browser.available:
             total = sum(
                 1
-                for _arch, models in self._available.items()
+                for _arch, models in self.browser.available.items()
                 for name in models
                 if name not in (NO_NEW_MODELS, NO_CONNECTION)
             )
@@ -929,9 +874,11 @@ class DownloadCenterWindow:
         self._refresh_spinner.set_visible(False)
 
     def _refresh_failed(self, message: str) -> None:
+        if self._lifetime.disposed:
+            return
         self._finish_refresh_controls()
         self._catalogue_online = False
-        if self._available:
+        if self.browser.available:
             self._catalogue_notice = "Refresh failed — showing previous catalogue · "
             self._update_download_button()
         else:
@@ -952,9 +899,11 @@ class DownloadCenterWindow:
         available: dict,
         unsupported: dict | None = None,
     ) -> None:
+        if self._lifetime.disposed:
+            return
         self._finish_refresh_controls()
         self._catalogue_online = is_online
-        if not is_online and not available and not self._available:
+        if not is_online and not available and not self.browser.available:
             self._catalogue_notice = ""
             self.status_label.set_label(NO_CONNECTION)
             self._clear_catalogue()
@@ -968,15 +917,15 @@ class DownloadCenterWindow:
             return
 
         if is_online or available:
-            self._available = available
-            self._unsupported = unsupported or {}
+            self.browser.available = available
+            self.browser.unsupported = unsupported or {}
         self._catalogue_notice = "" if is_online else "Offline — showing saved catalogue · "
         self._rebuild_catalogue()
         counts = {arch: len(models) for arch, models in available.items()}
         debug(
             "download",
             f"ui refresh done available={counts} "
-            f"unsupported={ {a: len(r) for a, r in self._unsupported.items()} }",
+            f"unsupported={ {a: len(r) for a, r in self.browser.unsupported.items()} }",
         )
         self._update_tab_counts()
         self._update_status_from_catalogue()
@@ -986,26 +935,10 @@ class DownloadCenterWindow:
         self._schedule_stem_yaml_fetches()
 
     def _pin_current_snapshot(self) -> None:
-        manager = getattr(self, "manager", None)
-        coordinator = getattr(manager, "_coordinator", None) if manager is not None else None
-        snapshot = getattr(coordinator, "_latest", None) if coordinator is not None else None
-        self._pinned_snapshot = snapshot
-        revision = getattr(snapshot, "revision", None)
-        digest = getattr(revision, "digest", None)
-        self._pinned_revision = digest() if callable(digest) else None
+        self.browser.pin(self.manager.latest_snapshot)
 
     def _pinned_catalogue(self, arch: str) -> dict | None:
-        snapshot = getattr(self, "_pinned_snapshot", None)
-        if snapshot is None:
-            return None
-        mapping = {
-            VR_ARCH_TYPE: snapshot.vr,
-            MDX_ARCH_TYPE: snapshot.mdx,
-            DEMUCS_ARCH_TYPE: snapshot.demucs,
-            APOLLO_ARCH_TYPE: snapshot.apollo,
-        }
-        catalogue = mapping.get(arch)
-        return dict(catalogue) if catalogue is not None else None
+        return self.browser.pinned_catalogue(arch)
 
     def _resolve_pinned(self, selection: str, arch: str) -> typing.Any:
         catalogue = self._pinned_catalogue(arch)
@@ -1018,7 +951,13 @@ class DownloadCenterWindow:
         can drop whole rows. Both land after the list has rendered, and both
         notify from a worker thread.
         """
-        from core.catalogue_stem_cache import ensure_worker_started, subscribe
+        if self._listening or self._lifetime.disposed:
+            return
+        self._listening = True
+        from core.catalogue_stem_cache import ensure_worker_started, subscribe, unsubscribe
+        self._lifetime.own(lambda: unsubscribe(self._schedule_stem_subtitle_refresh))
+        self._lifetime.own(lambda: self.manager.unsubscribe_catalogue_changed(self._schedule_catalogue_row_refresh))
+        self._lifetime.own(lambda: self.manager.unsubscribe_delta(self._on_catalogue_delta))
 
         subscribe(self._schedule_stem_subtitle_refresh)
         ensure_worker_started()
@@ -1036,18 +975,20 @@ class DownloadCenterWindow:
         if value == "metadata_changed":
             self._schedule_stem_subtitle_refresh()
             return
-        self._pending_source_delta = True
+        self.browser.pending_source = True
 
     def _schedule_catalogue_row_refresh(self) -> None:
         idle_on_main(self._arm_catalogue_row_refresh)
 
     def _arm_catalogue_row_refresh(self) -> None:
+        if self._lifetime.disposed:
+            return
         if self._catalogue_refresh_armed:
             return
         self._catalogue_refresh_armed = True
         from gi.repository import GLib
 
-        GLib.timeout_add(250, self._flush_catalogue_row_refresh)
+        self._lifetime.timeout(GLib, 250, self._flush_catalogue_row_refresh)
 
     def _flush_catalogue_row_refresh(self) -> bool:
         """Drop rows the content dedupe removed, leaving the rest alone.
@@ -1058,18 +999,18 @@ class DownloadCenterWindow:
         removes, so removal is the whole contract.
         """
         self._catalogue_refresh_armed = False
-        self._available = self.manager.available_downloads()
-        self._unsupported = self.manager.unsupported_downloads()
+        self.browser.available = self.manager.available_downloads()
+        self.browser.unsupported = self.manager.unsupported_downloads()
 
         live: set[tuple[str, str]] = set()
-        for arch, names in self._available.items():
+        for arch, names in self.browser.available.items():
             for name in names:
                 live.add((arch, name))
-        for arch, rows in self._unsupported.items():
+        for arch, rows in self.browser.unsupported.items():
             for name, _reason in rows:
                 live.add((arch, name))
 
-        gone = [key for key in self._row_actions if key not in live]
+        gone = self.browser.remove_missing(live)
         if not gone:
             return False
 
@@ -1103,17 +1044,17 @@ class DownloadCenterWindow:
         archs = [
             arch
             for arch in self._filter_archs()
-            if arch in (self._available or {}) or arch in (self._unsupported or {})
+            if arch in (self.browser.available or {}) or arch in (self.browser.unsupported or {})
         ]
         if not archs:
-            archs = list(self._available)
+            archs = list(self.browser.available)
         entries: list[tuple[str, str]] = []
         query = self._search_query()
         for arch in archs:
             family = FAMILY_BY_ARCH.get(arch)
             if family is None:
                 continue
-            names = self._names_matching_network(arch, list(self._available.get(arch) or []))
+            names = self._names_matching_network(arch, list(self.browser.available.get(arch) or []))
             intents = self._catalogue_intents(family)
             primaries, outputs = self._catalogue_role_maps(family)
             entries.extend(
@@ -1134,7 +1075,7 @@ class DownloadCenterWindow:
         """Return all current rows as family-scoped canonical selections."""
         return [
             (family, label)
-            for arch, labels in self._available.items()
+            for arch, labels in self.browser.available.items()
             if (family := FAMILY_BY_ARCH.get(arch)) is not None
             for label in labels
             if label not in (NO_NEW_MODELS, NO_CONNECTION)
@@ -1172,54 +1113,16 @@ class DownloadCenterWindow:
         meta = metadata.get(label)
         return meta.intent if meta is not None else None
 
-    def _purpose_kwargs_for_row(self, arch: str, label: str) -> dict[str, typing.Any]:
-        primary_role, output_roles = purpose_roles_from_meta(
-            self._catalogue_row_metadata(arch, label)
-        )
-        return {
-            "intent": self._catalogue_intent(arch, label),
-            "arch": arch,
-            "primary_role": primary_role,
-            "output_roles": output_roles,
-        }
-
-    def _pending_stem_yaml_urls(self, labels: list[str] | None = None) -> list[str]:
-        """YAML URLs still missing from the stem cache for ``labels`` (or all)."""
-        from core.catalog_sources import _needs_catalogue_config_evidence, _yaml_config_url
-        from core.catalogue_stem_cache import catalogue_stems_enabled, lookup_stems
-
-        if not catalogue_stems_enabled():
-            return []
-        if labels is None:
-            metas = list(self.manager.catalogue_meta.values())
-        else:
-            metas = []
-            for name in labels:
-                meta = self.manager.catalogue_meta.get(name)
-                if meta is not None:
-                    metas.append(meta)
-        urls: list[str] = []
-        seen: set[str] = set()
-        for meta in metas:
-            if not _needs_catalogue_config_evidence(meta):
-                continue
-            url = _yaml_config_url(meta.files)
-            if not url or url in seen:
-                continue
-            hit = lookup_stems(url)
-            if hit is None or (hit.ok and not hit.content_sha256):
-                seen.add(url)
-                urls.append(url)
-        return urls
-
     def _schedule_stem_yaml_fetches(self) -> None:
+        if self._lifetime.disposed:
+            return
         """Arm a debounced rescan; a burst of typing costs one pass, not one each."""
         if self._stem_fetch_armed:
             return
         self._stem_fetch_armed = True
         from gi.repository import GLib
 
-        GLib.timeout_add(250, self._flush_stem_yaml_fetches)
+        self._lifetime.timeout(GLib, 250, self._flush_stem_yaml_fetches)
 
     def _flush_stem_yaml_fetches(self) -> bool:
         """Prioritize visible rows, then drain the rest while DC is open."""
@@ -1241,12 +1144,14 @@ class DownloadCenterWindow:
         idle_on_main(self._arm_stem_subtitle_refresh)
 
     def _arm_stem_subtitle_refresh(self) -> None:
+        if self._lifetime.disposed:
+            return
         if self._stem_refresh_armed:
             return
         self._stem_refresh_armed = True
         from gi.repository import GLib
 
-        GLib.timeout_add(200, self._flush_stem_subtitles)
+        self._lifetime.timeout(GLib, 200, self._flush_stem_subtitles)
 
     def _flush_stem_subtitles(self) -> bool:
         self._stem_refresh_armed = False
@@ -1260,9 +1165,16 @@ class DownloadCenterWindow:
             if fetch(action, "_uvr_unsupported", False):
                 continue
             meta = self._catalogue_row_metadata(arch, name)
-            stems_text = catalogue_semantics_subtitle(meta) if meta is not None else ""
+            data = self.browser.rows[key]
+            data = replace(
+                data,
+                semantics=catalogue_semantics_subtitle(meta) if meta is not None else "",
+                evidence_detail=catalogue_evidence_detail(meta) if meta is not None else "",
+            )
+            self.browser.rows[key] = data
+            stems_text = data.semantics
             stash(action, "_uvr_stems_text", stems_text)
-            set_tooltip(action, catalogue_evidence_detail(meta) if meta is not None else "")
+            set_tooltip(action, data.evidence_detail)
             set_row_subtitle(
                 action,
                 format_sdr_subtitle(
@@ -1275,20 +1187,13 @@ class DownloadCenterWindow:
         return False
 
     def _available_count(self) -> int:
-        return sum(
-            1
-            for models in self._available.values()
-            for name in models
-            if name not in (NO_NEW_MODELS, NO_CONNECTION)
-        )
+        return self.browser.available_count()
 
     def _unsupported_count(self, *, visible_only: bool = False) -> int:
-        if visible_only and self._hide_unsupported:
-            return 0
-        return sum(len(rows) for rows in self._unsupported.values())
+        return self.browser.unsupported_count(hide=visible_only and self._hide_unsupported)
 
     def _update_status_from_catalogue(self) -> None:
-        total = self._available_count()
+        total = self.browser.available_count()
         unsupported = self._unsupported_count(visible_only=True)
         selected = len(self._selected_entries())
         if selected:
@@ -1323,7 +1228,9 @@ class DownloadCenterWindow:
             (label for value, label in PURPOSE_PAGE_OPTIONS if value == self._purpose),
             "models",
         )
-        count = sum(self._matching_count(arch, "") for arch in self._filter_archs())
+        self._refresh_browser_metadata()
+        view = project_browser(self.browser, self._browser_filters(""), online=self._catalogue_online)
+        count = view.placeholder_count
         search.set_placeholder_text(f"Search {purpose_label.casefold()} — {count} available")
 
     def _clear_catalogue(self) -> None:
@@ -1363,134 +1270,48 @@ class DownloadCenterWindow:
             list_parent.set_visible(False)
 
     def _update_catalogue_page_state(self, arch: str | None = None) -> None:
-        message_arch = arch or next(iter(self._empty_pages), "")
-        if self._catalogue_online is False and not self._available:
-            self._set_catalogue_page_message(
-                message_arch,
-                "Catalogue unavailable",
-                description="Check your connection and try again.",
-                offline=True,
-            )
-            return
-        if self._catalogue_online is None:
-            self._set_catalogue_page_message(
-                message_arch,
-                "Catalogue is still loading…",
-                description="Please wait.",
-            )
-            return
-        query = self._search_query()
-        match_count = 0
-        unsupported_count = 0
-        any_rows = False
-        for check_arch in self._filter_archs():
-            names = self._names_matching_network(
-                check_arch, list(self._available.get(check_arch) or [])
-            )
-            family = FAMILY_BY_ARCH.get(check_arch)
-            if family is None:
-                continue
-            if names or self._unsupported.get(check_arch):
-                any_rows = True
-            primaries, outputs = self._catalogue_role_maps(family)
-            match_count += len(
-                catalogue_matches(
-                    names,
-                    query,
-                    purpose=self._purpose,
-                    intents=self._catalogue_intents(family),
-                    arches={name: check_arch for name in names},
-                    primary_roles=primaries,
-                    output_roles=outputs,
-                )
-            )
-            unsupported_count += len(self._unsupported_matches(check_arch, query))
-        if (
-            (query or self._purpose not in ("", PURPOSE_ALL, None))
-            and not match_count
-            and not unsupported_count
-        ):
-            if query:
-                self._set_catalogue_page_message(
-                    message_arch,
-                    "No matching models",
-                    description=f'Try a broader search than “{query}”.',
-                )
-            else:
-                self._set_catalogue_page_message(
-                    message_arch,
-                    "No matching models",
-                    description="No models match this purpose filter.",
-                )
-        elif not any_rows:
-            self._set_catalogue_page_message(
-                message_arch,
-                "All installed",
-                description="All models for this purpose are already installed.",
-            )
-        else:
-            self._set_catalogue_page_message(message_arch, "")
-
-    def _unsupported_matches(self, arch: str, query: str) -> list[tuple[str, str]]:
-        if self._hide_unsupported:
-            return []
-        rows = list(self._unsupported.get(arch) or [])
-        arch_filter = getattr(self, "_arch_filter", ARCH_FILTER_ALL)
-        if arch_filter not in ("", ARCH_FILTER_ALL, None):
-            rows = [
-                (label, reason)
-                for label, reason in rows
-                if network_filter_matches(
-                    str(arch_filter),
-                    family_arch=arch,
-                    network=self._network_id_for_row(arch, label),
-                )
-            ]
-        if self._purpose not in ("", PURPOSE_ALL, None):
-            rows = [
-                (label, reason)
-                for label, reason in rows
-                if label_matches_purpose(
-                    label,
-                    self._purpose,
-                    **self._purpose_kwargs_for_row(arch, label),
-                )
-            ]
-        return [
-            (label, reason)
-            for label, reason in rows
-            if catalogue_label_matches(label, query, extra=reason)
-        ]
+        self._refresh_browser_metadata()
+        view = project_browser(self.browser, self._browser_filters(), online=self._catalogue_online)
+        self._set_catalogue_page_message(
+            arch or next(iter(self._empty_pages), ""),
+            view.title,
+            description=view.description,
+            offline=view.offline,
+        )
 
     def _matching_count(self, arch: str, query: str) -> int:
-        family = FAMILY_BY_ARCH.get(arch)
-        names = self._names_matching_network(arch, list(self._available.get(arch) or []))
-        primaries, outputs = self._catalogue_role_maps(family) if family else ({}, {})
-        supported = catalogue_matches(
-            names,
-            query,
-            purpose=self._purpose,
-            intents=self._catalogue_intents(family) if family else {},
-            arches={name: arch for name in names},
-            primary_roles=primaries,
-            output_roles=outputs,
-        )
-        return len(supported) + len(self._unsupported_matches(arch, query))
+        self._refresh_browser_metadata()
+        return self.browser.matching_count(arch, self._browser_filters(query))
 
     def _rebuild_catalogue(self) -> None:
-        previously_selected = {(arch, name) for name, arch in self._selected_entries()}
+        previously_selected = self.browser.selected_keys()
+        rows = []
+        for _label, arch in _NETWORKS:
+            rows.extend(
+                self._project_browser_row(arch, name)
+                for name in self.browser.available.get(arch, ())
+                if name not in (NO_NEW_MODELS, NO_CONNECTION)
+            )
+            rows.extend(
+                self._project_browser_row(arch, name, reason)
+                for name, reason in sorted(
+                    self.browser.unsupported.get(arch, ()), key=lambda pair: pair[0].casefold()
+                )
+                if (arch, name) not in {row.key for row in rows}
+            )
+        self.browser.replace_rows(rows)
         self._pin_current_snapshot()
         self._clear_catalogue()
         for _label, arch in _NETWORKS:
             models = [
                 name
-                for name in (self._available.get(arch) or [])
+                for name in (self.browser.available.get(arch) or [])
                 if name not in (NO_NEW_MODELS, NO_CONNECTION)
             ]
             for name in models:
                 self._add_model_row(arch, name)
             unsupported = sorted(
-                self._unsupported.get(arch) or [],
+                self.browser.unsupported.get(arch) or [],
                 key=lambda pair: pair[0].casefold(),
             )
             for name, reason in unsupported:

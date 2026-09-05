@@ -245,6 +245,8 @@ class PreferencesDialog(Adw.PreferencesDialog):
         self.add(self._build_processing_page())
 
         self._reload_widgets()
+        from .lifetime import UiLifetime
+        self._lifetime = UiLifetime()
         self.connect("closed", self._on_dialog_closed)
 
     # -- Page construction ------------------------------------------------------
@@ -630,11 +632,15 @@ class PreferencesDialog(Adw.PreferencesDialog):
         idle_on_main(self._finish_catalogue_evidence_refresh, summary)
 
     def _finish_catalogue_evidence_refresh(self, summary: typing.Any) -> None:
+        if self._lifetime.disposed:
+            return
         message = catalogue_evidence_refresh_feedback(summary)
         self.catalogue_cache_refresh_row.set_subtitle(message)
         self.add_toast(Adw.Toast.new(message))
 
     def _finish_catalogue_cache_refresh(self, message: str) -> None:
+        if self._lifetime.disposed:
+            return
         self._catalogue_cache_refreshing = False
         self.catalogue_cache_refresh_button.set_sensitive(True)
         self.catalogue_cache_refresh_spinner.stop()
@@ -862,6 +868,8 @@ class PreferencesDialog(Adw.PreferencesDialog):
             self._persist_timeout_id = 0
             self._flush_persist()
 
+        self._lifetime.dispose()
+
     @staticmethod
     def _device_row_options(devices: typing.Any):
         if devices:
@@ -882,6 +890,8 @@ class PreferencesDialog(Adw.PreferencesDialog):
         idle_on_main(self._apply_gpu_devices, devices)
 
     def _apply_gpu_devices(self, devices: typing.Any) -> None:
+        if self._lifetime.disposed:
+            return
         if not hasattr(self, "device_row"):
             return
         current = get_combo_value(self.device_row)

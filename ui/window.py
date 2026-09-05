@@ -24,6 +24,18 @@ actions wired in :meth:`MainWindow._install_actions`, with keyboard accelerators
 and help-hint tooltips installed from :mod:`ui.hints`.
 """
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from ui.run_error_context import RunErrorContext
+
+if TYPE_CHECKING:
+    from core.audio_plan import ResolvedAudioJob
+    from core.job_callbacks import JobCallbacks
+    from core.job_plan import JobSpec, ResolvedJob
+    from core.settings import Settings
+
 import os
 import typing
 from typing import Optional
@@ -169,13 +181,13 @@ class _SeparationTarget:
     def on_deactivated(self) -> None:
         pass
 
-    def start(self, callbacks: typing.Any, plan: typing.Any = None) -> None:
+    def start(self, callbacks: JobCallbacks, plan: ResolvedJob | ResolvedAudioJob | None = None) -> None:
         self.window._start_separation(callbacks, plan=plan)
 
     def start_blocked_reason(self) -> Optional[str]:
         return self.window._separation_blocked_reason()
 
-    def build_job_spec(self) -> typing.Any:
+    def build_job_spec(self) -> JobSpec:
         import copy
 
         from core.job_plan import JobSpec
@@ -188,6 +200,26 @@ class _SeparationTarget:
             self.window.output_row.path,
             {"profile": "gui"},
         )
+
+    run_label = 'Separation'
+
+    def worker_is_running(self) -> bool:
+        return self.window.context.runner.is_running()
+
+    def snapshot_error_context(self) -> RunErrorContext:
+        from core.error_context import build_separation_context
+
+        return RunErrorContext.from_fields(
+            build_separation_context(
+                self.window.settings,
+                self.window.context.repo,
+                list(self.window.input_row.paths),
+                self.error_key,
+            )
+        )
+
+    def bind_run_settings(self, settings: Settings) -> None:
+        pass  # The shared separation runner is bound by the host.
 
     def stop(self) -> None:
         self.window.context.runner.stop()
@@ -276,6 +308,8 @@ class MainWindow(Adw.ApplicationWindow):
         self.log_panel.set_valign(Gtk.Align.END)
         self.log_panel.set_margin_bottom(OVERLAY_MARGIN_BOTTOM)
 
+        from .download import DownloadQueueUiBinding
+        self._download_ui: DownloadQueueUiBinding | None = None
         self._download_queue_indicator = DownloadQueueIndicator()
 
         toolbar_view = Adw.ToolbarView()
@@ -448,7 +482,8 @@ class MainWindow(Adw.ApplicationWindow):
             "audio_tools": self._audio_tools_page,
         }
         self._run_target = self._separation_target
-        self._run_controller = RunController(self)
+        from .run_host import GtkRunHost
+        self._run_controller = RunController(GtkRunHost(self))
         self.content_stack.connect("notify::visible-child", self._on_visible_child)
 
         self.content_stack.set_vexpand(True)
@@ -986,6 +1021,8 @@ class MainWindow(Adw.ApplicationWindow):
         self._flush_settings()
         self._save_geometry()
         self._handle_settings_error(self.context.try_save_settings(trigger="close"))
+        if self._download_ui is not None:
+            self._download_ui.dispose()
 
     def _save_geometry(self) -> None:
         # Only record the un-maximized size so a later un-maximize restores a
