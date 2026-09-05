@@ -61,6 +61,7 @@ class DevDocsCheckTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             repo = _GitRepository(Path(temporary))
             violations = (
+                ".superpowers/sdd/example/task-report.md",
                 "docs/superpowers/plans/example-plan.md",
                 "docs/superpowers/specs/example-spec.md",
             )
@@ -87,6 +88,7 @@ class DevDocsPrepareTests(unittest.TestCase):
         repo.git("switch", "-c", "dev")
         repo.write("application.txt", "development change\n")
         repo.write("docs/superpowers/plans/new-plan.md", "# New plan\n")
+        repo.write(".superpowers/sdd/example/task-report.md", "# Task report\n")
         repo.commit_all("develop feature")
 
     def test_prepare_stages_source_changes_without_dev_docs(self) -> None:
@@ -109,14 +111,19 @@ class DevDocsPrepareTests(unittest.TestCase):
             tracked_docs = repo.git(
                 "ls-files",
                 "--",
+                ".superpowers",
                 "docs/superpowers/plans",
                 "docs/superpowers/specs",
             ).stdout
             staged_application = repo.git("show", ":application.txt").stdout
             merge_head = repo.git("rev-parse", "--verify", "MERGE_HEAD", check=False)
             staged_names = repo.git("diff", "--cached", "--name-status").stdout
+            dev_report = repo.git(
+                "show", "dev:.superpowers/sdd/example/task-report.md"
+            ).stdout
 
         self.assertEqual(tracked_docs, "")
+        self.assertEqual(dev_report, "# Task report\n")
         self.assertEqual(staged_application, "development change\n")
         self.assertEqual(merge_head.returncode, 0)
         self.assertIn("A\tapplication.txt", staged_names)

@@ -1,8 +1,10 @@
 # Design docs (`dev` branch)
 
-Plans, specs, and design notes under `plans/` and `specs/` are kept on the
-**`dev`** branch. They are gitignored so a feature branch that targets `main`
-does not pick them up with a normal `git add`. Once force-added, they are normal
+Plans, specs, and design notes under `plans/` and `specs/`, along with reports
+and scratch documents under the repository-root `.superpowers/`, belong on
+**`dev`** and other development branches only. They are gitignored so a feature
+branch that targets `main` does not pick them up with a normal `git add`. Once
+force-added, they are normal
 tracked files: `.gitignore` alone does not prevent a merge from carrying them.
 
 On `dev`, record a new document with:
@@ -16,7 +18,7 @@ git add -f docs/superpowers/plans/<file>.md
 ## Promote `dev` without its design notes
 
 Do not open a PR directly from `dev` to `main`. Prepare a separate branch based
-exactly on the current local `main`; the policy tool merges `dev`, removes both
+exactly on the current local `main`; the policy tool merges `dev`, removes all three
 protected directories from the index, resolves conflicts confined to those
 directories, and leaves the sanitized merge staged for review:
 
