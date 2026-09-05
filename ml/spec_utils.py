@@ -242,9 +242,9 @@ def merge_artifacts(y_mask: np.ndarray, thres: float = 0.01, min_range: int = 64
     return mask
 
 def align_wave_head_and_tail(a: np.ndarray, b: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    l = min([a[0].size, b[0].size])  
+    length = min([a[0].size, b[0].size])
     
-    return a[:l,:l], b[:l,:l]
+    return a[:length,:length], b[:length,:length]
     
 def convert_channels(spec: np.ndarray, mp: Any, band: int) -> np.ndarray:
     cc = mp.param['band'][band].get('convert_channels')
@@ -264,14 +264,14 @@ def convert_channels(spec: np.ndarray, mp: Any, band: int) -> np.ndarray:
     return np.asfortranarray([spec_left, spec_right])
     
 def combine_spectrograms(specs: Mapping[int, np.ndarray], mp: Any, is_v51_model: bool = False) -> np.ndarray:
-    l = min([specs[i].shape[2] for i in specs])    
-    spec_c = np.zeros(shape=(2, mp.param['bins'] + 1, l), dtype=np.complex64)
+    length = min([specs[i].shape[2] for i in specs])
+    spec_c = np.zeros(shape=(2, mp.param['bins'] + 1, length), dtype=np.complex64)
     offset = 0
     bands_n = len(mp.param['band'])
     
     for d in range(1, bands_n + 1):
         h = mp.param['band'][d]['crop_stop'] - mp.param['band'][d]['crop_start']
-        spec_c[:, offset:offset+h, :l] = specs[d][:, mp.param['band'][d]['crop_start']:mp.param['band'][d]['crop_stop'], :l]
+        spec_c[:, offset:offset+h, :length] = specs[d][:, mp.param['band'][d]['crop_start']:mp.param['band'][d]['crop_stop'], :length]
         offset += h
         
     if offset > mp.param['bins']:

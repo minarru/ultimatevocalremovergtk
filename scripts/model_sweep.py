@@ -544,6 +544,7 @@ def run_child(spec_path: str) -> int:
 
         from core import ModelRepository, Settings
         from core.blocking_runner import run_blocking
+        from core.job_callbacks import JobCallbacks
         from core.job_plan import JobResolver, JobSpec, ValidationLevel
         from core.job_runner import JobRunner
         from core.model_identity import ModelIdentityService
@@ -579,7 +580,7 @@ def run_child(spec_path: str) -> int:
             from core.types import ProcessMethod
 
             settings.process.method = ProcessMethod(record.method)
-            setattr(getattr(settings, record.family), "model", record.id)
+            getattr(settings, record.family).model = record.id
         elif kind == KIND_ENSEMBLE:
             from core.types import ProcessMethod
 
@@ -602,12 +603,13 @@ def run_child(spec_path: str) -> int:
                 raise ValueError(errors[0])
             os.makedirs(export_dir, exist_ok=True)
             runner = JobRunner(plan.settings)
-            start_runner = lambda callbacks: runner.start(
-                [item.path for item in plan.inputs],
-                callbacks,
-                planned=plan.inputs,
-                planned_output_root=plan.output,
-            )
+            def start_runner(callbacks: JobCallbacks) -> None:
+                runner.start(
+                    [item.path for item in plan.inputs],
+                    callbacks,
+                    planned=plan.inputs,
+                    planned_output_root=plan.output,
+                )
             def write_console(text: str) -> None:
                 sys.stdout.write(text)
 

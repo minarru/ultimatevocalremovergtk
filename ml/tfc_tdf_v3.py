@@ -176,7 +176,7 @@ class TFC_TDF(nn.Module):
         self,
         in_c: int,
         c: int,
-        l: int,
+        num_layers: int,
         f: int,
         bn: int,
         norm: NormFactory,
@@ -185,7 +185,7 @@ class TFC_TDF(nn.Module):
         super().__init__()
 
         self.blocks = nn.ModuleList()
-        for _i in range(l):
+        for _i in range(num_layers):
             block = _ResidualBlock(in_c, c, f, bn, norm, act)
             self.blocks.append(block)
             in_c = c
@@ -226,7 +226,7 @@ class TFC_TDF_net(nn.Module):
         dim_c = self.num_subbands * config.audio.num_channels * 2
         n = config.model.num_scales
         scale: Scale = tuple(config.model.scale)
-        l = config.model.num_blocks_per_scale
+        num_layers = config.model.num_blocks_per_scale
         c = config.model.num_channels
         g = config.model.growth
         bn = config.model.bottleneck_factor
@@ -237,13 +237,13 @@ class TFC_TDF_net(nn.Module):
         self.encoder_blocks = nn.ModuleList()
         for _i in range(n):
             block = _EncoderBlock()
-            block.tfc_tdf = TFC_TDF(c, c, l, f, bn, norm, act)
+            block.tfc_tdf = TFC_TDF(c, c, num_layers, f, bn, norm, act)
             block.downscale = Downscale(c, c + g, scale, norm, act)
             f = f // scale[1]
             c += g
             self.encoder_blocks.append(block)
 
-        self.bottleneck_block = TFC_TDF(c, c, l, f, bn, norm, act)
+        self.bottleneck_block = TFC_TDF(c, c, num_layers, f, bn, norm, act)
 
         self.decoder_blocks = nn.ModuleList()
         for _i in range(n):
@@ -251,7 +251,7 @@ class TFC_TDF_net(nn.Module):
             block.upscale = Upscale(c, c - g, scale, norm, act)
             f = f * scale[1]
             c -= g
-            block.tfc_tdf = TFC_TDF(2 * c, c, l, f, bn, norm, act)
+            block.tfc_tdf = TFC_TDF(2 * c, c, num_layers, f, bn, norm, act)
             self.decoder_blocks.append(block)
 
         self.final_conv = nn.Sequential(

@@ -46,7 +46,7 @@ class ResidualRNN(nn.Module):
 
         self.use_batch_trick = use_batch_trick
         if not self.use_batch_trick:
-            warnings.warn("NOT USING BATCH TRICK IS EXTREMELY SLOW!!")
+            warnings.warn("NOT USING BATCH TRICK IS EXTREMELY SLOW!!", stacklevel=2)
 
     def forward(self, z: torch.Tensor) -> torch.Tensor:
         z0 = torch.clone(z)

@@ -61,7 +61,7 @@ class ConvTDFNet(AbstractMDXNet):
         n_fft: int,
         hop_length: int,
         num_blocks: int,
-        l: int,
+        num_layers: int,
         g: int,
         k: int,
         bn: int | None,
@@ -74,7 +74,7 @@ class ConvTDFNet(AbstractMDXNet):
         #self.save_hyperparameters()
 
         self.num_blocks = num_blocks
-        self.l = l
+        self.l = num_layers
         self.g = g
         self.k = k
         self.bn = bn
@@ -84,7 +84,10 @@ class ConvTDFNet(AbstractMDXNet):
             norm: NormFactory = nn.BatchNorm2d
 
         elif optimizer == 'adamw':
-            norm = lambda input: nn.GroupNorm(2, input)
+            def group_norm(input: int) -> nn.GroupNorm:
+                return nn.GroupNorm(2, input)
+
+            norm = group_norm
 
         else:
             # Previously fell through to a NameError on ``norm``.
@@ -107,7 +110,7 @@ class ConvTDFNet(AbstractMDXNet):
         self.encoding_blocks = nn.ModuleList()
         self.ds = nn.ModuleList()
         for _i in range(self.n):
-            self.encoding_blocks.append(TFC_TDF(c, l, f, k, bn, bias=bias, norm=norm))
+            self.encoding_blocks.append(TFC_TDF(c, num_layers, f, k, bn, bias=bias, norm=norm))
             self.ds.append(
                 nn.Sequential(
                     nn.Conv2d(in_channels=c, out_channels=c + g, kernel_size=scale, stride=scale),
@@ -118,7 +121,7 @@ class ConvTDFNet(AbstractMDXNet):
             f = f // 2
             c += g
 
-        self.bottleneck_block = TFC_TDF(c, l, f, k, bn, bias=bias, norm=norm)
+        self.bottleneck_block = TFC_TDF(c, num_layers, f, k, bn, bias=bias, norm=norm)
 
         self.decoding_blocks = nn.ModuleList()
         self.us = nn.ModuleList()
@@ -133,7 +136,7 @@ class ConvTDFNet(AbstractMDXNet):
             f = f * 2
             c -= g
 
-            self.decoding_blocks.append(TFC_TDF(c, l, f, k, bn, bias=bias, norm=norm))
+            self.decoding_blocks.append(TFC_TDF(c, num_layers, f, k, bn, bias=bias, norm=norm))
 
         self.final_conv = nn.Sequential(
             nn.Conv2d(in_channels=c, out_channels=self.dim_c, kernel_size=(1, 1)),

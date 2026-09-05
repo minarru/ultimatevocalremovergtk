@@ -461,7 +461,8 @@ class AudioToolRunner:
         set_operation_id(operation_id)
         log_event("audio", "audio_worker_entered", tool=tool)
         stime = time.perf_counter()
-        time_elapsed = lambda: f'Time Elapsed: {time.strftime("%H:%M:%S", time.gmtime(int(time.perf_counter() - stime)))}'
+        def time_elapsed() -> str:
+            return f'Time Elapsed: {time.strftime("%H:%M:%S", time.gmtime(int(time.perf_counter() - stime)))}'
 
         try:
             export_path = self.settings.process.export_path

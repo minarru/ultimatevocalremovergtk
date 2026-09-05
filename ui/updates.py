@@ -28,7 +28,7 @@ def _get_manager(app_context: typing.Any) -> DownloadManager:
     existing = getattr(app_context, "_download_manager", None)
     if existing is None:
         existing = DownloadManager()
-        setattr(app_context, "_download_manager", existing)
+        app_context._download_manager = existing
     return existing
 
 

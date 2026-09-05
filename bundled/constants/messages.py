@@ -14,7 +14,8 @@ IS_BV_MODEL_REBAL = "is_bv_model_rebalanced"
 
 STOP_PROCESSING = 'Halting process, please wait...'
 
-LICENSE_TEXT = lambda a, u:f'Current Application Version: Ultimate Vocal Remover GTK {a}\n' +\
+def LICENSE_TEXT(a: object, u: object) -> str:
+    return f'Current Application Version: Ultimate Vocal Remover GTK {a}\n' +\
                f'Based on upstream UVR {u}\n\n' +\
                'Copyright (c) 2022 Ultimate Vocal Remover\n\n' +\
                'UVR is free and open-source, but MIT licensed. Please credit us if you use our\n' +\
@@ -71,15 +72,20 @@ INFERENCE_STEP_1_PRE = 'Running inference (pre-process model)...'
 
 INFERENCE_STEP_1_VOC_S = 'Splitting vocals...'
 
-INFERENCE_STEP_2_PRE = lambda pm, m:f'Loading pre-process model ({pm}: {m})...'
+def INFERENCE_STEP_2_PRE(pm: object, m: object) -> str:
+    return f'Loading pre-process model ({pm}: {m})...'
 
-INFERENCE_STEP_2_SEC = lambda pm, m:f'Loading secondary model ({pm}: {m})...'
+def INFERENCE_STEP_2_SEC(pm: object, m: object) -> str:
+    return f'Loading secondary model ({pm}: {m})...'
 
-INFERENCE_STEP_2_VOC_S = lambda pm, m:f'Loading vocal splitter model ({pm}: {m})...'
+def INFERENCE_STEP_2_VOC_S(pm: object, m: object) -> str:
+    return f'Loading vocal splitter model ({pm}: {m})...'
 
-INFERENCE_STEP_2_SEC_CACHED_MODOEL = lambda pm, m:f'Secondary model ({pm}: {m}) cache loaded.\n'
+def INFERENCE_STEP_2_SEC_CACHED_MODOEL(pm: object, m: object) -> str:
+    return f'Secondary model ({pm}: {m}) cache loaded.\n'
 
-INFERENCE_STEP_2_PRE_CACHED_MODOEL = lambda pm, m:f'Pre-process model ({pm}: {m}) cache loaded.\n'
+def INFERENCE_STEP_2_PRE_CACHED_MODOEL(pm: object, m: object) -> str:
+    return f'Pre-process model ({pm}: {m}) cache loaded.\n'
 
 INFERENCE_STEP_2_PRIMARY_CACHED = ' Model cache loaded.\n'
 

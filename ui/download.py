@@ -77,7 +77,7 @@ def _get_manager(app_context: typing.Any) -> DownloadManager:
     existing = getattr(app_context, "_download_manager", None)
     if existing is None:
         existing = DownloadManager()
-        setattr(app_context, "_download_manager", existing)
+        app_context._download_manager = existing
     return existing
 
 
@@ -85,7 +85,7 @@ def _get_queue(app_context: typing.Any, manager: DownloadManager) -> DownloadQue
     queue = getattr(app_context, "_download_queue", None)
     if queue is None:
         queue = DownloadQueue(manager, on_changed=lambda: None, repo=app_context.repo)
-        setattr(app_context, "_download_queue", queue)
+        app_context._download_queue = queue
     return queue
 
 

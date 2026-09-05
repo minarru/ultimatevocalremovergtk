@@ -99,9 +99,11 @@ class SeperateMDX(SeperateAttributes):
                             self.model_path, map_location=lambda storage, loc: storage
                         )["hyper_parameters"]
                         self.dim_c, self.hop = model_params['dim_c'], model_params['hop_length']
-                        separator = MdxnetSet.ConvTDFNet(**model_params)
+                        # Checkpoints retain the upstream "l" key for layer count.
                         self.model_run = (
-                            separator.load_from_checkpoint(self.model_path).to(self.device).eval()
+                            MdxnetSet.ConvTDFNet.load_from_checkpoint(
+                                self.model_path, num_layers=model_params["l"]
+                            ).to(self.device).eval()
                         )
                         self._weight_cache_meta = {"dim_c": self.dim_c, "hop": self.hop}
                 else:

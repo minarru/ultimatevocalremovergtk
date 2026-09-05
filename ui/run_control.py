@@ -607,7 +607,8 @@ class RunController:
                 pending["run"] = None
             else:
                 if target is not None and hasattr(target, "unpause"):
-                    resume = lambda: self._resume_after_dialog_cancel(target)
+                    def resume() -> None:
+                        return self._resume_after_dialog_cancel(target)
                 else:
                     resume = self._resume_run_ui_after_dialog
                 pending["run"] = resume
@@ -669,7 +670,8 @@ class RunController:
                 self._close_deferred = False
                 self._on_close_complete = None
                 if target is not None and hasattr(target, "unpause"):
-                    resume = lambda: self._resume_after_dialog_cancel(target)
+                    def resume() -> None:
+                        return self._resume_after_dialog_cancel(target)
                 else:
                     resume = self._resume_run_ui_after_dialog
                 pending["run"] = resume

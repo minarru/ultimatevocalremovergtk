@@ -37,7 +37,8 @@ class ConvolutionModule(nn.Module):
         assert kernel % 2 == 1
         self.depth = abs(depth)
         hidden_size = int(channels / compress)
-        norm = lambda d: nn.GroupNorm(1, d)
+        def norm(d: int) -> nn.GroupNorm:
+            return nn.GroupNorm(1, d)
         self.layers = nn.ModuleList([])
         for _ in range(self.depth):
             padding = (kernel // 2)
