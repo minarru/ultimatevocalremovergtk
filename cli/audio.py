@@ -380,6 +380,7 @@ def _run_audio(args: argparse.Namespace, plan: Any) -> BatchOutcome:
             except OSError as exc:
                 item = {"input": list(unit.inputs), "status": "failed", "error": str(exc), "outputs": [], "elapsed_s": time.perf_counter() - unit_started}
                 outcomes.append(item)
+                emit_event(args, "input_finished", **item)
                 if args.fail_fast:
                     break
                 continue

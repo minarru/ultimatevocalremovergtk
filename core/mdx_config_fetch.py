@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import os
 import ssl
+import tempfile
 import urllib.error
 import urllib.request
 from typing import Iterable, Iterator, Optional
@@ -85,8 +86,20 @@ def _fetch_url_to_file(url: str, dest: str) -> bool:
         return False
 
     os.makedirs(paths.MDX_C_CONFIG_PATH, exist_ok=True)
-    with open(dest, "wb") as out_file:
-        out_file.write(data)
+    descriptor, temporary = tempfile.mkstemp(
+        prefix=f".{os.path.basename(dest)}.", suffix=".tmp", dir=os.path.dirname(dest)
+    )
+    try:
+        with os.fdopen(descriptor, "wb") as out_file:
+            out_file.write(data)
+            out_file.flush()
+            os.fsync(out_file.fileno())
+        os.replace(temporary, dest)
+    finally:
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
     debug("download", f"mdx_c_config saved {os.path.basename(dest)} from {url}")
     return True
 

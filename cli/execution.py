@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import dataclasses
+import errno
 import json
 import os
-import signal
 import shutil
+import signal
 import sys
 import threading
 import time
@@ -15,8 +16,9 @@ from typing import Any, Callable, Sequence, cast
 
 from core.blocking_runner import RunResult, run_blocking
 from core.export_naming import format_track_base
-from core.job_plan import EMPTY_MODEL_IDENTITY_DIGEST, ResolvedJob as CoreResolvedJob
 from core.job_callbacks import JobCallbacks
+from core.job_plan import EMPTY_MODEL_IDENTITY_DIGEST
+from core.job_plan import ResolvedJob as CoreResolvedJob
 
 from .job import ResolvedJob
 from .reporting import emit_event, ensure_job_id, finish_progress, make_progress_printer
@@ -113,7 +115,7 @@ def preflight_collisions(job: ResolvedJob, policy: str) -> set[str]:
     collided: set[str] = set()
     for item in planned_inputs:
         guaranteed = [output.path for output in item.outputs if not output.conditional]
-        if any(os.path.exists(path) for path in guaranteed):
+        if any(os.path.lexists(path) for path in guaranteed):
             collided.add(item.path)
     if collided and policy == "fail":
         first = sorted(collided)[0]
@@ -124,11 +126,11 @@ def preflight_collisions(job: ResolvedJob, policy: str) -> set[str]:
 
 
 def _unique_target(path: str) -> str:
-    if not os.path.exists(path):
+    if not os.path.lexists(path):
         return path
     root, ext = os.path.splitext(path)
     index = 2
-    while os.path.exists(f"{root}_{index}{ext}"):
+    while os.path.lexists(f"{root}_{index}{ext}"):
         index += 1
     return f"{root}_{index}{ext}"
 
@@ -184,6 +186,39 @@ def _overwrite_backup_path(target: str) -> str:
     return os.path.join(directory, f".{name}.uvr-overwrite.bak")
 
 
+def _move_no_replace(source: str, target: str) -> None:
+    """Publish a staged file atomically without replacing another writer's file."""
+    if sys.platform == "win32":
+        # Unlike POSIX rename, Windows rename rejects an existing destination.
+        os.rename(source, target)
+        return
+    if sys.platform.startswith("linux"):
+        import ctypes
+
+        renameat2 = getattr(ctypes.CDLL(None, use_errno=True), "renameat2", None)
+        if renameat2 is not None:
+            renameat2.argtypes = (
+                ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p,
+                ctypes.c_uint,
+            )
+            renameat2.restype = ctypes.c_int
+            # AT_FDCWD = -100, RENAME_NOREPLACE = 1. Unlike link/unlink, this
+            # also supports removable filesystems without hard links.
+            if renameat2(-100, os.fsencode(source), -100, os.fsencode(target), 1) == 0:
+                return
+            error = ctypes.get_errno()
+            if error not in (errno.ENOSYS, errno.EINVAL, errno.EOPNOTSUPP):
+                raise OSError(error, os.strerror(error), target)
+    # Portable same-filesystem fallback. Never fall back to a replacing rename
+    # if the filesystem cannot support an atomic claim.
+    os.link(source, target)
+    try:
+        os.unlink(source)
+    except BaseException:
+        os.unlink(target)
+        raise
+
+
 def _apply_unit_rename(
     entries: list[tuple[str, str]],
     destinations: Sequence[str],
@@ -227,7 +262,7 @@ def _apply_unit_rename(
             ),
         ) for path in destinations]
         if any(
-            rewritten_path != original and os.path.exists(rewritten_path)
+            rewritten_path != original and os.path.lexists(rewritten_path)
             for original, rewritten_path in rewritten
         ):
             index += 1
@@ -239,7 +274,7 @@ def _apply_unit_rename(
         next_by_source = {source: target for source, target in _remap(index + 1)}
         progressable = False
         for source, target in remapped:
-            if not os.path.exists(target):
+            if not os.path.lexists(target):
                 continue
             if next_by_source.get(source) != target:
                 progressable = True
@@ -322,11 +357,11 @@ def _promote_locked(
                 f"{os.path.basename(unexpected)!r} for track {expected_track_base!r}"
             )
     if policy == "fail":
-        collision = next((path for path in collision_paths if os.path.exists(path)), None)
+        collision = next((path for path in collision_paths if os.path.lexists(path)), None)
         if collision:
             raise FileExistsError(collision)
     if policy == "skip":
-        collision = next((path for path in collision_paths if os.path.exists(path)), None)
+        collision = next((path for path in collision_paths if os.path.lexists(path)), None)
         if collision:
             raise PromotionSkipped(collision)
     # Unit renaming needs both a destination list and a shared track base;
@@ -339,7 +374,7 @@ def _promote_locked(
     unit_index: int | None = None
     attempt = list(entries)
     if unit_destinations is not None and any(
-        os.path.exists(path) for path in unit_destinations
+        os.path.lexists(path) for path in unit_destinations
     ):
         unit_index, attempt = _apply_unit_rename(
             entries,
@@ -355,7 +390,7 @@ def _promote_locked(
             # Move, don't copy: the backup only has to survive until the whole
             # unit lands, and a rename is atomic within the output directory.
             for _source, target in entries:
-                if os.path.exists(target):
+                if os.path.lexists(target):
                     bak = _overwrite_backup_path(target)
                     os.replace(target, bak)
                     backups.append((target, bak))
@@ -364,12 +399,21 @@ def _promote_locked(
             for source, initial_target in attempt:
                 target = initial_target
                 os.makedirs(os.path.dirname(target) or ".", exist_ok=True)
-                if os.path.exists(target):
-                    if policy == "fail":
-                        raise FileExistsError(target)
-                    if policy == "skip":
-                        raise PromotionSkipped(target)
-                    if policy == "rename":
+                while True:
+                    try:
+                        if os.path.lexists(target) and policy != "overwrite":
+                            raise FileExistsError(target)
+                        if policy == "overwrite":
+                            os.replace(source, target)
+                        else:
+                            _move_no_replace(source, target)
+                    except FileExistsError as exc:
+                        if policy == "fail":
+                            raise
+                        if policy == "skip":
+                            raise PromotionSkipped(target) from exc
+                        if policy != "rename":
+                            raise
                         source_name = os.path.basename(source)
                         if unit_destinations is not None and (
                             _matches_unit_name(source_name, unit_track_base)
@@ -384,13 +428,16 @@ def _promote_locked(
                             restart = True
                             break
                         target = _unique_target(target)
-                os.replace(source, target)
+                        continue
+                    break
+                if restart:
+                    break
                 moved.append((source, target))
                 promoted.append(target)
             if not restart or unit_destinations is None:
                 break
             for source, target in reversed(moved):
-                if os.path.exists(target):
+                if os.path.lexists(target):
                     os.makedirs(os.path.dirname(source) or ".", exist_ok=True)
                     os.replace(target, source)
             moved.clear()
@@ -404,15 +451,15 @@ def _promote_locked(
             )
     except BaseException:
         for source, target in reversed(moved):
-            if os.path.exists(target):
+            if os.path.lexists(target):
                 os.makedirs(os.path.dirname(source) or ".", exist_ok=True)
                 os.replace(target, source)
         for target, bak in backups:
-            if os.path.exists(bak):
+            if os.path.lexists(bak):
                 os.replace(bak, target)
         raise
     for _target, bak in backups:
-        if os.path.exists(bak):
+        if os.path.lexists(bak):
             os.unlink(bak)
     return promoted
 
