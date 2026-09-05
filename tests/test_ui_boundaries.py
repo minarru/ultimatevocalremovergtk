@@ -274,3 +274,109 @@ class BrowserGenerationTests(unittest.TestCase):
         with mock.patch.object(queue, 'items') as items:
             indicator.refresh()
             items.assert_not_called()
+
+
+class ReviewedContractTests(unittest.TestCase):
+    def test_readiness_uses_host_target_with_an_ordinary_dialog_parent(self):
+        from gi.repository import Gtk
+
+        from ui.protocols import RunHost, RunTarget
+        from ui.run_control import RunController
+
+        host = mock.Mock(spec=RunHost)
+        host.dialog_parent = Gtk.Window()
+        self.addCleanup(host.dialog_parent.destroy)
+        host.target = mock.Mock(spec=RunTarget)
+        controller = RunController(host)
+        for reason in (None, 'Choose an input file'):
+            with self.subTest(reason=reason):
+                host.target.start_blocked_reason.return_value = reason
+                host.target.start_blocked_reason.reset_mock()
+                self.assertEqual(controller.refresh_start_readiness(), reason)
+                host.target.start_blocked_reason.assert_called_once_with()
+                host.enable_start.assert_called_with(reason is None)
+                host.describe_start.assert_called_with(reason or 'Start processing')
+
+    def test_live_counts_and_empty_state_survive_pinned_incremental_removal(self):
+        from gi.repository import Gtk
+
+        from bundled.constants import MDX_ARCH_TYPE
+        from core.catalogue_types import CatalogueDelta, DeltaKind
+        from tests.test_download_center_state import DownloadCenterStateTests
+
+        win = DownloadCenterStateTests()._make_bare_window()
+        win.manager.catalogue_meta_by_family = {}
+        win._search_entry = Gtk.SearchEntry()
+        win.browser.available = {MDX_ARCH_TYPE: ['Survivor', 'Removed']}
+        win._rebuild_catalogue()
+        survivor = win._row_actions[(MDX_ARCH_TYPE, 'Survivor')]
+        with mock.patch.object(win, '_lookup_row_size'):
+            win._row_checks[(MDX_ARCH_TYPE, 'Survivor')].set_active(True)
+        pinned = SimpleNamespace(mdx={'Survivor': 'original-url'}, vr={}, demucs={}, apollo={})
+        win.browser.pin(cast(Any, pinned))
+        win._on_catalogue_delta(
+            CatalogueDelta(kind=DeltaKind.SOURCES_CHANGED, added={'mdx': ('Added later',)})
+        )
+        cast(Any, win.manager.available_downloads).return_value = {
+            MDX_ARCH_TYPE: ['Survivor', 'Added later']
+        }
+        cast(Any, win.manager.unsupported_downloads).return_value = {}
+        win._flush_catalogue_row_refresh()
+        self.assertEqual(win._matching_count(MDX_ARCH_TYPE, ''), 2)
+        self.assertIn('2 available', win._search_entry.get_placeholder_text() or '')
+        win._search_entry.set_text('Missing entry')
+        win._update_catalogue_page_state(MDX_ARCH_TYPE)
+        self.assertEqual(win._empty_pages[MDX_ARCH_TYPE].get_title(), 'No matching models')
+        self.assertTrue(win._empty_pages[MDX_ARCH_TYPE].get_visible())
+        win._search_entry.set_text('Added later')
+        win._update_catalogue_page_state(MDX_ARCH_TYPE)
+        self.assertFalse(win._empty_pages[MDX_ARCH_TYPE].get_visible())
+        self.assertEqual(win._matching_count(MDX_ARCH_TYPE, 'Added later'), 1)
+        self.assertIs(win._row_actions[(MDX_ARCH_TYPE, 'Survivor')], survivor)
+        self.assertNotIn((MDX_ARCH_TYPE, 'Added later'), win.browser.rows)
+        self.assertNotIn((MDX_ARCH_TYPE, 'Removed'), win.browser.rows)
+        self.assertEqual(win.browser.selected_keys(), ((MDX_ARCH_TYPE, 'Survivor'),))
+        self.assertIs(win.browser.snapshot, pinned)
+        self.assertTrue(win.browser.pending_source)
+        self.assertEqual(win.browser.pinned_catalogue(MDX_ARCH_TYPE), {'Survivor': 'original-url'})
+
+    def test_live_count_metadata_keeps_supported_scope_and_unsupported_fallback(self):
+        from bundled.constants import MDX_ARCH_TYPE, VR_ARCH_TYPE
+        from core.catalog_sources import EntryMeta
+        from core.catalogue_types import StemSemanticProjection
+        from core.model_scores import PURPOSE_FX
+        from tests.test_download_center_dedupe_refresh import _bare_window
+
+        win = _bare_window()
+        win._purpose = PURPOSE_FX
+
+        def metadata(role: str):
+            return EntryMeta(
+                label='Neutral',
+                display='Neutral',
+                arch=MDX_ARCH_TYPE,
+                stem_semantics=StemSemanticProjection(
+                    backend_primary_stem=None,
+                    backend_target_stem=None,
+                    logical_primary_role=role,
+                    logical_secondary_role=None,
+                    status='reviewed',
+                    context='full_mix',
+                    routes=(),
+                ),
+            )
+
+        crowd = metadata('cinematic.crowd')
+        drums = metadata('music.drums')
+        win.browser.available = {MDX_ARCH_TYPE: ['Neutral'], VR_ARCH_TYPE: ['Neutral']}
+        win.browser.unsupported = {MDX_ARCH_TYPE: [('Unavailable', 'new build')]}
+        win.manager.catalogue_meta_by_family = {'mdx': {'Neutral': crowd}}
+        win.manager.catalogue_meta = {'Neutral': drums, 'Unavailable': crowd}
+        self.assertEqual(win._matching_count(MDX_ARCH_TYPE, ''), 2)
+        self.assertEqual(win._matching_count(VR_ARCH_TYPE, ''), 0)
+        win.manager.catalogue_meta_by_family = {}
+        win.manager.catalogue_meta = {'Neutral': crowd, 'Unavailable': crowd}
+        self.assertEqual(win._matching_count(MDX_ARCH_TYPE, ''), 1)
+        self.assertEqual(win._matching_count(VR_ARCH_TYPE, ''), 0)
+        win._hide_unsupported = True
+        self.assertEqual(win._matching_count(MDX_ARCH_TYPE, ''), 0)

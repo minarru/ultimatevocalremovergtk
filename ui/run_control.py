@@ -946,7 +946,7 @@ class RunController:
         """Synchronize Start sensitivity, tooltip and accessibility description."""
         if self._running_target is not None and self._host.stop_enabled():
             return None
-        target = getattr(self._host.dialog_parent, "_run_target", None)
+        target = self._host.target
         reason = target_blocked_reason(target)
         self._host.enable_start(reason is None)
         description = reason or "Start processing"

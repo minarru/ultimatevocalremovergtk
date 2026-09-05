@@ -160,7 +160,6 @@ class BrowserRow:
     sdr: float | None = None
     semantics: str = ""
     evidence_detail: str = ""
-    count_roles: tuple[str | None, tuple[str, ...]] | None = None
 
     def purpose_kwargs(self) -> dict[str, typing.Any]:
         return dict(
@@ -281,29 +280,16 @@ class CatalogueBrowserState:
         return counts
 
     @staticmethod
-    def matches(row: BrowserRow, filters: BrowserFilters, *, display_search: bool = True) -> bool:
+    def matches(row: BrowserRow, filters: BrowserFilters) -> bool:
         if filters.hide_unsupported and row.reason is not None:
             return False
         if not network_filter_matches(filters.network, family_arch=row.key[0], network=row.network):
             return False
         purpose_kwargs = row.purpose_kwargs()
-        if not display_search and row.reason is None and row.count_roles is not None:
-            purpose_kwargs['primary_role'], purpose_kwargs['output_roles'] = row.count_roles
         if not label_matches_purpose(row.key[1], filters.purpose, **purpose_kwargs):
             return False
-        extra = f"{row.display} {row.reason or ''}".strip() if display_search else row.reason or ""
+        extra = f"{row.display} {row.reason or ''}".strip()
         return catalogue_label_matches(row.key[1], filters.query, extra=extra)
-
-    def names_matching_network(self, arch: str, network: str) -> list[str]:
-        names = list(self.available.get(arch) or [])
-        if network not in MDX_NETWORK_SUBTYPES:
-            return names
-        return [
-            name
-            for name in names
-            if (row := self.rows.get((arch, name))) is not None
-            and network_filter_matches(network, family_arch=arch, network=row.network)
-        ]
 
     @staticmethod
     def filter_archs(network: str) -> list[str]:
@@ -312,13 +298,6 @@ class CatalogueBrowserState:
             [family]
             if family not in ('', ARCH_FILTER_ALL, None)
             else [VR_ARCH_TYPE, MDX_ARCH_TYPE, DEMUCS_ARCH_TYPE, APOLLO_ARCH_TYPE]
-        )
-
-    def matching_count(self, arch: str, filters: BrowserFilters) -> int:
-        return sum(
-            self.matches(row, filters, display_search=False)
-            for row in self.rows.values()
-            if row.key[0] == arch
         )
 
     def available_count(self) -> int:
@@ -333,6 +312,114 @@ class CatalogueBrowserState:
 
 
 @dataclass(frozen=True)
+class LiveCatalogueEntry:
+    """Raw inventory evidence, acquired independently of pinned rendered rows.
+
+    Supported roles come only from family metadata; unsupported roles retain
+    the row metadata fallback. Neither count predicate includes display text.
+    """
+
+    key: CatalogueKey
+    network: str
+    intent: str | None = None
+    primary_role: str | None = None
+    output_roles: tuple[str, ...] = ()
+    reason: str | None = None
+
+
+@dataclass(frozen=True)
+class LiveCatalogueCounts:
+    by_arch: tuple[tuple[str, int], ...]
+    placeholder_count: int
+    any_rows: bool
+
+    def matching_count(self, arch: str) -> int:
+        return next((count for family, count in self.by_arch if family == arch), 0)
+
+
+def _count_inventory_matches(
+    supported: list[LiveCatalogueEntry],
+    visible_unsupported: list[LiveCatalogueEntry],
+    purpose: str,
+    query: str,
+) -> int:
+    names = catalogue_matches(
+        [entry.key[1] for entry in supported],
+        query,
+        purpose=purpose,
+        intents={entry.key[1]: entry.intent for entry in supported if entry.intent},
+        arches={entry.key[1]: entry.key[0] for entry in supported},
+        primary_roles={
+            entry.key[1]: entry.primary_role for entry in supported if entry.primary_role
+        },
+        output_roles={
+            entry.key[1]: entry.output_roles for entry in supported if entry.output_roles
+        },
+    )
+    return len(names) + sum(
+        catalogue_label_matches(entry.key[1], query, extra=entry.reason or '')
+        for entry in visible_unsupported
+    )
+
+
+def project_live_counts(
+    entries: tuple[LiveCatalogueEntry, ...], filters: BrowserFilters
+) -> LiveCatalogueCounts:
+    """Preserve live raw-label counts, including the legacy empty-state policy."""
+    by_arch = []
+    placeholder = 0
+    any_rows = False
+    filter_archs = CatalogueBrowserState.filter_archs(filters.network)
+    archs = dict.fromkeys((*filter_archs, *(entry.key[0] for entry in entries)))
+    for arch in archs:
+        supported = [
+            entry
+            for entry in entries
+            if entry.key[0] == arch
+            and entry.reason is None
+            and (
+                filters.network not in MDX_NETWORK_SUBTYPES
+                or network_filter_matches(filters.network, family_arch=arch, network=entry.network)
+            )
+        ]
+        unsupported = [
+            entry for entry in entries if entry.key[0] == arch and entry.reason is not None
+        ]
+        # Presence intentionally ignores hide/purpose/query for unsupported rows,
+        # and keeps supported sentinel presence distinct from matching counts.
+        if arch in filter_archs and arch in FAMILY_BY_ARCH and (supported or unsupported):
+            any_rows = True
+        visible_unsupported = [
+            entry
+            for entry in unsupported
+            if not filters.hide_unsupported
+            and network_filter_matches(filters.network, family_arch=arch, network=entry.network)
+            and label_matches_purpose(
+                entry.key[1],
+                filters.purpose,
+                intent=entry.intent,
+                arch=arch,
+                primary_role=entry.primary_role,
+                output_roles=entry.output_roles,
+            )
+        ]
+
+        by_arch.append(
+            (
+                arch,
+                _count_inventory_matches(
+                    supported, visible_unsupported, filters.purpose, filters.query
+                ),
+            )
+        )
+        if arch in filter_archs:
+            placeholder += _count_inventory_matches(
+                supported, visible_unsupported, filters.purpose, ''
+            )
+    return LiveCatalogueCounts(tuple(by_arch), placeholder, any_rows)
+
+
+@dataclass(frozen=True)
 class BrowserView:
     visible_keys: tuple[CatalogueKey, ...]
     placeholder_count: int
@@ -342,19 +429,18 @@ class BrowserView:
 
 
 def project_browser(
-    state: CatalogueBrowserState, filters: BrowserFilters, *, online: bool | None
+    state: CatalogueBrowserState,
+    filters: BrowserFilters,
+    *,
+    online: bool | None,
+    live_counts: LiveCatalogueCounts,
 ) -> BrowserView:
     visible = tuple(
         row.key
         for row in sorted(state.rows.values(), key=lambda row: row.sort_key(filters.sort_mode))
         if state.matches(row, filters)
     )
-    from dataclasses import replace
-
-    placeholder = sum(
-        state.matching_count(arch, replace(filters, query=''))
-        for arch in state.filter_archs(filters.network)
-    )
+    placeholder = live_counts.placeholder_count
     if online is False and not state.available:
         return BrowserView(
             visible,
@@ -365,16 +451,13 @@ def project_browser(
         )
     if online is None:
         return BrowserView(visible, placeholder, 'Catalogue is still loading…', 'Please wait.')
+    filter_archs = state.filter_archs(filters.network)
     count = sum(
-        state.matching_count(arch, filters)
-        for arch in state.filter_archs(filters.network)
-        if arch in FAMILY_BY_ARCH
+        count
+        for arch, count in live_counts.by_arch
+        if arch in FAMILY_BY_ARCH and arch in filter_archs
     )
-    any_rows = any(
-        state.names_matching_network(arch, filters.network) or state.unsupported.get(arch)
-        for arch in state.filter_archs(filters.network)
-        if arch in FAMILY_BY_ARCH
-    )
+    any_rows = live_counts.any_rows
     if (filters.query or filters.purpose not in ('', PURPOSE_ALL, None)) and not count:
         description = (
             f'Try a broader search than “{filters.query}”.'

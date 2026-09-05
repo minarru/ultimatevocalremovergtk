@@ -46,10 +46,13 @@ from core.model_scores import (
 from .catalogue_browser import (
     BrowserFilters,
     CatalogueBrowserState,
+    LiveCatalogueCounts,
+    LiveCatalogueEntry,
     catalogue_evidence_detail,
     catalogue_matches,
     catalogue_semantics_subtitle,
     project_browser,
+    project_live_counts,
     project_row,
 )
 from .dialogs.utils import close_on_escape
@@ -375,7 +378,7 @@ class DownloadCenterWindow:
             reason=reason,
             display_meta=display_meta,
         )
-        return replace(row, count_roles=self._count_roles(arch, name))
+        return row
 
     def _count_roles(self, arch: str, name: str) -> tuple[str | None, tuple[str, ...]]:
         family = FAMILY_BY_ARCH.get(arch)
@@ -383,6 +386,35 @@ class DownloadCenterWindow:
         meta = scoped.get(family, {}).get(name) if isinstance(scoped, dict) and family else None
         primary, outputs = purpose_roles_from_meta(meta)
         return primary, tuple(outputs or ())
+
+    def _live_catalogue_counts(self, filters: BrowserFilters) -> LiveCatalogueCounts:
+        entries = []
+        for arch, names in self.browser.available.items():
+            for name in names:
+                primary, outputs = self._count_roles(arch, name)
+                entries.append(
+                    LiveCatalogueEntry(
+                        (arch, name),
+                        self._network_id_for_row(arch, name),
+                        self._catalogue_intent(arch, name),
+                        primary,
+                        outputs,
+                    )
+                )
+        for arch, rows in self.browser.unsupported.items():
+            for name, reason in rows:
+                primary, outputs = purpose_roles_from_meta(self._catalogue_row_metadata(arch, name))
+                entries.append(
+                    LiveCatalogueEntry(
+                        (arch, name),
+                        self._network_id_for_row(arch, name),
+                        self._catalogue_intent(arch, name),
+                        primary,
+                        tuple(outputs or ()),
+                        reason,
+                    )
+                )
+        return project_live_counts(tuple(entries), filters)
 
     def _refresh_browser_metadata(self) -> None:
         for key, row in tuple(self.browser.rows.items()):
@@ -392,7 +424,6 @@ class DownloadCenterWindow:
                 intent=self._catalogue_intent(*key),
                 primary_role=primary_role,
                 output_roles=tuple(output_roles or ()),
-                count_roles=self._count_roles(*key),
             )
 
     def _row_matches_filter(self, row: Gtk.ListBoxRow, arch: str | None = None) -> bool:
@@ -410,7 +441,6 @@ class DownloadCenterWindow:
             intent=self._catalogue_intent(*key),
             primary_role=primary_role,
             output_roles=tuple(output_roles or ()),
-            count_roles=self._count_roles(*key),
         )
         self.browser.rows[key] = data
         return self.browser.matches(data, self._browser_filters(self._search_query(key[0])))
@@ -1229,8 +1259,7 @@ class DownloadCenterWindow:
             "models",
         )
         self._refresh_browser_metadata()
-        view = project_browser(self.browser, self._browser_filters(""), online=self._catalogue_online)
-        count = view.placeholder_count
+        count = self._live_catalogue_counts(self._browser_filters("")).placeholder_count
         search.set_placeholder_text(f"Search {purpose_label.casefold()} — {count} available")
 
     def _clear_catalogue(self) -> None:
@@ -1271,7 +1300,13 @@ class DownloadCenterWindow:
 
     def _update_catalogue_page_state(self, arch: str | None = None) -> None:
         self._refresh_browser_metadata()
-        view = project_browser(self.browser, self._browser_filters(), online=self._catalogue_online)
+        filters = self._browser_filters()
+        view = project_browser(
+            self.browser,
+            filters,
+            online=self._catalogue_online,
+            live_counts=self._live_catalogue_counts(filters),
+        )
         self._set_catalogue_page_message(
             arch or next(iter(self._empty_pages), ""),
             view.title,
@@ -1281,7 +1316,7 @@ class DownloadCenterWindow:
 
     def _matching_count(self, arch: str, query: str) -> int:
         self._refresh_browser_metadata()
-        return self.browser.matching_count(arch, self._browser_filters(query))
+        return self._live_catalogue_counts(self._browser_filters(query)).matching_count(arch)
 
     def _rebuild_catalogue(self) -> None:
         previously_selected = self.browser.selected_keys()
