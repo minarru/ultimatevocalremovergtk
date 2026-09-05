@@ -109,7 +109,7 @@ def install_view_tab_tooltips(
                 child = child.get_next_sibling()
 
         collect(host)
-        for button, tip in zip(buttons, tips):
+        for button, tip in zip(buttons, tips, strict=False):
             if tip:
                 set_tooltip(button, tip)
 

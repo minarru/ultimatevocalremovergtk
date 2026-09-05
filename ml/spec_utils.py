@@ -208,7 +208,7 @@ def merge_artifacts(y_mask: np.ndarray, thres: float = 0.01, min_range: int = 64
             start_idx = start_idx[artifact_idx]
             end_idx = end_idx[artifact_idx]
             old_e = None
-            for s, e in zip(start_idx, end_idx):
+            for s, e in zip(start_idx, end_idx, strict=True):
                 if old_e is not None and s - old_e < fade_size:
                     s = old_e - fade_size * 2
 
@@ -785,7 +785,7 @@ def ensemble_inputs(
 
 def to_shape(x: np.ndarray, target_shape: Sequence[int]) -> np.ndarray:
     padding_list = []
-    for x_dim, target_dim in zip(x.shape, target_shape):
+    for x_dim, target_dim in zip(x.shape, target_shape, strict=False):
         pad_value = (target_dim - x_dim)
         pad_tuple = ((0, pad_value))
         padding_list.append(pad_tuple)
@@ -795,7 +795,7 @@ def to_shape(x: np.ndarray, target_shape: Sequence[int]) -> np.ndarray:
 def to_shape_minimize(x: np.ndarray, target_shape: Sequence[int]) -> np.ndarray:
     
     padding_list = []
-    for x_dim, target_dim in zip(x.shape, target_shape):
+    for x_dim, target_dim in zip(x.shape, target_shape, strict=False):
         pad_value = (target_dim - x_dim)
         pad_tuple = ((0, pad_value))
         padding_list.append(pad_tuple)

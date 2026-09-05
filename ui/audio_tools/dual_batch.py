@@ -257,7 +257,11 @@ class DualBatchDialog:
         self._save_button.set_sensitive(valid)
 
     def _on_save(self) -> None:
-        pairs = list(zip(self._left.paths, self._right.paths))
+        valid, _message = pair_count_state(len(self._left.paths), len(self._right.paths))
+        if not valid:
+            self._sync_pair_state()
+            return
+        pairs = list(zip(self._left.paths, self._right.paths, strict=True))
         self._on_confirm(pairs)
         self.dialog.close()
 

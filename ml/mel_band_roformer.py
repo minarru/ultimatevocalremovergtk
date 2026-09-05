@@ -254,7 +254,7 @@ class BandSplit(Module):
         splits = x.split(self.dim_inputs, dim=-1)
 
         outs = []
-        for split_input, to_feature in zip(splits, cast(list[Sequential], list(self.to_features))):
+        for split_input, to_feature in zip(splits, cast(list[Sequential], list(self.to_features)), strict=True):
             split_output = to_feature(split_input)
             outs.append(split_output)
 
@@ -273,7 +273,7 @@ def MLP(
     net: list[Module] = []
     dims = (dim_in, *((resolved_dim_hidden,) * depth), dim_out)
 
-    for ind, (layer_dim_in, layer_dim_out) in enumerate(zip(dims[:-1], dims[1:])):
+    for ind, (layer_dim_in, layer_dim_out) in enumerate(zip(dims[:-1], dims[1:], strict=True)):
         is_last = ind == (len(dims) - 2)
 
         net.append(nn.Linear(layer_dim_in, layer_dim_out))
@@ -313,7 +313,7 @@ class MaskEstimator(Module):
 
         outs = []
 
-        for band_features, mlp in zip(bands, cast(list[Sequential], list(self.to_freqs))):
+        for band_features, mlp in zip(bands, cast(list[Sequential], list(self.to_freqs)), strict=True):
             freq_out = mlp(band_features)
             outs.append(freq_out)
 

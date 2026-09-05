@@ -203,7 +203,7 @@ def set_combo_tag_values(row: Adw.ComboRow, items: Iterable) -> None:
             labels.append(text)
     log_model_picker_items(
         str(row.get_title() or "Model picker"),
-        zip(ids, labels),
+        zip(ids, labels, strict=True),
     )
     stash(row, "_uvr_combo_ids", ids)
     model = Gtk.StringList()

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import FrozenInstanceError
+
 import os
 import tempfile
 import unittest
@@ -130,7 +132,7 @@ class JobPlanTests(unittest.TestCase):
             self.assertEqual(plan.inventory_generation, 4)
             self.assertEqual(plan.models[0].id, "mdx:model_a")
             self.assertEqual(len(plan.inputs[0].outputs), 2)
-            with self.assertRaises(Exception):
+            with self.assertRaises(FrozenInstanceError):
                 plan.command = "ensemble"  # type: ignore[misc]
 
 

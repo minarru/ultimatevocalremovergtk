@@ -313,7 +313,7 @@ def _validate_active_dependency_paths(
         ]
     primary_stems = {
         path: str(descriptor_by_id[record.id]["primary_stem"])
-        for path, record in zip(primary_paths, records)
+        for path, record in zip(primary_paths, records, strict=True)
         if record.id in descriptor_by_id
         and descriptor_by_id[record.id].get("primary_stem")
     }

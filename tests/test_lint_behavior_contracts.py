@@ -89,3 +89,61 @@ class ApolloClosureTests(unittest.TestCase):
                     result = restore_process("unused.wav", "unused.ckpt", chunk_size=1, overlap=2, device="cpu")
                 np.testing.assert_allclose(result, signal.numpy(), atol=1e-6)
                 self.assertEqual(load.call_count, 0 if cached else 1)
+
+
+class PairingContractTests(unittest.TestCase):
+    def test_band_split_rejects_missing_projection_instead_of_dropping_a_band(self) -> None:
+        from ml.bs_roformer import BandSplit
+
+        layer = BandSplit(dim=4, dim_inputs=(2, 2))
+        layer.to_features = torch.nn.ModuleList(list(layer.to_features)[:1])
+        with self.assertRaises(ValueError):
+            layer(torch.zeros(1, 4))
+
+    def test_shape_padding_retains_broadcast_and_extra_target_dimensions(self) -> None:
+        from ml.spec_utils import to_shape, to_shape_minimize
+
+        for pad in (to_shape, to_shape_minimize):
+            for shape in ((3,), (3, 3, 99)):
+                with self.subTest(pad=pad.__name__, shape=shape):
+                    result = pad(np.ones((2, 2)), shape)
+                    self.assertEqual(result.shape, (3, 3))
+                    np.testing.assert_array_equal(result[:2, :2], np.ones((2, 2)))
+
+    def test_dual_input_save_revalidates_counts_before_confirmation(self) -> None:
+        from typing import Any, cast
+
+        from ui.audio_tools.dual_batch import DualBatchDialog
+
+        state = SimpleNamespace(
+            _left=SimpleNamespace(paths=["a.wav", "b.wav"]),
+            _right=SimpleNamespace(paths=["c.wav"]),
+            _on_confirm=Mock(), dialog=Mock(), _sync_pair_state=Mock(),
+        )
+        DualBatchDialog._on_save(cast(Any, state))
+        state._on_confirm.assert_not_called()
+        state.dialog.close.assert_not_called()
+        state._sync_pair_state.assert_called_once()
+        state._right.paths.append("d.wav")
+        DualBatchDialog._on_save(cast(Any, state))
+        state._on_confirm.assert_called_once_with([("a.wav", "c.wav"), ("b.wav", "d.wav")])
+        state.dialog.close.assert_called_once()
+
+    def test_tooltip_attachment_tolerates_extra_gtk_buttons(self) -> None:
+        from ui.hints import install_view_tab_tooltips
+
+        first, extra = Mock(), Mock()
+        first.get_first_child.return_value = None
+        first.get_next_sibling.return_value = extra
+        extra.get_first_child.return_value = None
+        extra.get_next_sibling.return_value = None
+        page = SimpleNamespace(get_name=lambda: "one")
+        stack = SimpleNamespace(get_pages=lambda: [page])
+        host = SimpleNamespace(
+            get_stack=lambda: stack, get_first_child=lambda: first,
+            get_mapped=lambda: True, connect=Mock(),
+        )
+        with patch("ui.hints.Gtk.ToggleButton", Mock):
+            install_view_tab_tooltips(host, {"one": "First page"})
+        first.set_tooltip_text.assert_called_once_with("First page")
+        extra.set_tooltip_text.assert_not_called()

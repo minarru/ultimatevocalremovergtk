@@ -127,7 +127,7 @@ class SDlayer(nn.Module):
         # Processing each band with the corresponding convolution
         outputs: list[torch.Tensor] = []
         original_lengths: list[int] = []
-        for conv, stride, kernel, (start, end) in zip(self.convs, self.strides, self.kernels, splits):
+        for conv, stride, kernel, (start, end) in zip(self.convs, self.strides, self.kernels, splits, strict=True):
             extracted = x[:, :, start:end, :]
             original_lengths.append(end - start)
             current_length = extracted.shape[2]
@@ -187,7 +187,7 @@ class SUlayer(nn.Module):
         ]
         # Processing each band with the corresponding convolution
         outputs: list[torch.Tensor] = []
-        for idx, (convtr, (start, end)) in enumerate(zip(self.convtrs, splits)):
+        for idx, (convtr, (start, end)) in enumerate(zip(self.convtrs, splits, strict=True)):
             out = convtr(x[:, :, start:end, :])
             # Calculate the distance to trim the output symmetrically to original length
             current_Fr_length = out.shape[2]
@@ -246,7 +246,7 @@ class SDblock(nn.Module):
                 .view(band.shape[0], band.shape[2], band.shape[1], band.shape[3])
                 .permute(0, 2, 1, 3)
             )
-            for conv, band in zip(self.conv_modules, bands)
+            for conv, band in zip(self.conv_modules, bands, strict=True)
 
         ]
         lengths = [band.size(-2) for band in bands]

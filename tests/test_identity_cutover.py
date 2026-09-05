@@ -422,14 +422,14 @@ class ReplayManifestContractTests(unittest.TestCase):
             "command": "ensemble",
             "model_dependencies": {
                 f"ensemble.selected_models[{index}]": model_id
-                for index, model_id in zip(indices, members)
+                for index, model_id in zip(indices, members, strict=True)
             },
             "model_identity_digest": cls._RECORDED_DIGEST,
             "settings": settings.to_json_dict(),
             "plan": {
                 "models": [
                     {"id": model_id, "checkpoint_hash": f"hash-{index}"}
-                    for index, model_id in zip(indices, members)
+                    for index, model_id in zip(indices, members, strict=True)
                 ],
             },
             "job_spec": {

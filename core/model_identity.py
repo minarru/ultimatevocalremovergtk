@@ -199,7 +199,7 @@ class _ModelInventory:
                 basenames, ARCH_BY_FAMILY[family], self.repo,
                 allow_network=False,
             )
-            for basename, display in zip(basenames, displays):
+            for basename, display in zip(basenames, displays, strict=True):
                 model_id = str(ModelId(family, basename))
                 result[model_id] = ModelRecord(
                     id=model_id,
