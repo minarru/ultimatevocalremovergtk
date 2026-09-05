@@ -210,3 +210,61 @@ class EngineLegacyOptions:
     is_prevent_export_clipping = RunValue(lambda sep: sep.context.export.is_prevent_export_clipping)
     amplification_threshold = RunValue(lambda sep: sep.context.export.amplification_threshold)
     process_data = RunValue(lambda sep: sep.context.process)
+    device: Any = RunValue[Any](
+        lambda sep: sep.state.device, write=lambda sep, value: setattr(sep.state, "device", value)
+    )
+    run_type: Any = RunValue[Any](
+        lambda sep: sep.state.run_type,
+        write=lambda sep, value: setattr(sep.state, "run_type", value),
+    )
+    _backend_name: Any = RunValue[Any](
+        lambda sep: sep.state._backend_name,
+        write=lambda sep, value: setattr(sep.state, "_backend_name", value),
+    )
+    demucs: Any = RunValue[Any](
+        lambda sep: sep.state.demucs, write=lambda sep, value: setattr(sep.state, "demucs", value)
+    )
+    model_run: Any = RunValue[Any](
+        lambda sep: sep.state.model_run,
+        write=lambda sep, value: setattr(sep.state, "model_run", value),
+    )
+    _inference_model: Any = RunValue[Any](
+        lambda sep: sep.state._inference_model,
+        write=lambda sep, value: setattr(sep.state, "_inference_model", value),
+    )
+    _ort_session: Any = RunValue[Any](
+        lambda sep: sep.state._ort_session,
+        write=lambda sep, value: setattr(sep.state, "_ort_session", value),
+    )
+    _weight_cache_key: Any = RunValue[Any](
+        lambda sep: sep.state._weight_cache_key,
+        write=lambda sep, value: setattr(sep.state, "_weight_cache_key", value),
+    )
+    primary_model_name: Any = RunValue[Any](
+        lambda sep: sep.state.primary_model_name,
+        write=lambda sep, value: setattr(sep.state, "primary_model_name", value),
+    )
+    primary_sources: Any = RunValue[Any](
+        lambda sep: sep.state.primary_sources,
+        write=lambda sep, value: setattr(sep.state, "primary_sources", value),
+    )
+    master_inst_source: Any = RunValue[Any](
+        lambda sep: sep.state.master_inst_source,
+        write=lambda sep, value: setattr(sep.state, "master_inst_source", value),
+    )
+    master_vocal_source: Any = RunValue[Any](
+        lambda sep: sep.state.master_vocal_source,
+        write=lambda sep, value: setattr(sep.state, "master_vocal_source", value),
+    )
+    master_vocal_path: Any = RunValue[Any](
+        lambda sep: sep.state.master_vocal_path,
+        write=lambda sep, value: setattr(sep.state, "master_vocal_path", value),
+    )
+    set_master_inst_source: Any = RunValue[Any](
+        lambda sep: sep.state.set_master_inst_source,
+        write=lambda sep, value: setattr(sep.state, "set_master_inst_source", value),
+    )
+    audio_file_base_voc_split: Any = RunValue[Any](
+        lambda sep: sep.state.audio_file_base_voc_split,
+        write=lambda sep, value: setattr(sep.state, "audio_file_base_voc_split", value),
+    )

@@ -45,3 +45,24 @@ class EngineRuntimeContextTests(unittest.TestCase):
             engine = _copy_engine_attributes(model)
             self.assertEqual(resolve.call_count, 1)
             self.assertEqual(str(engine.device), 'cpu')
+
+    def test_cleanup_releases_materialized_handles_and_state_owned_audio(self):
+        import numpy as np
+
+        from core.inference_cleanup import release_separator
+
+        engine = _copy_engine_attributes(partial_model())
+        released = []
+        module = SimpleNamespace(cpu=lambda: released.append('cpu'))
+        engine._inference_model = module
+        engine.primary_source = np.ones((8, 2))
+        with patch(
+            'engines.model_weight_cache.get_weight_cache',
+            return_value=SimpleNamespace(
+                stash_separator=lambda separator: False,
+            ),
+        ):
+            release_separator(engine)
+        self.assertEqual(released, ['cpu'])
+        self.assertIsNone(engine.state.primary_source)
+        self.assertIsNone(engine.state._inference_model)
