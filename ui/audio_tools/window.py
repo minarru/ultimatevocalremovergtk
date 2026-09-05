@@ -78,8 +78,13 @@ from ..help_text import (
     VIEW_INPUTS_BUTTON_HINT,
 )
 from ..hints import HelpHintManager, set_icon_button_a11y, set_tooltip
+from ..protocols import FormatEdit
 from ..settings_bind import set_flat
-from ..shared_settings import apply_shared_file_options
+from ..shared_settings import (
+    SharedSettingsSession,
+    apply_shared_file_options,
+    shared_settings_bindings,
+)
 from ..widgets.columns import build_columns_box, wrap_options_scroller
 from ..widgets.dual_inputs import DualInputsRow
 from ..widgets.file_chooser import InputFilesRow, OutputFolderRow
@@ -129,8 +134,8 @@ class AudioToolsPage:
     Exposes the uniform "run target" interface the main window's shared
     Start/Stop dispatch expects: :attr:`widget`, :attr:`columns_box`,
     :meth:`start`, :meth:`stop`, :meth:`on_activated`, :meth:`on_deactivated`
-    and :meth:`load`. Every control writes its settings key live on change, so
-    there is no separate flush step; the main window persists everything via
+    and :meth:`load`. Shared controls commit their edited fields live and flush
+    pending edits before preflight/start. The main window persists settings via
     ``AppContext.save_settings`` on close.
     """
 
@@ -140,6 +145,7 @@ class AudioToolsPage:
         self.window = window
         self.context = context
         self.settings = context.settings
+        self._shared_session: SharedSettingsSession | None = None
         self._loading = False
         self._dual_pairs: List[Tuple[str, str]] = [
             (str(p[0]), str(p[1]))
@@ -166,6 +172,7 @@ class AudioToolsPage:
         select_group = self._build_select_group()
         self.tool_stack = self._build_tool_stack()
         self.shared_group = self._build_shared_group()
+        self._install_shared_session()
 
         self.columns_box, _, _ = build_columns_box(
             left_groups=(self.files_group, select_group, self.tool_stack),
@@ -478,7 +485,7 @@ class AudioToolsPage:
         self.hints.register(self.apollo_gpu_row, IS_GPU_CONVERSION_HELP)
         self.apollo_gpu_row.connect(
             "notify::active",
-            lambda *_a: self._set("is_gpu_conversion", self.apollo_gpu_row.get_active()),
+            self._on_gpu_changed,
         )
         group.add(self.apollo_gpu_row)
 
@@ -531,9 +538,7 @@ class AudioToolsPage:
                 ),
             )
 
-            inputs = s.get("input_paths") or []
-            self.inputs_row.set_paths(inputs, notify=False)
-            self.output_row.set_path(s.get("export_path") or "", notify=False)
+            self._sync_shared_from_settings()
 
             set_combo_value(
                 self.algorithm_row,
@@ -546,7 +551,6 @@ class AudioToolsPage:
 
             self.apollo_overlap_row.set_value(int(float(s.get("apollo_overlap") or 5)))
             self.apollo_chunk_row.set_value(int(float(s.get("apollo_chunk_size") or 10)))
-            self.apollo_gpu_row.set_active(bool(s.get("is_gpu_conversion")))
 
             set_combo_value(
                 self.time_window_row,
@@ -571,7 +575,6 @@ class AudioToolsPage:
             self.match_silence_row.set_active(bool(s.get("is_match_silence")))
             self.spec_match_row.set_active(bool(s.get("is_spec_match")))
 
-            self.format_row.apply_from_settings(s)
             self.normalize_row.set_active(bool(s.get("is_normalization")))
             try:
                 amp = float(s.get("amplification_threshold") or 0.0)
@@ -586,19 +589,27 @@ class AudioToolsPage:
         self._sync_tool_visibility()
         self._refresh_dual_rows()
 
+    def _install_shared_session(self) -> None:
+        self._shared_session = SharedSettingsSession(
+            self.settings,
+            shared_settings_bindings(
+                input_row=self.inputs_row, output_row=self.output_row,
+                format_row=self.format_row, gpu_row=self.apollo_gpu_row,
+            ),
+            can_commit=lambda: self.window.content_stack.get_visible_child_name() == "audio_tools",
+        )
+
+    def _apply_shared_widgets(self) -> None:
+        apply_shared_file_options(
+            self.settings,
+            input_row=self.inputs_row, output_row=self.output_row,
+            format_row=self.format_row, gpu_row=self.apollo_gpu_row,
+        )
+
     def _sync_shared_from_settings(self) -> None:
-        """Re-read the keys shared across tabs (inputs / output / format)."""
-        self._loading = True
-        try:
-            apply_shared_file_options(
-                self.settings,
-                input_row=self.inputs_row,
-                output_row=self.output_row,
-                format_row=self.format_row,
-                gpu_row=self.apollo_gpu_row,
-            )
-        finally:
-            self._loading = False
+        """Refresh displayed baselines without creating shared edits."""
+        assert self._shared_session is not None
+        self._shared_session.refresh(self._apply_shared_widgets)
 
     def sync_processing_from_settings(self) -> None:
         """Re-read the Processing-group rows Preferences can edit directly.
@@ -740,21 +751,31 @@ class AudioToolsPage:
         self._sync_tool_visibility()
         self._refresh_dual_rows()
 
-    def _on_format_changed(self, *_args: typing.Any) -> None:
-        if self._loading:
+    def _on_gpu_changed(self, *_args: typing.Any) -> None:
+        session = self._shared_session
+        if session is None or not session.editable:
             return
-        self.format_row.persist_to_settings(self.settings)
+        session.commit(edited=(session.bindings.use_gpu,))
+
+    def _on_format_changed(self, event: FormatEdit) -> None:
+        session = self._shared_session
+        if session is None or not session.editable:
+            return
+        session.format_changed(event)
 
     def _on_inputs_changed(self) -> None:
-        if self._loading:
+        session = self._shared_session
+        if session is None or not session.editable:
             return
-        paths = list(self.inputs_row.paths)
-        self.settings.process.input_paths = paths
-        self.context.prune_unreadable_input_paths(paths)
+        session.commit(edited=(session.bindings.input_paths,))
+        self.context.prune_unreadable_input_paths(list(self.inputs_row.paths))
         self.window._refresh_start_readiness()
 
     def _on_output_changed(self) -> None:
-        self._set("export_path", self.output_row.path)
+        session = self._shared_session
+        if session is None or not session.editable:
+            return
+        session.commit(edited=(session.bindings.export_path,))
         self.window._refresh_start_readiness()
 
     def _on_open_dual_editor(self, *_args: typing.Any) -> None:
@@ -824,6 +845,8 @@ class AudioToolsPage:
         from core.audio_plan import AudioJobSpec
         from core.audio_tools import DUAL_INPUT_TOOLS
 
+        assert self._shared_session is not None
+        self._shared_session.commit()
         settings = copy.deepcopy(self.settings)
         settings.process.export_path = self.output_row.path
         tool = self._current_tool()
@@ -854,6 +877,8 @@ class AudioToolsPage:
         return None
 
     def start(self, callbacks: typing.Any, plan: typing.Any = None) -> None:
+        assert self._shared_session is not None
+        self._shared_session.commit()
         # Input/output/tool readiness is validated by ``MainWindow._on_start``
         # before dispatch; the Apollo model resolution below still surfaces its
         # own dialog/toast for the deeper model-recognition cases.

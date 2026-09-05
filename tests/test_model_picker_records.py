@@ -136,7 +136,7 @@ class VocalSplitRefreshTests(unittest.TestCase):
             "core.model_identity.ModelIdentityService.records",
             side_effect=lambda: tuple(records),
         ):
-            row = VocalSplitRow(repo, lambda: None)
+            row = VocalSplitRow(repo, lambda _event: None)
             row.apply_from_settings(settings)
             row._populator._populate_now()
 
@@ -164,7 +164,7 @@ class VocalSplitRefreshTests(unittest.TestCase):
             "core.model_identity.ModelIdentityService.records",
             side_effect=lambda: tuple(records),
         ):
-            row = VocalSplitRow(repo, lambda: None)
+            row = VocalSplitRow(repo, lambda _event: None)
             row.apply_from_settings(settings)
             row._populator._populate_now()
             eligible.clear()
@@ -675,7 +675,10 @@ class VocalSplitPickerGateTests(unittest.TestCase):
         row.deverb_switch = _FakeControl()
         row.deverb_row = _FakeControl()
         row.refresh_summary = lambda: None
-        row._on_changed = lambda: None
+        from ui.shared_settings import SharedSettingsSession, shared_settings_bindings
+        settings.process.vocal_splitter_enabled = True
+        session = SharedSettingsSession(settings, shared_settings_bindings(vocal_row=row), can_commit=lambda: True)
+        row._on_changed = session.vocal_changed
         return row, settings
 
     def test_every_non_picker_signal_flushes_each_gated_stored_value(self) -> None:

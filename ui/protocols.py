@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from enum import Enum, auto
 from typing import Protocol, Sequence, Tuple
 
 from core.settings import Settings
@@ -43,3 +44,58 @@ class WindowSizing(Protocol):
 
 class FormatRow(Protocol):
     def apply_from_settings(self, settings: Settings) -> None: ...
+
+
+class FormatEdit(Enum):
+    FORMAT = auto()
+    QUALITY = auto()
+
+
+class VocalSplitEdit(Enum):
+    ENABLED = auto()
+    MODEL = auto()
+    SAVE_INSTRUMENTALS = auto()
+    DEVERB = auto()
+    DEVERB_OPTION = auto()
+
+
+class ReadableInputPathsRow(Protocol):
+    @property
+    def paths(self) -> Sequence[str]: ...
+
+
+class ReadableOutputPathRow(Protocol):
+    @property
+    def path(self) -> str: ...
+
+
+class ReadableSwitchRow(Protocol):
+    def get_active(self) -> bool: ...
+
+
+class ReadableFormatRow(Protocol):
+    @property
+    def save_format(self) -> str: ...
+
+    @property
+    def quality_value(self) -> str: ...
+
+
+class ReadableVocalSplitRow(Protocol):
+    @property
+    def enabled(self) -> bool: ...
+
+    @property
+    def model_value(self) -> str: ...
+
+    @property
+    def model_write_allowed(self) -> bool: ...
+
+    @property
+    def save_instrumentals(self) -> bool: ...
+
+    @property
+    def deverb(self) -> bool: ...
+
+    @property
+    def deverb_option(self) -> str: ...

@@ -101,13 +101,15 @@ from ..help_text import (
 )
 from ..hints import set_icon_button_a11y, set_tooltip
 from ..markup import set_row_subtitle, set_row_title
+from ..protocols import FormatEdit, VocalSplitEdit
 from ..settings_bind import set_flat
 from ..shared_settings import (
     SAMPLE_MODE_TITLE,
-    apply_sample_mode_label,
+    SharedSettingsSession,
     apply_shared_file_options,
     gpu_dependent_enabled,
     sample_mode_subtitle,
+    shared_settings_bindings,
 )
 from ..spacing import inset_md
 from ..widget_state import fetch, stash
@@ -187,6 +189,7 @@ class EnsemblePage:
         self.window = window
         self.context = context
         self.settings = context.settings
+        self._shared_session: SharedSettingsSession | None = None
         self._loading = False
         self._syncing_preset = False
         self._lock_leftover_algo = False
@@ -211,6 +214,7 @@ class EnsemblePage:
         ensemble_group = self._build_ensemble_group()
         stems_group = self._build_stems_group()
         output_group = self._build_output_group()
+        self._install_shared_session()
 
         self.columns_box, self._col_start, self._col_end = build_columns_box(
             left_groups=(files_group, ensemble_group),
@@ -502,14 +506,7 @@ class EnsemblePage:
         """
         self._loading = True
         try:
-            self.input_row.set_paths(self.settings.process.input_paths or [], notify=False)
-            self.output_row.set_path(self.settings.process.export_path or "", notify=False)
-            self.format_row.apply_from_settings(self.settings)
-            self.vocal_split_row.apply_from_settings(self.settings)
-            self.gpu_row.set_active(bool(self.settings.process.use_gpu))
-            self.autocast_row.set_active(bool(self.settings.process.autocast))
-            apply_sample_mode_label(self.sample_row, self.settings.process.sample_mode_duration)
-            self.sample_row.set_active(bool(self.settings.process.sample_mode))
+            self._sync_shared_from_settings()
 
             self._refresh_saved_list()
             self._refresh_pair_choices()
@@ -532,22 +529,31 @@ class EnsemblePage:
 
         self._rebuild_model_list(self.settings.ensemble.selected_models or [])
 
+    def _install_shared_session(self) -> None:
+        self._shared_session = SharedSettingsSession(
+            self.settings,
+            shared_settings_bindings(
+                input_row=self.input_row, output_row=self.output_row,
+                format_row=self.format_row, gpu_row=self.gpu_row,
+                autocast_row=self.autocast_row, sample_row=self.sample_row,
+                vocal_row=self.vocal_split_row,
+            ),
+            can_commit=lambda: self.window.content_stack.get_visible_child_name() == "ensemble",
+        )
+
+    def _apply_shared_widgets(self) -> None:
+        apply_shared_file_options(
+            self.settings,
+            input_row=self.input_row, output_row=self.output_row,
+            format_row=self.format_row, gpu_row=self.gpu_row,
+            autocast_row=self.autocast_row, sample_row=self.sample_row,
+        )
+        self.vocal_split_row.apply_from_settings(self.settings)
+
     def _sync_shared_from_settings(self) -> None:
-        """Re-read the keys shared across tabs (inputs / output / format / ...)."""
-        self._loading = True
-        try:
-            apply_shared_file_options(
-                self.settings,
-                input_row=self.input_row,
-                output_row=self.output_row,
-                format_row=self.format_row,
-                gpu_row=self.gpu_row,
-                autocast_row=self.autocast_row,
-                sample_row=self.sample_row,
-            )
-            self.vocal_split_row.apply_from_settings(self.settings)
-        finally:
-            self._loading = False
+        """Refresh displayed baselines without creating shared edits."""
+        assert self._shared_session is not None
+        self._shared_session.refresh(self._apply_shared_widgets)
         self._sync_gpu_dependent_rows()
 
     def _set_bool(self, key: str, value: bool, *, refresh_stems: bool = False) -> None:
@@ -558,37 +564,52 @@ class EnsemblePage:
             self._update_stems_group_metadata()
 
     def _on_inputs_changed(self) -> None:
-        paths = list(self.input_row.paths)
-        self.settings.process.input_paths = paths
-        self.context.prune_unreadable_input_paths(paths)
+        session = self._shared_session
+        if session is None or not session.editable:
+            return
+        session.commit(edited=(session.bindings.input_paths,))
+        self.context.prune_unreadable_input_paths(list(self.input_row.paths))
         self.window._refresh_start_readiness()
 
     def _on_output_changed(self) -> None:
-        self.settings.process.export_path = self.output_row.path
+        session = self._shared_session
+        if session is None or not session.editable:
+            return
+        session.commit(edited=(session.bindings.export_path,))
         self.window._refresh_start_readiness()
 
-    def _on_format_changed(self, *_args: typing.Any) -> None:
-        if not self._loading:
-            self.format_row.persist_to_settings(self.settings)
+    def _on_format_changed(self, event: FormatEdit) -> None:
+        session = self._shared_session
+        if session is None or not session.editable:
+            return
+        session.format_changed(event)
 
-    def _on_vocal_split_changed(self, *_args: typing.Any) -> None:
-        if not self._loading:
-            self.vocal_split_row.persist_to_settings(self.settings)
+    def _on_vocal_split_changed(self, event: VocalSplitEdit) -> None:
+        session = self._shared_session
+        if session is None or not session.editable:
+            return
+        session.vocal_changed(event)
 
     def _on_gpu_changed(self, *_args: typing.Any) -> None:
-        if not self._loading:
-            self.settings.process.use_gpu = self.gpu_row.get_active()
-            self._update_stems_group_metadata()
+        session = self._shared_session
+        if session is None or not session.editable:
+            return
+        session.commit(edited=(session.bindings.use_gpu,))
+        self._update_stems_group_metadata()
         self._sync_gpu_dependent_rows()
 
     def _on_autocast_changed(self, *_args: typing.Any) -> None:
-        if not self._loading:
-            self.settings.process.autocast = self.autocast_row.get_active()
+        session = self._shared_session
+        if session is None or not session.editable:
+            return
+        session.commit(edited=(session.bindings.autocast,))
 
     def _on_sample_changed(self, *_args: typing.Any) -> None:
-        if not self._loading:
-            self.settings.process.sample_mode = self.sample_row.get_active()
-            self._update_stems_group_metadata()
+        session = self._shared_session
+        if session is None or not session.editable:
+            return
+        session.commit(edited=(session.bindings.sample_mode,))
+        self._update_stems_group_metadata()
 
     def _ensemble_pair(self) -> str:
         return normalize_stem_pair_id(self.settings.ensemble.main_stem)
@@ -1674,7 +1695,8 @@ class EnsemblePage:
         """Persist widget state plan/start reads (mirrors separation preflight flush)."""
         self.settings.process.method = ProcessMethod.ENSEMBLE
         self._persist_selected_models()
-        self.vocal_split_row.persist_to_settings(self.settings)
+        assert self._shared_session is not None
+        self._shared_session.commit()
         self.save_stems.persist_to_settings()
 
     def build_job_spec(self) -> typing.Any:

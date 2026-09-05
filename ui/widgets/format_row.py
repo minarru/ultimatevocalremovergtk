@@ -32,6 +32,7 @@ from core.settings import Settings
 from core.types import SaveFormat
 from ui.help_text import FLAC_BIT_DEPTH_HINT, OUTPUT_FORMAT_HINT, WAV_TYPE_HINT
 
+from ..protocols import FormatEdit
 from ..settings_bind import enum_value, get_flat, set_flat
 from .rows import set_row_icon
 
@@ -115,7 +116,7 @@ def _select_string(drop: Gtk.DropDown, value: str) -> bool:
 class OutputFormatRow(Adw.ActionRow):
     """Output format plus its quality sub-option, side by side in one row."""
 
-    def __init__(self, on_changed: Callable[[], None]):
+    def __init__(self, on_changed: Callable[[FormatEdit], None]):
         super().__init__(title="Output format")
         set_row_icon(self, "waveform-symbolic")
         self._on_changed = on_changed
@@ -219,9 +220,9 @@ class OutputFormatRow(Adw.ActionRow):
             self._apply_quality_labels(self.save_format)
         finally:
             self._syncing = False
-        self._on_changed()
+        self._on_changed(FormatEdit.FORMAT)
 
     def _on_quality_selected(self, *_args: typing.Any) -> None:
         if self._syncing:
             return
-        self._on_changed()
+        self._on_changed(FormatEdit.QUALITY)

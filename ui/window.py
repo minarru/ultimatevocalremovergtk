@@ -66,15 +66,17 @@ from .model_options import (
     OPEN_CONTEXT_SEPARATION,
     open_model_options_sheet,
 )
+from .protocols import FormatEdit, VocalSplitEdit
 from .run_control import RunController
 from .shared_settings import (
     SAMPLE_MODE_TITLE,
-    apply_sample_mode_label,
+    SharedSettingsSession,
     apply_shared_file_options,
     format_input_sanitize_toasts,
     gpu_dependent_enabled,
     sample_mode_subtitle,
     sanitize_input_paths,
+    shared_settings_bindings,
 )
 from .views import METHOD_VIEWS
 from .widgets.columns import (
@@ -203,6 +205,7 @@ class MainWindow(Adw.ApplicationWindow):
 
         self.context = AppContext()
         self.settings = self.context.settings
+        self._shared_session: SharedSettingsSession | None = None
 
         self.set_title(APP_TITLE)
         # Restore the persisted geometry (falling back to the default size), and
@@ -308,6 +311,7 @@ class MainWindow(Adw.ApplicationWindow):
         self._register_hints()
         self._apply_accelerators()
 
+        self._install_shared_session()
         self._load_from_settings()
         # Core mutates model state from places with no path to the UI --
         # update_model_settings and downloads' MDX-C registration both run on
@@ -727,18 +731,9 @@ class MainWindow(Adw.ApplicationWindow):
         cleaned_inputs, input_result = sanitize_input_paths(raw_inputs)
         if cleaned_inputs != raw_inputs:
             self.settings.process.input_paths = cleaned_inputs
-        self.input_row.set_paths(cleaned_inputs, notify=False)
         self._maybe_notify_stale_inputs(input_result)
-        export_path = self.settings.process.export_path or ""
-        self.output_row.set_path(export_path, notify=False)
+        self._sync_shared_from_settings()
         self._maybe_notify_stale_export_path()
-        self.format_row.apply_from_settings(self.settings)
-        self.vocal_split_row.apply_from_settings(self.settings)
-        self.gpu_row.set_active(bool(self.settings.process.use_gpu))
-        self.autocast_row.set_active(bool(self.settings.process.autocast))
-        self._sync_gpu_dependent_rows()
-        apply_sample_mode_label(self.sample_row, self.settings.process.sample_mode_duration)
-        self.sample_row.set_active(bool(self.settings.process.sample_mode))
 
         method = self.settings.process.method or MDX_ARCH_TYPE
         method = _METHOD_SETTING_ALIASES.get(method, method)
@@ -793,18 +788,31 @@ class MainWindow(Adw.ApplicationWindow):
     def _active_view(self):
         return self._current_view or self._views[0]
 
-    def _sync_shared_from_settings(self) -> None:
-        """Re-read the cross-tab shared keys into the separation widgets."""
+    def _install_shared_session(self) -> None:
+        self._shared_session = SharedSettingsSession(
+            self.settings,
+            shared_settings_bindings(
+                input_row=self.input_row, output_row=self.output_row,
+                format_row=self.format_row, gpu_row=self.gpu_row,
+                autocast_row=self.autocast_row, sample_row=self.sample_row,
+                vocal_row=self.vocal_split_row,
+            ),
+            can_commit=lambda: self.content_stack.get_visible_child_name() == "separation",
+        )
+
+    def _apply_shared_widgets(self) -> None:
         apply_shared_file_options(
             self.settings,
-            input_row=self.input_row,
-            output_row=self.output_row,
-            format_row=self.format_row,
-            gpu_row=self.gpu_row,
-            autocast_row=self.autocast_row,
-            sample_row=self.sample_row,
+            input_row=self.input_row, output_row=self.output_row,
+            format_row=self.format_row, gpu_row=self.gpu_row,
+            autocast_row=self.autocast_row, sample_row=self.sample_row,
         )
         self.vocal_split_row.apply_from_settings(self.settings)
+
+    def _sync_shared_from_settings(self) -> None:
+        """Refresh displayed baselines without creating shared edits."""
+        assert self._shared_session is not None
+        self._shared_session.refresh(self._apply_shared_widgets)
         self._sync_gpu_dependent_rows()
 
     def _activate_separation(self) -> None:
@@ -903,38 +911,60 @@ class MainWindow(Adw.ApplicationWindow):
         self._refresh_start_readiness()
 
     def _on_inputs_changed(self) -> None:
-        paths = list(self.input_row.paths)
-        self.settings.process.input_paths = paths
-        self.context.prune_unreadable_input_paths(paths)
+        session = self._shared_session
+        if session is None or not session.editable:
+            return
+        session.commit(edited=(session.bindings.input_paths,))
+        self.context.prune_unreadable_input_paths(list(self.input_row.paths))
         self._refresh_start_readiness()
 
     def _on_external_inputs_changed(self, paths: typing.Any) -> None:
         paths = list(paths)
         self.input_row.set_paths(paths, notify=False)
         self.settings.process.input_paths = paths
+        assert self._shared_session is not None
+        self._shared_session.adopt(self._shared_session.bindings.input_paths)
         self.context.prune_unreadable_input_paths(paths)
         self._refresh_start_readiness()
 
     def _on_output_changed(self) -> None:
-        self.settings.process.export_path = self.output_row.path
+        session = self._shared_session
+        if session is None or not session.editable:
+            return
+        session.commit(edited=(session.bindings.export_path,))
         self._refresh_start_readiness()
 
-    def _on_format_changed(self, *_args: typing.Any) -> None:
-        self.format_row.persist_to_settings(self.settings)
+    def _on_format_changed(self, event: FormatEdit) -> None:
+        session = self._shared_session
+        if session is None or not session.editable:
+            return
+        session.format_changed(event)
 
-    def _on_vocal_split_changed(self, *_args: typing.Any) -> None:
-        self.vocal_split_row.persist_to_settings(self.settings)
+    def _on_vocal_split_changed(self, event: VocalSplitEdit) -> None:
+        session = self._shared_session
+        if session is None or not session.editable:
+            return
+        session.vocal_changed(event)
 
     def _on_gpu_changed(self, *_args: typing.Any) -> None:
-        self.settings.process.use_gpu = self.gpu_row.get_active()
+        session = self._shared_session
+        if session is None or not session.editable:
+            return
+        session.commit(edited=(session.bindings.use_gpu,))
         self._sync_gpu_dependent_rows()
         self._refresh_active_stem_metadata()
 
     def _on_autocast_changed(self, *_args: typing.Any) -> None:
-        self.settings.process.autocast = self.autocast_row.get_active()
+        session = self._shared_session
+        if session is None or not session.editable:
+            return
+        session.commit(edited=(session.bindings.autocast,))
 
     def _on_sample_changed(self, *_args: typing.Any) -> None:
-        self.settings.process.sample_mode = self.sample_row.get_active()
+        session = self._shared_session
+        if session is None or not session.editable:
+            return
+        session.commit(edited=(session.bindings.sample_mode,))
         self._refresh_active_stem_metadata()
 
     def _refresh_active_stem_metadata(self) -> None:
@@ -988,13 +1018,8 @@ class MainWindow(Adw.ApplicationWindow):
         # per-family options; view order only matters if something writes a
         # shared key — another reason inactive views must not touch stem_focus.
         if self.content_stack.get_visible_child_name() == "separation":
-            self.settings.process.input_paths = list(self.input_row.paths)
-            self.settings.process.export_path = self.output_row.path
-            self.format_row.persist_to_settings(self.settings)
-            self.vocal_split_row.persist_to_settings(self.settings)
-            self.settings.process.use_gpu = self.gpu_row.get_active()
-            self.settings.process.autocast = self.autocast_row.get_active()
-            self.settings.process.sample_mode = self.sample_row.get_active()
+            assert self._shared_session is not None
+            self._shared_session.commit()
 
     # -- Run control ------------------------------------------------------------
 

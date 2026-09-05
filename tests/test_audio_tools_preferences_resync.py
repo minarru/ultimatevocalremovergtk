@@ -19,6 +19,13 @@ import unittest
 class _StubWindow:
     """Minimal window stand-in AudioToolsPage's constructor/on_activated need."""
 
+    @property
+    def content_stack(self):
+        return self
+
+    def get_visible_child_name(self) -> str:
+        return "audio_tools"
+
     def toast(self, _message: str) -> None:
         pass
 

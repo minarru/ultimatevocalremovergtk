@@ -28,9 +28,9 @@ Loaded when working under `ui/`. Layer rules, invariants and repo workflow live 
 Shared keys and where they may be written:
 
 - **`process.stem_focus`** — Save Stems on the active separation method only (`MethodView.save(include_stem_only=True)` → `_persist_stem_only`). Ensemble: `EnsemblePage._flush_run_settings()` before `build_job_spec` / `start`. Never from inactive VR/MDX/Demucs views.
-- **Format, GPU, autocast, sample mode, vocal splitter, separation I/O** — separation-page widgets; flushed in `MainWindow._flush_settings` only when the Separation tab is visible (stale-widget guard). Ensemble and Audio Tools keep their own live copies on their tabs.
+- **Format/quality, GPU, autocast, sample mode, vocal splitter, I/O** — per-page typed bindings in [`SharedSettingsSession`](shared_settings.py). Each page commits only fields it edited; immediate commits advance the displayed baseline so later flushes cannot replay old edits. All three sessions gate writes on their visible tab. `MainWindow._flush_settings` retains the Separation guard; Ensemble and Audio Tools flush shared edits before spec/start. The global Verify Inputs callback remains a separate input authority and adopts the Separation input baseline even while another tab is visible.
 
 Rules for new UI:
 
-- If a widget writes a key used across tabs or methods, persist live on change **and** flush before `build_job_spec`, or gate writes on the active tab/method — never persist from a stale inactive surface.
+- Add shared controls to the typed binding factory and each page's refresh. Route interactive callbacks through the exact field handle and programmatic loads through `session.refresh`; keep method-specific and Save Stems owners separate. Format events adopt the restored active quality before committing format; quality events edit only that quality. Vocal model writes require the populated canonical picker and its repick gate. Run pages must not call the format/vocal rows' legacy whole-widget persistence methods.
 - **Anti-pattern:** calling `save_stems.persist_to_settings()` from `save_options()` or any path that runs when `include_stem_only=False` (Demucs/MDX regression: inactive Demucs `quick_all` cleared MDX Instrumental focus before plan review).

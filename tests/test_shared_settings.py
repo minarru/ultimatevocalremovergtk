@@ -309,5 +309,114 @@ class ApplySharedFileOptionsTests(unittest.TestCase):
             os.remove(input_path)
 
 
+
+class SharedSessionTests(unittest.TestCase):
+    def setUp(self):
+        import ui.shared_settings as shared
+        self.assertTrue(hasattr(shared, "SharedSettingsSession"), "shared edit ownership is missing")
+        self.shared = shared
+        self.settings = Settings.defaults()
+        self.settings.process.save_format = self.SaveFormat.WAV
+
+    from core.types import SaveFormat
+
+    def session(self):
+        from types import SimpleNamespace
+        row = SimpleNamespace(gpu=False, format=self.SaveFormat.WAV, paths=[], available=True, active=True)
+        def write_gpu(settings: Settings, value: bool):
+            settings.process.use_gpu = value
+        def write_format(settings: Settings, value: SharedSessionTests.SaveFormat):
+            settings.process.save_format = value
+        def write_paths(settings: Settings, value: tuple[str, ...]):
+            settings.process.input_paths = list(value)
+        bindings = self.shared.SharedSettingsBindings(
+            use_gpu=self.shared.SharedBinding(lambda: row.gpu, write_gpu, available=lambda: row.available),
+            save_format=self.shared.SharedBinding(lambda: row.format, write_format),
+            input_paths=self.shared.SharedBinding(lambda: tuple(row.paths), write_paths),
+        )
+        session = self.shared.SharedSettingsSession(self.settings, bindings, can_commit=lambda: row.active)
+        session.refresh(lambda: None)
+        return row, bindings, session
+
+    def test_disjoint_edits_merge_and_flush_never_replays(self):
+        a, ab, sa = self.session()
+        b, bb, sb = self.session()
+        b.format = self.SaveFormat.FLAC
+        sb.commit(edited=(bb.save_format,))
+        a.gpu = True
+        sa.commit(edited=(ab.use_gpu,))
+        self.assertEqual(self.settings.process.save_format, self.SaveFormat.FLAC)
+        self.assertTrue(self.settings.process.use_gpu)
+        b.gpu = False
+        sb.commit(edited=(bb.use_gpu,))
+        sa.commit()
+        self.assertFalse(self.settings.process.use_gpu)
+        self.assertEqual(self.settings.process.save_format, self.SaveFormat.FLAC)
+
+    def test_last_explicit_same_field_edit_and_reset_win(self):
+        a, ab, sa = self.session()
+        b, bb, sb = self.session()
+        b.gpu = True
+        sb.commit(edited=(bb.use_gpu,))
+        sa.commit(edited=(ab.use_gpu,))  # explicit False even though baseline was False
+        self.assertFalse(self.settings.process.use_gpu)
+        a.gpu = True
+        sa.commit(edited=(ab.use_gpu,))
+        a.gpu = False
+        sa.commit(edited=(ab.use_gpu,))
+        sb.commit()
+        self.assertFalse(self.settings.process.use_gpu)
+
+    def test_refresh_suppresses_notifying_callbacks_and_adopts_display(self):
+        a, ab, sa = self.session()
+        def load():
+            a.gpu = True
+            sa.commit(edited=(ab.use_gpu,))
+            sa.refresh(lambda: sa.commit(edited=(ab.use_gpu,)))
+            self.assertTrue(sa.loading)
+        sa.refresh(load)
+        sa.commit()
+        self.assertFalse(self.settings.process.use_gpu)
+        self.assertFalse(sa.loading)
+
+    def test_inactive_and_unavailable_controls_cannot_write(self):
+        a, ab, sa = self.session()
+        a.gpu = True
+        a.active = False
+        sa.commit(edited=(ab.use_gpu,))
+        self.assertFalse(self.settings.process.use_gpu)
+        a.active = True
+        a.available = False
+        sa.commit(edited=(ab.use_gpu,))
+        self.assertFalse(self.settings.process.use_gpu)
+        a.available = True
+        sa.adopt(ab.use_gpu)
+        sa.commit()
+        self.assertFalse(self.settings.process.use_gpu)
+        sa.commit(edited=(ab.use_gpu,))
+        self.assertTrue(self.settings.process.use_gpu)
+
+    def test_input_snapshots_are_copied_and_clear_is_an_edit(self):
+        a, ab, sa = self.session()
+        a.paths.append("/song.wav")
+        sa.commit()
+        a.paths.append("/other.wav")
+        self.assertEqual(self.settings.process.input_paths, ["/song.wav"])
+        sa.commit()
+        a.paths.clear()
+        sa.commit(edited=(ab.input_paths,))
+        self.assertEqual(self.settings.process.input_paths, [])
+
+    def test_unedited_fields_and_other_owners_remain_unchanged(self):
+        a, _, sa = self.session()
+        self.settings.process.stem_focus = "mix.instrumental"
+        self.settings.mdx.segment_size = 512
+        method = self.settings.process.method
+        a.gpu = True
+        sa.commit()
+        self.assertEqual(self.settings.process.method, method)
+        self.assertEqual(self.settings.process.stem_focus, "mix.instrumental")
+        self.assertEqual(self.settings.mdx.segment_size, 512)
+
 if __name__ == "__main__":
     unittest.main()

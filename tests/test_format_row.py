@@ -72,10 +72,72 @@ class OutputFormatRowTests(unittest.TestCase):
             settings.set(key, value)
         return settings
 
+    def test_format_and_quality_emit_distinct_events(self):
+        from ui.widgets.format_row import OutputFormatRow
+        events = []
+        row = OutputFormatRow(lambda *event: events.append(event))
+        row.apply_from_settings(self._settings(save_format=WAV))
+        self.assertEqual(events, [])
+        row.set_save_format(MP3)
+        row._quality_drop.set_selected(0)
+        self.assertEqual(len(events), 2)
+        self.assertNotEqual(events[0], events[1])
+
+    def _session_row(self, settings: typing.Any):
+        from ui.shared_settings import SharedSettingsSession, shared_settings_bindings
+        from ui.widgets.format_row import OutputFormatRow
+        row = OutputFormatRow(lambda event: session.format_changed(event))
+        session = SharedSettingsSession(settings, shared_settings_bindings(format_row=row), can_commit=lambda: True)
+        session.refresh(lambda: row.apply_from_settings(settings))
+        return row, session
+
+    def test_quality_edit_does_not_revert_a_newer_format(self):
+        from core.types import SaveFormat
+        from core.types.settings_enums import WavType
+        settings = self._settings(save_format=WAV, wav_type_set="PCM_16")
+        row, session = self._session_row(settings)
+        other, _ = self._session_row(settings)
+        other.set_save_format(MP3)
+        row._select_quality_value("PCM_24", quality_spec(WAV))
+        session.commit()
+        self.assertEqual(settings.process.save_format, SaveFormat.MP3)
+        self.assertEqual(settings.process.wav_type, WavType.PCM_24)
+
+    def test_format_adopts_restored_quality_without_claiming_an_edit(self):
+        from core.types.settings_enums import WavType
+        settings = self._settings(save_format=WAV, wav_type_set="PCM_24")
+        row, session = self._session_row(settings)
+        row.set_save_format(MP3)
+        settings.process.wav_type = WavType.FLOAT_32
+        row.set_save_format(WAV)
+        self.assertEqual(row.quality_value, "32-bit Float")
+        settings.process.wav_type = WavType.PCM_16
+        session.commit()
+        self.assertEqual(settings.process.wav_type, WavType.PCM_16)
+        row._select_quality_value("PCM_24", quality_spec(WAV))
+        self.assertEqual(settings.process.wav_type, WavType.PCM_24)
+
+    def test_session_round_trips_all_active_quality_enum_types(self):
+        from core.types import SaveFormat
+        from core.types.settings_enums import FlacBitDepth, Mp3Bitrate, OpusBitrate, WavType
+        settings = self._settings(save_format=WAV)
+        row, session = self._session_row(settings)
+        for fmt, value in ((WAV, "PCM_24"), (MP3, "128k"), (FLAC, "24-bit"), (OPUS, "256k")):
+            row.set_save_format(fmt)
+            row._select_quality_value(value, quality_spec(fmt))
+            session.commit()
+            self.assertIsInstance(settings.process.save_format, SaveFormat)
+        self.assertIs(settings.process.wav_type, WavType.PCM_24)
+        self.assertIs(settings.process.mp3_bitrate, Mp3Bitrate.K128)
+        self.assertIs(settings.process.flac_bit_depth, FlacBitDepth.BIT_24)
+        self.assertIs(settings.process.opus_bitrate, OpusBitrate.K256)
+        row.set_save_format(WAV)
+        self.assertEqual(row.quality_value, "PCM_24")
+
     def test_applies_stored_format_and_quality(self):
         from ui.widgets.format_row import OutputFormatRow
 
-        row = OutputFormatRow(lambda: None)
+        row = OutputFormatRow(lambda _event: None)
         row.apply_from_settings(self._settings(save_format=MP3, mp3_bit_set="128k"))
         self.assertEqual(row.save_format, MP3)
         self.assertEqual(row.quality_value, "128k")
@@ -83,7 +145,7 @@ class OutputFormatRowTests(unittest.TestCase):
     def test_applies_stored_opus_bitrate(self):
         from ui.widgets.format_row import OutputFormatRow
 
-        row = OutputFormatRow(lambda: None)
+        row = OutputFormatRow(lambda _event: None)
         row.apply_from_settings(self._settings(save_format=OPUS, opus_bit_set="128k"))
         self.assertEqual(row.save_format, OPUS)
         self.assertEqual(row.quality_value, "128k")
@@ -91,7 +153,7 @@ class OutputFormatRowTests(unittest.TestCase):
     def test_switching_format_swaps_the_quality_model(self):
         from ui.widgets.format_row import OutputFormatRow
 
-        row = OutputFormatRow(lambda: None)
+        row = OutputFormatRow(lambda _event: None)
         row.apply_from_settings(self._settings(save_format=WAV))
         row.set_save_format(FLAC)
         self.assertEqual(row.quality_key, "flac_bit_set")
@@ -101,7 +163,7 @@ class OutputFormatRowTests(unittest.TestCase):
         from ui.widgets.format_row import OutputFormatRow
 
         settings = self._settings(save_format=WAV)
-        row = OutputFormatRow(lambda: None)
+        row = OutputFormatRow(lambda _event: None)
         row.apply_from_settings(settings)
         row.set_save_format(MP3)
         row.persist_to_settings(settings)
@@ -112,7 +174,7 @@ class OutputFormatRowTests(unittest.TestCase):
         from ui.widgets.format_row import OutputFormatRow
 
         settings = self._settings(save_format=WAV, wav_type_set="PCM_24")
-        row = OutputFormatRow(lambda: None)
+        row = OutputFormatRow(lambda _event: None)
         row.apply_from_settings(settings)
         row.set_save_format(MP3)
         row.persist_to_settings(settings)
@@ -130,7 +192,7 @@ class OutputFormatRowTests(unittest.TestCase):
         from ui.widgets.format_row import OutputFormatRow
 
         settings = self._settings(save_format=WAV, wav_type_set="PCM_24")
-        row = OutputFormatRow(lambda: None)
+        row = OutputFormatRow(lambda _event: None)
         row.apply_from_settings(settings)
 
         row.set_save_format(MP3)
@@ -148,7 +210,7 @@ class OutputFormatRowTests(unittest.TestCase):
         from ui.widgets.format_row import OutputFormatRow
 
         calls = []
-        row = OutputFormatRow(lambda: calls.append(1))
+        row = OutputFormatRow(lambda _event: calls.append(1))
         row.apply_from_settings(self._settings(save_format=WAV))
         before = len(calls)
         row.set_save_format(FLAC)
@@ -167,7 +229,7 @@ class OutputFormatRowTests(unittest.TestCase):
         from ui.widgets.format_row import OutputFormatRow
 
         calls = []
-        row = OutputFormatRow(lambda: calls.append(1))
+        row = OutputFormatRow(lambda _event: calls.append(1))
         settings = self._settings(save_format=MP3, mp3_bit_set="320k")
         row.apply_from_settings(settings)
         self.assertEqual(calls, [])
@@ -194,7 +256,7 @@ class OutputFormatRowTests(unittest.TestCase):
 
         from ui.widgets.format_row import OutputFormatRow
 
-        row = OutputFormatRow(lambda: None)
+        row = OutputFormatRow(lambda _event: None)
         row.apply_from_settings(self._settings(save_format=MP3))
         # The row title only names the first control, so the quality dropdown
         # must carry its own tooltip. GTK4/PyGObject exposes no read-back for

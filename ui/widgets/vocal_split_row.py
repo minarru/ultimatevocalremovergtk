@@ -9,8 +9,9 @@ pages that actually run separations (Separation and Ensemble), which both
 consume the same globals, exactly as ``OutputFormatRow`` already does for
 ``save_format``.
 
-The row owns its own settings binding rather than reusing ``MethodView``'s row
-helpers: those register each row into per-view registries (``_option_rows``,
+The page owns shared edit persistence; the row emits typed field events. It
+does not reuse ``MethodView``'s row helpers: those register each row into
+per-view registries (``_option_rows``,
 ``_switch_rows``, ``_model_combos``) that ``MethodView.load`` / ``.save``
 iterate, so they only work inside a view.
 """
@@ -32,6 +33,7 @@ from ..help_text import (
     VOC_SPLIT_MODEL_SELECT_HELP,
 )
 from ..option_summaries import OFF, vocal_split_summary
+from ..protocols import VocalSplitEdit
 from .lazy_populate import LazyPopulator
 from .rows import (
     get_combo_value,
@@ -52,14 +54,14 @@ class VocalSplitRow(Adw.ExpanderRow):
     def __init__(
         self,
         repo: typing.Any,
-        on_changed: Callable[[], None],
+        on_changed: Callable[[VocalSplitEdit], None],
         hints: typing.Any = None,
     ):
         super().__init__(title="Vocal splitter and deverb")
         self._repo = repo
         self._on_changed = on_changed
-        #: Cached from the last ``apply_from_settings`` so interactive edits can
-        #: write straight through and keep the subtitle in step. ``None`` until
+        #: Cached from the last ``apply_from_settings`` so the subtitle follows
+        #: the page session's committed edits. ``None`` until
         #: the row has been applied at least once.
         self._settings = None
         self._syncing = False
@@ -183,7 +185,7 @@ class VocalSplitRow(Adw.ExpanderRow):
                 self.set_expanded(True)
 
     def persist_to_settings(self, settings: typing.Any) -> None:
-        """Write every global vocal-split key back to ``settings``."""
+        """Legacy explicit persistence; run pages use SharedSettingsSession."""
         process = settings.process
         process.vocal_splitter_enabled = self.split_switch.get_active()
         process.save_inst_vocal_splitter = self.save_inst_switch.get_active()
@@ -320,17 +322,49 @@ class VocalSplitRow(Adw.ExpanderRow):
         ):
             self._populator._populate_now()
 
-    def _on_row_changed(self, *_args: typing.Any) -> None:
+    @property
+    def enabled(self) -> bool:
+        return self.split_switch.get_active()
+
+    @property
+    def model_value(self) -> str:
+        return get_combo_value(self.splitter_row) or NO_MODEL
+
+    @property
+    def model_write_allowed(self) -> bool:
+        return self._populator.ready and not self._splitter_write_gated
+
+    @property
+    def save_instrumentals(self) -> bool:
+        return self.save_inst_switch.get_active()
+
+    @property
+    def deverb(self) -> bool:
+        return self.deverb_switch.get_active()
+
+    @property
+    def deverb_option(self) -> str:
+        return get_combo_value(self.deverb_row) or _DEFAULT_DEVERB
+
+    def _on_row_changed(self, source: object, *_args: typing.Any) -> None:
         if self._syncing:
             return
         self._sync_dependents()
-        if self._settings is not None:
-            source = _args[0] if _args else None
-            if self._populator.ready and source is self.splitter_row:
-                self._stored_splitter = get_combo_value(self.splitter_row) or NO_MODEL
+        if source is self.splitter_row:
+            if self._populator.ready:
+                self._stored_splitter = self.model_value
                 self._splitter_write_gated = False
                 self._splitter_gated_value = None
                 self._hide_splitter_warning()
-            self.persist_to_settings(self._settings)
-            self.refresh_summary()
-        self._on_changed()
+            event = VocalSplitEdit.MODEL
+        elif source is self.split_switch:
+            event = VocalSplitEdit.ENABLED
+        elif source is self.save_inst_switch:
+            event = VocalSplitEdit.SAVE_INSTRUMENTALS
+        elif source is self.deverb_switch:
+            event = VocalSplitEdit.DEVERB
+        else:
+            event = VocalSplitEdit.DEVERB_OPTION
+        # The page owns persistence. Its session commits only the actual edit.
+        self._on_changed(event)
+        self.refresh_summary()

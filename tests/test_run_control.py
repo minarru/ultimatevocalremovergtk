@@ -304,6 +304,7 @@ class AudioPreflightTests(unittest.TestCase):
         from core.job_plan import ModelDescriptor, ValidationLevel
         from core.model_identity import ModelArtifacts
         from ui.audio_tools.window import AudioToolsPage
+        from ui.shared_settings import SharedSettingsBindings, SharedSettingsSession
 
         settings = Settings.defaults()
         settings.audio_tools.apollo_model = "apollo:restorer"
@@ -329,6 +330,7 @@ class AudioPreflightTests(unittest.TestCase):
         )
         runner = mock.Mock(apollo_backend_name=None)
         page = SimpleNamespace(
+            _shared_session=SharedSettingsSession(settings, SharedSettingsBindings(), can_commit=lambda: True),
             _current_tool=mock.Mock(return_value=APOLLO_RESTORE),
             _dual_pairs=[],
             inputs_row=SimpleNamespace(paths=["/tmp/song.wav"]),
