@@ -14,6 +14,19 @@ import soundfile as sf
 import torch
 from scipy.signal import correlate, hilbert
 
+from bundled.constants import (
+    AUDIO_AVERAGE as AVERAGE,
+)
+from bundled.constants import (
+    CHUNK_MIN,
+    HYBRID_SPEC,
+    MAX_MAG_AVG_PHASE,
+    MAX_SPEC,
+    MEDIAN_SPEC,
+    MIN_SPEC,
+    SOFT_SPEC,
+)
+
 from . import pyrb
 
 SaveFormatFn = Callable[[str], None]
@@ -53,16 +66,7 @@ else:
     wav_resolution = "sinc_fastest"
     wav_resolution_float_resampling = wav_resolution 
 
-from bundled.constants import (
-    AUDIO_AVERAGE as AVERAGE,
-    CHUNK_MIN,
-    HYBRID_SPEC,
-    MAX_MAG_AVG_PHASE,
-    MAX_SPEC,
-    MEDIAN_SPEC,
-    MIN_SPEC,
-    SOFT_SPEC,
-)
+
 
 LIN_ENSE = 'Linear Ensemble'
 

@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from core.downloads import DownloadManager, _INFO_UPDATE_INTERVAL_S
+from core.downloads import _INFO_UPDATE_INTERVAL_S, DownloadManager
 
 
 class _FakeChunkResponse:

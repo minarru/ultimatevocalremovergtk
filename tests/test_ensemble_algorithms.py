@@ -1,8 +1,8 @@
 """Unit tests for ensemble algorithm atoms and Primary/Secondary helpers."""
 
 from __future__ import annotations
-import typing
 
+import typing
 import unittest
 
 import numpy as np
@@ -10,6 +10,7 @@ import numpy as np
 from bundled.constants import (
     AUDIO_AVERAGE,
     CHUNK_MIN,
+    COMBINE_INPUTS,
     ENSEMBLE_ALGORITHMS,
     HYBRID_SPEC,
     MANUAL_ENSEMBLE_OPTIONS,
@@ -19,14 +20,13 @@ from bundled.constants import (
     MEDIAN_SPEC,
     MIN_SPEC,
     SOFT_SPEC,
-    COMBINE_INPUTS,
 )
 from core.ensemble_algorithms import (
     format_ensemble_type,
     legacy_pair_values,
     parse_ensemble_type,
 )
-from ml.spec_utils import ensembling, ensemble_wav
+from ml.spec_utils import ensemble_wav, ensembling
 
 
 def _pairwise_mag_reduce(algorithm: str, members: typing.Any):

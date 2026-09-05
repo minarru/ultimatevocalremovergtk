@@ -1,9 +1,9 @@
 """Read-only summary + editor entry point for align / matchering input pairs."""
 
 from __future__ import annotations
-import typing
 
 import os
+import typing
 from typing import Callable, List, Sequence, Tuple
 
 from gi.repository import Adw, Gtk

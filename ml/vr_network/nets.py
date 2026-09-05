@@ -4,8 +4,8 @@ from collections.abc import Sequence
 from typing import cast
 
 import torch
-from torch import Tensor, nn
 import torch.nn.functional as F
+from torch import Tensor, nn
 
 from . import layers
 

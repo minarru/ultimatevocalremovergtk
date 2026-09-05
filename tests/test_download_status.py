@@ -1,8 +1,8 @@
 """Tests for download queue status helpers."""
 import typing
-
 import unittest
 
+from core.download_queue import DownloadQueueItem
 from core.download_status import (
     ACTIVE_STATUSES,
     ALL_STATUSES,
@@ -14,7 +14,6 @@ from core.download_status import (
     STATUS_EXISTS,
     STATUS_FAILED,
     STATUS_QUEUED,
-    SUCCESS_STATUSES,
     TERMINAL_STATUSES,
     default_detail_for_status,
     map_download_result,
@@ -22,14 +21,13 @@ from core.download_status import (
     row_action_tooltip_for,
     row_progress_for,
 )
-from core.download_queue import DownloadQueueItem
-from ui.widgets.download_queue_indicator import _row_button_state, chip_ring_state, summarize_queue
 from ui.widgets.download_queue_icons import (
     ICON_CANCEL,
     ICON_CANCELLED,
     ICON_RETRY,
     ICON_ROW_SUCCESS,
 )
+from ui.widgets.download_queue_indicator import _row_button_state, chip_ring_state, summarize_queue
 
 
 def _item(status: str, **kwargs: typing.Any) -> DownloadQueueItem:

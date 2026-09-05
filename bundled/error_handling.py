@@ -1,7 +1,7 @@
-import typing
-from datetime import datetime
 import os
 import traceback
+import typing
+from datetime import datetime
 
 CUDA_MEMORY_ERROR = "CUDA out of memory"
 CUDA_RUNTIME_ERROR = "CUDNN error executing cudnnSetTensorNdDescriptor"

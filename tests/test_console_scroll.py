@@ -82,8 +82,9 @@ class ConsoleScrollTests(unittest.TestCase):
         self.assertIsNotNone(first_handler)
 
         idles_before = {"n": 0}
-        from gi.repository import GLib
         from typing import Any, Callable
+
+        from gi.repository import GLib
 
         orig_idle = GLib.idle_add
 
@@ -125,8 +126,9 @@ class ConsoleScrollTests(unittest.TestCase):
         self.assertIn(DONE.strip(), console.get_text())
 
     def test_done_check_does_not_copy_the_buffer(self) -> None:
-        from bundled.constants import DONE
         from gi.repository import Gtk
+
+        from bundled.constants import DONE
         from ui.widgets.console import ConsoleView
 
         console = ConsoleView()

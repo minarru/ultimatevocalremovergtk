@@ -6,8 +6,6 @@ from collections.abc import Sequence
 
 from bundled.constants import DEMUCS_ARCH_TYPE, MDX_ARCH_TYPE, VR_ARCH_PM, VR_ARCH_TYPE
 
-from .model_identity import FAMILY_BY_ARCH, ModelId
-
 ARCH_TO_STACK = {
     VR_ARCH_PM: "vr", VR_ARCH_TYPE: "vr", MDX_ARCH_TYPE: "mdx",
     DEMUCS_ARCH_TYPE: "demucs",

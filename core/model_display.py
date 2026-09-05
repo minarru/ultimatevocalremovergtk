@@ -6,7 +6,7 @@ import functools
 import json
 import os
 import re
-from typing import Any, TYPE_CHECKING, Dict, Iterable, List, Mapping, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Mapping, Optional, Tuple
 
 from bundled.constants import (
     DEMUCS_ARCH_TYPE,

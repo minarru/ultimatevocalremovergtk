@@ -6,10 +6,10 @@ from bundled.constants import DEMUCS_ARCH_TYPE, ENSEMBLE_MODE, MDX_ARCH_TYPE, VR
 from core.run_estimate import (
     RunCostTier,
     WorkloadEstimate,
+    _denoise_should_count,
     compose_stem_group_tooltip,
     cost_factor_hints,
     format_workload_tooltip_section,
-    _denoise_should_count,
 )
 from core.settings import Settings
 from ui.help_text import MAX_HELP_TEXT_CHARS, RUN_WORKLOAD_HINT, SAVE_STEM_ONLY_HELP

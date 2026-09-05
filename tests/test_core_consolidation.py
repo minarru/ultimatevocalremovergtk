@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import FrozenInstanceError
-
 import os
 import tempfile
-import unittest
 import threading
+import unittest
+from dataclasses import FrozenInstanceError
 from unittest.mock import Mock, patch
 
-from bundled.constants import MDX_ARCH_TYPE
 from core.input_discovery import InputDiscoveryPolicy, InputDiscoveryService
 from core.job_plan import JobResolver, JobSpec, ValidationLevel
 from core.settings import Settings
@@ -84,7 +82,6 @@ class IdentityServiceTests(unittest.TestCase):
             barrier.wait()
             results.append(context.repo)
 
-        from unittest.mock import patch
 
         with patch("ui.context.ModelRepository", side_effect=make_repo), patch(
             "core.model_hash_cache.flatten_trusted", return_value={}

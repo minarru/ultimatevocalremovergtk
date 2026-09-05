@@ -4,9 +4,11 @@ from typing import TYPE_CHECKING
 
 import torch
 import torch.nn as nn
-from core.torch_checkpoint import load_torch_checkpoint
-from .modules import NormFactory, TFC_TDF
 from pytorch_lightning import LightningModule
+
+from core.torch_checkpoint import load_torch_checkpoint
+
+from .modules import TFC_TDF, NormFactory
 
 if TYPE_CHECKING:
     from torch.optim import Optimizer

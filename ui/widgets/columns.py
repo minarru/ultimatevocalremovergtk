@@ -9,7 +9,6 @@ wide/narrow flip) identical, and lets :class:`ui.window.MainWindow` drive
 every page's ``columns_box`` from one breakpoint handler.
 """
 import typing
-
 from typing import Optional
 
 from gi.repository import Adw, Gtk

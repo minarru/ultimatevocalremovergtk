@@ -1,10 +1,10 @@
 """Download Center entry point, manual dialog, and shared download services."""
 
 from __future__ import annotations
-import typing
 
 import os
 import threading
+import typing
 
 from gi.repository import Adw, GLib, Gtk
 
@@ -24,8 +24,14 @@ from core.download_status import (
 )
 from core.downloads import DownloadManager
 
+from .dialogs.utils import (
+    configure_dialog_width,
+    fill_dialog_width,
+    present_modal_dialog,
+    set_dialog_content,
+)
 from .dispatch import idle_on_main, latest_main_thread
-from .dialogs.utils import configure_dialog_width, fill_dialog_width, present_modal_dialog, set_dialog_content
+from .download_center import DownloadCenterWindow
 from .files import open_folder_in_file_manager, open_uri_in_browser
 from .help_text import OPEN_INSTALL_FOLDER_HINT
 from .hints import set_icon_button_a11y
@@ -34,7 +40,6 @@ from .notifications import (
     NOTIFY_DOWNLOAD_FAILED,
     send_desktop_notification,
 )
-from .download_center import DownloadCenterWindow
 from .widgets.download_queue_indicator import DownloadQueueIndicator
 
 

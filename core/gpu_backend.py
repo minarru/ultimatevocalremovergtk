@@ -165,8 +165,9 @@ def resolve_inference_backend(
         )
 
     if torch.cuda.is_available():
-        from .cuda_runtime_fix import preload_onnxruntime_gpu
         from engines.amp_runtime import configure_cuda_inference
+
+        from .cuda_runtime_fix import preload_onnxruntime_gpu
 
         preload_onnxruntime_gpu()
         configure_cuda_inference(device_set)

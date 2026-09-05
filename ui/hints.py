@@ -13,10 +13,9 @@ Two reusable facilities other views/the main window can adopt:
   matching actions; this module only declares the bindings + the apply helper.
 """
 import typing
-
 from typing import Dict, List, Optional
 
-from gi.repository import Adw, Gtk
+from gi.repository import Gtk
 
 from ui.help_text import (
     AUDIO_TOOLS_HELP,

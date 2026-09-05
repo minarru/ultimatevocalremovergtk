@@ -1,8 +1,8 @@
 """Desktop notification helpers with per-type settings gates."""
 
 from __future__ import annotations
-import typing
 
+import typing
 from typing import Optional
 
 from gi.repository import Gio, GLib, Gtk

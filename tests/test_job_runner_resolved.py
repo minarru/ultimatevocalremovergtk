@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-import unittest
 import dataclasses
 import tempfile
+import unittest
 from pathlib import Path
-from unittest.mock import Mock
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from core.export_naming import OutputNamingContext
-from core.job_plan import PlannedInput, PlannedOutput, ResolvedJob, ValidationLevel
 from core.job_callbacks import JobCallbacks
+from core.job_plan import PlannedInput, PlannedOutput, ResolvedJob, ValidationLevel
 from core.job_runner import InputOutcome, JobRunner
 from core.settings import Settings
 

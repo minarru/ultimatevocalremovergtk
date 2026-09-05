@@ -15,10 +15,9 @@ so this module - and any view that imports it - stays importable on a bare
 Python (no torch / ML stack) install. Options are read from a
 :class:`~core.settings.Settings` through its flat compatibility accessors.
 """
-import typing
-
 import os
 import time
+import typing
 from pathlib import Path
 from typing import Callable, List, Optional, Sequence, Tuple
 
@@ -41,9 +40,9 @@ from bundled.constants import (
 from .audio_io import resolve_wav_type_set, save_format
 from .error_context import snapshot_worker_file
 from .export_naming import sanitize_filename_component
+from .inference_cleanup import release_inference_memory as _release_inference_resources
 from .job_callbacks import JobCallbacks
 from .run_control import ProcessStopped, check_stopped, pausable_callback
-from .inference_cleanup import release_inference_memory as _release_inference_resources
 from .settings import Settings
 from .settings.coerce import enum_value
 
@@ -286,10 +285,11 @@ class AudioTools:
             )
         import soundfile as sf
 
+        from core.gpu_backend import clear_torch_cache, resolve_inference_backend
+
         # ``apollo_inference`` pulls in torch; import it lazily so ``core``
         # (and any view importing it) stays torch-free at import time.
         from ml import apollo_inference
-        from core.gpu_backend import clear_torch_cache, resolve_inference_backend
 
         track = sanitize_filename_component(audio_file_base) or "audio"
         save_path = os.path.join(

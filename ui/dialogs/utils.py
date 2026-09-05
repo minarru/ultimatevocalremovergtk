@@ -1,12 +1,12 @@
 """Shared helpers for modal ``Adw.Dialog`` presentation."""
 import typing
-
 from collections.abc import Callable
 from typing import Any
 
 from gi.repository import Adw, GLib, Gtk
-from ..widget_state import fetch, stash
+
 from ..protocols import WindowSizing
+from ..widget_state import fetch, stash
 
 
 class CollectInvalid(Exception):

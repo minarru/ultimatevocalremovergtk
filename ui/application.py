@@ -3,7 +3,7 @@
 import sys
 from typing import Optional, Sequence
 
-from gi.repository import Adw, Gio, GLib, Gtk
+from gi.repository import Adw, Gio, GLib
 
 from core import Settings, ensure_data_dir
 

@@ -6,6 +6,7 @@ import unittest
 from types import SimpleNamespace
 
 from bundled.constants import NO_CONNECTION, NO_NEW_MODELS
+from core.download_queue import DownloadQueueItem
 from core.download_status import (
     STATUS_CANCELLED,
     STATUS_COMPLETE,
@@ -18,7 +19,6 @@ from ui.download_center import catalogue_matches
 from ui.run_control import target_blocked_reason
 from ui.widgets.download_queue_indicator import should_schedule_remove_finished, summarize_queue
 from ui.widgets.file_chooser import merge_input_paths
-from core.download_queue import DownloadQueueItem
 
 
 class InputSafetyTests(unittest.TestCase):

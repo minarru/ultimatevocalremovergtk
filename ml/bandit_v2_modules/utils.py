@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from abc import abstractmethod
-from typing import Any, Callable, List, Tuple
+from typing import Any, Callable
 
 import numpy as np
 import torch

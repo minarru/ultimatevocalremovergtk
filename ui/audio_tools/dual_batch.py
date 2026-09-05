@@ -7,17 +7,16 @@ confirm the editor reports the resulting list of ``(file_a, file_b)`` pairs back
 to the caller, which persists them to ``DualBatch_inputPaths`` and the
 ``fileOneEntry`` / ``fileTwoEntry`` settings keys.
 """
-import typing
-
 import os
+import typing
 from typing import Callable, List, Sequence, Tuple
 
 from gi.repository import Adw, Gdk, GLib, Gtk
 
-from ..gtk_narrow import file_paths, root_window
+from core.audio_formats import expand_audio_paths
 
 from ..dialogs.utils import present_modal_dialog, set_form_dialog_content
-from ..spacing import inset_md, set_inset
+from ..gtk_narrow import file_paths, root_window
 from ..help_text import (
     DUAL_BATCH_CLEAR_HINT,
     DUAL_BATCH_MOVE_DOWN_HINT,
@@ -26,8 +25,7 @@ from ..help_text import (
 )
 from ..hints import set_icon_button_a11y
 from ..markup import set_row_subtitle, set_row_title
-from core.audio_formats import expand_audio_paths
-
+from ..spacing import set_inset
 from ..widgets.file_dialogs import audio_open_dialog, is_dialog_dismissed
 
 

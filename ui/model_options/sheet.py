@@ -1,8 +1,8 @@
 """Floating model-options sheet (``Adw.Dialog``) with per-architecture tabs."""
 
 from __future__ import annotations
-import typing
 
+import typing
 from typing import Any, Callable, Dict, Mapping, Optional, Sequence
 
 from gi.repository import Adw, Gtk

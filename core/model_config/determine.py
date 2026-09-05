@@ -68,8 +68,8 @@ def _model_config_for_reference(
     :class:`ModelConfig` with the default ``ENSEMBLE_MODE`` leaves ``model_path``
     unset and crashes when reading ``model_basename``.
     """
-    from .config import ModelConfig
     from ..model_identity import ModelIdentityService
+    from .config import ModelConfig
 
     raw = str(reference or "")
     if not raw or raw in {CHOOSE_MODEL, NO_MODEL}:

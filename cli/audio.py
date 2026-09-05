@@ -12,8 +12,13 @@ from functools import partial
 from typing import Any
 
 from bundled.constants import (
-    ALIGN_INPUTS, APOLLO_RESTORE, CHANGE_PITCH, COMBINE_INPUTS, MANUAL_ENSEMBLE,
-    MATCH_INPUTS, TIME_STRETCH,
+    ALIGN_INPUTS,
+    APOLLO_RESTORE,
+    CHANGE_PITCH,
+    COMBINE_INPUTS,
+    MANUAL_ENSEMBLE,
+    MATCH_INPUTS,
+    TIME_STRETCH,
 )
 from core.audio_plan import AudioJobResolver, AudioJobSpec
 from core.audio_probe import probe_audio
@@ -25,13 +30,20 @@ from core.settings import Settings
 from core.settings.job_resolution import SettingsLayer, SettingsResolver
 
 from .execution import BatchOutcome, PromotionSkipped, _promote, run_runner_cli
+from .job import stored_identity_warnings
 from .model_identity import CliModelLookup
 from .process_flags import add_process_args, collect_overrides
 from .profiles import load_profile
-from .job import stored_identity_warnings
 from .reporting import (
-    add_reporting_args, emit_document, emit_event, ensure_job_id, fail,
-    finish_progress, make_progress_printer, report_mode, warn_validation,
+    add_reporting_args,
+    emit_document,
+    emit_event,
+    ensure_job_id,
+    fail,
+    finish_progress,
+    make_progress_printer,
+    report_mode,
+    warn_validation,
 )
 
 TOOL_BY_COMMAND = {

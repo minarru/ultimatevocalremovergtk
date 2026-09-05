@@ -1,7 +1,20 @@
 from .formats import FLAC
-from .stems import ALL_STEMS
-from .process import AUDIO_TOOL_OPTIONS, AUTO_PHASE, AUTO_SELECT, CHUNKS, DEFAULT, DEF_OPT, DEMUCS_OVERLAP, DEMUCS_SEGMENTS, MANUAL_ENSEMBLE_OPTIONS, MDX_ARCH_TYPE, MDX_OVERLAP, NONE_P
 from .messages import CHOOSE_MODEL, NO_MODEL
+from .process import (
+        AUDIO_TOOL_OPTIONS,
+        AUTO_PHASE,
+        AUTO_SELECT,
+        CHUNKS,
+        DEF_OPT,
+        DEFAULT,
+        DEMUCS_OVERLAP,
+        DEMUCS_SEGMENTS,
+        MANUAL_ENSEMBLE_OPTIONS,
+        MDX_ARCH_TYPE,
+        MDX_OVERLAP,
+        NONE_P,
+)
+from .stems import ALL_STEMS
 
 # Mappers
 

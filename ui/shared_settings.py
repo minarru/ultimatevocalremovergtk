@@ -7,19 +7,24 @@ the latest in-memory settings without writing spurious changes back.
 """
 
 from __future__ import annotations
-import typing
 
 import os
+import typing
 from dataclasses import dataclass, replace
 from typing import AbstractSet, Iterable, Optional, Sequence
 
 from bundled.constants import WAV
 from core.input_discovery import (
     partition_input_paths,
-    prune_unreadable_paths,
-    remove_unreadable_from_paths,
+)
+from core.input_discovery import (
+    prune_unreadable_paths as prune_unreadable_paths,
+)
+from core.input_discovery import (
+    remove_unreadable_from_paths as remove_unreadable_from_paths,
 )
 from core.settings import Settings
+
 from .protocols import (
     FormatRow,
     InputPathsRow,

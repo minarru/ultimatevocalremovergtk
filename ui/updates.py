@@ -6,9 +6,8 @@ Codeberg for a newer source release. Upgrade is documented on the release page
 
 Entry point: :func:`open_update_view` (wire to a ``win.updates`` action).
 """
-import typing
-
 import threading
+import typing
 
 from gi.repository import Adw, Gtk
 

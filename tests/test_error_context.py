@@ -15,10 +15,9 @@ from core.error_context import (
     non_default_setting_lines,
     probe_audio_file,
     set_run_error_context,
-    update_run_error_context,
 )
-from core.model_repository import ModelRepository
 from core.model_identity import ModelArtifacts, ModelRecord
+from core.model_repository import ModelRepository
 from core.settings import Settings
 from ui.errorlog import log_error
 

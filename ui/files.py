@@ -1,9 +1,9 @@
 """Open local paths and URIs via GTK launchers (portal-friendly)."""
 
 from __future__ import annotations
-import typing
 
 import os
+import typing
 from typing import Callable, Optional
 
 from gi.repository import Gio, GLib, Gtk

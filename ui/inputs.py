@@ -11,10 +11,9 @@ so constructing the dialog stays ``torch``-free.
 
 Entry point: :func:`open_view_inputs` (wire to ``win.view_inputs``).
 """
-import typing
-
 import os
 import threading
+import typing
 
 from gi.repository import Adw, GLib, Gtk
 
@@ -22,6 +21,7 @@ from bundled.constants import AUDIO_INPUT_TOTAL_TEXT, VERIFY_INPUTS_TEXT
 from core.audio_probe import probe_audio
 
 from .dialogs.utils import close_on_escape
+from .dispatch import idle_on_main
 from .errorlog import log_error, set_error_log
 from .help_text import (
     ADD_INPUT_FILES_HINT,
@@ -30,7 +30,6 @@ from .help_text import (
 )
 from .hints import set_icon_button_a11y
 from .markup import set_row_subtitle, set_row_title
-from .dispatch import idle_on_main
 from .shared_settings import (
     format_input_sanitize_toasts,
     remove_unreadable_from_paths,

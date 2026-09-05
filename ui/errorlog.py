@@ -13,9 +13,9 @@ with *Copy All Text* and *Report Issue* buttons. This module reproduces that:
 """
 
 from __future__ import annotations
-import typing
 
 import threading
+import typing
 from typing import Callable, Optional
 
 from gi.repository import Adw, Gdk, GLib, Gtk, Pango, PangoCairo
@@ -29,8 +29,8 @@ from .dialogs.utils import (
     present_modal_dialog,
     set_dialog_content,
 )
-from .spacing import inset_lg_sides_bottom, set_inset
 from .protocols import WindowSizing
+from .spacing import inset_lg_sides_bottom, set_inset
 
 # Floating sheet width: wide enough to read, capped so it cannot grow with a
 # long RuntimeError line. TextView (not Label) wraps to the allocated width.

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from pprint import pprint
 from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 import torch
@@ -9,20 +8,27 @@ from torch import nn
 from ml.bandit_bsrnn._spectral import _SpectralComponent
 from ml.bandit_spectral import mps_compatible_module_device
 from ml.stft_device import needs_cpu_stft
-from .utils import (
-    BarkBandsplitSpecification, BassBandsplitSpecification,
-    DrumBandsplitSpecification,
-    EquivalentRectangularBandsplitSpecification, MelBandsplitSpecification,
-    MusicalBandsplitSpecification, OtherBandsplitSpecification,
-    TriangularBarkBandsplitSpecification, VocalBandsplitSpecification,
-)
+
 from .core import (
     MultiSourceMultiMaskBandSplitCoreConv,
     MultiSourceMultiMaskBandSplitCoreRNN,
     MultiSourceMultiMaskBandSplitCoreTransformer,
-    MultiSourceMultiPatchingMaskBandSplitCoreRNN, SingleMaskBandsplitCoreRNN,
+    MultiSourceMultiPatchingMaskBandSplitCoreRNN,
+    SingleMaskBandsplitCoreRNN,
     SingleMaskBandsplitCoreTransformer,
 )
+from .utils import (
+    BarkBandsplitSpecification,
+    BassBandsplitSpecification,
+    DrumBandsplitSpecification,
+    EquivalentRectangularBandsplitSpecification,
+    MelBandsplitSpecification,
+    MusicalBandsplitSpecification,
+    OtherBandsplitSpecification,
+    TriangularBarkBandsplitSpecification,
+    VocalBandsplitSpecification,
+)
+
 
 def get_band_specs(band_specs: Any, n_fft: Any, fs: Any, n_bands: Any=None) -> Any:
     if band_specs in ["dnr:speech", "dnr:vox7", "musdb:vocals", "musdb:vox7"]:

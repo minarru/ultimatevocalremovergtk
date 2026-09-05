@@ -5,17 +5,15 @@ file manager via :class:`Gtk.DropTarget` (``Gdk.FileList``) and also open a
 native :class:`Gtk.FileDialog`. Selections are reported through an ``on_changed``
 callback so the window can persist them to the settings model.
 """
-import typing
-
 import os
+import typing
 from typing import AbstractSet, Callable, List, Optional, Sequence
 
 from gi.repository import Adw, Gdk, GLib, Gtk
 
-from ..gtk_narrow import file_paths, root_window
-
 from core.audio_formats import expand_audio_paths
 
+from ..gtk_narrow import file_paths, root_window
 from ..help_text import (
     CLEAR_INPUT_FILES_HINT,
     REMOVE_FROM_LIST_HINT,

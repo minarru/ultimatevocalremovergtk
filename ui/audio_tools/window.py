@@ -28,16 +28,16 @@ through the caller-supplied callbacks (built with
 :func:`ui.dispatch.gtk_job_callbacks`). Options bind to the shared typed
 settings.
 """
-import typing
-
 import os
+import typing
 from typing import List, Optional, Tuple
 
-from gi.repository import Adw, Gio, GLib, Gtk
+from gi.repository import Adw, Gtk
 
 from bundled.constants import (
     ALIGN_INPUTS,
     ALIGN_PHASE_OPTIONS,
+    AMPLIFICATION_THRESHOLD_HELP,
     APOLLO_CHUNK_SIZE_HELP,
     APOLLO_MODEL_FAIL_TEXT,
     APOLLO_OVERLAP_HELP,
@@ -53,7 +53,6 @@ from bundled.constants import (
     IS_GPU_CONVERSION_HELP,
     IS_MATCH_SILENCE_HELP,
     IS_MATCH_SPEC_HELP,
-    AMPLIFICATION_THRESHOLD_HELP,
     IS_NORMALIZATION_HELP,
     IS_PHASE_HELP,
     IS_TESTING_AUDIO_HELP,
@@ -79,8 +78,8 @@ from ..help_text import (
     VIEW_INPUTS_BUTTON_HINT,
 )
 from ..hints import HelpHintManager, set_icon_button_a11y, set_tooltip
-from ..shared_settings import apply_shared_file_options
 from ..settings_bind import set_flat
+from ..shared_settings import apply_shared_file_options
 from ..widgets.columns import build_columns_box, wrap_options_scroller
 from ..widgets.dual_inputs import DualInputsRow
 from ..widgets.file_chooser import InputFilesRow, OutputFolderRow
@@ -89,9 +88,8 @@ from ..widgets.rows import (
     get_combo_value,
     make_combo_row,
     make_switch_row,
-    set_combo_value,
     set_combo_tag_values,
-    set_combo_values,
+    set_combo_value,
     use_wrapping_list,
 )
 from .dual_batch import DualBatchDialog
@@ -905,6 +903,7 @@ class AudioToolsPage:
         or ``None`` (after a toast) when no valid model is selected.
         """
         from core.apollo import ApolloModelData, list_apollo_models
+
         from ..dialogs.model_params import make_apollo_unrecognized_handler
 
         if not list_apollo_models():

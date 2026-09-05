@@ -1,9 +1,8 @@
 """Tests for cooperative download cancellation."""
-import typing
-
 import os
 import tempfile
 import threading
+import typing
 import unittest
 from unittest import mock
 

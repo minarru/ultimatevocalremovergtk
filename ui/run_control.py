@@ -8,11 +8,11 @@ delegates on the window.
 """
 
 from __future__ import annotations
-import typing
 
 import os
 import threading
 import time
+import typing
 from typing import TYPE_CHECKING, Any, Callable, Optional
 
 from gi.repository import Adw, Gio, GLib, Gtk
@@ -22,17 +22,13 @@ from bundled.constants import (
     STOP_PROCESS_CONFIRM,
     STOP_PROCESSING,
 )
-
 from core.debug_log import (
     clear_run_start,
     debug,
     log_event,
     mark_run_start,
     new_operation_id,
-    next_seq,
     operation,
-    preview_text,
-    set_correlation_seq,
     set_operation_id,
     verbose,
 )
@@ -840,6 +836,7 @@ class RunController:
     def _on_oom_choice(self, request: typing.Any) -> None:
         """Present the mid-run OOM dialog; ``request.respond`` unblocks the worker."""
         from core.oom_choice import OOM_CHOICE_STOP
+
         from .oom_dialog import present_oom_choice_dialog
 
         if self._oom_dialog is not None:
@@ -1083,12 +1080,6 @@ class RunController:
             paths = list(page.input_row.paths) if page is not None else []
             return build_ensemble_context(settings, paths, repo=repo)
         if tab == "audio_tools":
-            from bundled.constants import (
-                APOLLO_RESTORE,
-                CHANGE_PITCH,
-                MANUAL_ENSEMBLE,
-                TIME_STRETCH,
-            )
             from core.audio_tools import DUAL_INPUT_TOOLS
 
             page = getattr(window, "_audio_tools_page", None)

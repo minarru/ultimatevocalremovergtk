@@ -1,7 +1,6 @@
 """Cooperative pause / stop helpers for background workers."""
-import typing
-
 import time
+import typing
 
 from .debug_log import debug, verbose
 

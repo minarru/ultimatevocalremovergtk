@@ -3,13 +3,14 @@
 import unittest
 from typing import Any
 
+from engines.mdx_c import _mdx_c_hop_length, build_mdx_c_model
+
 ConfigDict: Any
 try:
     from ml_collections import ConfigDict
 except ImportError:
     ConfigDict = None
 
-from engines.mdx_c import build_mdx_c_model, _mdx_c_hop_length
 
 
 @unittest.skipIf(ConfigDict is None, "ml_collections not installed")
@@ -145,7 +146,7 @@ class MdxArchDispatchTests(unittest.TestCase):
         self.assertEqual(model.__class__.__name__, "MultiMaskMultiSourceBandSplitRNNSimple")
 
     def test_bs_roformer_accepts_mlp_expansion_factor(self) -> None:
-        from ml.bs_roformer import BSRoformer, DEFAULT_FREQS_PER_BANDS
+        from ml.bs_roformer import DEFAULT_FREQS_PER_BANDS, BSRoformer
 
         model = BSRoformer(
             dim=256,
@@ -240,7 +241,7 @@ class MdxArchDispatchTests(unittest.TestCase):
         checkpoint's state dict; this test locks in the same sharing via
         object identity so a future refactor can't silently instantiate a
         fresh PoPE per layer instead of reusing the module."""
-        from ml.bs_roformer import BSRoformer, DEFAULT_FREQS_PER_BANDS
+        from ml.bs_roformer import DEFAULT_FREQS_PER_BANDS, BSRoformer
 
         model = BSRoformer(
             dim=32,
@@ -266,7 +267,7 @@ class MdxArchDispatchTests(unittest.TestCase):
     def test_bs_roformer_preserves_input_length(self) -> None:
         import torch
 
-        from ml.bs_roformer import BSRoformer, DEFAULT_FREQS_PER_BANDS
+        from ml.bs_roformer import DEFAULT_FREQS_PER_BANDS, BSRoformer
 
         model = BSRoformer(
             dim=64,

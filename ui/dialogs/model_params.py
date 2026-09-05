@@ -19,11 +19,9 @@ The parameter dialog is synchronous (it returns the chosen parameters to the
 thread it is marshalled onto the GTK main loop and the worker blocks until the
 user responds.
 """
-import typing
-
-import json
 import os
 import threading
+import typing
 
 from gi.repository import Adw, GLib, Gtk
 
@@ -36,7 +34,6 @@ from bundled.constants import (
     IS_BV_MODEL,
     IS_BV_MODEL_REBAL,
     IS_KARAOKEE,
-    INST_STEM,
     MDX_ARCH_TYPE,
     MDX_POP_DIMF,
     MDX_POP_NFFT,
@@ -50,13 +47,12 @@ from bundled.constants import (
     VOCAL_STEM,
     VR_ARCH_TYPE,
 )
-
 from core import paths
 from core.mdx_c_registry import infer_mdx_c_architecture
 from core.model_config import ModelConfig
-from core.model_data import load_mdx_c_config
 from core.model_display import display_name_for_model
 from core.model_identity import ModelIdentityService
+
 from ..help_text import (
     MDX_DIM_F_SET_HELP,
     MDX_DIM_T_SET_HELP,
@@ -69,7 +65,6 @@ from ..help_text import (
 )
 from ..hints import set_tooltip
 from ..spacing import inset_md
-from .utils import present_modal_dialog, run_blocking_dialog, set_dialog_content, set_form_dialog_content
 from ..widgets.rows import (
     get_combo_value,
     get_scale_row_value,
@@ -78,7 +73,11 @@ from ..widgets.rows import (
     set_combo_value,
     set_scale_row_value,
 )
-
+from .utils import (
+    present_modal_dialog,
+    run_blocking_dialog,
+    set_dialog_content,
+)
 
 # ---------------------------------------------------------------------------
 # Thread marshalling
@@ -562,6 +561,7 @@ def show_change_defaults_dialog(context: typing.Any, parent: typing.Any):
     model_tags = repo.default_change_model_tags()
     model_row = make_combo_row("Model", [NO_MODEL])
     from core.model_display import format_tag_title
+
     from ..widgets.rows import set_combo_tag_values, use_wrapping_list
 
     use_wrapping_list(model_row)

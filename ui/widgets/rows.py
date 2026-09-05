@@ -7,10 +7,10 @@ selected value as the plain string the :class:`~core.settings.Settings`
 expects (mirroring how Tk stores every option as a string).
 """
 import typing
-
 from typing import Iterable, List, Optional, Sequence
 
 from gi.repository import Adw, Gdk, Gtk, Pango
+
 from ..widget_state import drop, fetch, has, stash
 
 _ICON_LOOKUP_FLAGS = Gtk.IconLookupFlags.FORCE_SYMBOLIC

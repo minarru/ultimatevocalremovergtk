@@ -1,5 +1,6 @@
 """Typed model configuration hierarchy and assembly API."""
 
+from .assemble import assemble_model
 from .base import (
     DeviceOptions,
     EnsembleMemberFlags,
@@ -8,16 +9,15 @@ from .base import (
     SecondaryChain,
     StemRouting,
 )
-from .demucs import DemucsOptions
-from .mdx import MDXOptions
-from .vr import VROptions
 from .config import ModelConfig
-from .assemble import assemble_model
+from .demucs import DemucsOptions
 from .determine import (
     process_determine_demucs_pre_proc_model,
     process_determine_secondary_model,
     process_determine_vocal_split_model,
 )
+from .mdx import MDXOptions
+from .vr import VROptions
 
 __all__ = [
     "ModelConfig",

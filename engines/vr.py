@@ -1,53 +1,39 @@
 from __future__ import annotations
-import typing
-from typing import Any, TYPE_CHECKING
 
-import gc
-import gzip
 import math
 import os
-from pathlib import Path
+import typing
+import warnings
+from typing import TYPE_CHECKING, Any
 
 import librosa
 import numpy as np
-import onnxruntime as ort
-import pydub
-import soundfile as sf
 import torch
-import torch.nn as nn
-import warnings
-from onnx import load
-from onnx2pytorch import ConvertModel
 
 from bundled.constants import *
 from bundled.error_handling import *
-from core.debug_log import debug, trace_phase
+from core.debug_log import trace_phase
 from core.stems import exports_named_stem
 from core.torch_checkpoint import load_torch_checkpoint
 from ml import spec_utils
-import ml.mdxnet as MdxnetSet
+from ml.vr_network import nets, nets_new
+from ml.vr_network.nets import VR_5_1_ARCH_SIZES, VR_ARCH_SIZES
 
 from .base import SeperateAttributes
-from .mix import prepare_mix, gather_sources, rerun_mp3
+from .mix import rerun_mp3
+from .orchestration import process_secondary_model
 from .vr_utils import (
-    loading_mix,
     multiband_waves_to_spectrogram,
     scale_mag_pad_inplace,
-    vr_denoiser,
 )
 
 if TYPE_CHECKING:
-    from core.model_config import ModelConfig
     from engines.stem_writer import ExportPlan
 
 cpu = torch.device('cpu')
 warnings.filterwarnings("ignore")
 
-from ml.vr_network import nets, nets_new
-from ml.vr_network.nets import VR_5_1_ARCH_SIZES, VR_ARCH_SIZES
-from ml.vr_network.model_param_init import ModelParameters
-from core.paths import VR_PARAM_DIR
-from .orchestration import process_secondary_model
+
 
 class SeperateVR(SeperateAttributes):        
 

@@ -1,8 +1,7 @@
 """Load bundled GResource assets (custom icon theme) at startup."""
-import typing
-
 import os
 import shutil
+import typing
 
 from gi.repository import Gdk, Gio, GLib, Gtk
 

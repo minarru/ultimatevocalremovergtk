@@ -19,8 +19,8 @@ from core.model_identity import (
 )
 from core.settings import Settings
 
-from .reporting import add_reporting_args, emit_document, fail
 from .profiles import IDENTITY_SETTING_PATHS, MODEL_REFERENCE_SETTING_PATHS
+from .reporting import add_reporting_args, emit_document, fail
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _MANIFEST_SCHEMA_VERSION = 3

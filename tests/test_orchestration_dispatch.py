@@ -6,8 +6,8 @@ from types import SimpleNamespace
 from typing import Any
 from unittest import mock
 
-from bundled.constants import VR_ARCH_TYPE
 import engines.orchestration as orchestration
+from bundled.constants import VR_ARCH_TYPE
 from engines.mix import gather_sources
 from engines.orchestration import _run_seperator, process_chain_model
 from engines.separator_factory import build_seperator

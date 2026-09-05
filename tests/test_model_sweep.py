@@ -412,6 +412,7 @@ class RunChildTests(unittest.TestCase):
         import json
         import tempfile
         from unittest import mock
+
         from core.blocking_runner import RunResult
         from core.settings import Settings
 
@@ -456,6 +457,7 @@ class RunChildTests(unittest.TestCase):
         import json
         import tempfile
         from unittest import mock
+
         from core.blocking_runner import RunResult
         from core.settings import Settings
 
@@ -503,6 +505,7 @@ class RunChildTests(unittest.TestCase):
         import json
         import tempfile
         from unittest import mock
+
         from core.blocking_runner import RunResult
         from core.export_naming import OutputNamingContext
         from core.job_plan import PlannedInput
@@ -580,6 +583,7 @@ class RunChildTests(unittest.TestCase):
         import json
         import tempfile
         from unittest import mock
+
         from core.blocking_runner import RunResult
         from core.export_naming import OutputNamingContext
         from core.job_plan import PlannedInput
@@ -654,6 +658,7 @@ class RunChildTests(unittest.TestCase):
 
     def test_run_tool_uses_resolved_audio_plan_and_generic_blocker(self) -> None:
         from unittest import mock
+
         from core.blocking_runner import RunResult
         from core.settings import Settings
 

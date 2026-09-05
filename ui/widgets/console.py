@@ -6,7 +6,6 @@ worker via the callbacks marshaled onto the main loop (see
 the GTK main thread.
 """
 import typing
-
 from typing import Callable, Optional
 
 from gi.repository import GLib, Gtk

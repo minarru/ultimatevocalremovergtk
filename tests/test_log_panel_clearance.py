@@ -3,12 +3,12 @@ from typing import Any, cast
 from unittest.mock import MagicMock
 
 from ui.widgets.log_panel import (
-    OVERLAY_MARGIN_BOTTOM,
-    LogPanel,
     _LOG_BODY_HEIGHT,
     _LOG_BODY_WRAP_RESERVE,
     _LOG_META_ROW_RESERVE,
     _PROGRESS_SECTION_RESERVE,
+    OVERLAY_MARGIN_BOTTOM,
+    LogPanel,
 )
 
 

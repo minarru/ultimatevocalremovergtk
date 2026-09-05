@@ -4,28 +4,28 @@ from functools import partial
 from typing import Any, Callable, Optional, Tuple, TypeVar, cast
 
 import torch
-from torch import nn, einsum, Tensor
-from torch.nn import Module, ModuleList, Sequential
 import torch.nn.functional as F
+from beartype import BeartypeConf
+from beartype import beartype as _beartype
+from beartype.typing import Callable as BeartypeCallable
+from beartype.typing import Optional as BeartypeOptional
+from beartype.typing import Tuple as BeartypeTuple
+from einops import pack, rearrange, unpack
+from einops.layers.torch import Rearrange
+from PoPE_pytorch import PoPE, flash_attn_with_pope
+from rotary_embedding_torch import RotaryEmbedding
+from torch import Tensor, nn
+from torch.nn import Module, ModuleList, Sequential
 from torch.utils.checkpoint import checkpoint
 
-from .attend import Attend
+from ml.stft_device import needs_cpu_stft, torch_istft, torch_stft
 
-from beartype.typing import Tuple as BeartypeTuple, Optional as BeartypeOptional, List, Callable as BeartypeCallable
-from beartype import BeartypeConf, beartype as _beartype
+from .attend import Attend
 
 # Model yamls write integer literals for float hyper-parameters
 # (``attn_dropout: 0``). PEP 484's implicit numeric tower accepts int where
 # float is annotated; beartype's default configuration does not.
 beartype = _beartype(conf=BeartypeConf(is_pep484_tower=True))
-
-from rotary_embedding_torch import RotaryEmbedding
-from PoPE_pytorch import PoPE, flash_attn_with_pope
-
-from einops import rearrange, pack, unpack
-from einops.layers.torch import Rearrange
-
-from ml.stft_device import needs_cpu_stft, torch_istft, torch_stft
 
 # helper functions
 

@@ -1,9 +1,9 @@
 """Nautilus-style download queue chip and popover for the main window header."""
 
 from __future__ import annotations
-import typing
 
 import os
+import typing
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, List, Optional
 
@@ -14,7 +14,6 @@ from ui.hints import set_icon_button_a11y
 from ui.widgets.download_queue_icons import (
     ICON_CANCEL,
     ICON_CANCELLED,
-    ICON_CHIP_SUCCESS,
     ICON_RETRY,
     ICON_ROW_SUCCESS,
 )
@@ -25,18 +24,16 @@ if TYPE_CHECKING:
 
 from core.download_status import (
     ACTIVE_STATUSES,
+    STATUS_CANCELLED,
+    STATUS_DOWNLOADING,
+    STATUS_FAILED,
     SUCCESS_STATUSES,
     TERMINAL_STATUSES,
-    STATUS_CANCELLED,
-    STATUS_COMPLETE,
-    STATUS_DOWNLOADING,
-    STATUS_EXISTS,
-    STATUS_FAILED,
-    STATUS_QUEUED,
     is_failed,
     row_action_tooltip_for,
     row_progress_for,
 )
+
 from ..widget_state import fetch, stash
 
 REMOVE_FINISHED_TIMEOUT_S = 3

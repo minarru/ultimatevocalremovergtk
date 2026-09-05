@@ -54,8 +54,9 @@ class DownloadCenterSortTests(unittest.TestCase):
         self.assertEqual(window._sort_mode, SORT_OPTIONS[1][0])
 
     def test_sdr_sort_key_orders_high_scores_first(self) -> None:
-        from core.model_scores import SORT_SDR
         from gi.repository import Adw
+
+        from core.model_scores import SORT_SDR
         from ui.widget_state import stash
 
         window = self._window()
@@ -74,8 +75,9 @@ class DownloadCenterSortTests(unittest.TestCase):
         self.assertLess(window._compare_rows(high, low), 0)
 
     def test_unsupported_rows_sort_last(self) -> None:
-        from core.model_scores import SORT_NAME
         from gi.repository import Adw
+
+        from core.model_scores import SORT_NAME
         from ui.widget_state import stash
 
         window = self._window()
@@ -99,7 +101,8 @@ class DownloadCenterSortTests(unittest.TestCase):
         The unit tests above call ``_compare_rows`` directly; this is the only
         check that the callback signature matches what ``set_sort_func`` invokes.
         """
-        from gi.repository import Gtk, Adw
+        from gi.repository import Adw, Gtk
+
         from ui.widget_state import stash
 
         window = self._window()

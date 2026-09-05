@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import dataclasses
-import os
 import tempfile
 import unittest
 from types import MappingProxyType, SimpleNamespace
@@ -20,7 +19,6 @@ from core.job_plan import (
 )
 from core.model_identity import ModelArtifacts, ModelRecord
 from core.settings import Settings
-
 
 _APOLLO_PATH = "audio_tools.apollo_model"
 

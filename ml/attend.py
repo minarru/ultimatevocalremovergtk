@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-from packaging import version
-
 import torch
-from torch import Tensor, einsum, nn
 import torch.nn.functional as F
+from torch import Tensor, einsum, nn
 
-from einops import rearrange, reduce
+from packaging import version
 
 # helpers
 

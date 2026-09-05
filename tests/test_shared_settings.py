@@ -1,6 +1,6 @@
-import typing
 import os
 import tempfile
+import typing
 import unittest
 from unittest import mock
 

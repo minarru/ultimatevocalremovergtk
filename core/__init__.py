@@ -14,9 +14,9 @@ Importing this package must never import ``tkinter``; heavy ML dependencies
 (``torch``, ``engines``) are imported lazily inside the methods that use them.
 """
 
-from .model_repository import (
-    ModelRepository,
-)
+from .audio_plan import AudioJobResolver, AudioJobSpec, PlannedAudioUnit, ResolvedAudioJob
+from .audio_tools import AudioToolRunner
+from .blocking_runner import BlockingRunner, RunResult, run_blocking
 from .ensemble_service import (
     EnsembleService,
     ResolvedEnsemblePreset,
@@ -26,24 +26,9 @@ from .ensemble_service import (
     load_ensemble,
     save_ensemble,
 )
-from .model_config import ModelConfig, assemble_model
-from .audio_tools import AudioToolRunner
-from .gpu import available_cuda_devices, list_gpu_devices
 from .ensembler import Ensembler
+from .gpu import available_cuda_devices, list_gpu_devices
 from .job_callbacks import JobCallbacks
-from .job_runner import JobRunner
-from .paths import DATA_DIR, ENSEMBLE_CACHE_DIR, ensure_data_dir
-from .process_data import ProcessData
-from .settings import Settings
-from .model_identity import (
-    CatalogueRef,
-    DemucsSpec,
-    MdxSpec,
-    ModelArtifacts,
-    ModelId,
-    ModelIdentityService,
-    ModelRecord,
-)
 from .job_plan import (
     Diagnostic,
     JobResolver,
@@ -55,10 +40,25 @@ from .job_plan import (
     ResolvedJob,
     ValidationLevel,
 )
-from .audio_plan import AudioJobResolver, AudioJobSpec, PlannedAudioUnit, ResolvedAudioJob
-from .blocking_runner import BlockingRunner, RunResult, run_blocking
-from .model_catalogue import CatalogEntryId, ModelCatalogueService, ModelCatalogueRecord
+from .job_runner import JobRunner
+from .model_catalogue import CatalogEntryId, ModelCatalogueRecord, ModelCatalogueService
+from .model_config import ModelConfig, assemble_model
+from .model_identity import (
+    CatalogueRef,
+    DemucsSpec,
+    MdxSpec,
+    ModelArtifacts,
+    ModelId,
+    ModelIdentityService,
+    ModelRecord,
+)
 from .model_registry import ModelRegistryService
+from .model_repository import (
+    ModelRepository,
+)
+from .paths import DATA_DIR, ENSEMBLE_CACHE_DIR, ensure_data_dir
+from .process_data import ProcessData
+from .settings import Settings
 from .settings.job_resolution import SettingsLayer, SettingsResolver
 from .stems import StemRoute, StemRouteKind, StemSelection, StemSelectionStatus
 

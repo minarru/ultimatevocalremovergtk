@@ -4,8 +4,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from core import paths
-from core import download_sizes
+from core import download_sizes, paths
 
 
 class CachePathMigrationTests(unittest.TestCase):

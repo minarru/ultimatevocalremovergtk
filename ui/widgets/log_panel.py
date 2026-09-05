@@ -5,7 +5,6 @@ expands above the always-visible run controls, toggled by an ExpanderRow-style
 arrow button (no drag gestures).
 """
 import typing
-
 from typing import Callable, Optional
 
 from gi.repository import GLib, Gtk

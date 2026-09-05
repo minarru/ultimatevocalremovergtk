@@ -22,7 +22,8 @@ class KeepTextCutoverTests(unittest.TestCase):
         import json
         import tempfile
         from unittest.mock import patch
-        from cli.profiles import load_profile, PROFILE_SCHEMA_VERSION
+
+        from cli.profiles import PROFILE_SCHEMA_VERSION, load_profile
         from core.settings import Settings
 
         payload = {
@@ -52,6 +53,7 @@ class KeepTextCutoverTests(unittest.TestCase):
     def test_sparse_cli_profile_keeps_illegal_text_with_transient_warnings(self) -> None:
         import json
         import tempfile
+
         from cli.profiles import PROFILE_SCHEMA_VERSION, load_profile
 
         payload = {
@@ -76,6 +78,7 @@ class KeepTextCutoverTests(unittest.TestCase):
     def test_sparse_cli_profile_keeps_illegal_primary_text(self) -> None:
         import json
         import tempfile
+
         from cli.profiles import PROFILE_SCHEMA_VERSION, load_profile
 
         payload = {
@@ -98,6 +101,7 @@ class KeepTextCutoverTests(unittest.TestCase):
         import json
         import tempfile
         from unittest.mock import patch
+
         from cli.profiles import PROFILE_SCHEMA_VERSION, load_profile
 
         payload = {
@@ -259,6 +263,7 @@ class KeepTextCutoverTests(unittest.TestCase):
         import os
         import tempfile
         from unittest.mock import patch
+
         from core import ensemble_service, paths
 
         with tempfile.TemporaryDirectory() as root, patch.object(
@@ -287,6 +292,7 @@ class KeepTextCutoverTests(unittest.TestCase):
         import os
         import tempfile
         from unittest.mock import patch
+
         from core import ensemble_service, paths
 
         member = {"legacy": ["model", 17]}

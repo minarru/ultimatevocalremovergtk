@@ -62,8 +62,8 @@ class Installed:
 
 def collect_installed(repo: Any, settings: Any) -> Installed:
     """Read the model tree. Impure; ``discover_jobs`` stays testable without it."""
-    from core.apollo import list_apollo_models
     from bundled.constants import INST_STEM, VOCAL_STEM
+    from core.apollo import list_apollo_models
 
     return Installed(
         mdx=list(repo.list_mdx_models()),
@@ -547,8 +547,8 @@ def run_child(spec_path: str) -> int:
         from core.job_plan import JobResolver, JobSpec, ValidationLevel
         from core.job_runner import JobRunner
         from core.model_identity import ModelIdentityService
-        from core.settings.job_resolution import SettingsLayer, SettingsResolver
         from core.settings.flat_map import FLAT_TO_PATH
+        from core.settings.job_resolution import SettingsLayer, SettingsResolver
 
         kind = spec["kind"]
         profile = Settings.load(spec["settings_path"])
@@ -671,8 +671,8 @@ def _read_result(result_path: str) -> Optional[Dict[str, Any]]:
 
 def _run_tool(settings: Any, input_path: str, timeout: float, *, repo: Any):
     """Run the Apollo restore tool, mirroring the UI's model resolution."""
-    from core.audio_plan import AudioJobResolver, AudioJobSpec
     from core.apollo import ApolloModelData
+    from core.audio_plan import AudioJobResolver, AudioJobSpec
     from core.audio_tools import AudioToolRunner
     from core.blocking_runner import run_blocking
     from core.job_plan import ValidationLevel
@@ -728,7 +728,6 @@ def spawn_child(*, spec: Dict[str, Any], job_dir: str, env: Dict[str, str], time
     bare ``proc.kill()`` only signals the direct child, leaving those
     grandchildren to run on as orphans holding memory and file handles.
     """
-    import json
     import signal
     import subprocess
 
@@ -826,7 +825,6 @@ def sweep(
     run_meta: Optional[Dict[str, Any]] = None,
 ) -> int:
     """Run every job serially. One child alive at a time."""
-    import json
     import shutil
 
     rows: List[Dict[str, Any]] = []
@@ -1076,8 +1074,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     ensure_sweep_interpreter(allow_reexec=argv is None)
 
     from core import ModelRepository
-    from core.settings import Settings
     from core import paths as core_paths
+    from core.settings import Settings
 
     repo = ModelRepository()
     repo.reload_mappers()

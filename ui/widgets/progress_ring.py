@@ -1,8 +1,8 @@
 """Circular progress ring with finish morph (Nautilus ProgressPaintable)."""
 
 from __future__ import annotations
-import typing
 
+import typing
 from typing import TYPE_CHECKING, Optional
 
 from gi.repository import Adw, Gdk, Gtk

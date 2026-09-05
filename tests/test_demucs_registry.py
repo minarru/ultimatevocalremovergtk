@@ -16,7 +16,6 @@ from unittest.mock import patch
 
 from core.model_identity import DemucsSpec
 
-
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -61,7 +60,6 @@ class DemucsCatalogueSpecTests(unittest.TestCase):
     def test_explicit_version_is_not_overwritten_by_label(self) -> None:
         from types import SimpleNamespace
 
-        from bundled.constants import DEMUCS_ARCH_TYPE
         from core.model_inventory import _demucs_spec
 
         entry = SimpleNamespace(

@@ -1,12 +1,12 @@
 """VR denoiser and multi-band mix loading."""
-import typing
 import os
+import typing
 
+import librosa
 import numpy as np
 import torch
-import librosa
 
-from bundled.constants import OPERATING_SYSTEM, SYSTEM_PROC, ARM, SYSTEM_ARCH
+from bundled.constants import ARM, OPERATING_SYSTEM, SYSTEM_ARCH, SYSTEM_PROC
 from core.paths import VR_PARAM_DIR
 from core.torch_checkpoint import load_torch_checkpoint
 from ml import spec_utils

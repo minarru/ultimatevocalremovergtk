@@ -1,7 +1,6 @@
 import ast
-from pathlib import Path
 import unittest
-
+from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parents[1]
 _ALLOWLIST = {
