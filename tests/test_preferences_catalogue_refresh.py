@@ -290,9 +290,9 @@ class PreferencesCatalogueRefreshTests(unittest.TestCase):
                     manager.catalogue_meta_by_family["mdx"][meta.label].catalogue_evidence_status,
                     CatalogueEvidenceState.UNAVAILABLE,
                 )
-                self.assertEqual(manager._catalogue_evidence_pending, set())
-                self.assertEqual(manager._catalogue_evidence_force_pending, set())
-                self.assertEqual(manager._catalogue_evidence_callbacks, [])
+                self.assertEqual(manager._evidence.pending, set())
+                self.assertEqual(manager._evidence.force_pending, set())
+                self.assertEqual(manager._evidence.callbacks, [])
                 self.assertNotIn(
                     "Catalogue refreshed; output details updating",
                     refresh_messages,
@@ -407,9 +407,9 @@ class PreferencesCatalogueRefreshTests(unittest.TestCase):
             dialog.catalogue_cache_refresh_row.get_subtitle(),
             "Catalogue refreshed; output details updated",
         )
-        self.assertEqual(manager._catalogue_evidence_pending, set())
-        self.assertEqual(manager._catalogue_evidence_force_pending, set())
-        self.assertEqual(manager._catalogue_evidence_callbacks, [])
+        self.assertEqual(manager._evidence.pending, set())
+        self.assertEqual(manager._evidence.force_pending, set())
+        self.assertEqual(manager._evidence.callbacks, [])
         self.assertFalse(csc.is_pending("https://example.test/m.yaml"))
         csc._reset_worker_state_for_tests()
 

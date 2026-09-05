@@ -67,7 +67,7 @@ def setUpModule() -> None:
 
 class ApplyCatalogueStemCacheTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.manager = DownloadManager.__new__(DownloadManager)
+        self.manager = DownloadManager()
         self.manager.catalogue_meta = {}
 
     def test_patches_empty_stems_from_cache(self) -> None:
@@ -715,9 +715,9 @@ class CatalogueEvidenceSchedulingTests(unittest.TestCase):
             manager.catalogue_meta_by_family["mdx"][meta.label].catalogue_evidence_status,
             CatalogueEvidenceState.UNAVAILABLE,
         )
-        self.assertEqual(manager._catalogue_evidence_pending, set())
-        self.assertEqual(manager._catalogue_evidence_force_pending, set())
-        self.assertEqual(manager._catalogue_evidence_callbacks, [])
+        self.assertEqual(manager._evidence.pending, set())
+        self.assertEqual(manager._evidence.force_pending, set())
+        self.assertEqual(manager._evidence.callbacks, [])
         self.assertEqual(completions, [])
 
     def test_force_revalidation_without_network_does_not_publish_pending_or_keep_callback(
@@ -741,9 +741,9 @@ class CatalogueEvidenceSchedulingTests(unittest.TestCase):
             manager.catalogue_meta_by_family["mdx"][meta.label].catalogue_evidence_status,
             CatalogueEvidenceState.UNAVAILABLE,
         )
-        self.assertEqual(manager._catalogue_evidence_pending, set())
-        self.assertEqual(manager._catalogue_evidence_force_pending, set())
-        self.assertEqual(manager._catalogue_evidence_callbacks, [])
+        self.assertEqual(manager._evidence.pending, set())
+        self.assertEqual(manager._evidence.force_pending, set())
+        self.assertEqual(manager._evidence.callbacks, [])
         self.assertEqual(completions, [])
 
     def test_force_revalidation_after_shutdown_does_not_publish_pending(self) -> None:
@@ -764,8 +764,8 @@ class CatalogueEvidenceSchedulingTests(unittest.TestCase):
             manager.catalogue_meta_by_family["mdx"][meta.label].catalogue_evidence_status,
             CatalogueEvidenceState.UNAVAILABLE,
         )
-        self.assertEqual(manager._catalogue_evidence_pending, set())
-        self.assertEqual(manager._catalogue_evidence_force_pending, set())
+        self.assertEqual(manager._evidence.pending, set())
+        self.assertEqual(manager._evidence.force_pending, set())
 
     def test_prestarted_worker_cannot_finish_before_force_state_is_published(self) -> None:
         import core.catalogue_stem_cache as csc
@@ -829,9 +829,9 @@ class CatalogueEvidenceSchedulingTests(unittest.TestCase):
             manager.catalogue_meta[meta.label].catalogue_evidence_status,
             CatalogueEvidenceState.READY,
         )
-        self.assertEqual(manager._catalogue_evidence_pending, set())
-        self.assertEqual(manager._catalogue_evidence_force_pending, set())
-        self.assertEqual(manager._catalogue_evidence_callbacks, [])
+        self.assertEqual(manager._evidence.pending, set())
+        self.assertEqual(manager._evidence.force_pending, set())
+        self.assertEqual(manager._evidence.callbacks, [])
         self.assertFalse(csc.is_pending(_YAML_URL))
 
     def test_cache_subscriber_exception_is_logged(self) -> None:
@@ -866,7 +866,7 @@ class CatalogueEvidenceSchedulingTests(unittest.TestCase):
         with (
             mock.patch.object(csc, "enqueue_missing", side_effect=_accept_reserved_urls),
             mock.patch.object(csc, "ensure_worker_started"),
-            mock.patch("core.downloads.log_event") as event,
+            mock.patch("core.catalogue_evidence.log_event") as event,
             access_policy(
                 allow_network=True,
                 allow_metadata_writes=False,
@@ -884,10 +884,10 @@ class CatalogueEvidenceSchedulingTests(unittest.TestCase):
             with (
                 mock.patch.object(csc, "pending_urls", return_value=frozenset()),
                 mock.patch.object(
-                    manager, "apply_catalogue_stem_cache", return_value={pending.label}
+                    manager._evidence, "apply_catalogue_stem_cache", return_value={pending.label}
                 ),
             ):
-                manager._on_catalogue_evidence_cache_update()
+                manager._evidence._on_catalogue_evidence_cache_update()
 
         self.assertEqual(len(completions), 1)
         summary = typing.cast(Any, completions[0])
@@ -923,7 +923,7 @@ class CatalogueEvidenceSchedulingTests(unittest.TestCase):
         manager.catalogue_meta = {meta.label: meta}
         manager.catalogue_meta_by_family = {"mdx": {meta.label: meta}}
         manager.mdx_download_list = {meta.label: meta.files}
-        manager._catalogue_evidence_url_entries = {_YAML_URL: [("mdx", meta.label)]}
+        manager._evidence.url_entries = {_YAML_URL: [("mdx", meta.label)]}
         failure = StemCacheHit(
             stems=(),
             target_instrument=None,
@@ -937,9 +937,9 @@ class CatalogueEvidenceSchedulingTests(unittest.TestCase):
                 "core.catalogue_identity.catalogue_model_id",
                 return_value="mdx:m",
             ),
-            mock.patch("core.downloads.log_event") as event,
+            mock.patch("core.catalogue_evidence.log_event") as event,
         ):
-            manager._log_catalogue_evidence_failures((_YAML_URL,))
+            manager._evidence._log_catalogue_evidence_failures((_YAML_URL,))
 
         event.assert_called_once_with(
             "download",

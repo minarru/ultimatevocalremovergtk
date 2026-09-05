@@ -34,7 +34,7 @@ class _Response:
 
 class DownloadCancelTests(unittest.TestCase):
     def test_cancelled_download_does_not_rename_missing_part(self) -> None:
-        manager = DownloadManager.__new__(DownloadManager)
+        manager = DownloadManager()
         stop_event = threading.Event()
         stop_event.set()
 
@@ -47,7 +47,9 @@ class DownloadCancelTests(unittest.TestCase):
                     handle.write(b"partial")
                 os.remove(tmp_path)
 
-            with mock.patch.object(manager, "_download_file_url", side_effect=fake_download_url):
+            with mock.patch.object(
+                manager._transfer, "_download_file_url", side_effect=fake_download_url
+            ):
                 manager._download_file(
                     "https://example.com/model.onnx",
                     save_path,
@@ -59,7 +61,7 @@ class DownloadCancelTests(unittest.TestCase):
             self.assertFalse(os.path.isfile(tmp_path))
 
     def test_truncated_known_length_is_rejected_and_partial_removed(self) -> None:
-        manager = DownloadManager.__new__(DownloadManager)
+        manager = DownloadManager()
         with tempfile.TemporaryDirectory() as tmp:
             part_path = os.path.join(tmp, "model.onnx.part")
             with mock.patch(
@@ -70,7 +72,7 @@ class DownloadCancelTests(unittest.TestCase):
             self.assertFalse(os.path.exists(part_path))
 
     def test_unknown_length_download_is_allowed(self) -> None:
-        manager = DownloadManager.__new__(DownloadManager)
+        manager = DownloadManager()
         with tempfile.TemporaryDirectory() as tmp:
             part_path = os.path.join(tmp, "model.onnx.part")
             with mock.patch(
@@ -81,7 +83,7 @@ class DownloadCancelTests(unittest.TestCase):
                 self.assertEqual(handle.read(), b"payload")
 
     def test_truncated_download_uses_hugging_face_fallback(self) -> None:
-        manager = DownloadManager.__new__(DownloadManager)
+        manager = DownloadManager()
         with tempfile.TemporaryDirectory() as tmp:
             save_path = os.path.join(tmp, "model.onnx")
             responses = [_Response(b"short", 10), _Response(b"complete", 8)]
@@ -94,7 +96,7 @@ class DownloadCancelTests(unittest.TestCase):
             self.assertFalse(os.path.exists(f"{save_path}.part"))
 
     def test_cancelled_download_skips_hf_fallback(self) -> None:
-        manager = DownloadManager.__new__(DownloadManager)
+        manager = DownloadManager()
         stop_event = threading.Event()
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -105,7 +107,9 @@ class DownloadCancelTests(unittest.TestCase):
                 if os.path.exists(tmp_path):
                     os.remove(tmp_path)
 
-            with mock.patch.object(manager, "_download_file_url", side_effect=fake_download_url):
+            with mock.patch.object(
+                manager._transfer, "_download_file_url", side_effect=fake_download_url
+            ):
                 with mock.patch("core.downloads.hf_fallback_url", return_value="https://hf.example/x"):
                     manager._download_file(
                         "https://example.com/model.onnx",
