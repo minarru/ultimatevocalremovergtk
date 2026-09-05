@@ -879,14 +879,19 @@ class ActiveModelLabelTests(unittest.TestCase):
         self.assertEqual(_model_output_label(cast(Any, model)), "my_private_model")
 
     def test_model_config_takes_its_label_from_the_identity_record(self) -> None:
-        """Locks the assignment in core/model_config/config.py."""
-        import inspect
+        from unittest.mock import MagicMock
 
-        from core.model_config import config as config_mod
+        from core.model_config import ModelConfig
+        from core.model_identity import ModelArtifacts, ModelRecord
+        from core.settings import Settings
 
-        source = inspect.getsource(config_mod)
-        self.assertRegex(
-            source,
-            r"self\.model_display_label\s*=\s*(?:\(\s*)?"
-            r"identity\.display\s+if\s+identity\s+is\s+not\s+None\s+else\s+model_name",
+        identity = ModelRecord(
+            id="mdx:missing-label-fixture", family="mdx", basename="missing-label-fixture",
+            display="Readable model label", backend_name="missing-label-fixture",
+            artifacts=ModelArtifacts("missing-label-fixture.onnx"), installed=False,
         )
+        model = ModelConfig(Settings(), MagicMock(), "ignored caller label", identity=identity,
+                            is_dry_check=True)
+        self.assertEqual(model.model_display_label, "Readable model label")
+        self.assertEqual(model.model_name, "Readable model label")
+        self.assertEqual(model.backend_name, "missing-label-fixture")
