@@ -382,22 +382,12 @@ class MainWindow(Adw.ApplicationWindow):
         return self._header
 
     def _build_primary_menu(self) -> Gio.Menu:
-        menu = Gio.Menu()
-        tools = Gio.Menu()
-        tools.append("Verify Inputs", "win.view_inputs")
-        tools.append("Model options", "win.model_options")
-        tools.append("Download Center", "win.download")
-        tools.append("Error Log", "win.error_log")
+        builder = load_builder("main-menu")
+        menu = object_from_builder(builder, "primary_menu", Gio.Menu)
+        tools = object_from_builder(builder, "tools", Gio.Menu)
         if os.environ.get("UVR_DEBUG_OOM", "").strip() in ("1", "true", "yes"):
             tools.append("Mock GPU OOM dialog", "win.mock_oom_dialog")
             tools.append("Mock OOM (Separation)", "win.mock_oom_dialog_separation")
-        menu.append_section(None, tools)
-        info = Gio.Menu()
-        info.append("Settings", "win.settings")
-        info.append("Check for Updates", "win.updates")
-        info.append("Keyboard Shortcuts", "win.shortcuts")
-        info.append("About", "win.about")
-        menu.append_section(None, info)
         return menu
 
     def _build_content(self) -> Gtk.Widget:

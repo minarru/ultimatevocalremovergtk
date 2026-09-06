@@ -1,0 +1,16 @@
+using Gtk 4.0;
+
+menu primary_menu {
+  section tools {
+    item { label: "Verify Inputs"; action: "win.view_inputs"; }
+    item { label: "Model options"; action: "win.model_options"; }
+    item { label: "Download Center"; action: "win.download"; }
+    item { label: "Error Log"; action: "win.error_log"; }
+  }
+  section {
+    item { label: "Settings"; action: "win.settings"; }
+    item { label: "Check for Updates"; action: "win.updates"; }
+    item { label: "Keyboard Shortcuts"; action: "win.shortcuts"; }
+    item { label: "About"; action: "win.about"; }
+  }
+}
