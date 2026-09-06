@@ -19,11 +19,14 @@ def setUpModule() -> None:
 
 class DownloadQueueCompletionUiTests(unittest.TestCase):
     def test_worker_burst_coalesces_then_indicator_and_center_render_completion(self) -> None:
-        import gi
+        try:
+            import gi
 
-        gi.require_version("Gtk", "4.0")
-        gi.require_version("Adw", "1")
-        from gi.repository import Adw, Gdk, GLib, Gtk
+            gi.require_version("Gtk", "4.0")
+            gi.require_version("Adw", "1")
+            from gi.repository import Adw, Gdk, GLib, Gtk
+        except (ImportError, ValueError) as exc:
+            self.skipTest(f"GTK4/libadwaita unavailable: {exc}")
 
         from bundled.constants import MDX_ARCH_TYPE
         from core.catalog_sources import EntryMeta
