@@ -37,7 +37,7 @@
   "reportUnknownLambdaType": "none",
   "reportMissingParameterType": "error",
   // Off deliberately: `from bundled.constants import *` mirrors upstream's flat
-  // namespace (see CLAUDE.md), which these two rules cannot distinguish from
+  // namespace (see docs/development-architecture.md), which these two rules cannot distinguish from
   // real dead imports or accidental shadowing.
   "reportUnusedImport": "none",
   "reportConstantRedefinition": "none",
