@@ -287,9 +287,9 @@ class AudioTools:
 
         from core.gpu_backend import clear_torch_cache, resolve_inference_backend
 
-        # ``apollo_inference`` pulls in torch; import it lazily so ``core``
+        # ``engines.apollo`` pulls in torch; import it lazily so ``core``
         # (and any view importing it) stays torch-free at import time.
-        from ml import apollo_inference
+        from engines import apollo
 
         track = sanitize_filename_component(audio_file_base) or "audio"
         save_path = os.path.join(
@@ -303,7 +303,7 @@ class AudioTools:
             is_macos=self.is_macos,
         )
 
-        restored_audio = apollo_inference.restore_process(
+        restored_audio = apollo.restore_process(
             audio_file,
             self.apollo_model_location,
             self.apollo_overlap_val,

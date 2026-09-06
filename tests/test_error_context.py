@@ -16,10 +16,10 @@ from core.error_context import (
     probe_audio_file,
     set_run_error_context,
 )
+from core.error_log import log_error
 from core.model_identity import ModelArtifacts, ModelRecord
 from core.model_repository import ModelRepository
 from core.settings import Settings
-from ui.errorlog import log_error
 
 
 class ErrorContextTests(unittest.TestCase):

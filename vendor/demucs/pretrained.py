@@ -61,7 +61,7 @@ def _parse_remote_files(remote_file_list) -> tp.Dict[str, str]:
     return models
 
 def get_model(name: str,
-              repo: tp.Optional[Path] = None):
+              repo: tp.Optional[Path] = None, *, checkpoint_loader=None):
     """`name` must be a bag of models name or a pretrained signature
     from the remote AWS model repo or the specified local repo if `repo` is not None.
     """
@@ -75,7 +75,7 @@ def get_model(name: str,
     else:
         if not repo.is_dir():
             fatal(f"{repo} must exist and be a directory.")
-        model_repo = LocalRepo(repo)
+        model_repo = LocalRepo(repo, checkpoint_loader=checkpoint_loader)
         bag_repo = BagOnlyRepo(repo, model_repo)
     any_repo = AnyModelRepo(model_repo, bag_repo)
     model = any_repo.get_model(name)

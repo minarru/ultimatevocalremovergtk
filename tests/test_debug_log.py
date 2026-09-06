@@ -791,7 +791,7 @@ class DebugLogTests(unittest.TestCase):
         self.assertEqual(order, ["bootstrap", "hooks", "aliases"])
 
     def test_ui_error_log_records_error_at_default_threshold(self) -> None:
-        from ui.errorlog import log_error
+        from core.error_log import log_error
 
         with tempfile.TemporaryDirectory() as tmp:
             log_path = Path(tmp) / "uvr.log"

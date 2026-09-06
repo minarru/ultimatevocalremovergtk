@@ -123,8 +123,10 @@ class AcquisitionTests(unittest.TestCase):
                     return module
 
                 def newer(
-                    *, name: str, repo: Any, events: list = events, module: FakeModule = module
+                    *, name: str, repo: Any, checkpoint_loader: Any, events: list = events, module: FakeModule = module
                 ) -> FakeModule:
+                    from engines import demucs_runtime
+                    self.assertIs(checkpoint_loader, demucs_runtime.load_torch_checkpoint)
                     events.append(('newer', name, str(repo)))
                     return module
 

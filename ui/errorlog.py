@@ -4,7 +4,7 @@ UVR keeps the last error in an in-memory ``error_log_var`` (formatted by
 :func:`data.error_handling.error_text`) and shows it in a read-only window
 with *Copy All Text* and *Report Issue* buttons. This module reproduces that:
 
-* a process-wide :data:`_ERROR_LOG` buffer with :func:`log_error` /
+* a shared core error store with :func:`log_error` /
   :func:`set_error_log` / :func:`get_error_log` so any view (downloads,
   separation, verification, ...) records errors in the same place and format;
 * :func:`open_error_log`, the entry point the main window can call (also usable
@@ -14,13 +14,28 @@ with *Copy All Text* and *Report Issue* buttons. This module reproduces that:
 
 from __future__ import annotations
 
-import threading
 import typing
+import weakref
 from typing import Callable, Optional
 
 from gi.repository import Adw, Gdk, GLib, Gtk, Pango, PangoCairo
 
-from bundled.error_handling import CONTACT_DEV, error_dialouge, error_text
+from bundled.error_handling import CONTACT_DEV, error_dialouge
+from core.error_log import (
+    append_error_log as append_error_log,
+)
+from core.error_log import (
+    get_error_log as get_error_log,
+)
+from core.error_log import (
+    log_error as log_error,
+)
+from core.error_log import (
+    set_error_log as set_error_log,
+)
+from core.error_log import (
+    subscribe_error_log,
+)
 from core.support_urls import fork_issue_url
 
 from .dialogs.utils import (
@@ -126,11 +141,10 @@ def _build_error_summary_view(summary: str, *, width: int) -> Gtk.Widget:
     return scroller
 
 
-_LOCK = threading.Lock()
-_ERROR_LOG = ""
 _ACTIVE_ERROR_DIALOG: Optional[Adw.Dialog] = None
 _ERROR_LOG_WINDOW: Optional[Adw.Window] = None
 _ERROR_LOG_BUFFER: Optional[Gtk.TextBuffer] = None
+_ERROR_LOG_SINK: ErrorLogViewSink | None = None
 
 
 def _error_dialog_width(parent_window: WindowSizing) -> int:
@@ -149,68 +163,34 @@ def _configure_wrapping_label(label: Gtk.Label, *, max_chars: int) -> None:
     label.set_max_width_chars(max_chars)
 
 
-def set_error_log(text: str) -> None:
-    """Replace the current error log (mirrors ``error_log_var.set``)."""
-    from core.debug_log import debug, preview_text
+class ErrorLogViewSink:
+    """Own a viewer subscription; queued main-loop work never owns widgets."""
 
-    global _ERROR_LOG
-    with _LOCK:
-        _ERROR_LOG = text or ""
-    if _ERROR_LOG_BUFFER is not None:
-        GLib.idle_add(_refresh_error_log_window)
-    if text:
-        debug("error", f"set_error_log {preview_text(text, max_len=120)!r}")
+    def __init__(self, buffer: Gtk.TextBuffer) -> None:
+        self._buffer: Gtk.TextBuffer | None = buffer
+        self._closed = False
+        sink_ref = weakref.ref(self)
+        def on_changed() -> None:
+            GLib.idle_add(_refresh_error_log_sink, sink_ref)
 
+        self._unsubscribe = subscribe_error_log(on_changed)
+        self.refresh()
 
-def append_error_log(text: str) -> None:
-    """Append ``text`` to the error log, keeping prior entries."""
-    if not text:
-        return
-    with _LOCK:
-        existing = _ERROR_LOG
-    if existing:
-        set_error_log(f"{existing.rstrip()}\n\n---\n\n{text.lstrip()}")
-    else:
-        set_error_log(text)
+    def refresh(self) -> None:
+        if not self._closed and self._buffer is not None:
+            self._buffer.set_text(get_error_log() or "No errors have been logged.")
+
+    def close(self) -> None:
+        self._closed = True
+        self._unsubscribe()
+        self._buffer = None
 
 
-def log_error(process_method: str, exception: BaseException, *, context: str = "") -> str:
-    """Format ``exception`` like UVR and store it as the current error log.
-
-    Thread-safe so worker threads can record errors directly; returns the
-    formatted text. When a prior error is already stored, the new report is
-    appended rather than replacing it.
-    """
-    import traceback
-
-    from core.debug_log import log_event
-
-    if not context:
-        from core.error_context import format_error_context
-
-        context = format_error_context()
-    formatted = error_text(process_method, exception, context=context)
-    append_error_log(formatted)
-    log_event(
-        "error",
-        "ui_error",
-        level="error",
-        process_method=process_method,
-        context=context,
-        error_type=type(exception).__name__,
-        error=str(exception),
-        traceback="".join(
-            traceback.format_exception(
-                type(exception), exception, exception.__traceback__
-            )
-        ),
-    )
-    return formatted
-
-
-def get_error_log() -> str:
-    with _LOCK:
-        return _ERROR_LOG
+def _refresh_error_log_sink(sink_ref: weakref.ReferenceType[ErrorLogViewSink]) -> bool:
+    sink = sink_ref()
+    if sink is not None:
+        sink.refresh()
+    return GLib.SOURCE_REMOVE
 
 
 def _refresh_error_log_window() -> bool:
@@ -370,7 +350,7 @@ def open_error_log(parent_window: typing.Any, message: typing.Any=None):
     """
     if message is not None:
         set_error_log(message)
-    global _ERROR_LOG_WINDOW, _ERROR_LOG_BUFFER
+    global _ERROR_LOG_WINDOW, _ERROR_LOG_BUFFER, _ERROR_LOG_SINK
     if _ERROR_LOG_WINDOW is not None:
         _refresh_error_log_window()
         _ERROR_LOG_WINDOW.present()
@@ -424,13 +404,17 @@ def open_error_log(parent_window: typing.Any, message: typing.Any=None):
     window.set_content(toolbar)
     _ERROR_LOG_WINDOW = window
     _ERROR_LOG_BUFFER = buffer
+    _ERROR_LOG_SINK = ErrorLogViewSink(buffer)
     window.connect("close-request", _on_error_log_window_closed)
     window.present()
     return window
 
 
 def _on_error_log_window_closed(_window: typing.Any) -> bool:
-    global _ERROR_LOG_WINDOW, _ERROR_LOG_BUFFER
+    global _ERROR_LOG_WINDOW, _ERROR_LOG_BUFFER, _ERROR_LOG_SINK
+    if _ERROR_LOG_SINK is not None:
+        _ERROR_LOG_SINK.close()
+        _ERROR_LOG_SINK = None
     _ERROR_LOG_WINDOW = None
     _ERROR_LOG_BUFFER = None
     return False

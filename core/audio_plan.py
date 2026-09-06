@@ -146,7 +146,7 @@ class AudioJobResolver:
             diagnostics.extend(self._runtime_diagnostics(spec.tool, settings))
         if level is ValidationLevel.LOAD and spec.tool == APOLLO_RESTORE and model:
             try:
-                import ml.apollo_inference  # noqa: F401
+                import engines.apollo  # noqa: F401
             except (ImportError, OSError, RuntimeError) as exc:
                 diagnostics.append(Diagnostic("audio.load", str(exc)))
         units = self._plan_units(spec, settings)

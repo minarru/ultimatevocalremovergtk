@@ -91,6 +91,7 @@ def acquire_demucs_model(
         model = _gm(
             name=load_name,
             repo=Path(os.path.dirname(model_path)),
+            checkpoint_loader=load_torch_checkpoint,
         )
         model = demucs_segments(request.segment, model)
         model.to(device)

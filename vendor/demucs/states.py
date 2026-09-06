@@ -19,7 +19,6 @@ from omegaconf import OmegaConf
 from diffq import DiffQuantizer, UniformQuantizer, restore_quantized_state
 import torch
 
-from core.torch_checkpoint import load_torch_checkpoint
 
 
 def get_quantizer(model, args, optimizer=None):
@@ -36,7 +35,7 @@ def get_quantizer(model, args, optimizer=None):
     return quantizer
 
 
-def load_model(path_or_package, strict=False):
+def load_model(path_or_package, strict=False, *, checkpoint_loader=None):
     """Load a model from the given serialized model, either given as a dict (already loaded)
     or a path to a file on disk."""
     if isinstance(path_or_package, dict):
@@ -45,7 +44,10 @@ def load_model(path_or_package, strict=False):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             path = path_or_package
-            package = load_torch_checkpoint(path, map_location="cpu")
+            if checkpoint_loader is None:
+                from core.torch_checkpoint import load_torch_checkpoint
+                checkpoint_loader = load_torch_checkpoint
+            package = checkpoint_loader(path, map_location="cpu")
     else:
         raise ValueError(f"Invalid type for {path_or_package}.")
 

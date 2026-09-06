@@ -66,8 +66,9 @@ class RemoteRepo(ModelOnlyRepo):
 
 
 class LocalRepo(ModelOnlyRepo):
-    def __init__(self, root: Path):
+    def __init__(self, root: Path, *, checkpoint_loader=None):
         self.root = root
+        self.checkpoint_loader = checkpoint_loader
         self.scan()
 
     def scan(self):
@@ -97,7 +98,7 @@ class LocalRepo(ModelOnlyRepo):
             raise ModelLoadingError(f'Could not find pre-trained model with signature {sig}.')
         if sig in self._checksums:
             check_checksum(file, self._checksums[sig])
-        return load_model(file)
+        return load_model(file, checkpoint_loader=self.checkpoint_loader)
 
 
 class BagOnlyRepo:

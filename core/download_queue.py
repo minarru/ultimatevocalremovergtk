@@ -338,7 +338,7 @@ class DownloadQueue:
                 detail = f"{type(exc).__name__}: {detail}"
             item.detail = detail
             try:
-                from ui.errorlog import log_error
+                from core.error_log import log_error
 
                 log_error(
                     "Download",

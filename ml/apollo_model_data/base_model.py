@@ -12,8 +12,6 @@ from typing import Any
 import torch
 import torch.nn as nn
 
-from core.torch_checkpoint import load_torch_checkpoint
-
 #from huggingface_hub import PyTorchModelHubMixin
 
 
@@ -74,11 +72,15 @@ class BaseModel(nn.Module):
     def from_pretrain(
         pretrained_model_conf_or_path: str | PathLike[str], *args: Any, **kwargs: Any
     ) -> BaseModel:
-        from . import get
+        from core.torch_checkpoint import load_torch_checkpoint
 
-        conf = load_torch_checkpoint(
-            pretrained_model_conf_or_path, map_location="cpu"
-        )  # Attempt to find the model and instantiate it.
+        conf = load_torch_checkpoint(pretrained_model_conf_or_path, map_location="cpu")
+        return BaseModel.from_checkpoint(conf, *args, **kwargs)
+
+    @staticmethod
+    def from_checkpoint(conf: Any, *args: Any, **kwargs: Any) -> BaseModel:
+        """Construct a model from an already loaded UVR or Lightning package."""
+        from . import get
 
         if not isinstance(conf, dict):
             raise TypeError(

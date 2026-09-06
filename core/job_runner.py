@@ -539,8 +539,8 @@ class JobRunner:
             )
             callbacks.console(f"{message}\n")
             try:
-                # Lazy import: keep core free of a hard ui dependency at load time.
-                from ui import errorlog as errorlog_mod
+                # Record even when no GUI is installed.
+                from core import error_log as errorlog_mod
 
                 errorlog_mod.log_error("Sample mode", exc, context=message)
             except Exception:  # logging must not abort the run

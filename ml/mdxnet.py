@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 import torch
 import torch.nn as nn
 from pytorch_lightning import LightningModule
-
-from core.torch_checkpoint import load_torch_checkpoint
 
 from .modules import TFC_TDF, NormFactory
 
@@ -168,14 +167,19 @@ class ConvTDFNet(AbstractMDXNet):
         return x
     
 class Mixer(nn.Module):
-    def __init__(self, device: torch.device | str, mixer_path: str) -> None:
+    def __init__(self, device: torch.device | str, mixer_path: str, *,
+                 checkpoint_loader: Callable[..., Any] | None = None) -> None:
         
         super(Mixer, self).__init__()
         
         self.linear = nn.Linear((dim_s+1)*2, dim_s*2, bias=False)
         
+        if checkpoint_loader is None:
+            from core.torch_checkpoint import load_torch_checkpoint
+
+            checkpoint_loader = load_torch_checkpoint
         self.load_state_dict(
-            load_torch_checkpoint(mixer_path, map_location=device)
+            checkpoint_loader(mixer_path, map_location=device)
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:

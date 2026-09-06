@@ -108,5 +108,70 @@ class ErrorLogTests(unittest.TestCase):
         self.assertLessEqual(height, _ERROR_SUMMARY_MAX_HEIGHT)
 
 
+class ErrorLogViewLifetimeTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        import gi
+        gi.require_version('Gtk', '4.0')
+        gi.require_version('Adw', '1')
+        from gi.repository import Gtk
+        Gtk.init()
+        from tests.private_gtk import require_private_gtk
+        require_private_gtk()
+
+    def test_worker_update_close_and_reopen_dispose_queued_sink(self) -> None:
+        import gc
+        import threading
+        import time
+        import weakref
+
+        from gi.repository import GLib, Gtk
+
+        from core.error_log import append_error_log
+        from ui import errorlog
+
+        def buffer_text(buffer: Gtk.TextBuffer) -> str:
+            return buffer.get_text(buffer.get_start_iter(), buffer.get_end_iter(), True)
+
+        set_error_log('seed')
+        parent = Gtk.Window()
+        window = errorlog.open_error_log(parent)
+        self.addCleanup(parent.destroy)
+        self.addCleanup(lambda: errorlog._ERROR_LOG_WINDOW.close() if errorlog._ERROR_LOG_WINDOW else None)
+        old_buffer = errorlog._ERROR_LOG_BUFFER
+        assert old_buffer is not None
+        old_buffer_ref = weakref.ref(old_buffer)
+        old_sink = weakref.ref(errorlog._ERROR_LOG_SINK)
+        worker = threading.Thread(target=append_error_log, args=('worker',))
+        worker.start()
+        worker.join(5)
+        self.assertFalse(worker.is_alive())
+        deadline = time.monotonic() + 5
+        context = GLib.MainContext.default()
+        while 'worker' not in buffer_text(old_buffer) and time.monotonic() < deadline:
+            context.iteration(False)
+        self.assertIn('worker', buffer_text(old_buffer))
+        # Schedule, then close before main-loop delivery. Old idles cannot own widgets.
+        append_error_log('queued')
+        window.close()
+        self.assertIsNone(errorlog._ERROR_LOG_SINK)
+        gc.collect()
+        self.assertIsNone(old_sink())
+        reopened = errorlog.open_error_log(parent)
+        self.assertIsNot(reopened, window)
+        new_buffer = errorlog._ERROR_LOG_BUFFER
+        assert new_buffer is not None
+        self.assertEqual(buffer_text(new_buffer), get_error_log())
+        while context.pending():
+            context.iteration(False)
+        self.assertNotIn('queued', buffer_text(old_buffer))
+        self.assertIn('queued', buffer_text(new_buffer))
+        reopened.close()
+        window.destroy()
+        del old_buffer, window
+        gc.collect()
+        self.assertIsNone(old_buffer_ref())
+
+
 if __name__ == "__main__":
     unittest.main()
