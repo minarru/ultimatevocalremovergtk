@@ -426,4 +426,3 @@ def vocal_split_pair_sources(sources: dict[str, Any], mix: Any, *,
         return route_sources
 
     return {str(key): _channel_last_for_write(source) for key, source in sources.items()}
-
