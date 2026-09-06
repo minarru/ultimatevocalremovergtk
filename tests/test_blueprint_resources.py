@@ -219,6 +219,24 @@ class ResourceLoadingTests(unittest.TestCase):
                 bundle, "from ui.widgets.console import ConsoleView"
             )
 
+    def test_shared_template_widget_imports_reject_an_incomplete_bundle(self) -> None:
+        """Template subclasses must validate their exact resource before declaration."""
+        if shutil.which("glib-compile-resources") is None:
+            self.skipTest("glib-compile-resources is required for this resource test")
+        modules = (
+            "ui.widgets.format_row",
+            "ui.widgets.vocal_split_row",
+            "ui.widgets.file_chooser",
+            "ui.widgets.dual_inputs",
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            bundle = self._bundle_without_templates(Path(tmp))
+            for module in modules:
+                with self.subTest(module=module):
+                    self._assert_actionable_incomplete_bundle_error(
+                        bundle, f"__import__({module!r})"
+                    )
+
     def test_load_builder_rejects_valid_bundle_missing_its_document(self) -> None:
         if shutil.which("glib-compile-resources") is None:
             self.skipTest("glib-compile-resources is required for this resource test")

@@ -21,7 +21,7 @@ from __future__ import annotations
 import typing
 from typing import Callable
 
-from gi.repository import Adw
+from gi.repository import Adw, Gtk
 
 from bundled.constants import DEVERB_MAPPER, NO_MODEL
 
@@ -34,22 +34,34 @@ from ..help_text import (
 )
 from ..option_summaries import OFF, vocal_split_summary
 from ..protocols import VocalSplitEdit
+from ..resources import RESOURCE_PREFIX, require_resource_bundle
 from .lazy_populate import LazyPopulator
 from .rows import (
     get_combo_value,
-    make_combo_row,
-    make_switch_row,
     set_combo_tag_values,
     set_combo_value,
+    set_combo_values,
     use_wrapping_list,
 )
 
 _DEFAULT_DEVERB = "Main Vocals Only"
 _SPLITTER_REPICK_REASON = "Choose a vocal splitter model again after the model refresh"
+_TEMPLATE_RESOURCE = f"{RESOURCE_PREFIX}/ui/vocal_split_row.ui"
+require_resource_bundle(_TEMPLATE_RESOURCE)
 
 
+@Gtk.Template(resource_path=_TEMPLATE_RESOURCE)
 class VocalSplitRow(Adw.ExpanderRow):
     """The five global vocal-split/deverb settings in one collapsible row."""
+
+    __gtype_name__ = "VocalSplitRow"
+
+    split_switch: Adw.SwitchRow = Gtk.Template.Child("split_switch")
+    splitter_row: Adw.ComboRow = Gtk.Template.Child("splitter_row")
+    splitter_warning_row: Adw.ActionRow = Gtk.Template.Child("splitter_warning_row")
+    save_inst_switch: Adw.SwitchRow = Gtk.Template.Child("save_inst_switch")
+    deverb_switch: Adw.SwitchRow = Gtk.Template.Child("deverb_switch")
+    deverb_row: Adw.ComboRow = Gtk.Template.Child("deverb_row")
 
     def __init__(
         self,
@@ -57,7 +69,7 @@ class VocalSplitRow(Adw.ExpanderRow):
         on_changed: Callable[[VocalSplitEdit], None],
         hints: typing.Any = None,
     ):
-        super().__init__(title="Vocal splitter and deverb")
+        super().__init__()
         self._repo = repo
         self._on_changed = on_changed
         #: Cached from the last ``apply_from_settings`` so the subtitle follows
@@ -79,24 +91,9 @@ class VocalSplitRow(Adw.ExpanderRow):
             populate=self._populate_models_now,
         )
 
-        self.split_switch = make_switch_row("Enable vocal split mode")
-        self.splitter_row = make_combo_row("Vocal splitter model", [NO_MODEL])
+        set_combo_values(self.splitter_row, [NO_MODEL])
         use_wrapping_list(self.splitter_row)
-        self.splitter_warning_row = Adw.ActionRow(title="Saved model unavailable", visible=False)
-        self.splitter_warning_row.set_subtitle_lines(0)
-        self.save_inst_switch = make_switch_row("Save split vocal instrumentals")
-        self.deverb_switch = make_switch_row("Deverb vocals")
-        self.deverb_row = make_combo_row("Deverb vocal type", list(DEVERB_MAPPER.keys()))
-
-        for row in (
-            self.split_switch,
-            self.splitter_row,
-            self.splitter_warning_row,
-            self.save_inst_switch,
-            self.deverb_switch,
-            self.deverb_row,
-        ):
-            self.add_row(row)
+        set_combo_values(self.deverb_row, DEVERB_MAPPER.keys())
 
         if hints is not None:
             hints.register(self.split_switch, IS_VOC_SPLIT_MODEL_SELECT_HELP)

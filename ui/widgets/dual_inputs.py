@@ -11,9 +11,14 @@ from gi.repository import Adw, Gtk
 from ..help_text import DUAL_INPUTS_HINT
 from ..hints import set_tooltip
 from ..markup import set_row_subtitle, set_row_title
+from ..resources import RESOURCE_PREFIX, require_resource_bundle
 from .rows import add_row_icon
 
+_TEMPLATE_RESOURCE = f"{RESOURCE_PREFIX}/ui/dual_inputs.ui"
+require_resource_bundle(_TEMPLATE_RESOURCE)
 
+
+@Gtk.Template(resource_path=_TEMPLATE_RESOURCE)
 class DualInputsRow(Adw.ExpanderRow):
     """Expandable row summarising paired inputs with a button to open the editor.
 
@@ -21,8 +26,12 @@ class DualInputsRow(Adw.ExpanderRow):
     until pairs exist; the pair-editor suffix remains the primary action.
     """
 
+    __gtype_name__ = "DualInputsRow"
+
+    _edit_button: Gtk.Button = Gtk.Template.Child("edit_button")
+
     def __init__(self, on_edit: Callable[[], None]):
-        super().__init__(title="Input pairs")
+        super().__init__()
         if hasattr(self, "set_use_markup"):
             self.set_use_markup(False)
         self._on_edit = on_edit
@@ -33,11 +42,8 @@ class DualInputsRow(Adw.ExpanderRow):
         add_row_icon(self, "audio-x-generic-symbolic")
         set_tooltip(self, DUAL_INPUTS_HINT)
 
-        self._edit_button = Gtk.Button(label="Pair editor\u2026", valign=Gtk.Align.CENTER)
-        self._edit_button.add_css_class("flat")
         set_tooltip(self._edit_button, DUAL_INPUTS_HINT)
         self._edit_button.connect("clicked", self._open_editor)
-        self.add_suffix(self._edit_button)
 
         self.connect("activate", self._open_editor)
         self._refresh()

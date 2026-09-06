@@ -1,0 +1,165 @@
+using Gtk 4.0;
+
+template $LogPanel: Gtk.Box {
+  orientation: vertical;
+  spacing: 0;
+  hexpand: false;
+  vexpand: false;
+  halign: center;
+  valign: end;
+  width-request: 360;
+  overflow: hidden;
+  styles ["uvr-log-panel", "card"]
+
+  Gtk.Box {
+    orientation: vertical;
+    spacing: 0;
+    styles ["uvr-run-controls"]
+
+    Gtk.Revealer progress_revealer {
+      transition-type: slide_down;
+      transition-duration: 200;
+      reveal-child: false;
+
+      Gtk.Box progress_section {
+        orientation: vertical;
+        spacing: 0;
+        styles ["uvr-progress-section"]
+
+        Gtk.ProgressBar progressbar {
+          show-text: false;
+          styles ["uvr-progress-bar"]
+        }
+
+        Gtk.Label progress_label {
+          label: "";
+          xalign: 0.5;
+          halign: center;
+          visible: false;
+          styles ["uvr-progress-label"]
+        }
+      }
+    }
+
+    Gtk.Revealer log_revealer {
+      transition-type: slide_up;
+      transition-duration: 200;
+      reveal-child: false;
+
+      Gtk.Box {
+        orientation: vertical;
+        spacing: 0;
+
+        Gtk.Box log_meta_row {
+          orientation: horizontal;
+          spacing: 6;
+          styles ["uvr-log-meta"]
+
+          Gtk.Box {
+            orientation: horizontal;
+            spacing: 6;
+            hexpand: true;
+
+            Gtk.Image {
+              icon-name: "utilities-terminal-symbolic";
+              pixel-size: 16;
+              styles ["dim-label"]
+            }
+
+            Gtk.Label log_title {
+              label: "Log";
+              xalign: 0.0;
+              styles ["heading"]
+            }
+          }
+
+          Gtk.Button log_copy_button {
+            icon-name: "edit-copy-symbolic";
+            styles ["flat"]
+          }
+
+          Gtk.Button log_clear_button {
+            icon-name: "eraser3-symbolic";
+            styles ["flat"]
+          }
+        }
+
+        Gtk.Box {
+          orientation: vertical;
+          spacing: 0;
+          styles ["uvr-log-body-wrap"]
+
+          Gtk.Stack log_stack {
+            overflow: hidden;
+            height-request: 200;
+            styles ["uvr-log-body"]
+
+            Gtk.StackPage {
+              name: "empty";
+
+              child: Gtk.Box {
+                vexpand: true;
+                hexpand: true;
+
+                Gtk.Box {
+                  orientation: vertical;
+                  spacing: 6;
+                  valign: center;
+                  vexpand: true;
+                  halign: center;
+                  styles ["uvr-log-empty"]
+
+                  Gtk.Image {
+                    icon-name: "utilities-terminal-symbolic";
+                    pixel-size: 36;
+                    opacity: 0.45;
+                  }
+
+                  Gtk.Label {
+                    label: "No activity yet";
+                    styles ["title-4"]
+                  }
+
+                  Gtk.Label {
+                    label: "Start a process to see its log here.";
+                    wrap: true;
+                    justify: center;
+                    max-width-chars: 36;
+                    styles ["dim-label"]
+                  }
+                }
+              };
+            }
+          }
+        }
+      }
+    }
+
+    Gtk.Box {
+      orientation: horizontal;
+      spacing: 6;
+      styles ["uvr-run-actions"]
+
+      Gtk.ToggleButton expand_button {
+        icon-name: "adw-expander-arrow-symbolic";
+        valign: center;
+        styles ["flat", "uvr-log-expander-arrow"]
+      }
+
+      Gtk.Button start_button {
+        label: "_Start Processing";
+        use-underline: true;
+        hexpand: true;
+        valign: center;
+        styles ["suggested-action"]
+      }
+
+      Gtk.Button stop_button {
+        icon-name: "process-stop-symbolic";
+        sensitive: false;
+        valign: center;
+        styles ["destructive-action"]
+      }
+    }
+  }
+}

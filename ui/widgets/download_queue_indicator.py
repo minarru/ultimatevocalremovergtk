@@ -7,10 +7,11 @@ import typing
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, List, Optional
 
-from gi.repository import GLib, Gtk, Pango
+from gi.repository import GLib, Gtk
 
 from core.download_queue import DownloadQueueItem
 from ui.hints import set_icon_button_a11y
+from ui.template import load_builder, object_from_builder
 from ui.widgets.download_queue_icons import (
     ICON_CANCEL,
     ICON_CANCELLED,
@@ -54,7 +55,7 @@ class QueueSummary:
 @dataclass(frozen=True)
 class ChipRingState:
     progress: float
-    outcome: str # "active", "success", "partial", "failed", "cancelled"
+    outcome: str  # "active", "success", "partial", "failed", "cancelled"
 
 
 def chip_ring_state(items: List[DownloadQueueItem], summary: QueueSummary) -> ChipRingState:
@@ -221,46 +222,18 @@ class DownloadQueueIndicator:
         # state can be styled without the 3s timer clearing it.
         self._sticky = bool(os.environ.get("UVR_DEBUG_QUEUE_STICKY"))
 
+        builder = load_builder("download_queue_indicator")
+        self.widget = object_from_builder(builder, "download_queue_button", Gtk.MenuButton)
+        chip_content = object_from_builder(builder, "chip_content", Gtk.Box)
+        self._chip_label = object_from_builder(builder, "chip_label", Gtk.Label)
+        self._queue_list = object_from_builder(builder, "queue_list", Gtk.ListBox)
+        self._popover = object_from_builder(builder, "queue_popover", Gtk.Popover)
+
         self._chip_ring = ProgressRing()
-
-        self._chip_label = Gtk.Label()
-        self._chip_label.set_ellipsize(Pango.EllipsizeMode.END)
-        self._chip_label.add_css_class("uvr-download-queue-chip-label")
-
-        chip_content = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        chip_content.add_css_class("uvr-chip-content")
-        chip_content.set_valign(Gtk.Align.CENTER)
-        chip_content.append(self._chip_ring)
-        chip_content.append(self._chip_label)
-
-        self.widget = Gtk.MenuButton()
-        self.widget.add_css_class("uvr-download-queue-chip")
-        self.widget.set_valign(Gtk.Align.CENTER)
-        self.widget.set_size_request(-1, CHIP_HEIGHT)
-        self.widget.set_child(chip_content)
+        chip_content.prepend(self._chip_ring)
         set_icon_button_a11y(self.widget, "Show download queue")
-        self.widget.set_visible(False)
         self.widget.connect("map", self._on_menu_button_mapped)
-
-        self._queue_list = Gtk.ListBox()
-        self._queue_list.add_css_class("operations-list")
-        self._queue_list.set_selection_mode(Gtk.SelectionMode.NONE)
-        self._queue_list.set_activate_on_single_click(False)
-        self._queue_list.set_margin_start(6)
-        self._queue_list.set_margin_end(6)
-        self._queue_list.set_margin_top(6)
-        self._queue_list.set_margin_bottom(6)
-
-        list_scroller = Gtk.ScrolledWindow()
-        list_scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        list_scroller.set_max_content_height(270)
-        list_scroller.set_propagate_natural_height(True)
-        list_scroller.set_child(self._queue_list)
-
-        self._popover = Gtk.Popover()
-        self._popover.set_child(list_scroller)
         self._popover.connect("notify::visible", self._on_popover_notify_visible)
-        self.widget.set_popover(self._popover)
 
     def popup(self) -> None:
         """Show the download queue popover (toggle pressed state on the chip)."""
@@ -393,45 +366,15 @@ class DownloadQueueIndicator:
             self._update_queue_row(row, item)
 
     def _make_queue_row(self, item: DownloadQueueItem) -> Gtk.ListBoxRow:
-        grid = Gtk.Grid(column_spacing=12, row_spacing=6)
-        grid.set_margin_start(6)
-        grid.set_margin_end(6)
-        grid.set_margin_top(6)
-        grid.set_margin_bottom(6)
-
-        status = Gtk.Label(xalign=0.0)
-        status.set_size_request(300, -1)
-        status.set_margin_bottom(6)
-        status.set_hexpand(True)
-        status.set_ellipsize(Pango.EllipsizeMode.MIDDLE)
-        status.set_max_width_chars(40)
-
-        progress = Gtk.ProgressBar()
-        progress.set_show_text(False)
-        progress.set_valign(Gtk.Align.CENTER)
-        progress.set_margin_start(2)
-        progress.set_margin_bottom(4)
-        progress.set_hexpand(True)
-
-        detail = Gtk.Label(xalign=0.0)
-        detail.set_wrap(True)
-        detail.set_wrap_mode(Pango.WrapMode.WORD_CHAR)
-        detail.set_ellipsize(Pango.EllipsizeMode.END)
-        detail.add_css_class("dim-label")
-        detail.add_css_class("numeric")
-        detail.set_use_markup(True)
-
-        action_button = Gtk.Button(icon_name=ICON_CANCEL)
-        action_button.add_css_class("circular")
-        action_button.set_valign(Gtk.Align.CENTER)
-        action_button.set_margin_start(20)
+        builder = load_builder("download_queue_row")
+        list_row = object_from_builder(builder, "queue_row", Gtk.ListBoxRow)
+        grid = object_from_builder(builder, "queue_grid", Gtk.Grid)
+        status = object_from_builder(builder, "status_label", Gtk.Label)
+        progress = object_from_builder(builder, "row_progress", Gtk.ProgressBar)
+        detail = object_from_builder(builder, "detail_label", Gtk.Label)
+        action_button = object_from_builder(builder, "action_button", Gtk.Button)
         set_icon_button_a11y(action_button, "Cancel download")
         action_button.connect("clicked", self._on_cancel_clicked, item.item_id)
-
-        grid.attach(status, 0, 0, 1, 1)
-        grid.attach(progress, 0, 1, 1, 1)
-        grid.attach(detail, 0, 2, 1, 1)
-        grid.attach(action_button, 1, 0, 1, 3)
 
         stash(grid, "_uvr_status", status)
         stash(grid, "_uvr_detail", detail)
@@ -439,8 +382,6 @@ class DownloadQueueIndicator:
         stash(grid, "_uvr_action", action_button)
         stash(grid, "_uvr_item_id", item.item_id)
 
-        list_row = Gtk.ListBoxRow()
-        list_row.set_child(grid)
         return list_row
 
     def _update_queue_row(self, list_row: Gtk.ListBoxRow, item: DownloadQueueItem) -> None:
