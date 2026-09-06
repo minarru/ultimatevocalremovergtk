@@ -53,3 +53,13 @@ Rules for new UI:
 - Save Stems keeps core `StemSelectionState` as its reducer; `StemPresentation`
   supplies immutable summaries, dimming and visibility. Tests own compatibility
   proxy vocabulary in `tests/stem_ui_helpers.py`.
+
+- `core.error_log` owns thread-safe storage; `ui.errorlog` owns weak GTK delivery
+  through the main loop and lifetime disposal. Keep `RunErrorContext` snapshots
+  independent of current widget state when delayed reports arrive.
+- Download completion integration uses a real queue worker,
+  `latest_main_thread`/GLib coalescing, the visible indicator and the cached
+  center's `refresh_after_downloads`. Test transfers/finalizers are external
+  boundaries; do not replace dispatch with synchronous calls to prove delivery.
+  Run `tests.test_download_queue_completion_ui` through the private runner and
+  explicit private-display guard described in the environment guide.

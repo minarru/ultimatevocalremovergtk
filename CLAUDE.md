@@ -105,6 +105,45 @@ Layers, strictly one-directional (`ui` → `core` → `engines` → `ml`, and `c
 - **`ml/`** — networks and DSP (VR network, MDX/MDX-C, BS/Mel-Band Roformer, SCNet, Bandit, Apollo, `spec_utils`). Ported upstream code; type-checked at the same `standard` level as the app (same `reportMissingParameterType` floor).
 - **`vendor/demucs/`** — vendored Demucs fork.
 
+### Maintained responsibility boundaries
+
+- `core.catalogue_coordinator.CatalogueCoordinator.latest_snapshot` exposes the
+  published immutable snapshot without refresh. `DownloadManager` composes
+  `catalogue_source_loader`, `catalogue_evidence.CatalogueEvidenceService` and
+  `download_transfer`; evidence reservations publish pending metadata before workers
+  start. A snapshot publication emits at most one delta notification.
+- `core/model_config/{base,vr,mdx,demucs}.py` owns typed option groups; flat legacy
+  properties
+  remain live adapters. Family builders under `core/model_config/builders/`
+  preserve construction order. `engines/runtime.py` owns invocation/context/state;
+  `runtime_compat.py` keeps per-pass legacy overrides live. Demucs and MDX-C use
+  separate `*_runtime.py` acquisition/inference and `*_export.py` plan owners.
+- `core/job_plan.py` composes `job_dependencies`, `job_acquisition`,
+  `job_materialization`, `job_diagnostics` and pure `job_projection`, backed by
+  injected identities/materializer/probe ports in those owners. Materialization
+  owns model/cache observations;
+  projection consumes facts. `JobRunner.start_resolved` captures private resolved
+  settings before starting its worker. Legacy GUI `start` and Audio Tools still
+  need their caller settings bindings.
+- Core's public facade is lazy. `core/error_log.py` stores errors and atomically
+  appends concurrent reports without GTK; UI owns weak, disposable subscriptions.
+  Apollo execution/progress belongs to `engines/apollo.py`, while scientific
+  construction and tensor processing stay below it. Checkpoint adapters supply
+  the trusted application loader to scientific constructors.
+- `core/constructor_kwargs.py` is stdlib-only signature analysis. Runtime
+  filtering emits one ignored-key diagnostic at the existing Debug/Trace warning
+  threshold; probe reports retain their schema and compatibility rules. Raw
+  dropped keys stay in encounter order internally: runtime sorts string names,
+  while the probe preserves raw sorting (including mixed-key rejection).
+- Generator ownership is `scripts/catalogue/{types,locations,cache,config_evidence,
+  evidence,entry_rules,audit_types,audit_reference,audit_rules,manifest_candidate,
+  confidence}.py`; `collect` and `stem_audit` compose those services. Tests use
+  top-level `catalogue` imports consistently, bootstrapped by
+  `tests/generator_fixtures.py`, and discover the nine behavior modules with
+  `-p 'test_generate_models_catalogue*.py'`. Never re-export TestCases or add a
+  loader aggregator that duplicates discovery. Optional local branch coverage
+  commands live in the environment guide; no coverage or Ruff CI gate.
+
 ### Invariants worth preserving
 
 **No tkinter, anywhere.** `core` exists specifically to be framework-agnostic; importing tkinter from it breaks the whole design.
@@ -220,7 +259,10 @@ not merge `main` back into `dev`, because its intentional removals would propaga
 cherry-pick any main-only hotfix into `dev` instead. See
 [docs/superpowers/README.md](docs/superpowers/README.md).
 
-CI is **GitHub Actions** in [`.github/workflows/`](.github/workflows/). `test.yml` runs unittest + basedpyright on push/PR to `main`. `release.yml` fires on `v*` tags and **asserts the tag equals all three version strings**: `VERSION` in [__version__.py](__version__.py), and `latest_version` in both [packaging/release.json](packaging/release.json) and [bundled/release.json](bundled/release.json). Bump all four together or the release check fails.
+CI is **GitHub Actions** in [`.github/workflows/`](.github/workflows/). `test.yml` runs unittest + basedpyright on pushes to `main` and every PR base.
+The required unittest/typecheck jobs use Ubuntu 24.04; Ubuntu 26.04 unittest is
+an explicit nonblocking preview. Venvs use distro Python with distro GI; see
+[docs/environment.md](docs/environment.md#automated-environments-and-optional-branch-coverage). `release.yml` fires on `v*` tags and **asserts the tag equals all three version strings**: `VERSION` in [__version__.py](__version__.py), and `latest_version` in both [packaging/release.json](packaging/release.json) and [bundled/release.json](bundled/release.json). Bump all four together or the release check fails.
 
 ```bash
 gh run list

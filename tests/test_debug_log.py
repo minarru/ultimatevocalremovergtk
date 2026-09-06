@@ -96,6 +96,36 @@ class DebugLogTests(unittest.TestCase):
         else:
             os.environ.pop("UVR_DEBUG_SENSITIVE", None)
 
+    def test_runtime_ignored_keys_reach_debug_sink_without_values_or_stdout(self) -> None:
+        import io
+        from contextlib import redirect_stdout
+
+        from engines.mdx_c import filter_init_kwargs
+
+        class Explicit:
+            def __init__(self, accepted: int = 2) -> None:
+                pass
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "diagnostic.log"
+            for level in ("errors", "debug", "trace"):
+                debug_log.configure(level=level, log_file=str(path))
+                output = io.StringIO()
+                with redirect_stdout(output):
+                    result = filter_init_kwargs(Explicit, {"z": "secret-value", "accepted": 7, "a": 99})
+                self.assertEqual(result, {"accepted": 7})
+                self.assertEqual(output.getvalue(), "")
+                if level == "errors":
+                    self.assertFalse(path.exists())
+                else:
+                    lines = path.read_text().splitlines()
+                    self.assertEqual(len(lines), 1 if level == "debug" else 2)
+                    self.assertIn("event=model_config_keys_ignored", lines[-1])
+                    self.assertIn("architecture='Explicit'", lines[-1])
+                    self.assertIn("dropped_keys=('a', 'z')", lines[-1])
+                    self.assertNotIn("secret-value", lines[-1])
+                    self.assertNotIn("99", lines[-1].split("dropped_keys=", 1)[1])
+
     def test_disabled_by_default(self) -> None:
         self.assertFalse(debug_log.enabled("ui"))
 

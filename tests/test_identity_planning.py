@@ -692,7 +692,7 @@ class ApolloSettingsStayCanonicalTests(unittest.TestCase):
         self.assertNotIn("apollo:", tool.apollo_model_location)
 
     def test_apollo_inference_observes_explicit_checkpoint_path(self) -> None:
-        import ml.apollo_inference
+        import engines.apollo
         from core.audio_tools import AudioTools
 
         with tempfile.TemporaryDirectory() as output:
@@ -703,7 +703,7 @@ class ApolloSettingsStayCanonicalTests(unittest.TestCase):
             backend = SimpleNamespace(torch_device="cpu", backend_name="cpu")
             with (
                 patch.object(
-                    ml.apollo_inference,
+                    engines.apollo,
                     "restore_process",
                     return_value=np.zeros((2, 16)),
                 ) as restore_process,

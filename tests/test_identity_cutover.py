@@ -9,6 +9,7 @@ from core.model_identity import IdentityIndex, ModelArtifacts, ModelRecord
 from core.settings import Settings
 from core.settings.defaults import default_settings_dict
 from core.types import ProcessMethod
+from tests.diagnostic_fixtures import expected_event
 from tests.planning_fixtures import resolver_with_ports
 
 
@@ -494,11 +495,12 @@ class ReplayManifestContractTests(unittest.TestCase):
             with patch(
                 "cli.replay._run",
                 side_effect=AssertionError("replay child must not run"),
-            ), redirect_stdout(stdout), redirect_stderr(io.StringIO()):
+            ), redirect_stdout(stdout), redirect_stderr(io.StringIO()), expected_event(self, "command_failed"):
                 code = cmd_run(
                     self._args(handle.name, allow_model_change=allow_model_change)
                 )
-        return code, json.loads(stdout.getvalue())
+        payload = json.loads(stdout.getvalue())
+        return code, payload
 
     def _invoke_with_successful_child(
         self,
@@ -1029,7 +1031,7 @@ class ReplayManifestContractTests(unittest.TestCase):
             stdout = io.StringIO()
             with patch(
                 "cli.replay._run", return_value=(0, {"plan": {}}, "")
-            ), redirect_stdout(stdout), redirect_stderr(io.StringIO()):
+            ), redirect_stdout(stdout), redirect_stderr(io.StringIO()), expected_event(self, "command_failed"):
                 code = cmd_run(self._args(handle.name))
 
         payload = json.loads(stdout.getvalue())

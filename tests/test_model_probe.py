@@ -454,6 +454,20 @@ class DroppedConfigKeyTests(unittest.TestCase):
         )
         self.assertEqual(dropped, ["skip_connection"])
 
+    def test_mixed_raw_dropped_keys_keep_probe_sort_rejection(self) -> None:
+        with self.assertRaises(TypeError):
+            model_probe.dropped_config_keys(self._Net, {"dim": 4, 1: 7, "unknown": 2})
+
+    def test_runtime_and_probe_report_identical_sorted_string_keys(self) -> None:
+        from unittest import mock
+
+        from engines.mdx_c import filter_init_kwargs
+        with mock.patch("engines.mdx_c.log_event") as event:
+            accepted = filter_init_kwargs(self._Net, {"z": 8, "dim": 4, "a": 1})
+        self.assertEqual(accepted, {"dim": 4})
+        self.assertEqual(model_probe.dropped_config_keys(self._Net, {"z": 8, "dim": 4, "a": 1}), ["a", "z"])
+        self.assertEqual(event.call_args.kwargs["dropped_keys"], ("a", "z"))
+
     def test_nothing_is_dropped_when_the_class_takes_kwargs(self) -> None:
         dropped = model_probe.dropped_config_keys(
             self._NetWithKwargs, {"dim": 4, "skip_connection": True}

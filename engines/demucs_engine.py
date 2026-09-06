@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import typing
-import warnings
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any, cast
 
@@ -27,7 +26,6 @@ if TYPE_CHECKING:
     from engines.stem_writer import ExportPlan
 
 cpu = torch.device('cpu')
-warnings.filterwarnings("ignore")
 
 from vendor.demucs.apply import apply_model  # noqa: E402
 from vendor.demucs.utils import apply_model_v1, apply_model_v2  # noqa: E402

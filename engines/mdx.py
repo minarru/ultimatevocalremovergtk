@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import typing
-import warnings
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -55,10 +54,8 @@ def _is_batch_oom(exc: BaseException) -> bool:
 
 
 cpu = torch.device('cpu')
-warnings.filterwarnings("ignore")
 
-# Keep this import after warning suppression: the module emits import-time
-# warnings that the engine has historically filtered before model setup.
+# Preserve the existing engine/vendor import order during preload.
 from ml.tfc_tdf_v3 import STFT  # noqa: E402
 
 

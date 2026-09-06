@@ -10,6 +10,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from tests.diagnostic_fixtures import expected_event
+
 _REPO = Path(__file__).resolve().parents[1]
 _WRITER = _REPO / "engines" / "stem_writer.py"
 _BASE = _REPO / "engines" / "base.py"
@@ -57,6 +59,8 @@ import importlib.util
 import sys
 import types
 from pathlib import Path
+
+from tests.diagnostic_fixtures import expected_event
 
 root = Path({json.dumps(str(_REPO))})
 pkg = types.ModuleType("engines")
@@ -647,7 +651,7 @@ class ExportSourceMapTests(unittest.TestCase):
         )
         sep = _FakeSep((route,))
 
-        with self.assertRaisesRegex(RuntimeError, "No audio writes"):
+        with expected_event(self, "export_no_writes"), self.assertRaisesRegex(RuntimeError, "No audio writes"):
             export_source_map(
                 sep,
                 {"Reverb Removed": object(), "Reverb_Removed": object()},
@@ -949,7 +953,7 @@ class ExportSourceMapTests(unittest.TestCase):
             debug_log.configure(level="errors", log_file=str(log_path))
             self.addCleanup(debug_log.configure, level="errors", log_file="")
 
-            with self.assertRaisesRegex(
+            with expected_event(self, "export_no_writes"), self.assertRaisesRegex(
                 RuntimeError,
                 r"Wanted.*available.*Other",
             ):
@@ -973,7 +977,7 @@ class ExportSourceMapTests(unittest.TestCase):
         sep.is_bv_model = False
         sep.mdx_stem_count = 2
 
-        with self.assertRaisesRegex(
+        with expected_event(self, "export_source_ambiguous"), self.assertRaisesRegex(
             RuntimeError,
             r"Ambiguous.*Instrumental.*Other",
         ):

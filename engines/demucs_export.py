@@ -172,10 +172,7 @@ def plan_demucs_export(request: DemucsExportRequest) -> ExportPlan:
 
         # Subtract/mirror complements from the original mix.
         if not isinstance(raw_mixture, np.ndarray):
-            if mix is None:
-                raw_mixture = mix
-            else:
-                raw_mixture = mix
+            raw_mixture = mix
         stem_primary = source[request.demucs_source_map[primary_map_key]]
 
         if request.is_invert_spec:

@@ -57,3 +57,20 @@ The command-line front end. A presentation layer, exactly like `ui/`.
 ```bash
 .venv/bin/python -m unittest discover -s tests -t . -p 'test_cli*.py' -q
 ```
+
+## Command and promotion ownership
+
+`discovery.py` is the parser/command facade. Handlers live under `commands/` by
+model reads, durable model registration, catalogue transfer, ensembles, settings,
+devices and completion. `model_metadata`, `ensemble_rows`, `settings_fields` and
+`formatting` are shared lower providers. Tests patch the handler's actual owner;
+facade import aliases do not forward patches. Shallow model list and detailed
+model show retain different metadata acquisition boundaries.
+
+`promotion_plan.py` owns immutable original entries, output associations and
+suffix remapping. `promotion.py` owns the transaction: fresh occupancy checks,
+no-replace publication, complete-unit retry, overwrite backups and reverse
+rollback. `execution.py` retains the public compatibility imports. Per-directory
+locks serialize threads; filesystem no-replace operations protect other processes.
+`start_resolved` captures its own resolved settings snapshot before the worker;
+callers still construct models with their intended settings.

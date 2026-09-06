@@ -645,8 +645,9 @@ class BeginRunOutputTests(unittest.TestCase):
             )
         )
 
-        with mock.patch("ui.run_control.new_operation_id", return_value="ui-run-failed"):
+        with mock.patch("ui.run_control.new_operation_id", return_value="ui-run-failed"), mock.patch("ui.run_control.log_event") as event:
             controller._start_target(target)
+        event.assert_called_once_with("ui", "run_start_failed", level="error", operation_id="ui-run-failed", elapsed_seconds=mock.ANY)
 
         controller.fail_to_start.assert_called_once()
         self.assertIsNone(controller._operation_id)
@@ -842,7 +843,9 @@ class BeginRunOutputTests(unittest.TestCase):
         controller._restore_runner_settings = mock.Mock()
         controller._running_target = mock.Mock()
 
-        controller.fail_to_start("Unable to start", RuntimeError("boom"))
+        with mock.patch("ui.run_control.log_event") as event:
+            controller.fail_to_start("Unable to start", RuntimeError("boom"))
+        event.assert_not_called()  # No operation began in this restoration fixture.
 
         controller._restore_runner_settings.assert_called_once()
         self.assertIsNone(controller._running_target)

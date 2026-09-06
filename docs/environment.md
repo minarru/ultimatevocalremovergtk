@@ -74,7 +74,11 @@ The GUI and CLI share one structured diagnostic pipeline. It defaults to
 
 Each line carries a UTC timestamp, level, component, process-session ID, event
 name, and—where applicable—an operation ID shared by CLI commands, UI runs,
-workers, exports, and downloads. Python warnings are captured at Debug/Trace;
+workers, exports, and downloads. Ignored model constructor options produce
+`model_config_keys_ignored` at Debug/Trace, naming the architecture and ignored
+keys without config values. Filtering remains compatible; the architecture probe
+reports the same keys in its existing output. Engine preload leaves unrelated
+Python warnings visible. Python warnings are captured at Debug/Trace;
 uncaught main-thread and worker-thread exceptions are always captured.
 
 Local paths and URL paths are redacted by default. **Include sensitive details**
@@ -244,7 +248,8 @@ Choose one display flow for a run; they are deliberately non-overlapping.
    ```bash
    env -u DISPLAY -u WAYLAND_DISPLAY -u DBUS_SESSION_BUS_ADDRESS \
      -u DBUS_SYSTEM_BUS_ADDRESS -u XDG_RUNTIME_DIR -u XAUTHORITY \
-     -u SESSION_MANAGER GDK_BACKEND=x11 GSK_RENDERER=cairo \
+     -u SESSION_MANAGER -u UVR_REQUIRE_PRIVATE_GTK \
+     GDK_BACKEND=x11 GSK_RENDERER=cairo \
      xvfb-run -a .venv/bin/python -m unittest discover -s tests -t . -v
    ```
 
@@ -258,6 +263,59 @@ Every automated private-display flow must strip host `DISPLAY`,
 its own display. The private-Mutter runner is the current command source for
 that isolation; use it rather than rebuilding those environment settings by
 hand.
+
+### Automated environments and optional branch coverage
+
+The required `unittest` CI job uses Ubuntu 24.04 with `/usr/bin/python3` 3.12;
+type checking also uses that stable image. `unittest-preview` uses Ubuntu 26.04
+with system Python 3.14 and is nonblocking while that runner is in public
+preview. Both unittest jobs create a venv with `--system-site-packages`, install
+distro GTK/libadwaita, assert Python and GI origins/versions, and assert an
+isolated `GdkX11Display` before discovery. CI's private D-Bus maps its system-bus
+address to the new session bus. No host display or D-Bus endpoint is inherited.
+These jobs run on every PR base and pushes to `main`.
+
+The labels and preview status follow [GitHub's runner documentation](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)
+and the [Ubuntu 26.04 image inventory](https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2604-Readme.md).
+Defining a CI lane does not establish successful dependency installation or test
+execution there. Local maintainability verification used a system-based Python
+3.14.7 venv and private Wayland; remote runs of the revised lanes remain unverified.
+The installer version policy and Ruff's Python 3.12 target are unchanged.
+
+For private-Wayland full discovery, pass a script or `-c` command to the installed
+runner; it does not forward stdin. Set `PYTHONPATH=.`,
+`UVR_DISABLE_POLITREES=1`, `UVR_DISABLE_MVSEPLESS=1`,
+`UVR_SKIP_SEPARATE_WARMUP=1` and `UVR_REQUIRE_PRIVATE_GTK=1`. The bootstrap must
+run discovery under `if __name__ == "__main__":` (multiprocessing tests use
+spawn), and call `tests.private_gtk.require_private_gtk()` before
+`unittest.defaultTestLoader.discover("tests", top_level_dir=".")`. This verifies
+the private display and makes display-related skips failures. The `tests` package
+keeps outbound network blocked; the installed-model sweep stays opt-in.
+
+Generator tests are split by collection, offline policy, semantics, rendering,
+publication guards, CLI modes, check contracts, candidates and publication:
+
+```bash
+.venv/bin/python -m unittest discover -s tests -t . -p 'test_generate_models_catalogue*.py' -v
+```
+
+`coverage==7.14.2` is optional developer tooling in `requirements-dev.txt`, with
+branch reporting, relative paths and missing lines configured in `.coveragerc`.
+Install the development requirements when needed, then choose an explicit source
+and test scope. For example:
+
+```bash
+task_coverage_dir=$(mktemp -d /tmp/uvr-coverage.XXXXXX)
+export COVERAGE_FILE="$task_coverage_dir/.coverage"
+.venv/bin/python -m coverage run --branch --source=core.constructor_kwargs -m unittest tests.test_constructor_kwargs
+.venv/bin/python -m coverage report -m
+.venv/bin/python -m coverage json -o "$task_coverage_dir/coverage.json"
+```
+
+Use separate coverage files for other service scopes. Reports describe only the
+selected code and fixtures; inspect missed branch outcomes alongside percentages.
+Coverage and Ruff remain local tools, with no CI gate or coverage minimum. Tiny
+array/config fixtures do not establish GPU performance or model separation quality.
 
 ### UI development
 

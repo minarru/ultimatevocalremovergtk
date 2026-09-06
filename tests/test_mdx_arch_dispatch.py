@@ -377,3 +377,52 @@ class MdxArchDispatchTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ConstructorDiagnosticTests(unittest.TestCase):
+    def test_selected_constructor_reports_semantic_drop_once(self) -> None:
+        from types import SimpleNamespace
+        from unittest import mock
+
+        class ExplicitRoformer:
+            def __init__(self, freqs_per_bands: object, dim: int = 2) -> None:
+                self.bands = freqs_per_bands
+                self.dim = dim
+
+        bands = [2, 4]
+        config = SimpleNamespace(model={"freqs_per_bands": bands, "dim": 7, "use_value_residual": "private-config-value"})
+        with mock.patch("engines.mdx_c.BSRoformer", ExplicitRoformer), mock.patch("engines.mdx_c.log_event", create=True) as event:
+            model = build_mdx_c_model(config)
+        self.assertIs(model.bands, bands)
+        self.assertEqual(model.dim, 7)
+        event.assert_called_once_with("model", "model_config_keys_ignored", level="warning", architecture="ExplicitRoformer", dropped_keys=("use_value_residual",))
+        self.assertNotIn("private-config-value", repr(event.call_args))
+
+    def test_no_drop_emits_no_event_and_constructor_errors_propagate(self) -> None:
+        from unittest import mock
+
+        from engines.mdx_c import filter_init_kwargs
+
+        class Explicit:
+            def __init__(self, accepted: int) -> None:
+                raise ValueError("constructor failure")
+
+        with mock.patch("engines.mdx_c.log_event", create=True) as event:
+            kwargs = filter_init_kwargs(Explicit, {"accepted": 3})
+            with self.assertRaisesRegex(ValueError, "constructor failure"):
+                Explicit(**kwargs)
+        event.assert_not_called()
+
+    def test_runtime_mixed_key_mapping_remains_accepted(self) -> None:
+        from unittest import mock
+
+        from engines.mdx_c import filter_init_kwargs
+
+        class Explicit:
+            def __init__(self, accepted: int) -> None:
+                pass
+
+        with mock.patch("engines.mdx_c.log_event", create=True) as event:
+            result = filter_init_kwargs(Explicit, {"accepted": 3, 1: 7, "unsupported": 4})
+        self.assertEqual(result, {"accepted": 3})
+        event.assert_called_once_with("model", "model_config_keys_ignored", level="warning", architecture="Explicit", dropped_keys=("1", "unsupported"))

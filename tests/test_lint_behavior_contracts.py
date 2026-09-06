@@ -72,7 +72,7 @@ class CallbackBindingTests(unittest.TestCase):
 
 class ApolloClosureTests(unittest.TestCase):
     def test_cached_and_uncached_model_execute_all_chunks(self) -> None:
-        from ml.apollo_inference import restore_process
+        from engines.apollo import restore_process
 
         signal = torch.linspace(-0.5, 0.5, 32).repeat(2, 1)
         for cached in (False, True):
@@ -81,10 +81,11 @@ class ApolloClosureTests(unittest.TestCase):
                 cache = Mock()
                 cache.get.return_value = SimpleNamespace(module=model) if cached else None
                 with (
-                    patch("ml.apollo_inference.load_audio", return_value=(signal, 8)),
-                    patch("ml.apollo_inference.models.BaseModel.from_pretrain", return_value=model) as load,
+                    patch("engines.apollo.load_audio", return_value=(signal, 8)),
+                    patch("core.torch_checkpoint.load_torch_checkpoint", return_value={}),
+                    patch("engines.apollo.models.BaseModel.from_checkpoint", return_value=model) as load,
                     patch("engines.model_weight_cache.get_weight_cache", return_value=cache),
-                    patch("engines.model_weight_cache.materialize_module", return_value=model),
+                    patch("engines.apollo.materialize_module", return_value=model),
                 ):
                     result = restore_process("unused.wav", "unused.ckpt", chunk_size=1, overlap=2, device="cpu")
                 np.testing.assert_allclose(result, signal.numpy(), atol=1e-6)

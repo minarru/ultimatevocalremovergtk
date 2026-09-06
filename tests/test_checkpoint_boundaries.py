@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import subprocess
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
@@ -72,13 +74,18 @@ import {module}
             checksum = hashlib.sha256(b'tiny').hexdigest()[:8]
             path = root / f'test-{checksum}.th'
             path.write_bytes(b'tiny')
-            loaded = get_model('test', repo=root, checkpoint_loader=loader)
+            output = io.StringIO()
+            with redirect_stdout(output):
+                loaded = get_model('test', repo=root, checkpoint_loader=loader)
+            self.assertEqual(output.getvalue(), 'name_or_sig:  test\n')
             torch.testing.assert_close(loaded.weight, model.weight)
             self.assertFalse(loaded.training)
             self.assertEqual(calls, [(path.name, 'cpu')])
             path.write_bytes(b'corrupt')
-            with self.assertRaises(RuntimeError):
+            output = io.StringIO()
+            with redirect_stdout(output), self.assertRaises(RuntimeError):
                 get_model('test', repo=root, checkpoint_loader=loader)
+            self.assertEqual(output.getvalue(), 'name_or_sig:  test\n')
             self.assertEqual(len(calls), 1)
 
     def test_apollo_package_constructor_and_legacy_default(self) -> None:
@@ -118,7 +125,10 @@ import {module}
             (root / 'first.th').write_bytes(b'first')
             (root / 'second.th').write_bytes(b'second')
             (root / 'bag.yaml').write_text('models: [first, second]\nsegment: 7\n')
-            bag = get_model('bag', repo=root, checkpoint_loader=loader)
+            output = io.StringIO()
+            with redirect_stdout(output), self.assertWarnsRegex(ResourceWarning, r"unclosed file.*bag\.yaml"):
+                bag = get_model('bag', repo=root, checkpoint_loader=loader)
+            self.assertEqual(output.getvalue(), 'name_or_sig:  bag\n')
         self.assertEqual(calls, [('first.th', 'cpu'), ('second.th', 'cpu')])
         from vendor.demucs.apply import BagOfModels
 
