@@ -488,7 +488,11 @@ class ModelManifestTests(unittest.TestCase):
                 path.is_relative_to(directory) for directory in historical_roots
             )
 
-        documentation = [root / "CLAUDE.md"]
+        documentation = [
+            root / directory / filename
+            for directory in (".", "ui", "cli", "scripts")
+            for filename in ("AGENTS.md", "CLAUDE.md")
+        ]
         documentation.extend(
             path
             for suffix in ("*.md", "*.tsv")

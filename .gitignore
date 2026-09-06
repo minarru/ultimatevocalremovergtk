@@ -91,6 +91,8 @@ ui/data/icons/
 
 # Scripts only used locally
 scripts/*
+!scripts/AGENTS.md
+!scripts/CLAUDE.md
 !scripts/sync-github-mirror.sh
 !scripts/generate_models_catalogue.py
 !scripts/catalogue/
