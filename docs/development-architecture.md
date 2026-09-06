@@ -1,0 +1,104 @@
+# Development architecture reference
+
+Read before changing backend orchestration, model/stem contracts, or UI/backend integration. Paths in inline code are repository-relative.
+
+## Architecture
+
+Orchestration flows `ui` / `cli` → `core` → `engines` → `ml`; this is not a strict import DAG. Engines may import shared core services. Backend code must not import either frontend, and scientific constructors receive application checkpoint policy through injected adapters. `bundled` is read by all:
+
+- **`bundled/`** — read-only shipped data: [model_manifest.json](../bundled/model_manifest.json) (the one atomic presentation, reviewed-stem, MDX-runtime-contract, lifecycle, and exact catalogue/config-evidence authority), `constants/` (stems, process methods, help strings, and a frozen legacy settings-key table for pickle migration), `error_handling.py` (traceback-substring → user message matching), changelog, and download metadata. Imported as `from bundled.constants import *` in engine/model code to mirror upstream's flat namespace.
+- **`core/`** — Tk-free backend facade. Public surface is re-exported in [core/__init__.py](../core/__init__.py): `Settings`, `ModelConfig`/`ModelRepository`/`assemble_model` (`ModelRepository` lives in [core/model_repository.py](../core/model_repository.py); MDX-C yaml and hash-JSON helpers remain in [core/model_data.py](../core/model_data.py)), `ProcessData`, `JobRunner`/`JobCallbacks` (callbacks live in [core/job_callbacks.py](../core/job_callbacks.py); single/ensemble file-pass hooks live in [core/run_hooks.py](../core/run_hooks.py)), `AudioToolRunner`.
+- **`cli/`** — command-line front end exposed through `uvr` (with `python -m cli` as an internal entry point), a presentation layer peer of `ui/`. Core has no CLI trampoline.
+- **`engines/`** — separation orchestration. `SeperateAttributes` ([engines/base.py](../engines/base.py)) is the shared engine base; `SeperateVR` / `SeperateMDX` / `SeperateMDXC` / `SeperateDemucs` are constructed by [engines/separator_factory.py](../engines/separator_factory.py). GUI startup preloads those modules through [core/separate_import.py](../core/separate_import.py) so the first run does not stall on torch.
+- **`ml/`** — networks and DSP (VR network, MDX/MDX-C, BS/Mel-Band Roformer, SCNet, Bandit, Apollo, `spec_utils`). Ported upstream code; type-checked at the same `standard` level as the app (same `reportMissingParameterType` floor).
+- **`vendor/demucs/`** — vendored Demucs fork.
+
+### Maintained responsibility boundaries
+
+- `core.catalogue_coordinator.CatalogueCoordinator.latest_snapshot` exposes the
+  published immutable snapshot without refresh. `DownloadManager` composes
+  `catalogue_source_loader`, `catalogue_evidence.CatalogueEvidenceService` and
+  `download_transfer`; evidence reservations publish pending metadata before workers
+  start. A snapshot publication emits at most one delta notification.
+- `core/model_config/{base,vr,mdx,demucs}.py` owns typed option groups; flat legacy
+  properties
+  remain live adapters. Family builders under `core/model_config/builders/`
+  preserve construction order. `engines/runtime.py` owns invocation/context/state;
+  `runtime_compat.py` keeps per-pass legacy overrides live. Demucs and MDX-C use
+  separate `*_runtime.py` acquisition/inference and `*_export.py` plan owners.
+- `core/job_plan.py` composes `job_dependencies`, `job_acquisition`,
+  `job_materialization`, `job_diagnostics` and pure `job_projection`, backed by
+  injected identities/materializer/probe ports in those owners. Materialization
+  owns model/cache observations;
+  projection consumes facts. `JobRunner.start_resolved` captures private resolved
+  settings before starting its worker. Legacy GUI `start` and Audio Tools still
+  need their caller settings bindings.
+- Core's public facade is lazy. `core/error_log.py` stores errors and atomically
+  appends concurrent reports without GTK; UI owns weak, disposable subscriptions.
+  Apollo execution/progress belongs to `engines/apollo.py`, while scientific
+  construction and tensor processing stay below it. Checkpoint adapters supply
+  the trusted application loader to scientific constructors.
+- `core/constructor_kwargs.py` is stdlib-only signature analysis. Runtime
+  filtering emits one ignored-key diagnostic at the existing Debug/Trace warning
+  threshold; probe reports retain their schema and compatibility rules. Raw
+  dropped keys stay in encounter order internally: runtime sorts string names,
+  while the probe preserves raw sorting (including mixed-key rejection).
+- Generator ownership is `scripts/catalogue/{types,locations,cache,config_evidence,
+  evidence,entry_rules,audit_types,audit_reference,audit_rules,manifest_candidate,
+  confidence}.py`; `collect` and `stem_audit` compose those services. Tests use
+  top-level `catalogue` imports consistently, bootstrapped by
+  `tests/generator_fixtures.py`, and discover the nine behavior modules with
+  `-p 'test_generate_models_catalogue*.py'`. Never re-export TestCases or add a
+  loader aggregator that duplicates discovery. Optional local branch coverage
+  commands live in the environment guide; no coverage or Ruff CI gate.
+
+### Invariants worth preserving
+
+**No tkinter, anywhere.** `core` exists specifically to be framework-agnostic; importing tkinter from it breaks the whole design.
+
+**Settings are typed and nested.** `Settings` owns the defaults and persists nested JSON to `settings.json`; a legacy `data.pkl` is imported once and renamed to `data.pkl.bak`. Existing widgets may use the flat `get`/`set` bridge defined by `core/settings/flat_map.py`, but new fields belong in the typed dataclasses and typed defaults first.
+
+**`--set` and named CLI flags share one validated path.** `set_path` cannot reject an unknown field on its own — the settings sections are plain dataclasses without `slots`, so `setattr` invents the attribute instead of raising. Anything that accepts a user-supplied settings path must flow through `SettingsResolver` and the validation helpers in [core/settings/access.py](../core/settings/access.py). Named `cli` flags compile to `(path, value)` pairs in `cli/process_flags.py`; `--set` is the final CLI layer.
+
+**Enum settings are `str, Enum` — but don't stringify them.** `process.method` and `process.save_format` are enums ([core/types/enums.py](../core/types/enums.py)), as are the closed vocabularies in [core/types/settings_enums.py](../core/types/settings_enums.py) (wav type, bitrate, denoise/phase options, audio tool, manual-ensemble algorithm, colour scheme). `ensemble.main_stem` is instead a plain `str` in [core/settings/model.py](../core/settings/model.py), normalized against the unified manifest's `pair.*` definitions and reserved `mode.*` IDs by [core/stem_pairs.py](../core/stem_pairs.py). `==` against a bundled constant, dict lookup, `.lower()` and `json.dumps` all behave as the value string, so most code Just Works. `str(v)` and `f"{v}"` do **not** — they yield `"SaveFormat.WAV"`, not `"WAV"`. Route filenames, paths and log lines through `enum_value` ([core/settings/coerce.py](../core/settings/coerce.py)), re-exported for the UI from [ui/settings_bind.py](../ui/settings_bind.py); it unwraps enums and passes everything else through.
+
+**Shared settings have per-page widgets.** Separation, Ensemble and Audio Tools each hold their own copies of the global keys (format/quality, GPU, autocast, sample mode, vocal splitter). Bind a widget to one and you must re-apply it in that page's `_sync_shared_from_settings` — which runs on *every* tab activation — not only in the one-time `load()`. Shared fields belong in the typed bindings in [ui/shared_settings.py](../ui/shared_settings.py). Each page's `SharedSettingsSession` adopts displayed values during refresh and commits only actual edits, with the existing active-tab guard. Callbacks identify the edited field; never copy a whole stale widget group back to Settings.
+
+**Threading: worker → main loop.** `JobRunner` runs separation on a `KThread` worker and calls plain callbacks from that thread. GTK may only be touched on the main loop, so every callback crosses via `GLib.idle_add` in [ui/dispatch.py](../ui/dispatch.py) (`gtk_job_callbacks`, `main_thread`, `idle_on_main`). Never call a widget straight from engine/runner code.
+
+**Heavy imports are lazy.** `torch`, `onnxruntime`, and `engines` must not be imported at `core` import time — that's what keeps startup fast. [core/separate_import.py](../core/separate_import.py) warms them on a background thread (`UVR_SKIP_SEPARATE_WARMUP=1` disables it).
+
+**Bundled vs. runtime paths.** [core/paths.py](../core/paths.py) splits read-only install data (`bundled/`, seed model metadata) from writable runtime data under `DATA_DIR` — `$UVR_DATA_DIR`, else the repo root when writable (portable dev layout: `./models`, `./settings.json`), else the OS user-data dir. The mutable model registry is a special case: portable mode stores it under ignored `./.uvr-runtime/`, an explicit `$UVR_DATA_DIR` stores it directly there, and a read-only install uses the OS user-data dir. Ephemeral download/catalogue caches go under `CACHE_DIR`. Never write into the install tree directly; resolve through `paths`.
+
+**Checkpoint identification and metadata lookup use MD5.** `ModelRepository` resolves checkpoints by hash against the JSON hash maps in `models/*/model_data/`; `assemble_model` builds the per-run `ModelConfig` objects the engines consume. Weights are gitignored — only metadata and the small `UVR-DeNoise-Lite.pth` are committed.
+
+**Canonical model identity is `family:basename`, resolved exactly.** [core/model_identity.py](../core/model_identity.py) defines `ModelId`/`ModelRecord` over the four families `vr`, `mdx`, `demucs`, `apollo`; [core/model_inventory.py](../core/model_inventory.py) builds one `IdentityIndex` per `(inventory_generation, catalogue_revision, naming_revision)` from family adapters, offline (no network, no hashing). Installed-file or execution-metadata changes publish through `ModelRepository.invalidate_models()`. Catalogue association and label refinements use `invalidate_model_presentation()` and its separate subscriber; they must not bump `inventory_generation` or invalidate resolved plans. GUI method/ensemble/karaoke pickers list installed `ModelRecord`s only; catalogue-only entries surface solely via `models list --all-known`. Runtime code must never import a display-to-basename resolver (`resolve_mdx_model_basename` and siblings) — `core/model_display.py` is the sole allowed importer, enforced by [tests/test_no_runtime_display_inversion.py](../tests/test_no_runtime_display_inversion.py).
+
+**Bundled model metadata loads atomically.** [core/model_manifest/](../core/model_manifest/) validates [bundled/model_manifest.json](../bundled/model_manifest.json) once and projects immutable presentation, stem-semantics, and MDX runtime-contract views through the existing compatibility facades. A failure in any domain publishes none of them; application boundaries log once and retain raw/isolated runtime behavior. Do not add a second bundled parser, authority, or fallback file.
+
+**Model display is a one-way projection.** [core/model_naming.py](../core/model_naming.py) applies trusted override → exact unified-manifest alias → conservatively formatted source label → raw basename. [core/model_registry.py](../core/model_registry.py) atomically persists schema-2 presentation evidence at `paths.REGISTERED_MODEL_INDEX`; there is no checked-in registry seed. Reads merge a legacy root `registered_models.json` without rewriting it, and the next registry mutation migrates and archives that file under runtime state. Display text must never be used to recover canonical identity.
+
+### Separation run pipeline
+
+When models are not supplied, `JobRunner.start` calls `assemble_model(settings, repo, arch_type=...)` (ensemble when `process.method` is Ensemble Mode), which returns the list of `ModelConfig` objects for the run. Long inputs are sliced/rejoined by [core/audio_chunking.py](../core/audio_chunking.py) (`slice_mix` → per-chunk inference → `concat_stems`).
+
+**One `ModelConfig` can mean several inference passes.** Beyond the primary model, `ModelConfig.secondary_model_data` may attach a secondary model, a Demucs pre-process model, a vocal-splitter chain, and per-stem 4-stem secondaries. Engines invoke these through `process_secondary_model` / `process_chain_model` in [engines/orchestration.py](../engines/orchestration.py). The progress denominator comes from `count_inference_passes_from_models` ([core/run_estimate.py](../core/run_estimate.py)) via `true_model_count` — **if you add a pass, count it there or the progress bar silently lies.**
+
+**Ensemble runs write then combine.** Each member runs with `is_ensemble_master` so engines emit per-member stems into `ENSEMBLE_TEMP_PATH` (or the export folder when `is_save_all_outputs_ensemble`), then `Ensembler.ensemble_outputs` combines them per stem through `spec_utils.ensemble_inputs`. The algorithm comes from the `ensemble_type` setting as a `Primary/Secondary` pair (e.g. `Max Spec/Min Spec`); 4-stem and multi-stem ensembles use only the single leading token. Members are deleted after combining unless `is_save_all_outputs_ensemble`.
+
+Note the coupling: `Ensembler.get_files_to_ensemble` collects members by **filename prefix/suffix** (`{base} {model} ({stem}).wav`), so [core/export_naming.py](../core/export_naming.py) and ensemble collection must change together — a naming tweak that looks cosmetic will make ensembles silently produce single-member output.
+
+**Stem export resolves by concept, not by native key.** [core/stems.py](../core/stems.py) turns a model's outputs into `StemRoute`s — the `native` yaml/source key it is addressed by, a stable `concept` id (bucket value or `raw:<casefolded>`), and the `label`/`filename_tag` it is written under. `model_stem_routes` is the single inventory and `select_stem_routes` matches `process.stem_focus` against it; `assemble_model` stores both sides on `ModelConfig.StemRouting` (`available_routes` / `selected_routes`). Engines write from `run_export_routes` / `exports_named_stem` ([core/stems.py](../core/stems.py)): vocal splitters and 4-stem/multi-stem ensemble *members* emit the full inventory, and every other run uses `selected_stem_routes`. `_apply_stem_focus` ([core/model_config/config.py](../core/model_config/config.py)) only fills those route tuples — it does not rewrite `primary_stem`, `mdxnet_stems_selected`, or `demucs_stems`. `primary` / `secondary` in `stem_focus` are positional sentinels (CLI `--stems primary|secondary`); they filter `selected_stem_routes` to the model's primary/secondary native or derived complement. When `stem_focus` is empty, a multi-stem MDX-C subset in `mdxnet_stems_selected` still filters `selected_stem_routes` (Demucs/VR leftover sidecars are ignored). A new exportable output needs a route in `model_stem_routes`, or planning, filenames and the engines disagree with what is actually written.
+
+`instrumental` on a multi-source MDX-C model is a **derived** route with no native key: `derive_mdx_multi_complement` ([engines/mdx_c.py](../engines/mdx_c.py)) either sums the remaining sources or subtracts the primary from the mix depending on Combine Stems. That is a recipe change only — it must never change the route's concept, label or filename.
+
+**Stem focus is validated at plan time, and severity follows provenance.** `stem_focus_diagnostics` ([core/job_diagnostics.py](../core/job_diagnostics.py)) makes an unavailable stem an `error` when it came from the CLI and a `warning` (fall back to every viable output) when inherited from a GUI profile. For 4-stem and multi-stem ensembles focus filters only the **final** combined outputs — members must still emit their complete stem set for aggregation — and `select_ensemble_stem_routes` reports `INSUFFICIENT_MEMBERS` separately from unmatched when fewer than two members contribute.
+
+**Semantic review and catalogue evidence availability are independent.** Reviewed/waived/raw stem status comes only from the unified manifest; `ready`, `pending`, `unavailable`, `stale`, and `not_applicable` describe whether exact catalogue/config evidence can currently be validated. A timeout, cold cache, or stale last-known-good entry must not downgrade a reviewed declaration to raw, and successful parsed evidence may report drift but must never invent semantics.
+
+**Run payloads are typed.** `ProcessData` carries callbacks, routing flags, and source-cache state into engines. Engines reuse already-computed stems within one input file via its `cached_source_callback` / `cached_model_source_holder` fields; the runner clears the cache per input file (`_cached_sources_clear`). `_build_all_models` supplies `list_all_models`, which engines use to decide whether a referenced primary/secondary model actually participates in this run.
+
+### UI structure
+
+`UVRApplication` ([ui/application.py](../ui/application.py)) → `MainWindow` ([ui/window.py](../ui/window.py)), with one `AppContext` ([ui/context.py](../ui/context.py)) holding the shared `Settings` and lazily-built repository/runner. Per-method option panels are `MethodView` subclasses in [ui/views/](../ui/views/) registered in `METHOD_VIEWS` — add a method there rather than editing the window assembly. Options shared across Separation/Ensemble/Audio Tools live in [ui/shared_settings.py](../ui/shared_settings.py).
+
