@@ -90,6 +90,7 @@ from .shared_settings import (
     sanitize_input_paths,
     shared_settings_bindings,
 )
+from .template import load_builder, object_from_builder
 from .views import METHOD_VIEWS
 from .widgets.columns import (
     build_columns_box,
@@ -359,30 +360,24 @@ class MainWindow(Adw.ApplicationWindow):
     # -- Construction -----------------------------------------------------------
 
     def _build_header(self) -> Adw.HeaderBar:
-        self._header = Adw.HeaderBar()
-
-        self._view_switcher = Adw.ViewSwitcher()
-        self._view_switcher.set_policy(Adw.ViewSwitcherPolicy.WIDE)
+        builder = load_builder("main-header")
+        self._header = object_from_builder(builder, "header", Adw.HeaderBar)
+        self._view_switcher = object_from_builder(
+            builder, "view_switcher", Adw.ViewSwitcher
+        )
         self._view_switcher.set_stack(self.content_stack)
         install_view_tab_tooltips(self._view_switcher)
-        self._header.set_title_widget(self._view_switcher)
-
-        self._window_title = Adw.WindowTitle(title="Separation")
-        self._view_switcher_bar = Adw.ViewSwitcherBar()
+        self._window_title = object_from_builder(builder, "window_title", Adw.WindowTitle)
+        self._view_switcher_bar = object_from_builder(
+            builder, "view_switcher_bar", Adw.ViewSwitcherBar
+        )
         self._view_switcher_bar.set_stack(self.content_stack)
-        self._view_switcher_bar.set_reveal(False)
         install_view_tab_tooltips(self._view_switcher_bar)
-
-        end_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        end_box.set_valign(Gtk.Align.CENTER)
-        end_box.append(self._download_queue_indicator.widget)
-
-        menu_button = Gtk.MenuButton(icon_name="open-menu-symbolic")
+        end_box = object_from_builder(builder, "end_box", Gtk.Box)
+        end_box.prepend(self._download_queue_indicator.widget)
+        menu_button = object_from_builder(builder, "menu_button", Gtk.MenuButton)
         set_icon_button_a11y(menu_button, MAIN_MENU_HINT)
         menu_button.set_menu_model(self._build_primary_menu())
-        end_box.append(menu_button)
-
-        self._header.pack_end(end_box)
 
         return self._header
 
