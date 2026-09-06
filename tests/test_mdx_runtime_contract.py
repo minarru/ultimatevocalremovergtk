@@ -966,7 +966,7 @@ class BundledMdxRuntimeContractTests(_ContractTestCase):
         self.assertEqual(reconciled.warning, first.warning)
 
     def test_generator_boundary_marks_unusable_contract_evidence_unavailable(self) -> None:
-        from catalogue import collect
+        from catalogue import cache, collect
 
         with tempfile.TemporaryDirectory() as directory:
             paths = (
@@ -980,8 +980,8 @@ class BundledMdxRuntimeContractTests(_ContractTestCase):
                     self.subTest(path=path),
                     mock.patch.object(collect, "BUNDLED_MDX_RUNTIME_CONTRACT_PATH", path),
                     mock.patch.object(
-                        collect,
-                        "_fetch_cached_bytes",
+                        cache,
+                        "fetch_cached_bytes",
                         return_value=(
                             b"Model Filename  Architecture  Output Stems  Friendly Name\n",
                             "cache",

@@ -11,15 +11,19 @@ from unittest.mock import patch
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 
+from catalogue import audit_reference as catalogue_audit_reference  # noqa: E402
+from catalogue import audit_rules as catalogue_audit_rules  # noqa: E402
+from catalogue import audit_types as catalogue_audit_types  # noqa: E402
 from catalogue import collect, render  # noqa: E402
-from catalogue import stem_audit as stem_audit_module  # noqa: E402
-from catalogue.render import stem_semantics_reference_tsv  # noqa: E402
-from catalogue.stem_audit import (  # noqa: E402
+from catalogue import evidence as catalogue_evidence  # noqa: E402
+from catalogue import types as catalogue_types  # noqa: E402
+from catalogue.audit_types import (  # noqa: E402
     STEM_SEMANTICS_REFERENCE_HEADERS,
     StemAuditDiagnostic,
     StemAuditResult,
-    audit_catalogue_stems,
 )
+from catalogue.render import stem_semantics_reference_tsv  # noqa: E402
+from catalogue.stem_audit import audit_catalogue_stems  # noqa: E402
 
 from core.model_stem_manifest import StemPairDefinition, StemSemanticsRegistry  # noqa: E402
 from core.stem_roles import (  # noqa: E402
@@ -37,6 +41,8 @@ VOCALS = StemRoleId("vocal.vocals")
 INSTRUMENTAL = StemRoleId("mix.instrumental")
 BASS = StemRoleId("instrument.bass")
 NO_BASS = StemRoleId("instrument.bass_removed")
+
+
 
 
 def _role(
@@ -71,7 +77,7 @@ def _derived(role: StemRoleId, source_role: StemRoleId) -> SemanticStemOutput:
 
 class CatalogueIdentityAdoptionTests(unittest.TestCase):
     def test_audit_calls_the_neutral_catalogue_identity_boundary(self) -> None:
-        entry = collect.ModelEntry(
+        entry = catalogue_types.ModelEntry(
             source="test",
             family="Demucs",
             catalogue_label="Demucs v4: htdemucs_ft",
@@ -79,11 +85,11 @@ class CatalogueIdentityAdoptionTests(unittest.TestCase):
         )
 
         with patch.object(
-            stem_audit_module,
+            catalogue_audit_rules,
             "catalogue_model_id",
-            wraps=stem_audit_module.catalogue_model_id,
+            wraps=catalogue_audit_rules.catalogue_model_id,
         ) as derive:
-            model_id = stem_audit_module._catalogue_model_id(entry)
+            model_id = catalogue_audit_rules._catalogue_model_id(entry)
 
         self.assertEqual(model_id, "demucs:htdemucs_ft")
         self.assertEqual(derive.call_args.args[:2], ("demucs", entry.catalogue_label))
@@ -127,8 +133,8 @@ def _entry(
     target: str = "",
     metadata_source: str = "community_models.txt",
     karaoke: bool = False,
-) -> collect.ModelEntry:
-    return collect.ModelEntry(
+) -> catalogue_types.ModelEntry:
+    return catalogue_types.ModelEntry(
         source="fixture",
         family="MDX-Net ONNX",
         catalogue_label=basename,
@@ -185,17 +191,17 @@ def _diagnostic(result: StemAuditResult, code: str) -> StemAuditDiagnostic:
 class StructuredCatalogueStemAuditTests(unittest.TestCase):
     def _audit(
         self,
-        entries: list[collect.ModelEntry],
+        entries: list[catalogue_types.ModelEntry],
         registry: StemSemanticsRegistry,
         *,
         current_model_ids: set[str] | None = None,
     ) -> StemAuditResult:
-        counts = stem_audit_module.catalogue_evidence_counts(entries, {})
+        counts = catalogue_audit_rules.catalogue_evidence_counts(entries, {})
         pinned = (counts.literal_names, counts.normalized_names, counts.primary_names)
-        with patch.object(stem_audit_module, "_PINNED_EVIDENCE_COUNTS", pinned):
+        with patch.object(catalogue_audit_types, "_PINNED_EVIDENCE_COUNTS", pinned):
             return audit_catalogue_stems(
                 entries,
-                collect.CatalogueContext(),
+                catalogue_types.CatalogueContext(),
                 expected_reference_text="same",
                 actual_reference_text="same",
                 registry=registry,
@@ -225,7 +231,7 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
         with self.assertRaises((AttributeError, TypeError)):
             rows[0].__setattr__("intent", "changed")
         rendered = render.stem_semantics_reference_tsv(rows)
-        self.assertEqual(rendered, stem_audit_module.reference_rows_tsv(rows))
+        self.assertEqual(rendered, catalogue_audit_reference.reference_rows_tsv(rows))
         self.assertEqual({row.model_id for row in rows}, {"mdx:fixture"})
         self.assertEqual(
             {(row.processing_context, row.role_id) for row in rows},
@@ -596,7 +602,7 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
             logical_secondary_role=INSTRUMENTAL,
         )
 
-        with patch.object(collect, "resolve_catalogue_stem_semantics", return_value=stale):
+        with patch.object(catalogue_evidence, "resolve_catalogue_stem_semantics", return_value=stale):
             result = self._audit([entry], registry)
 
         self.assertIn("reference-logical-secondary", _codes(result))
@@ -627,7 +633,7 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
         ):
             result = audit_catalogue_stems(
                 [entry],
-                collect.CatalogueContext(),
+                catalogue_types.CatalogueContext(),
                 expected_reference_text="same reference",
                 actual_reference_text="same reference",
                 registry=registry,
@@ -663,7 +669,7 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
 
         result = audit_catalogue_stems(
             [_entry("reviewed"), _entry("missing"), _entry("waived")],
-            collect.CatalogueContext(),
+            catalogue_types.CatalogueContext(),
             expected_reference_text="same",
             actual_reference_text="same",
             registry=registry,
@@ -690,7 +696,7 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
 
         result = audit_catalogue_stems(
             [_entry("broken")],
-            collect.CatalogueContext(),
+            catalogue_types.CatalogueContext(),
             expected_reference_text="same",
             actual_reference_text="same",
             registry=registry,
@@ -725,7 +731,7 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
 
         result = audit_catalogue_stems(
             [_entry("reordered")],
-            collect.CatalogueContext(),
+            catalogue_types.CatalogueContext(),
             expected_reference_text="same",
             actual_reference_text="same",
             registry=registry,
@@ -772,7 +778,7 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
                     metadata_source="bundled_yaml:target.yaml",
                 )
             ],
-            collect.CatalogueContext(),
+            catalogue_types.CatalogueContext(),
             expected_reference_text="same",
             actual_reference_text="same",
             registry=registry,
@@ -809,7 +815,7 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
 
         result = audit_catalogue_stems(
             [_entry("karaoke", karaoke=True), _entry("plain")],
-            collect.CatalogueContext(),
+            catalogue_types.CatalogueContext(),
             expected_reference_text="same",
             actual_reference_text="same",
             registry=registry,
@@ -859,7 +865,7 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
 
         result = audit_catalogue_stems(
             [_entry("collision", instruments=("Vocals", "Duplicate"))],
-            collect.CatalogueContext(),
+            catalogue_types.CatalogueContext(),
             expected_reference_text="same",
             actual_reference_text="same",
             registry=registry,
@@ -894,7 +900,7 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
 
         result = audit_catalogue_stems(
             [_entry("pair-context")],
-            collect.CatalogueContext(),
+            catalogue_types.CatalogueContext(),
             expected_reference_text="same",
             actual_reference_text="same",
             registry=registry,
@@ -931,7 +937,7 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
 
         result = audit_catalogue_stems(
             [entry],
-            collect.CatalogueContext(),
+            catalogue_types.CatalogueContext(),
             expected_reference_text="expected\trow\n",
             actual_reference_text="actual\trow\n",
             registry=registry,
@@ -946,7 +952,7 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
         self.assertTrue(result.structurally_valid is False)
         self.assertEqual(
             stem_semantics_reference_tsv(result.reference_rows),
-            stem_audit_module.reference_rows_tsv(result.reference_rows),
+            catalogue_audit_reference.reference_rows_tsv(result.reference_rows),
         )
 
     def test_reference_header_contract_appends_dependency_and_default_columns(self) -> None:
@@ -1010,7 +1016,7 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
 
             result = audit_catalogue_stems(
                 [_entry("fixture")],
-                collect.CatalogueContext(),
+                catalogue_types.CatalogueContext(),
                 expected_reference_text="same",
                 actual_reference_text="same",
                 registry=registry,
@@ -1082,14 +1088,14 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
 
         forward = audit_catalogue_stems(
             entries,
-            collect.CatalogueContext(),
+            catalogue_types.CatalogueContext(),
             expected_reference_text="same",
             actual_reference_text="same",
             registry=registry,
         )
         reverse = audit_catalogue_stems(
             list(reversed(entries)),
-            collect.CatalogueContext(),
+            catalogue_types.CatalogueContext(),
             expected_reference_text="same",
             actual_reference_text="same",
             registry=registry,
@@ -1172,13 +1178,13 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
             _entry("second", instruments=("vocals",), primary="vocals"),
             _entry("third", instruments=("Lead Vocal",), primary="Lead Vocal"),
         ]
-        counts = stem_audit_module.catalogue_evidence_counts(entries, {})
+        counts = catalogue_audit_rules.catalogue_evidence_counts(entries, {})
         pinned = (counts.literal_names, counts.normalized_names, counts.primary_names)
 
-        with patch.object(stem_audit_module, "_PINNED_EVIDENCE_COUNTS", pinned):
+        with patch.object(catalogue_audit_types, "_PINNED_EVIDENCE_COUNTS", pinned):
             result = audit_catalogue_stems(
                 entries,
-                collect.CatalogueContext(),
+                catalogue_types.CatalogueContext(),
                 expected_reference_text="same",
                 actual_reference_text="same",
                 registry=registry,
@@ -1195,7 +1201,7 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
         from core.model_stem_manifest import BUNDLED_MANIFEST_PATH, load_stem_manifest
 
         registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)
-        ambiguities, variants = stem_audit_module.catalogue_stem_relationships(
+        ambiguities, variants = catalogue_audit_reference.catalogue_stem_relationships(
             registry,
             tuple((*registry.models, *registry.waivers)),
         )
@@ -1336,7 +1342,7 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
             if model_id != "mdx:UVR_MDXNET_KARA_2"
         }
         entries = [
-            collect.ModelEntry(
+            catalogue_types.ModelEntry(
                 source="runtime-contract-test",
                 family="MDX-Net ONNX",
                 catalogue_label=model_id,
@@ -1371,7 +1377,7 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
         registry = load_bundled_stem_semantics()
         result = audit_catalogue_stems(
             entries,
-            collect.CatalogueContext(),
+            catalogue_types.CatalogueContext(),
             registry=registry,
         )
         rendered = stem_semantics_reference_tsv(result.reference_rows)
@@ -1446,7 +1452,7 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
                 else signature
             )
             entries.append(
-                collect.ModelEntry(
+                catalogue_types.ModelEntry(
                     source=identity["catalogue_source"],
                     family=family_by_runtime[runtime_family],
                     catalogue_label=identity["catalogue_label"],
@@ -1474,12 +1480,12 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
                 )
             )
 
-        counts = stem_audit_module.catalogue_evidence_counts(entries, {})
+        counts = catalogue_audit_rules.catalogue_evidence_counts(entries, {})
         pinned = (counts.literal_names, counts.normalized_names, counts.primary_names)
-        with patch.object(stem_audit_module, "_PINNED_EVIDENCE_COUNTS", pinned):
+        with patch.object(catalogue_audit_types, "_PINNED_EVIDENCE_COUNTS", pinned):
             result = audit_catalogue_stems(
                 entries,
-                collect.CatalogueContext(),
+                catalogue_types.CatalogueContext(),
                 registry=registry,
                 current_model_ids=current_ids,
             )
@@ -1542,7 +1548,7 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
         )
         self.assertEqual(
             render.stem_semantics_reference_tsv(result.reference_rows),
-            stem_audit_module.reference_rows_tsv(result.reference_rows),
+            catalogue_audit_reference.reference_rows_tsv(result.reference_rows),
         )
 
 

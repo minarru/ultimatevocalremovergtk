@@ -140,3 +140,17 @@ docs/superpowers/specs/
 
 # Git worktrees (local isolation)
 .worktrees/
+
+# Catalogue responsibility owners.
+!scripts/catalogue/audit_reference.py
+!scripts/catalogue/audit_rules.py
+!scripts/catalogue/audit_types.py
+!scripts/catalogue/cache.py
+!scripts/catalogue/confidence.py
+!scripts/catalogue/config_evidence.py
+!scripts/catalogue/entry_rules.py
+!scripts/catalogue/evidence.py
+!scripts/catalogue/locations.py
+!scripts/catalogue/manifest_candidate.py
+!scripts/catalogue/stem_audit.py
+!scripts/catalogue/types.py

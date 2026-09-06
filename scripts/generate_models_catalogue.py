@@ -6,7 +6,6 @@ mvsepless, plus Apollo). This script audits stem metadata against catalogue
 naming intent so mislabeled vocal vs instrumental models can be spotted.
 """
 
-# ruff: noqa: E402
 
 from __future__ import annotations
 
@@ -25,33 +24,42 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from catalogue import (
+from catalogue import audit_reference as catalogue_audit_reference  # noqa: E402
+from catalogue import audit_types as catalogue_audit_types  # noqa: E402
+from catalogue import (  # noqa: E402
     collect,
     render,
     stem_audit,
 )
-from catalogue.collect import (
-    DISPLAY_REFERENCE_TSV_PATH,
-    OUTPUT_PATH,
-    REFERENCE_TSV_PATH,
-    STEM_SEMANTICS_REFERENCE_TSV_PATH,
-    FetchPolicy,
+from catalogue import confidence as catalogue_confidence  # noqa: E402
+from catalogue import manifest_candidate as catalogue_manifest_candidate  # noqa: E402
+from catalogue import types as catalogue_types  # noqa: E402
+from catalogue.cache import FetchPolicy  # noqa: E402
+from catalogue.collect import (  # noqa: E402
     _document_digest,
     _ir_path_for,
     _unsupported_count,
     build_ir,
 )
+from catalogue.locations import (  # noqa: E402
+    DISPLAY_REFERENCE_TSV_PATH,
+    OUTPUT_PATH,
+    REFERENCE_TSV_PATH,
+    STEM_SEMANTICS_REFERENCE_TSV_PATH,
+)
 
-from core.model_manifest import (
+from core.model_manifest import (  # noqa: E402
     BUNDLED_MODEL_MANIFEST_PATH,
     ModelManifestError,
     load_model_manifest_document,
 )
-from core.model_manifest.loader import _duplicate_aware_mapping
+from core.model_manifest.loader import _duplicate_aware_mapping  # noqa: E402
 
 # Kept as the generator's patchable publication target while callers migrate
 # from the former stem-only manifest name.
 BUNDLED_MANIFEST_PATH = BUNDLED_MODEL_MANIFEST_PATH
+
+
 
 
 def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
@@ -412,7 +420,7 @@ def _load_manifest_source(path: str | Path) -> tuple[dict[str, object], Any]:
     return document, load_model_manifest_document(document)
 
 
-def _required_supplemental_evidence(ctx: collect.CatalogueContext) -> Tuple[str, ...]:
+def _required_supplemental_evidence(ctx: catalogue_types.CatalogueContext) -> Tuple[str, ...]:
     """Name supplements required to produce a complete reviewed publication."""
     unavailable = list(ctx.unavailable_supplemental_evidence)
     missing_yamls = sorted(ctx.unavailable_yaml_evidence, key=str.casefold)
@@ -429,13 +437,13 @@ def _required_supplemental_evidence(ctx: collect.CatalogueContext) -> Tuple[str,
 def _render_publication_bundle(
     entries: List[Any],
     *,
-    ctx: collect.CatalogueContext,
+    ctx: catalogue_types.CatalogueContext,
     unsupported: int,
     report: Any,
     catalogue_text: str,
     document_sha256: str,
-    audit: stem_audit.StemAuditResult,
-    manifest_audit: stem_audit.ManifestCandidateResult,
+    audit: catalogue_audit_types.StemAuditResult,
+    manifest_audit: catalogue_audit_types.ManifestCandidateResult,
     presentation: Mapping[str, Any] | None = None,
 ) -> PublicationBundle:
     """Render the complete in-memory candidate set from validated evidence."""
@@ -490,13 +498,13 @@ def _json_matches(path: str | Path, payload: object) -> bool:
 
 
 def _candidate_parity_diagnostic(
-    audit: stem_audit.StemAuditResult,
+    audit: catalogue_audit_types.StemAuditResult,
     stem_reference: str,
-) -> stem_audit.StemAuditDiagnostic | None:
-    expected = stem_audit.reference_rows_tsv(audit.reference_rows)
+) -> catalogue_audit_types.StemAuditDiagnostic | None:
+    expected = catalogue_audit_reference.reference_rows_tsv(audit.reference_rows)
     if stem_reference == expected:
         return None
-    return stem_audit.StemAuditDiagnostic(
+    return catalogue_audit_types.StemAuditDiagnostic(
         code="reference-candidate-mismatch",
         model_ids=audit.catalogue_model_ids,
         message="rendered semantic reference differs from immutable audit rows",
@@ -567,7 +575,7 @@ def _print_deprecated_reference_flags(args: argparse.Namespace) -> None:
             )
 
 
-def _print_structural_stem_diagnostics(result: stem_audit.StemAuditResult) -> None:
+def _print_structural_stem_diagnostics(result: catalogue_audit_types.StemAuditResult) -> None:
     for diagnostic in result.diagnostics:
         if not diagnostic.structural:
             continue
@@ -578,7 +586,7 @@ def _print_structural_stem_diagnostics(result: stem_audit.StemAuditResult) -> No
         )
 
 
-def _print_manifest_diagnostics(result: stem_audit.ManifestCandidateResult) -> None:
+def _print_manifest_diagnostics(result: catalogue_audit_types.ManifestCandidateResult) -> None:
     for diagnostic in result.diagnostics:
         model_ids = ", ".join(diagnostic.model_ids) or "(global)"
         print(
@@ -674,7 +682,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     args = _parse_args(argv)
     policy = _policy_for(args)
     if args.audit_stem_confidence:
-        return stem_audit.run_stem_confidence_audit(
+        return catalogue_confidence.run_stem_confidence_audit(
             policy=policy,
             guessed_only=args.guessed_only,
             only=args.only,
@@ -770,7 +778,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             )
         return 2
 
-    manifest_audit = stem_audit.build_manifest_candidate(
+    manifest_audit = catalogue_manifest_candidate.build_manifest_candidate(
         entries,
         manifest_document,
         registry=unified_registry,

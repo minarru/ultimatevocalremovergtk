@@ -15,9 +15,19 @@ sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 
 import generate_models_catalogue as cli  # noqa: E402
+from catalogue import audit_reference as catalogue_audit_reference  # noqa: E402
+from catalogue import audit_types as catalogue_audit_types  # noqa: E402
+from catalogue import cache as catalogue_cache  # noqa: E402
 from catalogue import collect as catalogue  # noqa: E402
+from catalogue import confidence as catalogue_confidence  # noqa: E402
+from catalogue import config_evidence as catalogue_config_evidence  # noqa: E402
+from catalogue import entry_rules as catalogue_entry_rules  # noqa: E402
+from catalogue import evidence as catalogue_evidence  # noqa: E402
+from catalogue import locations as catalogue_locations  # noqa: E402
+from catalogue import manifest_candidate as catalogue_manifest_candidate  # noqa: E402
 from catalogue import render  # noqa: E402
-from catalogue.stem_audit import (  # noqa: E402
+from catalogue import types as catalogue_types  # noqa: E402
+from catalogue.audit_types import (  # noqa: E402
     STEM_SEMANTICS_REFERENCE_HEADERS,
     CatalogueEvidenceCounts,
     NativeToRoleAmbiguity,
@@ -26,9 +36,10 @@ from catalogue.stem_audit import (  # noqa: E402
     StemAuditResult,
     StemRelationshipEvidence,
     StemSemanticReferenceRow,
-    audit_catalogue_stems,
 )
+from catalogue.stem_audit import audit_catalogue_stems  # noqa: E402
 
+from core import paths as core_paths  # noqa: E402
 from core.catalogue_types import SourceId  # noqa: E402
 from core.model_stem_manifest import load_stem_manifest_document  # noqa: E402
 from core.stem_roles import (  # noqa: E402
@@ -69,17 +80,17 @@ def _legacy_publication_manifest_fixture():
         )
 
         def unchanged_candidate(
-            entries: list[catalogue.ModelEntry],
+            entries: list[catalogue_types.ModelEntry],
             document: dict[str, object],
             **_kwargs: object,
         ) -> object:
             ids = tuple(
                 sorted(
-                    (catalogue.catalogue_projection(entry)[0] for entry in entries),
+                    (catalogue_evidence.catalogue_projection(entry)[0] for entry in entries),
                     key=str.casefold,
                 )
             )
-            return cli.stem_audit.ManifestCandidateResult(
+            return catalogue_audit_types.ManifestCandidateResult(
                 document=copy.deepcopy(document),
                 diagnostics=(),
                 current_model_ids=ids,
@@ -96,7 +107,7 @@ def _legacy_publication_manifest_fixture():
         with (
             mock.patch.object(cli, "BUNDLED_MANIFEST_PATH", path),
             mock.patch.object(
-                cli.stem_audit,
+                catalogue_manifest_candidate,
                 "build_manifest_candidate",
                 side_effect=unchanged_candidate,
             ),
@@ -126,8 +137,8 @@ class DemucsBagArtifactTests(unittest.TestCase):
                     family="Demucs",
                     label="Demucs v3: mdx",
                     payload=payload,
-                    ctx=catalogue.CatalogueContext(),
-                    policy=catalogue.FetchPolicy(allow_network=False),
+                    ctx=catalogue_types.CatalogueContext(),
+                    policy=catalogue_cache.FetchPolicy(allow_network=False),
                 )[0]
             )
 
@@ -145,8 +156,8 @@ class DemucsBagArtifactTests(unittest.TestCase):
                 family="Demucs",
                 label="Demucs v3: case collision",
                 payload=payload,
-                ctx=catalogue.CatalogueContext(),
-                policy=catalogue.FetchPolicy(allow_network=False),
+                ctx=catalogue_types.CatalogueContext(),
+                policy=catalogue_cache.FetchPolicy(allow_network=False),
             )[0]
             weights.append(entry.weight_file)
 
@@ -155,7 +166,7 @@ class DemucsBagArtifactTests(unittest.TestCase):
 
 class CatalogueIdentityAdoptionTests(unittest.TestCase):
     def test_collection_calls_the_neutral_catalogue_identity_boundary(self) -> None:
-        entry = catalogue.ModelEntry(
+        entry = catalogue_types.ModelEntry(
             source="test",
             family="MDX-Net ONNX",
             catalogue_label="MDX-Net Model: exact row",
@@ -163,9 +174,9 @@ class CatalogueIdentityAdoptionTests(unittest.TestCase):
         )
 
         with mock.patch.object(
-            catalogue, "catalogue_model_id", wraps=catalogue.catalogue_model_id
+            catalogue_evidence, "catalogue_model_id", wraps=catalogue_evidence.catalogue_model_id
         ) as derive:
-            model_id, _display = catalogue.catalogue_projection(entry)
+            model_id, _display = catalogue_evidence.catalogue_projection(entry)
 
         self.assertEqual(model_id, "mdx:exact-model")
         self.assertEqual(derive.call_args.args[:2], ("mdx", entry.catalogue_label))
@@ -188,12 +199,12 @@ class RuntimeStemSignatureTests(unittest.TestCase):
 
         for model_id, hints, expected in fixtures:
             with self.subTest(model_id=model_id):
-                self.assertEqual(catalogue.reviewed_stem_signature(model_id, hints), expected)
-                self.assertEqual(catalogue.runtime_stem_signature(model_id, hints), expected)
+                self.assertEqual(catalogue_evidence.reviewed_stem_signature(model_id, hints), expected)
+                self.assertEqual(catalogue_evidence.runtime_stem_signature(model_id, hints), expected)
 
     def test_config_backed_signature_keeps_parsed_config_precedence(self) -> None:
         self.assertEqual(
-            catalogue.reviewed_stem_signature(
+            catalogue_evidence.reviewed_stem_signature(
                 "mdx:mbr_guitar_becruily",
                 ("Live Config A", "Live Config B"),
             ),
@@ -208,7 +219,7 @@ class RuntimeStemSignatureTests(unittest.TestCase):
         registry = load_model_manifest_document(document).stems
 
         self.assertEqual(
-            catalogue.reviewed_stem_signature(
+            catalogue_evidence.reviewed_stem_signature(
                 "mdx:model",
                 ("Config A", "Config B"),
                 registry=registry,
@@ -229,14 +240,14 @@ class RuntimeStemSignatureTests(unittest.TestCase):
 
         self.assertEqual(len(demucs_ids), 24)
         self.assertTrue(
-            all(catalogue.reviewed_stem_signature(model_id, ()) for model_id in demucs_ids)
+            all(catalogue_evidence.reviewed_stem_signature(model_id, ()) for model_id in demucs_ids)
         )
 
     def test_reviewed_collection_evidence_removes_exact_three_guess_false_positives(self) -> None:
         from core.model_stem_manifest import load_bundled_stem_semantics
 
         entries = [
-            catalogue.ModelEntry(
+            catalogue_types.ModelEntry(
                 source="fixture",
                 family=family,
                 catalogue_label=model_id,
@@ -255,10 +266,10 @@ class RuntimeStemSignatureTests(unittest.TestCase):
                 ("mdx:MDX23C_D1581", "MDX23C", ".ckpt"),
             )
         ]
-        reconcile = getattr(catalogue, "reconcile_stem_semantics", None)
+        reconcile = getattr(catalogue_evidence, "reconcile_stem_semantics", None)
         self.assertIsNotNone(reconcile)
         assert reconcile is not None
-        unreviewed = catalogue.ModelEntry(
+        unreviewed = catalogue_types.ModelEntry(
             source="fixture",
             family="VR Architecture",
             catalogue_label="vr:private_HP-Vocal-UVR",
@@ -274,9 +285,9 @@ class RuntimeStemSignatureTests(unittest.TestCase):
 
         reconcile([*entries, unreviewed], registry=load_bundled_stem_semantics())
         reviewed_semantics = [
-            cast(catalogue.ReconciledStemEvidence, entry.stem_semantics) for entry in entries
+            cast(catalogue_types.ReconciledStemEvidence, entry.stem_semantics) for entry in entries
         ]
-        unreviewed_semantics = cast(catalogue.ReconciledStemEvidence, unreviewed.stem_semantics)
+        unreviewed_semantics = cast(catalogue_types.ReconciledStemEvidence, unreviewed.stem_semantics)
 
         self.assertEqual([entry.flags for entry in entries], [[], [], []])
         self.assertEqual(
@@ -296,14 +307,14 @@ class RuntimeStemSignatureTests(unittest.TestCase):
 
     def test_exact_mdx_c_catalogue_evidence_requires_config_digest(self) -> None:
         digest = "451765e869b78dcb9ca9188a74da31f581b7254ff0e8b532aa76b974148de947"
-        exact = catalogue.runtime_stem_reconciliation(
+        exact = catalogue_evidence.runtime_stem_reconciliation(
             "mdx:MDX23C-8KFFT-InstVoc_HQ",
             ("Vocals", "Instrumental"),
             config_yaml="model_2_stem_full_band_8k.yaml",
             config_sha256=digest,
             metadata_source="bundled_yaml:model_2_stem_full_band_8k.yaml",
         )
-        missing = catalogue.runtime_stem_reconciliation(
+        missing = catalogue_evidence.runtime_stem_reconciliation(
             "mdx:MDX23C-8KFFT-InstVoc_HQ",
             ("Vocals", "Instrumental"),
             config_yaml="model_2_stem_full_band_8k.yaml",
@@ -316,7 +327,7 @@ class RuntimeStemSignatureTests(unittest.TestCase):
         self.assertIn("config content SHA-256", missing.warning)
 
     def test_bundled_yaml_metadata_returns_exact_content_digest(self) -> None:
-        instruments, target, _arch, source, digest = catalogue._load_yaml_meta(
+        instruments, target, _arch, source, digest = catalogue_config_evidence._load_yaml_meta(
             "model_2_stem_full_band_8k.yaml",
             allow_network=False,
         )
@@ -331,7 +342,7 @@ class RuntimeStemSignatureTests(unittest.TestCase):
 
     def test_classic_karaoke_2_projects_exact_mdx_runtime_keys(self) -> None:
         self.assertEqual(
-            catalogue.runtime_stem_signature(
+            catalogue_evidence.runtime_stem_signature(
                 "mdx:UVR_MDXNET_KARA_2",
                 ("other", "vocals"),
                 target_instrument="other",
@@ -342,7 +353,7 @@ class RuntimeStemSignatureTests(unittest.TestCase):
 
     def test_yaml_target_projects_the_model_config_native_inventory(self) -> None:
         self.assertEqual(
-            catalogue.runtime_stem_signature(
+            catalogue_evidence.runtime_stem_signature(
                 "mdx:bs_bass_xlancer",
                 ("bass", "other"),
                 target_instrument="bass",
@@ -351,7 +362,7 @@ class RuntimeStemSignatureTests(unittest.TestCase):
             ("bass",),
         )
         self.assertEqual(
-            catalogue.runtime_stem_signature(
+            catalogue_evidence.runtime_stem_signature(
                 "mdx:bs_karaoke_gabox",
                 ("vocals", "other"),
                 target_instrument="vocals",
@@ -362,7 +373,7 @@ class RuntimeStemSignatureTests(unittest.TestCase):
 
     def test_community_target_hint_does_not_rewrite_runtime_inventory(self) -> None:
         self.assertEqual(
-            catalogue.runtime_stem_signature(
+            catalogue_evidence.runtime_stem_signature(
                 "mdx:community-only",
                 ("Vocals", "Instrumental"),
                 target_instrument="Vocals",
@@ -375,7 +386,7 @@ class RuntimeStemSignatureTests(unittest.TestCase):
 class ReviewedResultProjectionTests(unittest.TestCase):
     """Reviewed routes, not pre-review guesses, own published result prose."""
 
-    def _bundled_projection(self, model_id: str) -> catalogue.ReviewedResultProjection:
+    def _bundled_projection(self, model_id: str) -> catalogue_types.ReviewedResultProjection:
         from core.model_stem_manifest import (
             load_bundled_stem_semantics,
             resolve_model_stem_semantics,
@@ -390,9 +401,9 @@ class ReviewedResultProjectionTests(unittest.TestCase):
             registry=registry,
         )
         self.assertEqual(semantics.status, StemReviewStatus.REVIEWED)
-        return catalogue._reviewed_result_projection((semantics,), registry)
+        return catalogue_evidence._reviewed_result_projection((semantics,), registry)
 
-    def _explicit_secondary_projection(self) -> catalogue.ReviewedResultProjection:
+    def _explicit_secondary_projection(self) -> catalogue_types.ReviewedResultProjection:
         from core.model_stem_manifest import load_bundled_stem_semantics
 
         registry = load_bundled_stem_semantics()
@@ -436,9 +447,9 @@ class ReviewedResultProjectionTests(unittest.TestCase):
             evidence="fixture",
             logical_secondary_role=StemRoleId("instrument.drums"),
         )
-        return catalogue._reviewed_result_projection((semantics,), registry)
+        return catalogue_evidence._reviewed_result_projection((semantics,), registry)
 
-    def _pair_secondary_projection(self) -> catalogue.ReviewedResultProjection:
+    def _pair_secondary_projection(self) -> catalogue_types.ReviewedResultProjection:
         from core.model_stem_manifest import load_bundled_stem_semantics
 
         registry = load_bundled_stem_semantics()
@@ -472,7 +483,7 @@ class ReviewedResultProjectionTests(unittest.TestCase):
             status=StemReviewStatus.REVIEWED,
             evidence="fixture",
         )
-        return catalogue._reviewed_result_projection((semantics,), registry)
+        return catalogue_evidence._reviewed_result_projection((semantics,), registry)
 
     def test_result_prose_orders_exact_routes_by_semantic_priority(self) -> None:
         cases = (
@@ -541,7 +552,7 @@ class ReviewedResultProjectionTests(unittest.TestCase):
 
         cases = (
             (
-                catalogue.ModelEntry(
+                catalogue_types.ModelEntry(
                     source="fixture",
                     family="VR Architecture",
                     catalogue_label="vr:private_result_order",
@@ -558,20 +569,20 @@ class ReviewedResultProjectionTests(unittest.TestCase):
 
         for entry, best_result, ui_export_note in cases:
             with self.subTest(entry.catalogue_label):
-                catalogue.reconcile_stem_semantics(
+                catalogue_evidence.reconcile_stem_semantics(
                     [entry],
                     registry=load_bundled_stem_semantics(),
                 )
-                semantics = cast(catalogue.ReconciledStemEvidence, entry.stem_semantics)
+                semantics = cast(catalogue_types.ReconciledStemEvidence, entry.stem_semantics)
                 self.assertFalse(semantics.reviewed)
                 self.assertEqual(entry.best_result, best_result)
                 self.assertEqual(entry.ui_export_note, ui_export_note)
 
-    def _entries(self) -> list[catalogue.ModelEntry]:
+    def _entries(self) -> list[catalogue_types.ModelEntry]:
         from core.model_stem_manifest import load_bundled_stem_semantics
 
         entries = [
-            catalogue.ModelEntry(
+            catalogue_types.ModelEntry(
                 source="mvsepless",
                 family="MDX-Net",
                 catalogue_label="BS Roformer Drums Duality by Gilliaaan",
@@ -588,7 +599,7 @@ class ReviewedResultProjectionTests(unittest.TestCase):
                 ),
                 metadata_source="bundled_yaml:bs_drums_gilliaaan_config.yaml",
             ),
-            catalogue.ModelEntry(
+            catalogue_types.ModelEntry(
                 source="Politrees",
                 family="Roformer",
                 catalogue_label=(
@@ -608,7 +619,7 @@ class ReviewedResultProjectionTests(unittest.TestCase):
             ),
         ]
 
-        catalogue.reconcile_stem_semantics(
+        catalogue_evidence.reconcile_stem_semantics(
             entries,
             registry=load_bundled_stem_semantics(),
         )
@@ -643,7 +654,7 @@ class ReviewedResultProjectionTests(unittest.TestCase):
 
 class UiNoteTests(unittest.TestCase):
     def test_vocals_other_note_only_for_two_stem_models(self):
-        entry = catalogue.ModelEntry(
+        entry = catalogue_types.ModelEntry(
             source="test",
             family="Roformer",
             catalogue_label="MelBand Roformer Kim | Inst v1 by Unwa",
@@ -651,10 +662,10 @@ class UiNoteTests(unittest.TestCase):
             instruments=["other", "vocals"],
             stem_count=2,
         )
-        self.assertIn("Vocals / Instrumental", catalogue._ui_note(entry))
+        self.assertIn("Vocals / Instrumental", catalogue_entry_rules._ui_note(entry))
 
     def test_four_stem_vocals_other_uses_subset_row_note(self):
-        entry = catalogue.ModelEntry(
+        entry = catalogue_types.ModelEntry(
             source="test",
             family="SCNet",
             catalogue_label="4-stems SCNet Large",
@@ -663,10 +674,10 @@ class UiNoteTests(unittest.TestCase):
             stem_count=4,
             name_intent="multi_stem",
         )
-        self.assertEqual(catalogue._ui_note(entry), "UI: per-stem subset or focus row")
+        self.assertEqual(catalogue_entry_rules._ui_note(entry), "UI: per-stem subset or focus row")
 
     def test_special_fx_best_result_and_focus(self):
-        entry = catalogue.ModelEntry(
+        entry = catalogue_types.ModelEntry(
             source="test",
             family="VR Architecture",
             catalogue_label="UVR-DeNoise by FoxJoy",
@@ -675,13 +686,13 @@ class UiNoteTests(unittest.TestCase):
             name_intent="special_fx",
             metadata_source="community_models.txt",
         )
-        catalogue._finalize_entry(entry)
+        catalogue_entry_rules._finalize_entry(entry)
         self.assertIn("Noise", entry.best_result)
         self.assertTrue(entry.backend_focus.startswith("special_fx_primary:"))
         self.assertIn("complement", entry.ui_export_note)
 
     def test_karaoke_2_gets_karaoke_backend_focus(self):
-        entry = catalogue.ModelEntry(
+        entry = catalogue_types.ModelEntry(
             source="test",
             family="MDX-Net ONNX",
             catalogue_label="MDX-Net Model: UVR-MDX-NET Karaoke 2",
@@ -690,12 +701,12 @@ class UiNoteTests(unittest.TestCase):
             name_intent="karaoke",
             metadata_source="community_models.txt",
         )
-        catalogue._finalize_entry(entry)
+        catalogue_entry_rules._finalize_entry(entry)
         self.assertTrue(entry.is_karaoke)
         self.assertEqual(entry.backend_focus, "karaoke_instrumental_primary")
 
     def test_specialty_stem_flags_old_vocals_mismatch(self):
-        entry = catalogue.ModelEntry(
+        entry = catalogue_types.ModelEntry(
             source="test",
             family="Roformer",
             catalogue_label="BandSplit Roformer | Male-Female by aufr33",
@@ -706,7 +717,7 @@ class UiNoteTests(unittest.TestCase):
             backend_focus="two_stem",
             metadata_source="remote_yaml:test.yaml",
         )
-        flags = catalogue._flag_mismatches(entry)
+        flags = catalogue_entry_rules._flag_mismatches(entry)
         self.assertTrue(any("specialty 2-stem" in flag for flag in flags))
 
 
@@ -849,7 +860,7 @@ class CollectEntriesTests(unittest.TestCase):
         return coordinator
 
     def test_collect_entries_uses_coordinator_sources(self) -> None:
-        ctx = catalogue.CatalogueContext()
+        ctx = catalogue_types.CatalogueContext()
         _snapshot, entries = catalogue.collect_entries(
             ctx, allow_network=False, coordinator=self._coordinator()
         )
@@ -1078,10 +1089,10 @@ class CompactTrvlvrEvidenceTests(unittest.TestCase):
             )
             return list(row[6]), row[7], "Roformer", metadata_source, row[10]
 
-        ctx = catalogue.CatalogueContext()
+        ctx = catalogue_types.CatalogueContext()
         registry = load_bundled_stem_semantics()
         coordinator = self._coordinator()
-        with mock.patch.object(catalogue, "_load_yaml_meta", side_effect=load_yaml):
+        with mock.patch.object(catalogue_config_evidence, "_load_yaml_meta", side_effect=load_yaml):
             snapshot, entries = catalogue.collect_entries(
                 ctx,
                 allow_network=False,
@@ -1093,7 +1104,7 @@ class CompactTrvlvrEvidenceTests(unittest.TestCase):
         by_id = {
             model_id: entry
             for entry in entries
-            if (model_id := catalogue.catalogue_projection(entry)[0]) in expected_ids
+            if (model_id := catalogue_evidence.catalogue_projection(entry)[0]) in expected_ids
         }
         self.assertEqual(set(by_id), expected_ids)
         for row in self._ROWS:
@@ -1147,9 +1158,9 @@ class CompactTrvlvrEvidenceTests(unittest.TestCase):
             }
         )
         self.addCleanup(coordinator.close)
-        with mock.patch.object(catalogue, "_load_yaml_meta") as load_yaml:
+        with mock.patch.object(catalogue_config_evidence, "_load_yaml_meta") as load_yaml:
             _snapshot, entries = catalogue.collect_entries(
-                catalogue.CatalogueContext(),
+                catalogue_types.CatalogueContext(),
                 allow_network=False,
                 coordinator=coordinator,
             )
@@ -1195,9 +1206,9 @@ class CompactTrvlvrEvidenceTests(unittest.TestCase):
             self.assertEqual(yaml_url, "")
             return [], "", "", "unavailable", ""
 
-        with mock.patch.object(catalogue, "_load_yaml_meta", side_effect=load_yaml):
+        with mock.patch.object(catalogue_config_evidence, "_load_yaml_meta", side_effect=load_yaml):
             snapshot, entries = catalogue.collect_entries(
-                catalogue.CatalogueContext(),
+                catalogue_types.CatalogueContext(),
                 allow_network=False,
                 coordinator=coordinator,
             )
@@ -1248,7 +1259,7 @@ class OfflinePolicyTests(unittest.TestCase):
     def _patches(self):
         """Record every network entry point instead of raising.
 
-        _fetch_cached swallows URLError/OSError, so a raising stub could be
+        fetch_cached swallows URLError/OSError, so a raising stub could be
         silently absorbed and the test would pass while the socket was opened.
         """
         from unittest import mock
@@ -1258,7 +1269,7 @@ class OfflinePolicyTests(unittest.TestCase):
 
             url = getattr(request, "full_url", request)
             self.calls.append(f"_urlopen({url})")
-            # A URLError is what a real offline machine raises, and _fetch_cached
+            # A URLError is what a real offline machine raises, and fetch_cached
             # handles it; the recorded call list is what the assertions read.
             raise urllib.error.URLError("blocked by test")
 
@@ -1269,8 +1280,8 @@ class OfflinePolicyTests(unittest.TestCase):
         return [
             mock.patch("core.mdx_config_fetch._urlopen", record_urlopen),
             mock.patch("core.mdx_config_fetch.fetch_mdx_config_url", record_fetch_config),
-            mock.patch.object(catalogue, "COMMUNITY_CACHE_DIR", os.path.join(self.tmp, "cm")),
-            mock.patch.object(catalogue, "YAML_CACHE_DIR", os.path.join(self.tmp, "yaml")),
+            mock.patch.object(catalogue_locations, "COMMUNITY_CACHE_DIR", os.path.join(self.tmp, "cm")),
+            mock.patch.object(catalogue_locations, "YAML_CACHE_DIR", os.path.join(self.tmp, "yaml")),
             mock.patch.object(cli, "REFERENCE_TSV_PATH", os.path.join(self.tmp, "ref.tsv")),
             mock.patch.object(cli, "OUTPUT_PATH", os.path.join(self.tmp, "out.md")),
             mock.patch.object(
@@ -1302,7 +1313,7 @@ class OfflinePolicyTests(unittest.TestCase):
     def test_offline_cache_miss_does_not_create_the_cache_dir(self) -> None:
         """Offline is read-only: a miss must not leave an empty cache dir behind."""
         cache_dir = os.path.join(self.tmp, "cold")
-        path = catalogue._fetch_cached(
+        path = catalogue_cache.fetch_cached(
             "https://example.invalid/x.json", cache_dir, "x.json", allow_network=False
         )
         self.assertIsNone(path)
@@ -1314,7 +1325,7 @@ class OfflinePolicyTests(unittest.TestCase):
         with contextlib.ExitStack() as stack:
             for patch in self._patches():
                 stack.enter_context(patch)
-            result = catalogue._load_yaml_meta(
+            result = catalogue_config_evidence._load_yaml_meta(
                 "model_test.yaml",
                 "https://example.invalid/model_test.yaml",
                 allow_network=False,
@@ -1367,11 +1378,11 @@ class CommunitySupplementAvailabilityTests(unittest.TestCase):
         self.tmp = tempfile.mkdtemp(prefix="uvr-community-evidence-")
         self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
 
-    def _context_from_cached_community_bytes(self, data: bytes) -> catalogue.CatalogueContext:
+    def _context_from_cached_community_bytes(self, data: bytes) -> catalogue_types.CatalogueContext:
         from unittest import mock
 
         cache_dir = os.path.join(self.tmp, "cached-community")
-        cache_path = catalogue._cache_path(
+        cache_path = catalogue_cache._cache_path(
             cache_dir,
             catalogue._COMMUNITY_MODELS_URL,
             "models.txt",
@@ -1379,12 +1390,12 @@ class CommunitySupplementAvailabilityTests(unittest.TestCase):
         os.makedirs(cache_dir)
         with open(cache_path, "wb") as handle:
             handle.write(data)
-        with mock.patch.object(catalogue, "COMMUNITY_CACHE_DIR", cache_dir):
+        with mock.patch.object(catalogue_locations, "COMMUNITY_CACHE_DIR", cache_dir):
             return catalogue._build_catalogue_context(
-                policy=catalogue.FetchPolicy(allow_network=False)
+                policy=catalogue_cache.FetchPolicy(allow_network=False)
             )
 
-    def _context_from_fetched_community_bytes(self, data: bytes) -> catalogue.CatalogueContext:
+    def _context_from_fetched_community_bytes(self, data: bytes) -> catalogue_types.CatalogueContext:
         from unittest import mock
 
         class _Response:
@@ -1407,18 +1418,18 @@ class CommunitySupplementAvailabilityTests(unittest.TestCase):
 
         with (
             mock.patch.object(
-                catalogue,
+                catalogue_locations,
                 "COMMUNITY_CACHE_DIR",
                 os.path.join(self.tmp, "fetched-community"),
             ),
             mock.patch("core.mdx_config_fetch._urlopen", side_effect=urlopen),
         ):
             return catalogue._build_catalogue_context(
-                policy=catalogue.FetchPolicy(allow_cache_writes=False)
+                policy=catalogue_cache.FetchPolicy(allow_cache_writes=False)
             )
 
     def test_valid_empty_community_bytes_remain_available_from_cache(self) -> None:
-        self.assertEqual(catalogue._parse_community_models_bytes(b""), ({}, True))
+        self.assertEqual(catalogue_entry_rules._parse_community_models_bytes(b""), ({}, True))
 
         context = self._context_from_cached_community_bytes(b"")
         self.assertEqual(context.community_by_file, {})
@@ -1432,7 +1443,7 @@ class CommunitySupplementAvailabilityTests(unittest.TestCase):
             b"fixture.ckpt  MDX  vocals*, other  Fixture Model\n"
             b"htdemucs.yaml  Demucs  vocals, drums, bass, other  htdemucs\n"
         )
-        refs, available = catalogue._parse_community_models_bytes(payload)
+        refs, available = catalogue_entry_rules._parse_community_models_bytes(payload)
 
         self.assertTrue(available)
         self.assertEqual(set(refs), {"fixture.ckpt"})
@@ -1444,7 +1455,7 @@ class CommunitySupplementAvailabilityTests(unittest.TestCase):
         )
 
     def test_invalid_community_bytes_are_unavailable_from_cache(self) -> None:
-        self.assertEqual(catalogue._parse_community_models_bytes(b"\xff"), ({}, False))
+        self.assertEqual(catalogue_entry_rules._parse_community_models_bytes(b"\xff"), ({}, False))
 
         context = self._context_from_cached_community_bytes(b"\xff")
         self.assertIn(
@@ -1454,7 +1465,7 @@ class CommunitySupplementAvailabilityTests(unittest.TestCase):
 
     def test_malformed_community_text_is_unavailable_from_cache(self) -> None:
         malformed = b"this is not a models.txt row\n"
-        self.assertEqual(catalogue._parse_community_models_bytes(malformed), ({}, False))
+        self.assertEqual(catalogue_entry_rules._parse_community_models_bytes(malformed), ({}, False))
 
         context = self._context_from_cached_community_bytes(malformed)
         self.assertIn(
@@ -1476,7 +1487,7 @@ class CommunitySupplementAvailabilityTests(unittest.TestCase):
             unsupported: dict[str, object] = {}
             report = None
 
-        entry = catalogue.ModelEntry(
+        entry = catalogue_types.ModelEntry(
             source="fixture",
             family="MDX23C",
             catalogue_label="Fixture",
@@ -1533,8 +1544,8 @@ class DemucsFinalizationTests(unittest.TestCase):
         entries = catalogue._entries_from_snapshot(
             snapshot,
             ({}, {}, {}, {}),
-            catalogue.CatalogueContext(),
-            policy=catalogue.OFFLINE_FETCH_POLICY,
+            catalogue_types.CatalogueContext(),
+            policy=catalogue_cache.OFFLINE_FETCH_POLICY,
         )
         self.assertEqual(len(entries), 1)
         return entries[0]
@@ -1612,8 +1623,8 @@ class CacheIdentityTests(unittest.TestCase):
         from core import paths
 
         for cache_dir in (
-            catalogue.YAML_CACHE_DIR,
-            catalogue.COMMUNITY_CACHE_DIR,
+            catalogue_locations.YAML_CACHE_DIR,
+            catalogue_locations.COMMUNITY_CACHE_DIR,
         ):
             self.assertTrue(
                 cache_dir.startswith(paths.CACHE_DIR),
@@ -1624,9 +1635,9 @@ class CacheIdentityTests(unittest.TestCase):
     def test_same_basename_from_different_urls_does_not_alias(self) -> None:
         """Two models can both ship a 'config.yaml'."""
         with self._opener(b"first"):
-            a = catalogue._fetch_cached("https://a.invalid/x/config.yaml", self.tmp, "config.yaml")
+            a = catalogue_cache.fetch_cached("https://a.invalid/x/config.yaml", self.tmp, "config.yaml")
         with self._opener(b"second"):
-            b = catalogue._fetch_cached("https://b.invalid/y/config.yaml", self.tmp, "config.yaml")
+            b = catalogue_cache.fetch_cached("https://b.invalid/y/config.yaml", self.tmp, "config.yaml")
         self.assertNotEqual(a, b)
         assert a is not None and b is not None
         with open(a, "rb") as handle:
@@ -1636,11 +1647,11 @@ class CacheIdentityTests(unittest.TestCase):
 
     def test_yaml_fetch_accepts_compact_yml_extension(self) -> None:
         with mock.patch.object(
-            catalogue,
-            "_fetch_cached_bytes",
+            catalogue_cache,
+            "fetch_cached_bytes",
             return_value=(b"training: {}", "/cache/config.yml"),
         ) as fetch:
-            result = catalogue._fetch_yaml_bytes(
+            result = catalogue_cache.fetch_yaml_bytes(
                 "https://example.test/config.yml",
                 "config.yml",
             )
@@ -1648,44 +1659,44 @@ class CacheIdentityTests(unittest.TestCase):
         self.assertEqual(result, (b"training: {}", "/cache/config.yml"))
         fetch.assert_called_once_with(
             "https://example.test/config.yml",
-            catalogue.YAML_CACHE_DIR,
+            catalogue_locations.YAML_CACHE_DIR,
             "config.yml",
-            policy=catalogue.DEFAULT_FETCH_POLICY,
+            policy=catalogue_cache.DEFAULT_FETCH_POLICY,
         )
 
     def test_a_fresh_cache_entry_is_not_refetched(self) -> None:
         url = "https://a.invalid/data.json"
         with self._opener():
-            catalogue._fetch_cached(url, self.tmp, "data.json")
-            catalogue._fetch_cached(url, self.tmp, "data.json")
+            catalogue_cache.fetch_cached(url, self.tmp, "data.json")
+            catalogue_cache.fetch_cached(url, self.tmp, "data.json")
         self.assertEqual(len(self.fetched), 1)
 
     def test_a_stale_cache_entry_is_refetched(self) -> None:
         """A normal online run must not reuse an arbitrarily old supplement."""
         url = "https://a.invalid/data.json"
         with self._opener():
-            path = catalogue._fetch_cached(url, self.tmp, "data.json")
+            path = catalogue_cache.fetch_cached(url, self.tmp, "data.json")
             assert path
             os.utime(path, (0, 0))  # epoch: far older than any TTL
-            catalogue._fetch_cached(url, self.tmp, "data.json")
+            catalogue_cache.fetch_cached(url, self.tmp, "data.json")
         self.assertEqual(len(self.fetched), 2)
 
     def test_stale_entry_is_still_served_when_offline(self) -> None:
         url = "https://a.invalid/data.json"
         with self._opener():
-            path = catalogue._fetch_cached(url, self.tmp, "data.json")
+            path = catalogue_cache.fetch_cached(url, self.tmp, "data.json")
             assert path
             os.utime(path, (0, 0))
         with self._opener():
-            served = catalogue._fetch_cached(url, self.tmp, "data.json", allow_network=False)
+            served = catalogue_cache.fetch_cached(url, self.tmp, "data.json", allow_network=False)
         self.assertEqual(served, path)
         self.assertEqual(len(self.fetched), 1)
 
     def test_refresh_refetches_even_a_fresh_entry(self) -> None:
         url = "https://a.invalid/data.json"
         with self._opener():
-            catalogue._fetch_cached(url, self.tmp, "data.json")
-            catalogue._fetch_cached(url, self.tmp, "data.json", refresh=True)
+            catalogue_cache.fetch_cached(url, self.tmp, "data.json")
+            catalogue_cache.fetch_cached(url, self.tmp, "data.json", refresh=True)
         self.assertEqual(len(self.fetched), 2)
 
     def test_refresh_flag_is_exposed_on_the_cli(self) -> None:
@@ -1767,8 +1778,8 @@ class CoordinatorRefreshTests(unittest.TestCase):
             patch.object(catalogue, "_entries_from_snapshot", return_value=[]),
         ):
             catalogue.collect_entries(
-                catalogue.CatalogueContext(),
-                policy=catalogue.FetchPolicy(refresh=True),
+                catalogue_types.CatalogueContext(),
+                policy=catalogue_cache.FetchPolicy(refresh=True),
             )
         self.assertTrue(seen["refresh"])
         self.assertTrue(seen["allow_network"])
@@ -1799,7 +1810,7 @@ class CoordinatorRefreshTests(unittest.TestCase):
                 mock.patch.object(
                     catalogue,
                     "_build_catalogue_context",
-                    lambda **k: catalogue.CatalogueContext(),
+                    lambda **k: catalogue_types.CatalogueContext(),
                 ),
                 mock.patch.object(catalogue, "_snapshot_and_payloads", spy),
                 mock.patch.object(
@@ -1920,13 +1931,13 @@ class OfflineYamlCacheTests(unittest.TestCase):
             raise urllib.error.URLError("blocked")
 
         return [
-            mock.patch.object(catalogue, "YAML_CACHE_DIR", self.tmp),
+            mock.patch.object(catalogue_locations, "YAML_CACHE_DIR", self.tmp),
             mock.patch("core.mdx_config_fetch._urlopen", record),
             mock.patch("core.mdx_config_fetch.fetch_mdx_config_url", lambda *a, **k: False),
         ]
 
     def _seed_cache(self) -> str:
-        path = catalogue._cache_path(self.tmp, self._URL, "model_test.yaml")
+        path = catalogue_cache._cache_path(self.tmp, self._URL, "model_test.yaml")
         with open(path, "w", encoding="utf-8") as handle:
             handle.write(self._YAML)
         return path
@@ -1936,12 +1947,12 @@ class OfflineYamlCacheTests(unittest.TestCase):
 
         runtime_path = os.path.join(self.tmp, "runtime-configs", "model_test.yaml")
         with mock.patch.object(
-            catalogue.paths,
+            core_paths,
             "MDX_C_CONFIG_PATH",
             os.path.dirname(runtime_path),
         ):
-            candidates = catalogue._yaml_paths("model_test.yaml", self._URL)
-        expected = catalogue._cache_path(catalogue.YAML_CACHE_DIR, self._URL, "model_test.yaml")
+            candidates = catalogue_config_evidence._yaml_paths("model_test.yaml", self._URL)
+        expected = catalogue_cache._cache_path(catalogue_locations.YAML_CACHE_DIR, self._URL, "model_test.yaml")
         self.assertIn(expected, candidates)
         self.assertNotIn(runtime_path, candidates)
 
@@ -1954,8 +1965,8 @@ class OfflineYamlCacheTests(unittest.TestCase):
                 stack.enter_context(patch)
             cached = self._seed_cache()
             self.assertTrue(os.path.isfile(cached))
-            instruments, target, _arch, source, _digest = catalogue._load_yaml_meta(
-                "model_test.yaml", self._URL, policy=catalogue.OFFLINE_FETCH_POLICY
+            instruments, target, _arch, source, _digest = catalogue_config_evidence._load_yaml_meta(
+                "model_test.yaml", self._URL, policy=catalogue_cache.OFFLINE_FETCH_POLICY
             )
 
         self.assertEqual(self.calls, [], "offline must not fetch")
@@ -1969,18 +1980,18 @@ class OfflineYamlCacheTests(unittest.TestCase):
         with contextlib.ExitStack() as stack:
             for patch in self._patches():
                 stack.enter_context(patch)
-            catalogue._load_yaml_meta(
-                "model_test.yaml", self._URL, policy=catalogue.OFFLINE_FETCH_POLICY
+            catalogue_config_evidence._load_yaml_meta(
+                "model_test.yaml", self._URL, policy=catalogue_cache.OFFLINE_FETCH_POLICY
             )
         self.assertEqual(self.calls, [])
 
     def test_unparseable_cached_yaml_is_not_strict_signature_evidence(self) -> None:
         import contextlib
 
-        path = catalogue._cache_path(self.tmp, self._URL, "model_test.yaml")
+        path = catalogue_cache._cache_path(self.tmp, self._URL, "model_test.yaml")
         with open(path, "wb") as handle:
             handle.write(b"training: [unterminated")
-        ctx = catalogue.CatalogueContext()
+        ctx = catalogue_types.CatalogueContext()
 
         with contextlib.ExitStack() as stack:
             for patch in self._patches():
@@ -1994,7 +2005,7 @@ class OfflineYamlCacheTests(unittest.TestCase):
                     "model_test.yaml": self._URL,
                 },
                 ctx=ctx,
-                policy=catalogue.OFFLINE_FETCH_POLICY,
+                policy=catalogue_cache.OFFLINE_FETCH_POLICY,
             )[0]
 
         self.assertEqual(entry.instruments, [])
@@ -2052,7 +2063,7 @@ class StrictCatalogueInputIsolationTests(unittest.TestCase):
             (self.yaml_cache, self._YAML_URL, self._YAML_NAME, self._WARM_YAML),
         )
         for cache_dir, url, filename, data in rows:
-            self._write(catalogue._cache_path(cache_dir, url, filename), data)
+            self._write(catalogue_cache._cache_path(cache_dir, url, filename), data)
 
     def _strict_projection(self, runtime_root: str) -> dict[str, object]:
         from dataclasses import asdict
@@ -2085,30 +2096,30 @@ class StrictCatalogueInputIsolationTests(unittest.TestCase):
 
         registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)
         with (
-            mock.patch.object(catalogue, "COMMUNITY_CACHE_DIR", self.community_cache),
-            mock.patch.object(catalogue, "YAML_CACHE_DIR", self.yaml_cache),
-            mock.patch.object(catalogue.paths, "MDX_C_CONFIG_PATH", runtime_configs),
+            mock.patch.object(catalogue_locations, "COMMUNITY_CACHE_DIR", self.community_cache),
+            mock.patch.object(catalogue_locations, "YAML_CACHE_DIR", self.yaml_cache),
+            mock.patch.object(core_paths, "MDX_C_CONFIG_PATH", runtime_configs),
             mock.patch.object(
-                catalogue.paths,
+                core_paths,
                 "MDX_HASH_JSON",
                 os.path.join(runtime_root, "mdx-model-data.json"),
             ),
             mock.patch.object(
-                catalogue.paths,
+                core_paths,
                 "VR_HASH_JSON",
                 os.path.join(runtime_root, "vr-model-data.json"),
             ),
-            mock.patch.object(catalogue.paths, "MDX_MODELS_DIR", runtime_mdx_models),
-            mock.patch.object(catalogue.paths, "VR_MODELS_DIR", runtime_vr_models),
+            mock.patch.object(core_paths, "MDX_MODELS_DIR", runtime_mdx_models),
+            mock.patch.object(core_paths, "VR_MODELS_DIR", runtime_vr_models),
         ):
-            ctx = catalogue._build_catalogue_context(policy=catalogue.OFFLINE_FETCH_POLICY)
+            ctx = catalogue._build_catalogue_context(policy=catalogue_cache.OFFLINE_FETCH_POLICY)
             entries = catalogue._entries_from_snapshot(
                 _Snapshot(),
                 (upstream, {}, {}, {}),
                 ctx,
-                policy=catalogue.OFFLINE_FETCH_POLICY,
+                policy=catalogue_cache.OFFLINE_FETCH_POLICY,
             )
-            catalogue.reconcile_stem_semantics(entries, registry=registry)
+            catalogue_evidence.reconcile_stem_semantics(entries, registry=registry)
             audit = cli.stem_audit.audit_catalogue_stems(
                 entries,
                 ctx,
@@ -2123,7 +2134,7 @@ class StrictCatalogueInputIsolationTests(unittest.TestCase):
                 catalogue_text=catalogue_text,
                 document_sha256=cli._text_digest(catalogue_text),
                 audit=audit,
-                manifest_audit=cli.stem_audit.ManifestCandidateResult(
+                manifest_audit=catalogue_audit_types.ManifestCandidateResult(
                     document={},
                     diagnostics=(),
                     current_model_ids=(),
@@ -2196,7 +2207,7 @@ class StrictCatalogueInputIsolationTests(unittest.TestCase):
             "mdx_download_list": _Snapshot.mdx,
             "demucs_download_list": {},
         }
-        ctx = catalogue.CatalogueContext()
+        ctx = catalogue_types.CatalogueContext()
         stderr = io.StringIO()
         network_calls: list[str] = []
         invalid = StemAuditResult(
@@ -2231,9 +2242,9 @@ class StrictCatalogueInputIsolationTests(unittest.TestCase):
                 "STEM_SEMANTICS_REFERENCE_TSV_PATH",
                 os.path.join(self.tmp, "cold-stems.tsv"),
             ),
-            mock.patch.object(catalogue, "YAML_CACHE_DIR", os.path.join(self.tmp, "cold-yaml")),
+            mock.patch.object(catalogue_locations, "YAML_CACHE_DIR", os.path.join(self.tmp, "cold-yaml")),
             mock.patch.object(
-                catalogue.paths,
+                core_paths,
                 "MDX_C_CONFIG_PATH",
                 os.path.join(self.tmp, "cold-runtime-configs"),
             ),
@@ -2273,7 +2284,7 @@ class StrictCatalogueInputIsolationTests(unittest.TestCase):
             b"model:\n"
             b"  num_bands: 64\n"
         )
-        cache_path = catalogue._cache_path(self.yaml_cache, self._YAML_URL, self._YAML_NAME)
+        cache_path = catalogue_cache._cache_path(self.yaml_cache, self._YAML_URL, self._YAML_NAME)
         self._write(cache_path, self._CONFLICTING_YAML)
         runtime_path = os.path.join(self.tmp, "runtime-configs", self._YAML_NAME)
         self._write(runtime_path, self._CONFLICTING_YAML)
@@ -2294,25 +2305,25 @@ class StrictCatalogueInputIsolationTests(unittest.TestCase):
             calls.append(target)
             return _Response()
 
-        policy = catalogue.FetchPolicy(allow_network=True, refresh=True)
+        policy = catalogue_cache.FetchPolicy(allow_network=True, refresh=True)
         with (
-            mock.patch.object(catalogue, "YAML_CACHE_DIR", self.yaml_cache),
+            mock.patch.object(catalogue_locations, "YAML_CACHE_DIR", self.yaml_cache),
             mock.patch.object(
-                catalogue.paths,
+                core_paths,
                 "MDX_C_CONFIG_PATH",
                 os.path.dirname(runtime_path),
             ),
             mock.patch("core.mdx_config_fetch._urlopen", side_effect=urlopen),
         ):
-            instruments, target, _arch, source, _digest = catalogue._load_yaml_meta(
+            instruments, target, _arch, source, _digest = catalogue_config_evidence._load_yaml_meta(
                 self._YAML_NAME,
                 self._YAML_URL,
                 policy=policy,
             )
-            offline = catalogue._load_yaml_meta(
+            offline = catalogue_config_evidence._load_yaml_meta(
                 self._YAML_NAME,
                 self._YAML_URL,
-                policy=catalogue.OFFLINE_FETCH_POLICY,
+                policy=catalogue_cache.OFFLINE_FETCH_POLICY,
             )
 
         self.assertEqual(instruments, ["vocals", "other"])
@@ -2354,13 +2365,13 @@ class CacheWriteAtomicityTests(unittest.TestCase):
             return _R()
 
         with mock.patch("core.mdx_config_fetch._urlopen", opener):
-            good = catalogue._fetch_cached(url, tmp, "data.json")
+            good = catalogue_cache.fetch_cached(url, tmp, "data.json")
             assert good is not None
             # Different bytes, so overwriting in place is distinguishable from
             # a staged write that never lands.
             body["data"] = b'{"ok": 2, "and": "much longer than the original"}'
             with mock.patch("os.replace", side_effect=OSError("disk full")):
-                catalogue._fetch_cached(url, tmp, "data.json", refresh=True)
+                catalogue_cache.fetch_cached(url, tmp, "data.json", refresh=True)
 
         with open(good, "rb") as handle:
             self.assertEqual(handle.read(), b'{"ok": 1}')
@@ -2373,7 +2384,7 @@ class EntryMetaProvenanceTests(unittest.TestCase):
     def test_entry_meta_supplied_metadata_is_recorded_as_its_source(self) -> None:
         from core.catalog_sources import EntryMeta
 
-        entry = catalogue.ModelEntry(
+        entry = catalogue_types.ModelEntry(
             source="mvsepless",
             family="Roformer",
             catalogue_label="Some Roformer",
@@ -2381,7 +2392,7 @@ class EntryMetaProvenanceTests(unittest.TestCase):
             name_intent="unknown",
         )
         entry.metadata_source = "unavailable"
-        catalogue._apply_entry_meta(
+        catalogue_entry_rules._apply_entry_meta(
             entry,
             EntryMeta(
                 label="Some Roformer",
@@ -2395,14 +2406,14 @@ class EntryMetaProvenanceTests(unittest.TestCase):
         self.assertIn("catalogue_meta", entry.metadata_source)
 
     def test_entry_meta_that_adds_nothing_leaves_the_source_alone(self) -> None:
-        entry = catalogue.ModelEntry(
+        entry = catalogue_types.ModelEntry(
             source="mvsepless",
             family="Roformer",
             catalogue_label="Some Roformer",
             weight_file="model.ckpt",
         )
         entry.metadata_source = "unavailable"
-        catalogue._apply_entry_meta(entry, None)
+        catalogue_entry_rules._apply_entry_meta(entry, None)
         self.assertEqual(entry.metadata_source, "unavailable")
 
 
@@ -2427,8 +2438,8 @@ class SourceAttributionCostTests(unittest.TestCase):
             catalogue._entries_from_snapshot(
                 _Snapshot(),
                 ({}, {}, {}, mvsepless),
-                catalogue.CatalogueContext(),
-                policy=catalogue.OFFLINE_FETCH_POLICY,
+                catalogue_types.CatalogueContext(),
+                policy=catalogue_cache.OFFLINE_FETCH_POLICY,
             )
         self.assertLessEqual(convert.call_count, 1, "converted once per label")
 
@@ -2451,7 +2462,7 @@ class ReferenceTsvOptInTests(unittest.TestCase):
 
     def _community(self):
         return {
-            "model.ckpt": catalogue.CommunityRef(
+            "model.ckpt": catalogue_types.CommunityRef(
                 filename="model.ckpt",
                 arch="Roformer",
                 primary_stem="Vocals",
@@ -2474,7 +2485,7 @@ class ReferenceTsvOptInTests(unittest.TestCase):
             unsupported: dict = {}
             report = None
 
-        ctx = catalogue.CatalogueContext(community_by_file=self._community())
+        ctx = catalogue_types.CatalogueContext(community_by_file=self._community())
         with contextlib.ExitStack() as stack:
             stack.enter_context(_legacy_publication_manifest_fixture())
             stack.enter_context(mock.patch.object(cli, "REFERENCE_TSV_PATH", self.tsv))
@@ -2541,7 +2552,7 @@ class DisplayReferenceRenderTests(unittest.TestCase):
 
         for family, expected_prefix in expected_prefixes.items():
             with self.subTest(family=family):
-                entry = catalogue.ModelEntry(
+                entry = catalogue_types.ModelEntry(
                     source="test",
                     family=family,
                     catalogue_label=f"{family}: Model",
@@ -2553,7 +2564,7 @@ class DisplayReferenceRenderTests(unittest.TestCase):
                 )
 
     def test_canonical_id_rejects_an_unknown_family_instead_of_minting_mdx(self) -> None:
-        entry = catalogue.ModelEntry(
+        entry = catalogue_types.ModelEntry(
             source="test",
             family="MDXNet",
             catalogue_label="Misspelled MDX family",
@@ -2568,13 +2579,13 @@ class DisplayReferenceRenderTests(unittest.TestCase):
 
     def test_renders_execution_source_display_and_quality_flags(self) -> None:
         entries = [
-            catalogue.ModelEntry(
+            catalogue_types.ModelEntry(
                 source="TRvlvr",
                 family="VR Architecture",
                 catalogue_label="VR Arch Single Model v5: 5_HP-Karaoke-UVR",
                 weight_file="5_HP-Karaoke-UVR.pth",
             ),
-            catalogue.ModelEntry(
+            catalogue_types.ModelEntry(
                 source="mvsepless",
                 family="SCNet",
                 catalogue_label="SCnet: 4-stems Huge SCNet Bleedless by Aname",
@@ -2609,7 +2620,7 @@ class DisplayReferenceRenderTests(unittest.TestCase):
         )
 
     def test_demucs_id_comes_from_the_runtime_primary_yaml(self) -> None:
-        entry = catalogue.ModelEntry(
+        entry = catalogue_types.ModelEntry(
             source="TRvlvr",
             family="Demucs",
             catalogue_label="Demucs v4: htdemucs_ft",
@@ -2625,7 +2636,7 @@ class DisplayReferenceRenderTests(unittest.TestCase):
         )
 
     def test_exact_manifest_waiver_marks_retained_flags_reviewed(self) -> None:
-        entry = catalogue.ModelEntry(
+        entry = catalogue_types.ModelEntry(
             source="mvsepless",
             family="MDX-Net",
             catalogue_label=("Mel-Band Roformer Instrumental by Becruily [mbr_inst_becruily]"),
@@ -2640,7 +2651,7 @@ class DisplayReferenceRenderTests(unittest.TestCase):
         self.assertIn("embedded-id: The bracketed exact backend ID", rendered)
 
     def test_repeated_family_flag_understands_normalized_stem_counts(self) -> None:
-        entry = catalogue.ModelEntry(
+        entry = catalogue_types.ModelEntry(
             source="test",
             family="SCNet",
             catalogue_label="SCnet: 4-stems SCNet Large",
@@ -2653,7 +2664,7 @@ class DisplayReferenceRenderTests(unittest.TestCase):
         )
 
     def test_revision_quality_flags_detect_superseded_presentation_forms(self) -> None:
-        entry = catalogue.ModelEntry(
+        entry = catalogue_types.ModelEntry(
             source="test",
             family="MDX-Net",
             catalogue_label="Model",
@@ -2670,13 +2681,13 @@ class DisplayReferenceRenderTests(unittest.TestCase):
                 self.assertIn(flag, render._presentation_flags(entry, display))
 
     def test_sorts_rows_independently_of_collection_order(self) -> None:
-        alpha = catalogue.ModelEntry(
+        alpha = catalogue_types.ModelEntry(
             source="test",
             family="MDX-Net",
             catalogue_label="Alpha",
             weight_file="alpha.ckpt",
         )
-        zulu = catalogue.ModelEntry(
+        zulu = catalogue_types.ModelEntry(
             source="test",
             family="Roformer",
             catalogue_label="Zulu",
@@ -2689,13 +2700,13 @@ class DisplayReferenceRenderTests(unittest.TestCase):
         )
 
     def test_collision_detection_normalizes_unicode_and_case(self) -> None:
-        composed = catalogue.ModelEntry(
+        composed = catalogue_types.ModelEntry(
             source="test",
             family="MDX-Net",
             catalogue_label="Caf\u00e9",
             weight_file="composed.ckpt",
         )
-        decomposed = catalogue.ModelEntry(
+        decomposed = catalogue_types.ModelEntry(
             source="test",
             family="MDX-Net",
             catalogue_label="CAFE\u0301",
@@ -2711,7 +2722,7 @@ class DisplayReferenceRenderTests(unittest.TestCase):
         )
 
     def test_rows_do_not_end_in_whitespace_when_waiver_reasons_are_empty(self) -> None:
-        entry = catalogue.ModelEntry(
+        entry = catalogue_types.ModelEntry(
             source="test",
             family="SCNet",
             catalogue_label="SCnet: Large",
@@ -2780,7 +2791,7 @@ class DisplayReferenceCliTests(unittest.TestCase):
                 mock.patch.object(
                     catalogue,
                     "_build_catalogue_context",
-                    lambda **_kwargs: catalogue.CatalogueContext(),
+                    lambda **_kwargs: catalogue_types.CatalogueContext(),
                 )
             )
             stack.enter_context(
@@ -2907,9 +2918,9 @@ class CheckModeTests(unittest.TestCase):
             unsupported: dict = {}
             report = None
 
-        ctx = catalogue.CatalogueContext(
+        ctx = catalogue_types.CatalogueContext(
             community_by_file={
-                "model.ckpt": catalogue.CommunityRef(
+                "model.ckpt": catalogue_types.CommunityRef(
                     filename="model.ckpt",
                     arch="Roformer",
                     primary_stem="Vocals",
@@ -3125,7 +3136,7 @@ class FabricatedFlagTests(unittest.TestCase):
     def test_intent_alone_is_not_resolved_metadata(self) -> None:
         from core.catalog_sources import EntryMeta
 
-        entry = catalogue.ModelEntry(
+        entry = catalogue_types.ModelEntry(
             source="mvsepless",
             family="Roformer",
             catalogue_label="Some Model",
@@ -3133,7 +3144,7 @@ class FabricatedFlagTests(unittest.TestCase):
             name_intent="unknown",
         )
         entry.metadata_source = "unavailable"
-        catalogue._apply_entry_meta(
+        catalogue_entry_rules._apply_entry_meta(
             entry, EntryMeta(label="L", display="L", arch="Roformer", intent="vocals")
         )
         self.assertEqual(entry.metadata_source, "unavailable")
@@ -3141,14 +3152,14 @@ class FabricatedFlagTests(unittest.TestCase):
     def test_stems_still_count_as_resolved_metadata(self) -> None:
         from core.catalog_sources import EntryMeta
 
-        entry = catalogue.ModelEntry(
+        entry = catalogue_types.ModelEntry(
             source="mvsepless",
             family="Roformer",
             catalogue_label="Some Model",
             weight_file="m.ckpt",
         )
         entry.metadata_source = "unavailable"
-        catalogue._apply_entry_meta(
+        catalogue_entry_rules._apply_entry_meta(
             entry,
             EntryMeta(label="L", display="L", arch="Roformer", stems=["vocals", "other"]),
         )
@@ -3156,7 +3167,7 @@ class FabricatedFlagTests(unittest.TestCase):
 
     def test_unknown_backend_focus_produces_no_mismatch_flags(self) -> None:
         """You cannot detect a mismatch against a backend you could not determine."""
-        entry = catalogue.ModelEntry(
+        entry = catalogue_types.ModelEntry(
             source="mvsepless",
             family="Roformer",
             catalogue_label="Some Model",
@@ -3165,12 +3176,12 @@ class FabricatedFlagTests(unittest.TestCase):
         )
         entry.metadata_source = "catalogue_meta"
         entry.backend_focus = "unknown"
-        self.assertEqual(catalogue._flag_mismatches(entry), [])
+        self.assertEqual(catalogue_entry_rules._flag_mismatches(entry), [])
 
     def test_intent_only_entry_ends_up_unflagged(self) -> None:
         from core.catalog_sources import EntryMeta
 
-        entry = catalogue.ModelEntry(
+        entry = catalogue_types.ModelEntry(
             source="mvsepless",
             family="Roformer",
             catalogue_label="Some Model",
@@ -3178,10 +3189,10 @@ class FabricatedFlagTests(unittest.TestCase):
             name_intent="unknown",
         )
         entry.metadata_source = "unavailable"
-        catalogue._apply_entry_meta(
+        catalogue_entry_rules._apply_entry_meta(
             entry, EntryMeta(label="L", display="L", arch="Roformer", intent="vocals")
         )
-        catalogue._finalize_entry(entry)
+        catalogue_entry_rules._finalize_entry(entry)
         self.assertEqual(entry.flags, [])
 
 
@@ -3209,11 +3220,11 @@ class YamlProvenanceStabilityTests(unittest.TestCase):
                 return None
 
         with (
-            mock.patch.object(catalogue, "YAML_CACHE_DIR", cache_dir),
+            mock.patch.object(catalogue_locations, "YAML_CACHE_DIR", cache_dir),
             mock.patch("core.mdx_config_fetch._urlopen", return_value=_Response()) as fetch,
         ):
-            first = catalogue._load_yaml_meta("m.yaml", url)[3]
-            second = catalogue._load_yaml_meta("m.yaml", url)[3]
+            first = catalogue_config_evidence._load_yaml_meta("m.yaml", url)[3]
+            second = catalogue_config_evidence._load_yaml_meta("m.yaml", url)[3]
 
         self.assertEqual(first, second, "provenance label flipped between runs")
         self.assertEqual(first, "remote_yaml:m.yaml")
@@ -3367,9 +3378,9 @@ class CheckContractTests(unittest.TestCase):
                 mock.patch.object(catalogue, "CatalogueCoordinator", lambda: coordinator)
             )
             stack.enter_context(
-                mock.patch.object(catalogue, "COMMUNITY_CACHE_DIR", community_cache)
+                mock.patch.object(catalogue_locations, "COMMUNITY_CACHE_DIR", community_cache)
             )
-            stack.enter_context(mock.patch.object(catalogue, "YAML_CACHE_DIR", yaml_cache))
+            stack.enter_context(mock.patch.object(catalogue_locations, "YAML_CACHE_DIR", yaml_cache))
             stack.enter_context(mock.patch.object(paths, "DATA_DIR", legacy_data))
             stack.enter_context(mock.patch.object(paths, "BASE_PATH", legacy_base))
             stack.enter_context(mock.patch.object(paths, "MDX_C_CONFIG_PATH", model_store))
@@ -3451,7 +3462,7 @@ class CheckContractTests(unittest.TestCase):
         sidecar = catalogue._ir_path_for(out)
 
         os.makedirs(community_cache)
-        stale_path = catalogue._cache_path(
+        stale_path = catalogue_cache._cache_path(
             community_cache,
             catalogue._COMMUNITY_MODELS_URL,
             "models.txt",
@@ -3542,17 +3553,17 @@ class CheckContractTests(unittest.TestCase):
                 mock.patch.object(catalogue, "CatalogueCoordinator", lambda: coordinator)
             )
             stack.enter_context(
-                mock.patch.object(catalogue, "COMMUNITY_CACHE_DIR", community_cache)
+                mock.patch.object(catalogue_locations, "COMMUNITY_CACHE_DIR", community_cache)
             )
-            stack.enter_context(mock.patch.object(catalogue, "YAML_CACHE_DIR", yaml_cache))
+            stack.enter_context(mock.patch.object(catalogue_locations, "YAML_CACHE_DIR", yaml_cache))
             stack.enter_context(
-                mock.patch.object(catalogue.paths, "MDX_C_CONFIG_PATH", model_store)
-            )
-            stack.enter_context(
-                mock.patch.object(catalogue.paths, "CATALOGUE_STEM_CACHE_FILE", stem_cache)
+                mock.patch.object(core_paths, "MDX_C_CONFIG_PATH", model_store)
             )
             stack.enter_context(
-                mock.patch.object(catalogue.paths, "DOWNLOAD_SIZE_CACHE_FILE", size_cache)
+                mock.patch.object(core_paths, "CATALOGUE_STEM_CACHE_FILE", stem_cache)
+            )
+            stack.enter_context(
+                mock.patch.object(core_paths, "DOWNLOAD_SIZE_CACHE_FILE", size_cache)
             )
             stack.enter_context(mock.patch.object(catalogue_stem_cache, "_memory_entries", None))
             stack.enter_context(mock.patch.object(download_sizes, "_memory_payload", None))
@@ -3611,7 +3622,7 @@ class CheckContractTests(unittest.TestCase):
             called.append(name)
             return False
 
-        policy = catalogue.FetchPolicy(allow_network=True, allow_metadata_writes=False)
+        policy = catalogue_cache.FetchPolicy(allow_network=True, allow_metadata_writes=False)
         with (
             mock.patch("core.mdx_config_fetch.fetch_mdx_config_url", spy),
             mock.patch(
@@ -3619,7 +3630,7 @@ class CheckContractTests(unittest.TestCase):
                 side_effect=urllib.error.URLError("blocked"),
             ),
         ):
-            catalogue._load_yaml_meta(
+            catalogue_config_evidence._load_yaml_meta(
                 "nope.yaml", "https://example.invalid/nope.yaml", policy=policy
             )
         self.assertEqual(called, [], "--check wrote a config into the model store")
@@ -3651,21 +3662,21 @@ class CheckContractTests(unittest.TestCase):
             def __exit__(self, *_args: object) -> None:
                 return None
 
-        policy = catalogue.FetchPolicy(
+        policy = catalogue_cache.FetchPolicy(
             allow_network=True,
             allow_metadata_writes=False,
             allow_cache_writes=False,
         )
         with (
-            mock.patch.object(catalogue, "YAML_CACHE_DIR", cache_dir),
-            mock.patch.object(catalogue.paths, "MDX_C_CONFIG_PATH", model_store),
+            mock.patch.object(catalogue_locations, "YAML_CACHE_DIR", cache_dir),
+            mock.patch.object(core_paths, "MDX_C_CONFIG_PATH", model_store),
             mock.patch(
                 "core.mdx_config_fetch.fetch_mdx_config_url",
                 side_effect=AssertionError("model-store write path used"),
             ),
             mock.patch("core.mdx_config_fetch._urlopen", return_value=_Response()),
         ):
-            instruments, target, arch, source, _digest = catalogue._load_yaml_meta(
+            instruments, target, arch, source, _digest = catalogue_config_evidence._load_yaml_meta(
                 "fresh.yaml",
                 "https://example.invalid/fresh.yaml",
                 policy=policy,
@@ -3704,7 +3715,7 @@ class CheckContractTests(unittest.TestCase):
             stack.enter_context(mock.patch.object(cli, "OUTPUT_PATH", out))
             stack.enter_context(
                 mock.patch.object(
-                    catalogue, "_build_catalogue_context", lambda **k: catalogue.CatalogueContext()
+                    catalogue, "_build_catalogue_context", lambda **k: catalogue_types.CatalogueContext()
                 )
             )
             stack.enter_context(
@@ -3764,7 +3775,7 @@ class CheckContractTests(unittest.TestCase):
             )
             stack.enter_context(
                 mock.patch.object(
-                    catalogue, "_build_catalogue_context", lambda **k: catalogue.CatalogueContext()
+                    catalogue, "_build_catalogue_context", lambda **k: catalogue_types.CatalogueContext()
                 )
             )
             stack.enter_context(
@@ -3783,7 +3794,7 @@ class IntermediateRepresentationTests(unittest.TestCase):
     """A stable machine-readable form that Markdown and TSV render from."""
 
     def _entry(self, label: str = "Some Model"):
-        return catalogue.ModelEntry(
+        return catalogue_types.ModelEntry(
             source="mvsepless",
             family="Roformer",
             catalogue_label=label,
@@ -3870,7 +3881,7 @@ class IntermediateRepresentationTests(unittest.TestCase):
 
 class StemSemanticsReferenceRenderTests(unittest.TestCase):
     def test_provenance_prefix_and_waiver_projection_preserve_review_columns(self) -> None:
-        entry = catalogue.ModelEntry(
+        entry = catalogue_types.ModelEntry(
             source="fixture-source",
             family="Apollo",
             catalogue_label="Restoration fixture",
@@ -3888,7 +3899,7 @@ class StemSemanticsReferenceRenderTests(unittest.TestCase):
 
         audit = cli.stem_audit.audit_catalogue_stems(
             [entry],
-            catalogue.CatalogueContext(),
+            catalogue_types.CatalogueContext(),
             registry=registry,
         )
         rendered = render.stem_semantics_reference_tsv(audit.reference_rows)
@@ -4006,7 +4017,7 @@ class StemSemanticsReferenceRenderTests(unittest.TestCase):
             }
         )
         entries = [
-            catalogue.ModelEntry(
+            catalogue_types.ModelEntry(
                 source="fixture-source",
                 family="Roformer",
                 catalogue_label="Fixture",
@@ -4014,7 +4025,7 @@ class StemSemanticsReferenceRenderTests(unittest.TestCase):
                 primary_stem="Lead",
                 instruments=["Lead", "Backing", "Instrumental"],
             ),
-            catalogue.ModelEntry(
+            catalogue_types.ModelEntry(
                 source="fixture-source",
                 family="Apollo",
                 catalogue_label="Restoration fixture",
@@ -4025,7 +4036,7 @@ class StemSemanticsReferenceRenderTests(unittest.TestCase):
 
         audit = cli.stem_audit.audit_catalogue_stems(
             entries,
-            catalogue.CatalogueContext(),
+            catalogue_types.CatalogueContext(),
             registry=registry,
         )
         lines = render.stem_semantics_reference_tsv(audit.reference_rows).splitlines()
@@ -4065,7 +4076,7 @@ class SummaryModeTests(unittest.TestCase):
     """--summary answers the maintainer's likely question without 7,000 lines."""
 
     def _entries(self):
-        flagged = catalogue.ModelEntry(
+        flagged = catalogue_types.ModelEntry(
             source="TRvlvr",
             family="Roformer",
             catalogue_label="Bad Model",
@@ -4074,14 +4085,14 @@ class SummaryModeTests(unittest.TestCase):
             metadata_source="bundled_yaml:x.yaml",
         )
         flagged.flags = ["NAME says vocal but backend is instrumental-focused"]
-        unknown = catalogue.ModelEntry(
+        unknown = catalogue_types.ModelEntry(
             source="extras",
             family="MDX23C",
             catalogue_label="Mystery",
             weight_file="m.ckpt",
             name_intent="unknown",
         )
-        fine = catalogue.ModelEntry(
+        fine = catalogue_types.ModelEntry(
             source="TRvlvr",
             family="VR Architecture",
             catalogue_label="Good Model",
@@ -4347,7 +4358,7 @@ class SummaryModeTests(unittest.TestCase):
             with (
                 mock.patch.object(cli, "OUTPUT_PATH", out),
                 mock.patch.object(
-                    catalogue, "_build_catalogue_context", lambda **k: catalogue.CatalogueContext()
+                    catalogue, "_build_catalogue_context", lambda **k: catalogue_types.CatalogueContext()
                 ),
                 mock.patch.object(
                     catalogue, "_snapshot_and_payloads", lambda **k: (_Snapshot(), ({}, {}, {}, {}))
@@ -4400,7 +4411,7 @@ class CollectEntriesIsTheRealPathTests(unittest.TestCase):
                     side_effect=_clean_stem_audit,
                 ),
                 mock.patch.object(
-                    catalogue, "_build_catalogue_context", lambda **k: catalogue.CatalogueContext()
+                    catalogue, "_build_catalogue_context", lambda **k: catalogue_types.CatalogueContext()
                 ),
                 mock.patch.object(
                     catalogue, "_snapshot_and_payloads", lambda **k: (_Snapshot(), ({}, {}, {}, {}))
@@ -4466,7 +4477,7 @@ def _generator_manifest_document(*, lifecycle: str = "current") -> dict[str, Any
     }
 
 
-def _generator_manifest_entry(**changes: object) -> catalogue.ModelEntry:
+def _generator_manifest_entry(**changes: object) -> catalogue_types.ModelEntry:
     values: dict[str, object] = {
         "source": "fixture-source",
         "family": "MDX23C",
@@ -4480,11 +4491,11 @@ def _generator_manifest_entry(**changes: object) -> catalogue.ModelEntry:
         "metadata_source": "remote_yaml:model.yaml",
     }
     values.update(changes)
-    return catalogue.ModelEntry(**values)  # type: ignore[arg-type]
+    return catalogue_types.ModelEntry(**values)  # type: ignore[arg-type]
 
 
 def _candidate_document(
-    result: cli.stem_audit.ManifestCandidateResult,
+    result: catalogue_audit_types.ManifestCandidateResult,
 ) -> dict[str, Any]:
     """Narrow a validated candidate to the JSON object shape used by fixtures."""
     return cast(dict[str, Any], result.document)
@@ -4494,7 +4505,7 @@ class ManifestCandidateContractTests(unittest.TestCase):
     """The generator changes machine evidence without fabricating review decisions."""
 
     def test_demucs_bundle_yaml_is_not_published_as_mdx_config_evidence(self) -> None:
-        entry = catalogue.ModelEntry(
+        entry = catalogue_types.ModelEntry(
             source="fixture-source",
             family="Demucs",
             catalogue_label="Demucs v4: htdemucs_6s",
@@ -4505,7 +4516,7 @@ class ManifestCandidateContractTests(unittest.TestCase):
 
         self.assertNotIn(
             "config_yaml",
-            cli.stem_audit._manifest_evidence_document(entry),
+            catalogue_manifest_candidate._manifest_evidence_document(entry),
         )
 
     def test_candidate_keeps_richer_exact_provenance_for_the_same_artifact(self) -> None:
@@ -4523,7 +4534,7 @@ class ManifestCandidateContractTests(unittest.TestCase):
         )
         unified = load_model_manifest_document(document)
 
-        candidate = cli.stem_audit.build_manifest_candidate(
+        candidate = catalogue_manifest_candidate.build_manifest_candidate(
             [_generator_manifest_entry()],
             document,
             registry=unified,
@@ -4538,11 +4549,11 @@ class ManifestCandidateContractTests(unittest.TestCase):
 
     def _candidate(
         self,
-        entries: list[catalogue.ModelEntry],
+        entries: list[catalogue_types.ModelEntry],
         *,
         lifecycle: str = "current",
         strict_runtime: bool = False,
-    ) -> cli.stem_audit.ManifestCandidateResult:
+    ) -> catalogue_audit_types.ManifestCandidateResult:
         from dataclasses import replace
         from types import SimpleNamespace
 
@@ -4555,7 +4566,7 @@ class ManifestCandidateContractTests(unittest.TestCase):
                 registry,
                 runtime=SimpleNamespace(contracts={"mdx:model": object()}),
             )
-        return cli.stem_audit.build_manifest_candidate(entries, document, registry=registry)
+        return catalogue_manifest_candidate.build_manifest_candidate(entries, document, registry=registry)
 
     def test_new_catalogue_id_requires_a_reviewed_record(self) -> None:
         result = self._candidate([_generator_manifest_entry(weight_file="new.ckpt")])
@@ -4675,17 +4686,17 @@ class ManifestCandidateContractTests(unittest.TestCase):
                 side_effect=AssertionError("runtime registry reloaded"),
             ),
             mock.patch.object(
-                catalogue,
+                catalogue_evidence,
                 "reviewed_catalogue_stem_signature",
                 side_effect=AssertionError("stem registry reloaded"),
             ),
             mock.patch.object(
-                catalogue,
+                catalogue_evidence,
                 "catalogue_stem_evidence_uses_config",
                 side_effect=AssertionError("model registry reloaded"),
             ),
         ):
-            catalogue.reconcile_stem_semantics(
+            catalogue_evidence.reconcile_stem_semantics(
                 [entry],
                 registry=unified.stems,
                 contracts=unified.runtime,
@@ -4702,7 +4713,7 @@ class ManifestCandidateContractTests(unittest.TestCase):
         record = unified.models[model_id]
         self.assertTrue(record.catalogue_evidence.config_yaml)
         self.assertFalse(record.config_evidence)
-        entry = catalogue.ModelEntry(
+        entry = catalogue_types.ModelEntry(
             source=record.catalogue_evidence.source,
             family="Roformer",
             catalogue_label=record.catalogue_evidence.catalogue_label,
@@ -4720,7 +4731,7 @@ class ManifestCandidateContractTests(unittest.TestCase):
             if not record.catalogue_evidence.config_yaml
         }
 
-        catalogue.reconcile_stem_semantics(
+        catalogue_evidence.reconcile_stem_semantics(
             [entry],
             registry=unified.stems,
             contracts=unified.runtime,
@@ -4747,10 +4758,10 @@ class ManifestCandidateContractTests(unittest.TestCase):
         unified = load_model_manifest_document(document)
         cache_dir = os.path.join(tempfile.mkdtemp(prefix="uvr-manifest-evidence-"), "yaml")
         self.addCleanup(shutil.rmtree, os.path.dirname(cache_dir), ignore_errors=True)
-        context = catalogue.CatalogueContext()
+        context = catalogue_types.CatalogueContext()
 
         with (
-            mock.patch.object(catalogue, "YAML_CACHE_DIR", cache_dir),
+            mock.patch.object(catalogue_locations, "YAML_CACHE_DIR", cache_dir),
             mock.patch(
                 "core.mdx_config_fetch._urlopen",
                 side_effect=AssertionError("offline config fetch"),
@@ -4765,7 +4776,7 @@ class ManifestCandidateContractTests(unittest.TestCase):
                     "model.yaml": "https://new.test/model.yaml",
                 },
                 ctx=context,
-                policy=catalogue.OFFLINE_FETCH_POLICY,
+                policy=catalogue_cache.OFFLINE_FETCH_POLICY,
                 registry=unified.stems,
                 manifest_records=unified.models,
             )[0]
@@ -4778,7 +4789,7 @@ class ManifestCandidateContractTests(unittest.TestCase):
         self.assertFalse(os.path.exists(cache_dir))
 
     def test_offline_cache_miss_without_exact_unified_evidence_stays_degraded(self) -> None:
-        context = catalogue.CatalogueContext()
+        context = catalogue_types.CatalogueContext()
 
         entry = catalogue._parse_catalogue_entry(
             source="fixture-source",
@@ -4789,7 +4800,7 @@ class ManifestCandidateContractTests(unittest.TestCase):
                 "unknown.yaml": "https://new.test/unknown.yaml",
             },
             ctx=context,
-            policy=catalogue.OFFLINE_FETCH_POLICY,
+            policy=catalogue_cache.OFFLINE_FETCH_POLICY,
             manifest_records={},
         )[0]
 
@@ -4815,9 +4826,9 @@ class UnifiedPublicationCliTests(unittest.TestCase):
         with open(self.manifest, "w", encoding="utf-8") as handle:
             json.dump(_generator_manifest_document(), handle, indent=2, sort_keys=True)
             handle.write("\n")
-        self.context = catalogue.CatalogueContext(
+        self.context = catalogue_types.CatalogueContext(
             community_by_file={
-                "model.ckpt": catalogue.CommunityRef(
+                "model.ckpt": catalogue_types.CommunityRef(
                     filename="model.ckpt",
                     arch="Roformer",
                     primary_stem="Vocals",
@@ -4827,7 +4838,7 @@ class UnifiedPublicationCliTests(unittest.TestCase):
                 )
             },
         )
-        self.entry = catalogue.ModelEntry(
+        self.entry = catalogue_types.ModelEntry(
             source="fixture",
             family="MDX23C",
             catalogue_label="Fixture Model",
@@ -4859,7 +4870,7 @@ class UnifiedPublicationCliTests(unittest.TestCase):
         self,
         argv: list[str],
         *,
-        context: catalogue.CatalogueContext | None = None,
+        context: catalogue_types.CatalogueContext | None = None,
         audit: object | None = None,
     ) -> int:
         from unittest import mock
@@ -4872,7 +4883,7 @@ class UnifiedPublicationCliTests(unittest.TestCase):
 
         def collect_once(
             *_args: object, **_kwargs: object
-        ) -> tuple[object, list[catalogue.ModelEntry]]:
+        ) -> tuple[object, list[catalogue_types.ModelEntry]]:
             self.collect_call_count += 1
             return _Snapshot(), self.entries
 
@@ -4912,27 +4923,26 @@ class UnifiedPublicationCliTests(unittest.TestCase):
     def test_one_collection_snapshot_feeds_validation_and_all_renderers(self) -> None:
         from unittest import mock
 
-        from catalogue import stem_audit
 
         audited: list[object] = []
-        candidates: list[cli.stem_audit.ManifestCandidateResult] = []
+        candidates: list[catalogue_audit_types.ManifestCandidateResult] = []
 
         def audit_entries(entries: object, *_args: object, **_kwargs: object) -> StemAuditResult:
             audited.append(entries)
             return self._audit()
 
-        real_build_candidate = stem_audit.build_manifest_candidate
+        real_build_candidate = catalogue_manifest_candidate.build_manifest_candidate
 
         def build_candidate(
             *args: object, **kwargs: object
-        ) -> cli.stem_audit.ManifestCandidateResult:
+        ) -> catalogue_audit_types.ManifestCandidateResult:
             candidate = real_build_candidate(*args, **kwargs)  # type: ignore[arg-type]
             candidates.append(candidate)
             return candidate
 
         with (
             mock.patch.object(
-                stem_audit,
+                catalogue_manifest_candidate,
                 "build_manifest_candidate",
                 side_effect=build_candidate,
             ) as manifest_candidate,
@@ -4999,7 +5009,7 @@ class UnifiedPublicationCliTests(unittest.TestCase):
 
         def collect_expected_snapshot(
             *args: object, **kwargs: object
-        ) -> tuple[object, list[catalogue.ModelEntry]]:
+        ) -> tuple[object, list[catalogue_types.ModelEntry]]:
             snapshot, entries = real_collect_entries(*args, **kwargs)  # type: ignore[arg-type]
             # Bootstrap the expected artifact set with the desired reviewed-
             # non-config gate, then exercise the unmodified real path below.
@@ -5012,7 +5022,7 @@ class UnifiedPublicationCliTests(unittest.TestCase):
             mock.patch.object(cli, "DISPLAY_REFERENCE_TSV_PATH", self.display),
             mock.patch.object(cli, "STEM_SEMANTICS_REFERENCE_TSV_PATH", self.stem),
             mock.patch.object(cli, "BUNDLED_MANIFEST_PATH", self.manifest),
-            mock.patch.object(catalogue, "YAML_CACHE_DIR", yaml_cache),
+            mock.patch.object(catalogue_locations, "YAML_CACHE_DIR", yaml_cache),
             mock.patch.object(catalogue, "_build_catalogue_context", return_value=self.context),
             mock.patch.object(
                 catalogue,
@@ -5197,7 +5207,7 @@ class UnifiedPublicationCliTests(unittest.TestCase):
 
     def test_missing_required_supplemental_evidence_is_degraded(self) -> None:
         """Unavailable evidence cannot replace a complete reference set."""
-        incomplete = catalogue.CatalogueContext(
+        incomplete = catalogue_types.CatalogueContext(
             unavailable_supplemental_evidence=("community models.txt reference",)
         )
         before = self.manifest.read_bytes()
@@ -5272,7 +5282,7 @@ class UnifiedPublicationCliTests(unittest.TestCase):
 
         document = _generator_manifest_document()
         registry = load_model_manifest_document(document)
-        manifest_audit = cli.stem_audit.build_manifest_candidate(
+        manifest_audit = catalogue_manifest_candidate.build_manifest_candidate(
             [_generator_manifest_entry(config_sha256="b" * 64)],
             document,
             registry=registry,
@@ -5405,7 +5415,7 @@ class UnifiedPublicationCliTests(unittest.TestCase):
 
         def render_stems(rows: object) -> str:
             rendered_rows.append(rows)
-            return cli.stem_audit.reference_rows_tsv(rows)  # type: ignore[arg-type]
+            return catalogue_audit_reference.reference_rows_tsv(rows)  # type: ignore[arg-type]
 
         def audit_stems(*_args: object, **kwargs: object) -> StemAuditResult:
             seen.append(kwargs.get("registry"))
@@ -5439,7 +5449,7 @@ class UnifiedPublicationCliTests(unittest.TestCase):
         yaml_url = "https://example.invalid/model.yaml"
         os.makedirs(community_cache)
         with open(
-            catalogue._cache_path(
+            catalogue_cache._cache_path(
                 community_cache,
                 catalogue._COMMUNITY_MODELS_URL,
                 "models.txt",
@@ -5450,7 +5460,7 @@ class UnifiedPublicationCliTests(unittest.TestCase):
         os.makedirs(yaml_cache)
         yaml_bytes = b"training:\n  instruments: [Vocals, Other]\n  target_instrument: Vocals\n"
         with open(
-            catalogue._cache_path(yaml_cache, yaml_url, "model.yaml"),
+            catalogue_cache._cache_path(yaml_cache, yaml_url, "model.yaml"),
             "wb",
         ) as handle:
             handle.write(yaml_bytes)
@@ -5467,11 +5477,11 @@ class UnifiedPublicationCliTests(unittest.TestCase):
             raise AssertionError("offline generator requested the network")
 
         with (
-            mock.patch.object(catalogue, "COMMUNITY_CACHE_DIR", community_cache),
-            mock.patch.object(catalogue, "YAML_CACHE_DIR", yaml_cache),
+            mock.patch.object(catalogue_locations, "COMMUNITY_CACHE_DIR", community_cache),
+            mock.patch.object(catalogue_locations, "YAML_CACHE_DIR", yaml_cache),
             mock.patch("core.mdx_config_fetch._urlopen", side_effect=record_network),
         ):
-            context = catalogue._build_catalogue_context(policy=catalogue.OFFLINE_FETCH_POLICY)
+            context = catalogue._build_catalogue_context(policy=catalogue_cache.OFFLINE_FETCH_POLICY)
 
         self.assertEqual(network_calls, [])
         self.assertFalse(os.path.exists(unused_hash_cache))
@@ -5695,7 +5705,7 @@ class SidecarTrustTests(unittest.TestCase):
             )
             stack.enter_context(
                 mock.patch.object(
-                    catalogue, "_build_catalogue_context", lambda **k: catalogue.CatalogueContext()
+                    catalogue, "_build_catalogue_context", lambda **k: catalogue_types.CatalogueContext()
                 )
             )
             stack.enter_context(
@@ -5729,7 +5739,7 @@ class SummaryHonestyTests(unittest.TestCase):
         self.assertIn("no entries", text.lower())
 
     def test_a_healthy_empty_of_problems_run_still_reads_clean(self) -> None:
-        entry = catalogue.ModelEntry(
+        entry = catalogue_types.ModelEntry(
             source="TRvlvr",
             family="VR Architecture",
             catalogue_label="Good",
@@ -5746,7 +5756,7 @@ class EntryMetaOverlayTests(unittest.TestCase):
         from core.catalog_sources import EntryMeta
         from core.model_stem_semantics import INTENT_KARAOKE
 
-        entry = catalogue.ModelEntry(
+        entry = catalogue_types.ModelEntry(
             source="mvsepless",
             family="Roformer",
             catalogue_label="MelBand Roformer Karaoke",
@@ -5761,7 +5771,7 @@ class EntryMetaOverlayTests(unittest.TestCase):
             target_instrument="vocals",
             intent=INTENT_KARAOKE,
         )
-        catalogue._apply_entry_meta(entry, meta)
+        catalogue_entry_rules._apply_entry_meta(entry, meta)
         self.assertEqual(entry.instruments, ["vocals", "other"])
         self.assertEqual(entry.target_instrument, "vocals")
         self.assertEqual(entry.primary_stem, "vocals")
@@ -5771,7 +5781,7 @@ class EntryMetaOverlayTests(unittest.TestCase):
         from core.catalog_sources import EntryMeta
         from core.model_stem_semantics import INTENT_UNKNOWN
 
-        entry = catalogue.ModelEntry(
+        entry = catalogue_types.ModelEntry(
             source="extras",
             family="Roformer",
             catalogue_label="Named",
@@ -5789,21 +5799,21 @@ class EntryMetaOverlayTests(unittest.TestCase):
             target_instrument="vocals",
             intent=INTENT_UNKNOWN,
         )
-        catalogue._apply_entry_meta(entry, meta)
+        catalogue_entry_rules._apply_entry_meta(entry, meta)
         self.assertEqual(entry.instruments, ["drums", "bass"])
         self.assertEqual(entry.target_instrument, "drums")
         self.assertEqual(entry.primary_stem, "drums")
         self.assertEqual(entry.name_intent, "instrumental")
 
         entry.name_intent = "unknown"
-        catalogue._apply_entry_meta(entry, meta)
+        catalogue_entry_rules._apply_entry_meta(entry, meta)
         self.assertEqual(entry.name_intent, "unknown")
 
 
 class RenderDisplayTests(unittest.TestCase):
     def test_render_uses_id_aware_display_in_tables_and_detail_headings(self) -> None:
         label = "VR Arch Single Model v5: 1_HP-UVR"
-        entry = catalogue.ModelEntry(
+        entry = catalogue_types.ModelEntry(
             source="extras",
             family="VR Architecture",
             catalogue_label=label,
@@ -5820,7 +5830,7 @@ class RenderDisplayTests(unittest.TestCase):
         self.assertNotIn("| VR Architecture | 1_HP-UVR |", rendered)
 
     def test_summary_uses_id_aware_display(self) -> None:
-        entry = catalogue.ModelEntry(
+        entry = catalogue_types.ModelEntry(
             source="extras",
             family="VR Architecture",
             catalogue_label="VR Arch Single Model v5: 1_HP-UVR",
@@ -5835,7 +5845,7 @@ class RenderDisplayTests(unittest.TestCase):
         self.assertNotIn("**1_HP-UVR**", rendered)
 
     def test_quick_reference_keeps_the_complete_projected_display(self) -> None:
-        entry = catalogue.ModelEntry(
+        entry = catalogue_types.ModelEntry(
             source="mvsepless",
             family="Roformer",
             catalogue_label=(
@@ -5888,7 +5898,7 @@ class FetchHelperTests(unittest.TestCase):
             tempfile.TemporaryDirectory() as tmp,
             patch("core.mdx_config_fetch._urlopen", return_value=_Resp()),
         ):
-            path = catalogue._fetch_cached("https://example.invalid/x.json", tmp, "x.json")
+            path = catalogue_cache.fetch_cached("https://example.invalid/x.json", tmp, "x.json")
             if path is None:
                 self.fail("expected a cached file")
             with open(path, encoding="utf-8") as handle:
@@ -5915,15 +5925,15 @@ class FetchHelperTests(unittest.TestCase):
             cache_dir = os.path.join(tmp, "generator-cache")
             runtime_dir = os.path.join(tmp, "runtime-configs")
             with (
-                patch.object(catalogue, "YAML_CACHE_DIR", cache_dir),
-                patch.object(catalogue.paths, "MDX_C_CONFIG_PATH", runtime_dir),
+                patch.object(catalogue_locations, "YAML_CACHE_DIR", cache_dir),
+                patch.object(core_paths, "MDX_C_CONFIG_PATH", runtime_dir),
                 patch(
                     "core.mdx_config_fetch.fetch_mdx_config_url",
                     side_effect=AssertionError("runtime config fetch used"),
                 ),
                 patch("core.mdx_config_fetch._urlopen", return_value=_Response()),
             ):
-                instruments, target, _arch, source, _digest = catalogue._load_yaml_meta(
+                instruments, target, _arch, source, _digest = catalogue_config_evidence._load_yaml_meta(
                     yaml_name, "https://example.invalid/x.yaml"
                 )
 
@@ -5932,7 +5942,7 @@ class FetchHelperTests(unittest.TestCase):
             self.assertEqual(source, f"remote_yaml:{yaml_name}")
             self.assertTrue(
                 os.path.isfile(
-                    catalogue._cache_path(
+                    catalogue_cache._cache_path(
                         cache_dir,
                         "https://example.invalid/x.yaml",
                         yaml_name,
@@ -6062,7 +6072,7 @@ class StemConfidenceAuditModeTests(unittest.TestCase):
 
         with (
             mock.patch.object(
-                cli.stem_audit,
+                catalogue_confidence,
                 "run_stem_confidence_audit",
                 return_value=0,
             ) as audit,
@@ -6105,10 +6115,10 @@ class StemConfidenceAuditModeTests(unittest.TestCase):
         coordinator = SimpleNamespace(source=lambda _source_id: source, close=lambda: None)
         with tempfile.TemporaryDirectory() as tmp:
             cache_path = os.path.join(tmp, "hashes.json")
-            cache = cli.stem_audit.HashCache(cache_path)
+            cache = catalogue_confidence.HashCache(cache_path)
             cache.put(
                 target.checkpoint_url,
-                cli.stem_audit.HashLookup(digest="known", status="ok"),
+                catalogue_confidence.HashLookup(digest="known", status="ok"),
             )
             cache.save()
             with (
@@ -6121,18 +6131,18 @@ class StemConfidenceAuditModeTests(unittest.TestCase):
                     return_value=iter([target]),
                 ),
                 mock.patch.object(
-                    cli.stem_audit, "default_hash_cache_path", return_value=cache_path
+                    catalogue_confidence, "default_hash_cache_path", return_value=cache_path
                 ),
                 mock.patch.object(
-                    cli.stem_audit, "_curated_hash_table", return_value={"known": {}}
+                    catalogue_confidence, "_curated_hash_table", return_value={"known": {}}
                 ),
-                mock.patch("catalogue.stem_audit.os.path.isfile", return_value=True),
+                mock.patch("catalogue.confidence.os.path.isfile", return_value=True),
                 mock.patch(
                     "core.model_data.load_mdx_c_config",
                     return_value={"training": {"instruments": ["vocals", "other"]}},
                 ) as config_load,
                 mock.patch(
-                    "catalogue.collect._fetch_yaml_bytes",
+                    "catalogue.cache.fetch_yaml_bytes",
                     side_effect=AssertionError("offline config fetch"),
                 ),
                 mock.patch(

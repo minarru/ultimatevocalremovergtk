@@ -323,7 +323,10 @@ class ExactEvidencePrecedenceTests(unittest.TestCase):
     def test_unified_non_config_records_drive_runtime_download_and_generator_signatures(
         self,
     ) -> None:
-        from scripts.catalogue.collect import reviewed_stem_signature
+        import sys
+
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+        from catalogue.evidence import reviewed_stem_signature
 
         fixtures = (
             (
