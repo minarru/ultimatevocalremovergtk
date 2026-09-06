@@ -1,0 +1,271 @@
+using Gtk 4.0;
+using Adw 1;
+
+Adw.PreferencesPage general_page {
+  title: "General";
+  icon-name: "emblem-system-symbolic";
+
+  Adw.PreferencesGroup {
+    title: "Appearance";
+
+    Adw.ComboRow color_scheme_row {
+      title: "Color scheme";
+    }
+  }
+
+  Adw.PreferencesGroup {
+    title: "Diagnostics";
+    description: "Write a rotating troubleshooting log under the application cache directory";
+
+    Adw.ComboRow diagnostic_level_row {
+      title: "Diagnostic logging";
+      subtitle: "Errors are always recorded; Debug and Trace add progressively more detail";
+    }
+
+    Adw.SwitchRow diagnostic_sensitive_row {
+      title: "Include sensitive details";
+      subtitle: "Include local paths and URL paths; credentials and URL queries are never logged";
+    }
+  }
+
+  Adw.PreferencesGroup {
+    title: "Saved settings profiles";
+    description: "Save the current settings as a named profile, or load / remove an existing one";
+
+    Adw.ComboRow profile_combo {
+      title: "Profile";
+
+      [suffix]
+      Gtk.Button profile_load_button {
+        label: "_Load";
+        use-underline: true;
+        valign: center;
+      }
+
+      [suffix]
+      Gtk.Button profile_remove_button {
+        icon-name: "user-trash-symbolic";
+        valign: center;
+        styles ["destructive-action"]
+      }
+    }
+
+    Adw.EntryRow profile_name_row {
+      title: "Save current settings as";
+      show-apply-button: true;
+    }
+  }
+
+  Adw.PreferencesGroup {
+    title: "Reset";
+
+    Adw.ActionRow {
+      title: "Reset all settings to default";
+      subtitle: "Restore every option to its built-in default value";
+
+      [suffix]
+      Gtk.Button reset_button {
+        label: "Reset";
+        valign: center;
+        styles ["destructive-action"]
+      }
+    }
+  }
+
+  Adw.PreferencesGroup {
+    title: "Desktop notifications";
+    description: "System notifications when tasks finish in the background";
+
+    Adw.SwitchRow notify_process_complete_row {
+      title: "Processing complete";
+      subtitle: "When separation, ensemble, or audio tools finish successfully";
+    }
+
+    Adw.SwitchRow notify_process_failed_row {
+      title: "Processing failed";
+      subtitle: "When a run stops with an error";
+    }
+
+    Adw.SwitchRow notify_download_complete_row {
+      title: "Downloads finished";
+      subtitle: "When queued model downloads complete successfully";
+    }
+
+    Adw.SwitchRow notify_download_failed_row {
+      title: "Download failed";
+      subtitle: "When a queued model download fails";
+    }
+  }
+
+  Adw.PreferencesGroup {
+    title: "Run confirmation";
+    description: "Review resolved models, outputs, and device before processing";
+
+    Adw.SwitchRow confirm_processing_plan_row {
+      title: "Confirm processing plan before starting";
+      subtitle: "Applies to Separation and Ensemble runs";
+    }
+  }
+}
+
+Gtk.Adjustment amplification_adjustment {
+  lower: 0.0;
+  upper: 1.0;
+  step-increment: 0.05;
+  page-increment: 0.1;
+}
+
+Gtk.Adjustment sample_duration_adjustment {
+  lower: 5.0;
+  upper: 120.0;
+  step-increment: 5.0;
+  page-increment: 10.0;
+}
+
+Gtk.Adjustment long_chunk_adjustment {
+  lower: 0.0;
+  upper: 3600.0;
+  step-increment: 60.0;
+  page-increment: 300.0;
+}
+
+Gtk.Adjustment long_chunk_overlap_adjustment {
+  lower: 0.0;
+  upper: 30.0;
+  step-increment: 0.5;
+  page-increment: 1.0;
+}
+
+Adw.PreferencesPage processing_page {
+  title: "Processing";
+  icon-name: "applications-system-symbolic";
+
+  Adw.PreferencesGroup {
+    title: "General process settings";
+
+    Adw.SwitchRow is_testing_audio_row {
+      title: "Settings test mode";
+      subtitle: "Prefix outputs with a timestamp for testing";
+    }
+
+    Adw.SwitchRow is_add_model_name_row {
+      title: "Model test mode";
+      subtitle: "Append the model name to output file names";
+    }
+
+    Adw.SwitchRow is_create_model_folder_row {
+      title: "Generate model folder";
+      subtitle: "Save outputs inside a per-model subfolder";
+    }
+
+    Adw.SwitchRow is_accept_any_input_row {
+      title: "Accept any input";
+      subtitle: "Allow any input file type, not just common audio";
+    }
+
+    Adw.SwitchRow is_normalization_row {
+      title: "Normalize output";
+      subtitle: "Limit peaks above 1.0 on saved audio";
+    }
+
+    Adw.SwitchRow is_match_mix_level_row {
+      title: "Match stem levels to mix";
+      subtitle: "Scale multi-stem outputs so their sum matches the input mix";
+    }
+
+    Adw.SwitchRow is_prevent_export_clipping_row {
+      title: "Prevent export clipping";
+      subtitle: "Scale peaks to fit PCM/FLAC/MP3 without hard clipping";
+    }
+
+    Adw.SpinRow amplification_row {
+      title: "Amplification threshold";
+      subtitle: "Raise quiet outputs to this peak level (0 = off)";
+      adjustment: amplification_adjustment;
+      digits: 2;
+    }
+
+    Adw.ActionRow output_name_preview_row {
+      title: "Example output name";
+      subtitle-lines: 2;
+    }
+  }
+
+  Adw.PreferencesGroup hardware_group {
+    title: "Hardware";
+
+    Adw.ComboRow device_row {
+      title: "GPU device";
+    }
+
+    Adw.SwitchRow directml_row {
+      title: "Use DirectML";
+      subtitle: "Windows AMD/Intel GPU via DirectML (PyTorch models only; MDX ONNX stays on CPU)";
+    }
+  }
+
+  Adw.PreferencesGroup {
+    title: "Sample mode";
+
+    Adw.SwitchRow sample_mode_row {
+      title: "Sample mode";
+      subtitle: "Process only a short clip of each input";
+    }
+
+    Adw.SpinRow sample_duration_row {
+      title: "Sample clip duration (seconds)";
+      adjustment: sample_duration_adjustment;
+    }
+  }
+
+  Adw.PreferencesGroup {
+    title: "Long files";
+    description: "Whole-file time slicing for hour+ tracks (not MDX/Demucs segment size)";
+
+    Adw.SpinRow long_chunk_row {
+      title: "Chunk duration (seconds)";
+      subtitle: "0 = off; try 600 for long podcasts";
+      adjustment: long_chunk_adjustment;
+      digits: 0;
+    }
+
+    Adw.SpinRow long_chunk_overlap_row {
+      title: "Chunk overlap (seconds)";
+      subtitle: "Crossfade between slices";
+      adjustment: long_chunk_overlap_adjustment;
+      digits: 1;
+    }
+  }
+
+  Adw.PreferencesGroup {
+    title: "Maintenance";
+    description: "Automatic cleanup of leftover working files";
+
+    Adw.SwitchRow cleanup_ensemble_temps_row {
+      title: "Clean up old ensemble temp folders";
+      subtitle: "On startup, remove folders in ensemble_temps older than 7 days";
+    }
+
+    Adw.SwitchRow auto_update_model_params_row {
+      title: "Update model parameters with catalogue";
+      subtitle: "Refresh recognition data when the Download Center catalogue is refreshed";
+    }
+
+    Adw.ActionRow catalogue_cache_refresh_row {
+      title: "Refresh catalogue cache";
+      subtitle: "Download fresh model listings and update installed model names";
+
+      [suffix]
+      Gtk.Spinner catalogue_cache_refresh_spinner {
+        valign: center;
+        visible: false;
+      }
+
+      [suffix]
+      Gtk.Button catalogue_cache_refresh_button {
+        label: "Refresh";
+        valign: center;
+      }
+    }
+  }
+}

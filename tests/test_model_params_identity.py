@@ -29,12 +29,15 @@ class ChangeDefaultsIdentityTests(unittest.TestCase):
 
         configured = object()
         constructor = mock.Mock(return_value=configured)
-        with mock.patch.object(
-            model_params.ModelIdentityService,
-            "lookup",
-            autospec=True,
-            return_value=self.record,
-        ), mock.patch.object(model_params, "ModelConfig", constructor):
+        with (
+            mock.patch.object(
+                model_params.ModelIdentityService,
+                "lookup",
+                autospec=True,
+                return_value=self.record,
+            ),
+            mock.patch.object(model_params, "ModelConfig", constructor),
+        ):
             result = model_params._change_defaults_model_config(
                 SimpleNamespace(settings=self.settings, repo=self.repo),
                 self.record.id,
@@ -81,22 +84,13 @@ class ChangeDefaultsIdentityTests(unittest.TestCase):
         )
         dialog = model_params._ParamDialog.__new__(model_params._ParamDialog)
         dialog.model_data = model_data
-        dialog.existing = {}
-        groups: list[object] = []
-        page = SimpleNamespace(add=groups.append)
-
-        class Group:
-            def __init__(self, **kwargs: object) -> None:
-                self.title = kwargs.get("title")
 
         with mock.patch.object(
-            model_params.Adw, "PreferencesGroup", Group
-        ), mock.patch.object(
             model_params, "display_name_for_model", return_value="stale mapper label"
-        ), mock.patch.object(dialog, "_build_mdx"):
-            dialog._build(page)
+        ):
+            title = dialog._model_title()
 
-        self.assertEqual(getattr(groups[0], "title", None), self.record.display)
+        self.assertEqual(title, self.record.display)
 
     def test_parameter_dialog_keeps_the_carried_display_without_a_repository(
         self,
@@ -112,20 +106,8 @@ class ChangeDefaultsIdentityTests(unittest.TestCase):
         )
         dialog = model_params._ParamDialog.__new__(model_params._ParamDialog)
         dialog.model_data = model_data
-        dialog.existing = {}
-        groups: list[object] = []
-        page = SimpleNamespace(add=groups.append)
 
-        class Group:
-            def __init__(self, **kwargs: object) -> None:
-                self.title = kwargs.get("title")
-
-        with mock.patch.object(
-            model_params.Adw, "PreferencesGroup", Group
-        ), mock.patch.object(dialog, "_build_mdx"):
-            dialog._build(page)
-
-        self.assertEqual(getattr(groups[0], "title", None), self.record.display)
+        self.assertEqual(dialog._model_title(), self.record.display)
 
 
 if __name__ == "__main__":
