@@ -14,7 +14,7 @@ PREFIX="/org/uvr/UltimateVocalRemover"
 BLUEPRINT_COMPILER="${BLUEPRINT_COMPILER:-blueprint-compiler}"
 
 if ! command -v glib-compile-resources >/dev/null 2>&1; then
-    echo "glib-compile-resources not found. Install glib2 (Arch/CachyOS) or libglib2.0-bin (Debian/Ubuntu)." >&2
+    echo "glib-compile-resources not found. Install glib2 (Arch/CachyOS) or libglib2.0-dev-bin (Debian/Ubuntu)." >&2
     exit 1
 fi
 

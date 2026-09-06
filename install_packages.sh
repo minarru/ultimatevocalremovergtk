@@ -116,7 +116,7 @@ install_system_deps() {
     if command -v apt-get >/dev/null 2>&1; then
         sudo apt-get update
         sudo apt-get install -y ffmpeg python3-venv python3-pip python3-gi \
-            gir1.2-gtk-4.0 gir1.2-adw-1 libglib2.0-bin blueprint-compiler \
+            gir1.2-gtk-4.0 gir1.2-adw-1 libglib2.0-dev-bin blueprint-compiler \
             libsndfile1 rubberband-cli
     elif command -v dnf >/dev/null 2>&1; then
         sudo dnf install -y ffmpeg python3-pip python3-gobject gtk4 libadwaita \
