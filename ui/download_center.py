@@ -61,8 +61,9 @@ from .hints import set_icon_button_a11y, set_tooltip
 from .lifetime import UiLifetime
 from .markup import set_row_subtitle, set_row_title
 from .spacing import set_inset
+from .template import load_builder, object_from_builder
 from .widget_state import drop, fetch, stash
-from .widgets.rows import get_combo_value, make_combo_row, set_combo_value
+from .widgets.rows import configure_combo_row, get_combo_value, set_combo_value
 
 _NETWORKS = [
     ("VR Arch", VR_ARCH_TYPE),
@@ -132,9 +133,8 @@ class DownloadCenterWindow:
         self._catalogue_refresh_armed = False
         self._downloads_dirty = False
 
-        self.window = Adw.Window()
-        self.window.set_title("Download Center")
-        self.window.set_default_size(760, 620)
+        self._layout_builder = load_builder("download-center")
+        self.window = object_from_builder(self._layout_builder, "window", Adw.Window)
         if parent is not None:
             self.window.set_transient_for(parent)
         close_on_escape(self.window)
@@ -150,9 +150,10 @@ class DownloadCenterWindow:
         manual_action.connect("activate", lambda *_: self._open_manual())
         self._actions.add_action(manual_action)
 
-        self.toast_overlay = Adw.ToastOverlay()
-        self.toast_overlay.set_child(self._build_content())
-        self.window.set_content(self.toast_overlay)
+        self.toast_overlay = object_from_builder(
+            self._layout_builder, "toast_overlay", Adw.ToastOverlay
+        )
+        self._build_content()
 
     @property
     def _purpose(self) -> str:
@@ -205,9 +206,8 @@ class DownloadCenterWindow:
         """Terminal owner teardown; hiding the cached browser does not call this."""
         self._lifetime.dispose()
 
-    def _build_content(self) -> Gtk.Widget:
-        toolbar = Adw.ToolbarView()
-        header = Adw.HeaderBar()
+    def _build_content(self) -> None:
+        header = object_from_builder(self._layout_builder, "header", Adw.HeaderBar)
 
         if hasattr(Adw, "InlineViewSwitcher"):
             self.stack = Adw.ViewStack()
@@ -224,16 +224,8 @@ class DownloadCenterWindow:
             self.switcher.set_stack(self.stack)
         header.set_title_widget(self.switcher)
 
-        menu = Gio.Menu()
-        menu.append("Open models folder", "dc.open-models")
-        menu.append("Manual downloads", "dc.manual")
-        menu_button = Gtk.MenuButton()
-        menu_button.set_icon_name("open-menu-symbolic")
+        menu_button = object_from_builder(self._layout_builder, "menu_button", Gtk.MenuButton)
         set_icon_button_a11y(menu_button, "Models and manual downloads")
-        menu_button.set_menu_model(menu)
-        header.pack_end(menu_button)
-
-        toolbar.add_top_bar(header)
 
         for value, label in PURPOSE_PAGE_OPTIONS:
             placeholder = Gtk.Box()
@@ -243,108 +235,73 @@ class DownloadCenterWindow:
         self.stack.set_visible_child_name(PURPOSE_VOCALS)
         self._purpose = PURPOSE_VOCALS
 
-        filter_group = Adw.PreferencesGroup()
-        set_inset(filter_group, start=12, end=12, top=6)
         arch_labels = [label for _value, label in _ARCH_FILTER_OPTIONS]
-        self.arch_row = make_combo_row("Network", arch_labels)
+        self.arch_row = configure_combo_row(
+            object_from_builder(self._layout_builder, "arch_row", Adw.ComboRow),
+            arch_labels,
+        )
         self.arch_row.connect("notify::selected", self._on_arch_filter_changed)
         set_combo_value(self.arch_row, _ARCH_FILTER_OPTIONS[0][1])
-        filter_group.add(self.arch_row)
         sort_labels = [label for _value, label in SORT_OPTIONS]
-        self.sort_row = make_combo_row("Sort", sort_labels)
+        self.sort_row = configure_combo_row(
+            object_from_builder(self._layout_builder, "sort_row", Adw.ComboRow),
+            sort_labels,
+        )
         self.sort_row.connect("notify::selected", self._on_sort_changed)
         set_combo_value(self.sort_row, SORT_OPTIONS[0][1])
-        filter_group.add(self.sort_row)
 
-        self.hide_unsupported_row = Adw.SwitchRow(
-            title="Hide unsupported",
-            subtitle="Hide catalogue models this build cannot run yet",
+        self.hide_unsupported_row = object_from_builder(
+            self._layout_builder, "hide_unsupported_row", Adw.SwitchRow
         )
         self.hide_unsupported_row.set_active(False)
         self.hide_unsupported_row.connect("notify::active", self._on_hide_unsupported_changed)
-        filter_group.add(self.hide_unsupported_row)
 
-        self.refresh_button = Gtk.Button(icon_name="view-refresh-symbolic")
-        self.refresh_button.add_css_class("flat")
+        self.refresh_button = object_from_builder(
+            self._layout_builder, "refresh_button", Gtk.Button
+        )
         self.refresh_button.connect("clicked", lambda *_: self.start_refresh())
         set_icon_button_a11y(self.refresh_button, "Refresh catalogue")
 
-        self.download_button = Gtk.Button(label="_Download", use_underline=True)
-        self.download_button.add_css_class("suggested-action")
-        self.download_button.set_hexpand(True)
+        self.download_button = object_from_builder(
+            self._layout_builder, "download_button", Gtk.Button
+        )
         self.download_button.connect("clicked", lambda *_: self._enqueue_selected())
 
-        action_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        action_row.add_css_class("uvr-run-actions")
-        action_row.append(self.refresh_button)
-        action_row.append(self.download_button)
+        self.status_label = object_from_builder(self._layout_builder, "status_label", Gtk.Label)
+        self._refresh_spinner = object_from_builder(
+            self._layout_builder, "refresh_spinner", Gtk.Spinner
+        )
 
-        self.status_label = Gtk.Label(label="Loading catalogue…", xalign=0.0)
-        self.status_label.add_css_class("dim-label")
-        self.status_label.set_wrap(True)
-        self._refresh_spinner = Gtk.Spinner()
-        self._refresh_spinner.set_visible(False)
-
-        status_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        status_row.append(self._refresh_spinner)
-        status_row.append(self.status_label)
-
-        action_dock = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        action_dock.add_css_class("uvr-run-controls")
-        action_dock.append(status_row)
-        action_dock.append(action_row)
-
-        body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
-        body.set_vexpand(True)
         self.stack.set_visible(False)
-        body.append(self.stack)
-        body.append(filter_group)
-        body.append(self._build_catalogue_page())
-        body.append(action_dock)
+        object_from_builder(self._layout_builder, "purpose_stack_holder", Gtk.Box).append(
+            self.stack
+        )
+        object_from_builder(self._layout_builder, "catalogue_holder", Gtk.Box).append(
+            self._build_catalogue_page()
+        )
 
-        toolbar.set_content(body)
         self.stack.connect("notify::visible-child-name", self._on_catalogue_tab_changed)
-        return toolbar
 
     def _build_catalogue_page(self) -> Gtk.Widget:
-        page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        set_inset(page, top=6, start=12, end=12)
-
-        search = Gtk.SearchEntry()
-        search.set_placeholder_text("Search models")
+        builder = load_builder("download-family-page")
+        page = object_from_builder(builder, "page", Gtk.Box)
+        search = object_from_builder(builder, "search_entry", Gtk.SearchEntry)
         search.connect("search-changed", self._on_search_changed)
-        search.set_hexpand(True)
-        page.append(search)
         self._search_entry = search
         for _label, arch in _NETWORKS:
             self._search_entries[arch] = search
 
-        empty_page = Adw.StatusPage(
-            icon_name="network-offline-symbolic",
-            title="Catalogue unavailable",
-            description="Check your connection and try again.",
-        )
-        empty_page.set_vexpand(True)
-        empty_page.set_visible(False)
-        retry = Gtk.Button(label="Try Again")
-        retry.add_css_class("suggested-action")
-        retry.set_halign(Gtk.Align.CENTER)
+        empty_page = object_from_builder(builder, "empty_page", Adw.StatusPage)
+        retry = object_from_builder(builder, "retry_button", Gtk.Button)
         retry.connect("clicked", lambda *_: self.start_refresh())
-        empty_page.set_child(retry)
-        page.append(empty_page)
         self._empty_page = empty_page
         for _label, arch in _NETWORKS:
             self._empty_pages[arch] = empty_page
 
-        list_box = Gtk.ListBox()
-        list_box.set_selection_mode(Gtk.SelectionMode.NONE)
-        list_box.add_css_class("boxed-list")
+        list_box = object_from_builder(builder, "list_box", Gtk.ListBox)
         list_box.set_filter_func(self._row_matches_filter)
         list_box.set_sort_func(lambda r1, r2: self._compare_rows(r1, r2))
         list_box.set_header_func(self._list_header)
-        scroller = Gtk.ScrolledWindow(vexpand=True, hexpand=True)
-        scroller.set_child(list_box)
-        page.append(scroller)
         self._list_box = list_box
         for _label, arch in _NETWORKS:
             self._list_boxes[arch] = list_box
@@ -770,7 +727,9 @@ class DownloadCenterWindow:
         for url in pending:
             request_url_size(url, on_url)
 
-    def _apply_row_size(self, lookup_id: int, key: tuple[str, str], text: str, generation: int) -> None:
+    def _apply_row_size(
+        self, lookup_id: int, key: tuple[str, str], text: str, generation: int
+    ) -> None:
         if self._lifetime.disposed:
             return
         # Guard is keyed per-row: checking another model must not discard this
@@ -985,8 +944,11 @@ class DownloadCenterWindow:
             return
         self._listening = True
         from core.catalogue_stem_cache import ensure_worker_started, subscribe, unsubscribe
+
         self._lifetime.own(lambda: unsubscribe(self._schedule_stem_subtitle_refresh))
-        self._lifetime.own(lambda: self.manager.unsubscribe_catalogue_changed(self._schedule_catalogue_row_refresh))
+        self._lifetime.own(
+            lambda: self.manager.unsubscribe_catalogue_changed(self._schedule_catalogue_row_refresh)
+        )
         self._lifetime.own(lambda: self.manager.unsubscribe_delta(self._on_catalogue_delta))
 
         subscribe(self._schedule_stem_subtitle_refresh)

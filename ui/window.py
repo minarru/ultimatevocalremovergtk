@@ -103,7 +103,7 @@ from .widgets.download_queue_indicator import DownloadQueueIndicator
 from .widgets.file_chooser import InputFilesRow, OutputFolderRow
 from .widgets.format_row import OutputFormatRow
 from .widgets.log_panel import OVERLAY_MARGIN_BOTTOM, LogPanel
-from .widgets.rows import get_combo_value, make_combo_row, make_switch_row, set_combo_value
+from .widgets.rows import configure_combo_row, get_combo_value, set_combo_value
 from .widgets.vocal_split_row import VocalSplitRow
 
 #: Cadence (ms) and step of the indeterminate progress pulse shown before the
@@ -387,6 +387,7 @@ class MainWindow(Adw.ApplicationWindow):
     def _build_content(self) -> Gtk.Widget:
         # Static groups are kept as attributes so they can be reparented between
         # the columns alongside the per-method groups.
+        self._groups_builder = load_builder("separation-groups")
         self.files_group = self._build_files_group()
         self.method_group = self._build_method_group()
         self.shared_group = self._build_shared_group()
@@ -606,12 +607,9 @@ class MainWindow(Adw.ApplicationWindow):
         self.toast(_LOG_COPIED_TOAST)
 
     def _build_files_group(self) -> Adw.PreferencesGroup:
-        group = Adw.PreferencesGroup(title="Files")
-        view_inputs_button = Gtk.Button(icon_name="view-list-symbolic", valign=Gtk.Align.CENTER)
-        view_inputs_button.add_css_class("flat")
+        group = object_from_builder(self._groups_builder, "files_group", Adw.PreferencesGroup)
+        view_inputs_button = object_from_builder(self._groups_builder, "view_inputs_button", Gtk.Button)
         set_icon_button_a11y(view_inputs_button, VIEW_INPUTS_BUTTON_HINT)
-        view_inputs_button.set_action_name("win.view_inputs")
-        group.set_header_suffix(view_inputs_button)
         self.input_row = InputFilesRow(
             self._on_inputs_changed,
             on_toast=self.toast,
@@ -632,53 +630,37 @@ class MainWindow(Adw.ApplicationWindow):
         # the adjacent (title-less) model group reads as one "pick method ->
         # pick model" block. This drops a redundant header from the separation
         # page (see also the per-arch title removed on the model group).
-        group = Adw.PreferencesGroup()
-        self.method_row = make_combo_row(
-            "Process method",
-            [view.title for view in self._views],
-            icon_name="system-run-symbolic",
-        )
+        group = object_from_builder(self._groups_builder, "method_group", Adw.PreferencesGroup)
+        self.method_row = object_from_builder(self._groups_builder, "method_row", Adw.ComboRow)
+        configure_combo_row(self.method_row, [view.title for view in self._views])
         self.method_row.connect("notify::selected", self._on_method_selected)
-        group.add(self.method_row)
         return group
 
     def _build_model_options_group(self) -> Adw.PreferencesGroup:
-        group = Adw.PreferencesGroup()
-        self.model_options_row = Adw.ActionRow(
-            title="Model options",
-            subtitle="Batch size, secondary models, and more",
-            activatable=True,
-        )
-        self.model_options_row.add_suffix(Gtk.Image(icon_name="go-next-symbolic"))
+        group = object_from_builder(self._groups_builder, "model_options_group", Adw.PreferencesGroup)
+        self.model_options_row = object_from_builder(self._groups_builder, "model_options_row", Adw.ActionRow)
         self.model_options_row.connect("activated", lambda *_: self._open_model_options())
         set_tooltip(self.model_options_row, MODEL_OPTIONS_ROW_HINT)
-        group.add(self.model_options_row)
         return group
 
     def _build_shared_group(self) -> Adw.PreferencesGroup:
-        group = Adw.PreferencesGroup(title="Processing")
+        group = object_from_builder(self._groups_builder, "processing_group", Adw.PreferencesGroup)
 
         self.format_row = OutputFormatRow(self._on_format_changed)
         group.add(self.format_row)
 
-        self.gpu_row = make_switch_row("GPU conversion", icon_name="pci-card-symbolic")
+        self.gpu_row = object_from_builder(self._groups_builder, "gpu_row", Adw.SwitchRow)
         self.gpu_row.connect("notify::active", self._on_gpu_changed)
         group.add(self.gpu_row)
 
-        self.autocast_row = make_switch_row(
-            "FP16 autocast",
-            subtitle="Faster VR/MDX/Roformer on modern NVIDIA GPUs",
-            icon_name="emblem-system-symbolic",
-        )
+        self.autocast_row = object_from_builder(self._groups_builder, "autocast_row", Adw.SwitchRow)
         self.autocast_row.connect("notify::active", self._on_autocast_changed)
         group.add(self.autocast_row)
 
         duration = self.settings.process.sample_mode_duration
-        self.sample_row = make_switch_row(
-            SAMPLE_MODE_TITLE,
-            sample_mode_subtitle(duration),
-            icon_name="preferences-system-time-symbolic",
-        )
+        self.sample_row = object_from_builder(self._groups_builder, "sample_row", Adw.SwitchRow)
+        self.sample_row.set_title(SAMPLE_MODE_TITLE)
+        self.sample_row.set_subtitle(sample_mode_subtitle(duration))
         self.sample_row.connect("notify::active", self._on_sample_changed)
         group.add(self.sample_row)
 

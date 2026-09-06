@@ -102,3 +102,26 @@ Note the coupling: `Ensembler.get_files_to_ensemble` collects members by **filen
 
 `UVRApplication` ([ui/application.py](../ui/application.py)) → `MainWindow` ([ui/window.py](../ui/window.py)), with one `AppContext` ([ui/context.py](../ui/context.py)) holding the shared `Settings` and lazily-built repository/runner. Per-method option panels are `MethodView` subclasses in [ui/views/](../ui/views/) registered in `METHOD_VIEWS` — add a method there rather than editing the window assembly. Options shared across Separation/Ensemble/Audio Tools live in [ui/shared_settings.py](../ui/shared_settings.py).
 
+Fixed widget trees belong in Blueprint sources under [resources/ui/](../resources/ui/).
+Python owns settings, signal handlers, model and catalogue collections, drawing,
+and asynchronous work. Use `Gtk.Template` for widget subclasses and the typed
+`load_builder` / `object_from_builder` helpers in [ui/template.py](../ui/template.py)
+for controller-owned layouts. A dynamic list can instantiate a declarative row
+shell and fill its values in Python; it does not need a second Python definition
+of the fixed layout. Keep settings writes in their existing owners rather than
+adding bidirectional template bindings.
+
+Template modules register and validate their exact resource before the class
+decorator runs. This registration is display-independent; builder loading
+initializes libadwaita before constructing widgets. Preserve that distinction for
+direct dialog imports and headless backend imports. Optional newer libadwaita
+widgets must remain behind runtime capability checks and must not appear in a
+baseline resource that older supported systems must load.
+
+Edit `.blp` files, then run `./resources/compile_resources.sh`; generated `.ui`
+files and the resource manifest are disposable. Commit the rebuilt
+`ui/data/uvr.gresource` with its source changes. The supported compiler packages,
+launcher rebuild behavior, and isolated GTK test commands are documented in
+[the environment guide](environment.md#blueprint-and-resource-builds).
+See [layout ownership](blueprint-layouts.md) for component boundaries and the
+reasons native or dynamic construction remains in Python.

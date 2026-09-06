@@ -179,7 +179,7 @@ class ConnectedSharedSettingsTests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         with patch.object(Settings, "load", return_value=self.settings):
             self.window = MainWindow()
-        self.addCleanup(self.window.destroy)
+        self.addCleanup(self.window.set_visible, False)
         self.addCleanup(self.window._unsubscribe_model_events)
         # Keep the real close/save path, but direct persistence to a test file.
         save = self.settings.save

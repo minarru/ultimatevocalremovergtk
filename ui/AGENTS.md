@@ -2,6 +2,25 @@
 
 Loaded when working under `ui/`. Layer rules, invariants and repo workflow live in the root [AGENTS.md](../AGENTS.md).
 
+## Blueprint layouts
+
+- Fixed widget trees and properties live in `resources/ui/*.blp`; edit those
+  sources and rebuild with `./resources/compile_resources.sh`. Generated `.ui`
+  files are not editable sources. Keep the tracked bundle with its matching
+  Blueprint changes.
+- Use typed `Gtk.Template.Child` descriptors or `ui.template.object_from_builder`.
+  Validate the exact resource before a template decorator; registration must stay
+  display-independent. Builder loading initializes libadwaita at construction time.
+  Templates with Adw child types must initialize libadwaita before template
+  expansion in their constructor, as `VocalSplitRow` does; a prior application
+  or widget constructor must not be required to register those types.
+- Keep runtime collections, settings, signal order, and lifecycle in Python.
+  Configure existing declarative controls without triggering persistence during
+  model loading. A fixed page should own its rows declaratively even when its
+  row models are populated later.
+- Keep optional newer Adw types out of baseline resources. Select compatible
+  switchers in Python and preserve existing fallback behavior.
+
 ## Widget behaviour and diagnosis
 
 - `Adw.Dialog.get_content_width()` is the *requested* width and never tracks allocation; `notify::content-width` only fires when code sets it. Drive responsive dialog layout from an `Adw.Breakpoint`.

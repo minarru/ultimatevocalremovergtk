@@ -1,0 +1,47 @@
+using Gtk 4.0;
+using Adw 1;
+
+Adw.PreferencesGroup files_group {
+  title: "Files";
+  [header-suffix]
+  Gtk.Button view_inputs_button {
+    icon-name: "view-list-symbolic";
+    valign: center;
+    action-name: "win.view_inputs";
+    styles ["flat"]
+  }
+}
+Adw.PreferencesGroup method_group {
+  Adw.ComboRow method_row {
+    title: "Process method";
+    [prefix]
+    Gtk.Image { icon-name: "system-run-symbolic"; }
+  }
+}
+Adw.PreferencesGroup model_options_group {
+  Adw.ActionRow model_options_row {
+    title: "Model options";
+    subtitle: "Batch size, secondary models, and more";
+    activatable: true;
+    [suffix]
+    Gtk.Image { icon-name: "go-next-symbolic"; }
+  }
+}
+// Controller-owned format and vocal-split widgets surround these rows.
+Adw.PreferencesGroup processing_group { title: "Processing"; }
+Adw.SwitchRow gpu_row {
+  title: "GPU conversion";
+  [prefix]
+  Gtk.Image { icon-name: "pci-card-symbolic"; }
+}
+Adw.SwitchRow autocast_row {
+  title: "FP16 autocast";
+  subtitle: "Faster VR/MDX/Roformer on modern NVIDIA GPUs";
+  [prefix]
+  Gtk.Image { icon-name: "emblem-system-symbolic"; }
+}
+Adw.SwitchRow sample_row {
+  title: "Sample mode";
+  [prefix]
+  Gtk.Image { icon-name: "preferences-system-time-symbolic"; }
+}

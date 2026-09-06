@@ -285,7 +285,7 @@ class ReviewedContractTests(unittest.TestCase):
 
         host = mock.Mock(spec=RunHost)
         host.dialog_parent = Gtk.Window()
-        self.addCleanup(host.dialog_parent.destroy)
+        self.addCleanup(host.dialog_parent.set_visible, False)
         host.target = mock.Mock(spec=RunTarget)
         controller = RunController(host)
         for reason in (None, 'Choose an input file'):
