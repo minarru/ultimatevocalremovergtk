@@ -47,7 +47,7 @@ jobs:
           fi
           sudo sed -i 's|mirror+file:/etc/apt/apt-mirrors.txt|http://archive.ubuntu.com/ubuntu/|' \
             /etc/apt/sources.list.d/ubuntu.sources
-          pkgs=(python3-venv python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 ffmpeg rubberband-cli xvfb xauth dbus-daemon)
+          pkgs=(python3-venv python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 ffmpeg rubberband-cli xvfb xauth dbus-daemon libglib2.0-bin blueprint-compiler)
           if ! sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${pkgs[@]}"; then
             sudo apt-get update \
               -o Dir::Etc::sourcelist="sources.list.d/ubuntu.sources" \
@@ -55,6 +55,9 @@ jobs:
               -o APT::Get::List-Cleanup="0"
             sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${pkgs[@]}"
           fi
+
+      - name: Compile application resources
+        run: ./resources/compile_resources.sh
 
       - name: Create virtual environment
         run: |
@@ -134,7 +137,7 @@ jobs:
           fi
           sudo sed -i 's|mirror+file:/etc/apt/apt-mirrors.txt|http://archive.ubuntu.com/ubuntu/|' \
             /etc/apt/sources.list.d/ubuntu.sources
-          pkgs=(python3-venv python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 ffmpeg rubberband-cli xvfb xauth dbus-daemon)
+          pkgs=(python3-venv python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 ffmpeg rubberband-cli xvfb xauth dbus-daemon libglib2.0-bin blueprint-compiler)
           if ! sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${pkgs[@]}"; then
             sudo apt-get update \
               -o Dir::Etc::sourcelist="sources.list.d/ubuntu.sources" \
@@ -142,6 +145,9 @@ jobs:
               -o APT::Get::List-Cleanup="0"
             sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${pkgs[@]}"
           fi
+
+      - name: Compile application resources
+        run: ./resources/compile_resources.sh
 
       - name: Create virtual environment
         run: |

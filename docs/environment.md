@@ -233,6 +233,26 @@ Repository mirroring (GitHub backup, deploy keys) is documented in
 The variables and procedures below are for UI development and automated GTK
 validation. They are not required to run UVR normally.
 
+### Blueprint and resource builds
+
+Static GTK layouts in `resources/ui/*.blp` are compiled to GtkBuilder XML and
+packed with the stylesheet and icons in `ui/data/uvr.gresource`. Install the
+`blueprint-compiler` and GLib resource tools from the distro, then rebuild after
+editing a Blueprint, `resources/style.css`, or an icon:
+
+```bash
+./resources/compile_resources.sh
+```
+
+The script compiles into a temporary directory and replaces the application
+bundle only after every Blueprint and the GResource compile successfully. Set
+`BLUEPRINT_COMPILER=/path/to/blueprint-compiler.py` to use an uninstalled
+official compiler checkout. `install_packages.sh` treats this build as required.
+The source launcher rebuilds a missing or stale bundle before importing the UI;
+an invalid Blueprint therefore stops launch and leaves the prior bundle intact.
+CI installs the Ubuntu `blueprint-compiler` package and performs the same fatal
+build before GTK test discovery.
+
 ### GTK display-backend testing
 
 Choose one display flow for a run; they are deliberately non-overlapping.

@@ -1,0 +1,21 @@
+using Gtk 4.0;
+
+template $ConsoleView: Gtk.ScrolledWindow {
+  hscrollbar-policy: never;
+  vscrollbar-policy: automatic;
+  vexpand: true;
+  propagate-natural-height: false;
+  overflow: hidden;
+
+  child: Gtk.TextView view {
+    buffer: Gtk.TextBuffer buffer {};
+    editable: false;
+    cursor-visible: false;
+    monospace: true;
+    wrap-mode: word_char;
+    left-margin: 8;
+    right-margin: 8;
+    top-margin: 8;
+    bottom-margin: 8;
+  };
+}

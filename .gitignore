@@ -119,6 +119,9 @@ docs/.community_cache/
 
 # Generated GResource manifest (rebuilt by resources/compile_resources.sh)
 resources/uvr.gresource.xml
+# Generated GtkBuilder XML (compiled from resources/ui/*.blp).
+resources/ui/*.ui
+resources/ui/**/*.ui
 # Ignore local .cursor contents but keep the committed Cloud Agent environment.
 .cursor/*
 !.cursor/environment.json

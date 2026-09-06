@@ -1,4 +1,5 @@
 """Load bundled GResource assets (custom icon theme) at startup."""
+
 import os
 import shutil
 import typing
@@ -90,6 +91,30 @@ def _register_bundle() -> bool:
         return False
     _bundle_registered = True
     return True
+
+
+def require_resource_bundle(resource_path: str | None = None) -> None:
+    """Register the mandatory resource bundle without accessing a display.
+
+    Template-backed modules call this before declaring their ``Gtk.Template``
+    classes, so they remain safe to import before ``Gtk.Application`` startup.
+    When *resource_path* is supplied, also verify that the bundle contains that
+    mandatory member before GTK attempts to load it.
+    """
+    if not _register_bundle():
+        raise RuntimeError(
+            f"Required UI resource bundle is unavailable at {_RESOURCE_PATH}. "
+            "Run ./resources/compile_resources.sh to rebuild it."
+        )
+    if resource_path is None:
+        return
+    try:
+        Gio.resources_lookup_data(resource_path, Gio.ResourceLookupFlags.NONE)
+    except GLib.Error as exc:
+        raise RuntimeError(
+            f"Required UI resource {resource_path} is unavailable in {_RESOURCE_PATH}. "
+            "Run ./resources/compile_resources.sh to rebuild it."
+        ) from exc
 
 
 def _register_icon_theme() -> bool:
