@@ -3,9 +3,11 @@
 # baseline mechanism for ratcheting strictness. 1.39.9 tracks pyright 1.1.411.
 basedpyright==1.39.9
 
-# Fast local linting and formatting. This is intentionally not a CI gate while
-# the existing tree-wide lint and formatting backlog is being evaluated.
-ruff==0.16.4
+# Fast local linting and formatting. Local-only policy; formatting has backlog.
+ruff==0.16.6
 
 # GTK/Adw types live in requirements-stubs.txt — they must be installed with
 # --no-deps, so they cannot be listed here.
+
+# Optional local branch reports; no coverage gate or runtime dependency.
+coverage==7.14.2

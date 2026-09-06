@@ -31,14 +31,14 @@ from bundled.constants import (
 from core.settings import Settings
 from core.types import SaveFormat
 from ui.help_text import FLAC_BIT_DEPTH_HINT, OUTPUT_FORMAT_HINT, WAV_TYPE_HINT
+from ui.resources import RESOURCE_PREFIX, require_resource_bundle
 
+from ..protocols import FormatEdit
 from ..settings_bind import enum_value, get_flat, set_flat
 from .rows import set_row_icon
 
-#: Minimum width for the quality dropdown so it doesn't resize when the model
-#: swaps between short ("320k") and long ("32-bit Float") values.
-_QUALITY_MIN_WIDTH = 132
-_FORMAT_MIN_WIDTH = 96
+_TEMPLATE_RESOURCE = f"{RESOURCE_PREFIX}/ui/output_format_row.ui"
+require_resource_bundle(_TEMPLATE_RESOURCE)
 
 FORMATS = (WAV, FLAC, MP3, OPUS)
 
@@ -87,13 +87,6 @@ def quality_spec(save_format: str) -> QualitySpec:
     return _QUALITY_SPECS.get(save_format, _QUALITY_SPECS[WAV])
 
 
-def _dropdown(values: typing.Any, min_width: int) -> Gtk.DropDown:
-    drop = Gtk.DropDown.new_from_strings(list(values))
-    drop.set_valign(Gtk.Align.CENTER)
-    drop.set_size_request(min_width, -1)
-    return drop
-
-
 def _selected_string(drop: Gtk.DropDown) -> Optional[str]:
     # get_selected_item() is typed GObject.Object | None; only Gtk.StringObject
     # carries get_string.
@@ -112,11 +105,17 @@ def _select_string(drop: Gtk.DropDown, value: str) -> bool:
     return False
 
 
+@Gtk.Template(resource_path=_TEMPLATE_RESOURCE)
 class OutputFormatRow(Adw.ActionRow):
     """Output format plus its quality sub-option, side by side in one row."""
 
-    def __init__(self, on_changed: Callable[[], None]):
-        super().__init__(title="Output format")
+    __gtype_name__ = "OutputFormatRow"
+
+    _format_drop: Gtk.DropDown = Gtk.Template.Child("format_drop")
+    _quality_drop: Gtk.DropDown = Gtk.Template.Child("quality_drop")
+
+    def __init__(self, on_changed: Callable[[FormatEdit], None]):
+        super().__init__()
         set_row_icon(self, "waveform-symbolic")
         self._on_changed = on_changed
         self._syncing = False
@@ -128,20 +127,13 @@ class OutputFormatRow(Adw.ActionRow):
         #: in that case.
         self._settings = None
 
-        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        box.set_valign(Gtk.Align.CENTER)
-
-        self._format_drop = _dropdown(FORMATS, _FORMAT_MIN_WIDTH)
+        self._format_drop.set_model(Gtk.StringList.new(list(FORMATS)))
         self._format_drop.set_tooltip_text(OUTPUT_FORMAT_HINT)
         self._format_drop.update_property([Gtk.AccessibleProperty.LABEL], ["Output format"])
         self._format_drop.connect("notify::selected", self._on_format_selected)
-        box.append(self._format_drop)
 
-        self._quality_drop = _dropdown(quality_spec(WAV).values, _QUALITY_MIN_WIDTH)
+        self._quality_drop.set_model(Gtk.StringList.new(list(quality_spec(WAV).values)))
         self._quality_drop.connect("notify::selected", self._on_quality_selected)
-        box.append(self._quality_drop)
-
-        self.add_suffix(box)
         self._apply_quality_labels(WAV)
 
     # -- State ------------------------------------------------------------------
@@ -219,9 +211,9 @@ class OutputFormatRow(Adw.ActionRow):
             self._apply_quality_labels(self.save_format)
         finally:
             self._syncing = False
-        self._on_changed()
+        self._on_changed(FormatEdit.FORMAT)
 
     def _on_quality_selected(self, *_args: typing.Any) -> None:
         if self._syncing:
             return
-        self._on_changed()
+        self._on_changed(FormatEdit.QUALITY)

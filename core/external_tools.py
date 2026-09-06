@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import shutil
 import sys
-from typing import Optional
+from typing import Optional, Protocol, cast
 
 from .paths import BASE_PATH
 
@@ -17,13 +17,17 @@ __all__ = [
     "resolve_rubberband",
 ]
 
+class _FrozenRuntime(Protocol):
+    _MEIPASS: str
+
+
 _TOOLS_LOGGED = False
 
 
 def _bundled_tool(name: str) -> Optional[str]:
     """Return a bundled executable next to ml or the PyInstaller bundle root."""
     if getattr(sys, "frozen", False):
-        base = getattr(sys, "_MEIPASS")
+        base = cast(_FrozenRuntime, sys)._MEIPASS
     else:
         base = os.path.join(BASE_PATH, "ml")
     for candidate in (

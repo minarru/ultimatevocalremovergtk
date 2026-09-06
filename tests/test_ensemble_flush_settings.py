@@ -68,6 +68,14 @@ def _minimal_page(*, settings: Settings | None = None) -> typing.Any:
     page._toast = MagicMock()
     page._ensemble_pair = MagicMock(return_value=Mock(value="Vocals/Instrumental"))
     page._selected_model_tags = MagicMock(return_value=["mdx:a", "mdx:b"])
+    from ui.shared_settings import SharedSettingsSession, shared_settings_bindings
+    page.gpu_row = Mock()
+    page.gpu_row.get_active.return_value = False
+    page._shared_session = SharedSettingsSession(
+        page.settings, shared_settings_bindings(gpu_row=page.gpu_row), can_commit=lambda: True,
+    )
+    page._shared_session.refresh(lambda: None)
+    page.gpu_row.get_active.return_value = True  # a pending real setting edit
     return page
 
 
@@ -79,18 +87,22 @@ class EnsembleFlushSettingsTests(unittest.TestCase):
 
         self.assertEqual(page.settings.process.method, ProcessMethod.ENSEMBLE)
         page._persist_selected_models.assert_called_once()
-        page.vocal_split_row.persist_to_settings.assert_called_once_with(page.settings)
+        self.assertTrue(page.settings.process.use_gpu)
         page.save_stems.persist_to_settings.assert_called_once()
+        self.assertTrue(spec.settings.process.use_gpu)
         self.assertEqual(spec.command, "ensemble")
         self.assertEqual(spec.inputs, ("/tmp/song.wav",))
 
     def test_start_flushes_save_stems(self) -> None:
         page = _minimal_page()
+        observed_gpu = []
+        page.context.runner.start.side_effect = lambda *_args, **_kwargs: observed_gpu.append(page.settings.process.use_gpu)
 
         page.start(MagicMock())
+        self.assertEqual(observed_gpu, [True], "shared edits must reach settings before the runner starts")
 
         page.save_stems.persist_to_settings.assert_called_once()
-        page.vocal_split_row.persist_to_settings.assert_called_once_with(page.settings)
+        self.assertTrue(page.settings.process.use_gpu)
         page._persist_selected_models.assert_called_once()
         page.window.begin_run.assert_called_once_with(page)
         page.context.runner.start.assert_called_once()

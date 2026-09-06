@@ -1,9 +1,8 @@
 """Tests for separator teardown helpers."""
 
 import unittest
-from unittest import mock
-
 from pathlib import Path
+from unittest import mock
 
 from core.inference_cleanup import release_inference_memory, release_separator
 

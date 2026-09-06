@@ -155,7 +155,7 @@ def concat_stems(
             raise ValueError("overlap_samples sequence must have len(parts) - 1 entries")
 
     result = arrays[0]
-    for nxt, ov in zip(arrays[1:], overlaps):
+    for nxt, ov in zip(arrays[1:], overlaps, strict=True):
         result = _crossfade_join(result, nxt, ov)
     return result
 

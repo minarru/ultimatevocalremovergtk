@@ -2,14 +2,19 @@
 
 import unittest
 
-from bundled.constants import DEMUCS_ARCH_TYPE, ENSEMBLE_PARTITION, MDX_ARCH_TYPE, VR_ARCH_PM, VR_ARCH_TYPE
-
+from bundled.constants import (
+    DEMUCS_ARCH_TYPE,
+    ENSEMBLE_PARTITION,
+    MDX_ARCH_TYPE,
+    VR_ARCH_PM,
+    VR_ARCH_TYPE,
+)
 from ui.model_options.applicability import (
     OPEN_CONTEXT_AUDIO_TOOLS,
     OPEN_CONTEXT_ENSEMBLE,
     OPEN_CONTEXT_SEPARATION,
-    applicable_stack_names,
     applicability_banner,
+    applicable_stack_names,
     default_stack_name,
     member_arch_counts,
     should_hide_unused_stacks,

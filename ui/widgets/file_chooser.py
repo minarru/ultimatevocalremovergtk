@@ -5,17 +5,16 @@ file manager via :class:`Gtk.DropTarget` (``Gdk.FileList``) and also open a
 native :class:`Gtk.FileDialog`. Selections are reported through an ``on_changed``
 callback so the window can persist them to the settings model.
 """
-import typing
 
 import os
+import typing
 from typing import AbstractSet, Callable, List, Optional, Sequence
 
 from gi.repository import Adw, Gdk, GLib, Gtk
 
-from ..gtk_narrow import file_paths, root_window
-
 from core.audio_formats import expand_audio_paths
 
+from ..gtk_narrow import file_paths, root_window
 from ..help_text import (
     CLEAR_INPUT_FILES_HINT,
     REMOVE_FROM_LIST_HINT,
@@ -23,6 +22,7 @@ from ..help_text import (
 )
 from ..hints import set_icon_button_a11y
 from ..markup import set_row_subtitle, set_row_title
+from ..resources import RESOURCE_PREFIX, require_resource_bundle
 from ..shared_settings import (
     INPUT_FILES_WARN,
     export_path_blocked_reason,
@@ -30,13 +30,12 @@ from ..shared_settings import (
     input_paths_blocked_reason,
     sanitize_input_paths,
 )
+from ..template import load_builder, object_from_builder
 from .file_dialogs import (
     audio_open_dialog,
     folder_dialog,
     is_dialog_dismissed,
 )
-
-_AUDIO_HINT = "audio-x-generic-symbolic"
 
 
 def merge_input_paths(existing: Sequence[str], added: Sequence[str]) -> List[str]:
@@ -50,9 +49,7 @@ def merge_input_paths(existing: Sequence[str], added: Sequence[str]) -> List[str
     return merged
 
 
-def expander_state(
-    path_count: int, *, was_expanded: bool, preserve: bool
-) -> tuple[bool, bool]:
+def expander_state(path_count: int, *, was_expanded: bool, preserve: bool) -> tuple[bool, bool]:
     """Return ``(enable_expansion, expanded)`` for a ``path_count``-file selection.
 
     One file is fully summarized by the header, so expansion is disabled below
@@ -78,7 +75,13 @@ def output_subtitle(path: str, reason: Optional[str]) -> tuple[str, bool]:
 # Re-export for call sites / tests that historically imported from here.
 expand_dropped_paths = expand_audio_paths
 
+_INPUT_TEMPLATE_RESOURCE = f"{RESOURCE_PREFIX}/ui/input_files_row.ui"
+_OUTPUT_TEMPLATE_RESOURCE = f"{RESOURCE_PREFIX}/ui/output_folder_row.ui"
+require_resource_bundle(_INPUT_TEMPLATE_RESOURCE)
+require_resource_bundle(_OUTPUT_TEMPLATE_RESOURCE)
 
+
+@Gtk.Template(resource_path=_INPUT_TEMPLATE_RESOURCE)
 class InputFilesRow(Adw.ExpanderRow):
     """Expandable row listing the selected input audio file(s) with drop support.
 
@@ -86,6 +89,11 @@ class InputFilesRow(Adw.ExpanderRow):
     expanding reveals one child row per file (basename + full path) with a remove
     button, so individual files can be dropped without re-picking everything.
     """
+
+    __gtype_name__ = "InputFilesRow"
+
+    _clear_button: Gtk.Button = Gtk.Template.Child("clear_button")
+    _open_button: Gtk.Button = Gtk.Template.Child("open_button")
 
     def __init__(
         self,
@@ -95,7 +103,7 @@ class InputFilesRow(Adw.ExpanderRow):
         accept_any_getter: Optional[Callable[[], bool]] = None,
         initial_folder_getter: Optional[Callable[[], Optional[str]]] = None,
     ):
-        super().__init__(title="Input")
+        super().__init__()
         if hasattr(self, "set_use_markup"):
             self.set_use_markup(False)
         self._on_changed = on_changed
@@ -105,20 +113,11 @@ class InputFilesRow(Adw.ExpanderRow):
         self.paths: List[str] = []
         self._file_rows: List[Gtk.Widget] = []
 
-        icon = Gtk.Image(icon_name=_AUDIO_HINT)
-        self.add_prefix(icon)
-
-        self._clear_button = Gtk.Button(icon_name="user-trash-symbolic", valign=Gtk.Align.CENTER)
         set_icon_button_a11y(self._clear_button, CLEAR_INPUT_FILES_HINT)
-        self._clear_button.add_css_class("flat")
         self._clear_button.connect("clicked", self._on_clear_clicked)
-        self.add_suffix(self._clear_button)
 
-        button = Gtk.Button(icon_name="document-open-symbolic", valign=Gtk.Align.CENTER)
-        set_icon_button_a11y(button, "Add input audio files")
-        button.add_css_class("flat")
-        button.connect("clicked", self._on_clicked)
-        self.add_suffix(button)
+        set_icon_button_a11y(self._open_button, "Add input audio files")
+        self._open_button.connect("clicked", self._on_clicked)
 
         drop = Gtk.DropTarget.new(Gdk.FileList, Gdk.DragAction.COPY)
         drop.connect("enter", self._on_drop_enter)
@@ -133,7 +132,7 @@ class InputFilesRow(Adw.ExpanderRow):
             return False
         try:
             return bool(self._accept_any_getter())
-        except Exception:  # noqa: BLE001
+        except Exception:
             return False
 
     def _initial_folder(self) -> Optional[str]:
@@ -142,7 +141,7 @@ class InputFilesRow(Adw.ExpanderRow):
         if self._initial_folder_getter is not None:
             try:
                 return self._initial_folder_getter()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 return None
         return None
 
@@ -179,9 +178,7 @@ class InputFilesRow(Adw.ExpanderRow):
         *,
         unreadable_paths: Optional[AbstractSet[str]] = None,
     ) -> Optional[str]:
-        return input_paths_blocked_reason(
-            self.paths, unreadable_paths=unreadable_paths
-        )
+        return input_paths_blocked_reason(self.paths, unreadable_paths=unreadable_paths)
 
     def _emit_toast(self, message: str) -> None:
         if self._on_toast is not None:
@@ -223,22 +220,19 @@ class InputFilesRow(Adw.ExpanderRow):
         if len(self.paths) <= 1:
             return
         for path in self.paths:
-            row = Adw.ActionRow()
+            builder = load_builder("input_file_row")
+            row = object_from_builder(builder, "input_file_row", Adw.ActionRow)
+            remove = object_from_builder(builder, "remove_button", Gtk.Button)
             set_row_title(row, os.path.basename(path))
             set_row_subtitle(row, path)
             row.set_tooltip_text(path)
-            remove = Gtk.Button(icon_name="window-close-symbolic", valign=Gtk.Align.CENTER)
             set_icon_button_a11y(remove, f"{REMOVE_FROM_LIST_HINT}: {os.path.basename(path)}")
-            remove.add_css_class("flat")
             remove.connect("clicked", self._on_remove_clicked, path)
-            row.add_suffix(remove)
             self.add_row(row)
             self._file_rows.append(row)
 
     def _on_remove_clicked(self, _button: Gtk.Button, path: str) -> None:
-        self.set_paths(
-            [p for p in self.paths if p != path], preserve_expansion=True
-        )
+        self.set_paths([p for p in self.paths if p != path], preserve_expansion=True)
 
     def _on_clear_clicked(self, _button: Gtk.Button) -> None:
         if self.paths:
@@ -278,23 +272,27 @@ class InputFilesRow(Adw.ExpanderRow):
         return True
 
 
+@Gtk.Template(resource_path=_OUTPUT_TEMPLATE_RESOURCE)
 class OutputFolderRow(Adw.ActionRow):
     """Row holding the export directory with drop support."""
 
-    def __init__(self, on_changed: Callable[[], None], on_toast: Optional[Callable[[str], None]] = None):
-        super().__init__(title="Output folder", icon_name="folder-symbolic")
+    __gtype_name__ = "OutputFolderRow"
+
+    _open_button: Gtk.Button = Gtk.Template.Child("open_button")
+
+    def __init__(
+        self, on_changed: Callable[[], None], on_toast: Optional[Callable[[str], None]] = None
+    ):
+        super().__init__()
         if hasattr(self, "set_use_markup"):
             self.set_use_markup(False)
         self._on_changed = on_changed
         self._on_toast = on_toast
         self.path: str = ""
 
-        button = Gtk.Button(icon_name="document-open-symbolic", valign=Gtk.Align.CENTER)
-        set_icon_button_a11y(button, SELECT_OUTPUT_FOLDER_HINT)
-        button.add_css_class("flat")
-        button.connect("clicked", self._on_clicked)
-        self.add_suffix(button)
-        self.set_activatable_widget(button)
+        set_icon_button_a11y(self._open_button, SELECT_OUTPUT_FOLDER_HINT)
+        self._open_button.connect("clicked", self._on_clicked)
+        self.set_activatable_widget(self._open_button)
 
         drop = Gtk.DropTarget.new(Gdk.FileList, Gdk.DragAction.COPY)
         drop.connect("enter", self._on_drop_enter)

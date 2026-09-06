@@ -1,10 +1,10 @@
 """Download Center entry point, manual dialog, and shared download services."""
 
 from __future__ import annotations
-import typing
 
 import os
 import threading
+import typing
 
 from gi.repository import Adw, GLib, Gtk
 
@@ -24,8 +24,18 @@ from core.download_status import (
 )
 from core.downloads import DownloadManager
 
+from .lifetime import UiLifetime
+
+if typing.TYPE_CHECKING:
+    from .context import AppContext
+    from .window import MainWindow
+
+from .dialogs.utils import (
+    configure_dialog_width,
+    present_modal_dialog,
+)
 from .dispatch import idle_on_main, latest_main_thread
-from .dialogs.utils import configure_dialog_width, fill_dialog_width, present_modal_dialog, set_dialog_content
+from .download_center import DownloadCenterWindow
 from .files import open_folder_in_file_manager, open_uri_in_browser
 from .help_text import OPEN_INSTALL_FOLDER_HINT
 from .hints import set_icon_button_a11y
@@ -34,15 +44,13 @@ from .notifications import (
     NOTIFY_DOWNLOAD_FAILED,
     send_desktop_notification,
 )
-from .download_center import DownloadCenterWindow
+from .template import load_builder, object_from_builder
 from .widgets.download_queue_indicator import DownloadQueueIndicator
 
 
 def download_batch_message(items: typing.Any) -> tuple[str, bool]:
     """Summarize terminal download outcomes for an honest in-app toast."""
-    ready = sum(
-        1 for item in items if item.status in (STATUS_COMPLETE, STATUS_EXISTS)
-    )
+    ready = sum(1 for item in items if item.status in (STATUS_COMPLETE, STATUS_EXISTS))
     failed = sum(1 for item in items if item.status == STATUS_FAILED)
     cancelled = sum(1 for item in items if item.status == STATUS_CANCELLED)
     if failed:
@@ -65,31 +73,12 @@ def download_batch_message(items: typing.Any) -> tuple[str, bool]:
     return "Downloads finished", False
 
 
-def _get_manager(app_context: typing.Any) -> DownloadManager:
-    manager = getattr(app_context, "download_manager", None)
-    if isinstance(manager, DownloadManager):
-        return manager
-    existing = getattr(app_context, "_download_manager", None)
-    if existing is None:
-        existing = DownloadManager()
-        setattr(app_context, "_download_manager", existing)
-    return existing
-
-
-def _get_queue(app_context: typing.Any, manager: DownloadManager) -> DownloadQueue:
-    queue = getattr(app_context, "_download_queue", None)
-    if queue is None:
-        queue = DownloadQueue(manager, on_changed=lambda: None, repo=app_context.repo)
-        setattr(app_context, "_download_queue", queue)
-    return queue
-
-
 def _send_download_notifications(
     app: typing.Any,
     settings: typing.Any,
     queue: DownloadQueue,
     *,
-    items: typing.Any=None,
+    items: typing.Any = None,
 ) -> None:
     items = queue.items() if items is None else list(items)
     complete = sum(1 for item in items if item.status == "complete")
@@ -97,8 +86,7 @@ def _send_download_notifications(
     failed = sum(1 for item in items if item.status == "failed")
     debug(
         "download",
-        "download notification "
-        f"complete={complete} exists={existed} failed={failed}",
+        f"download notification complete={complete} exists={existed} failed={failed}",
     )
     if failed:
         if failed == 1:
@@ -132,48 +120,56 @@ def _send_download_notifications(
         )
 
 
-def init_download_queue_ui(main_window: typing.Any, app_context: typing.Any) -> DownloadQueueIndicator:
-    """Wire the header download indicator and app-level queue callbacks.
+class DownloadQueueUiBinding:
+    """Own the cached browser and the queue's current UI callback deliveries."""
 
-    Batch completion is aggregate UI only. Model publication is per item, owned
-    by the queue's finalizer, and reaches the widgets through the repository
-    event -- a batch-level refresh callback here would repaint late and once.
-    """
-    manager = _get_manager(app_context)
-    queue = _get_queue(app_context, manager)
-    indicator = getattr(main_window, "_download_queue_indicator", None)
-    if indicator is None:
-        indicator = DownloadQueueIndicator()
-        main_window._download_queue_indicator = indicator
-    indicator.bind(queue)
-    app_context._download_queue_indicator = indicator
-    terminal_statuses = {
-        STATUS_CANCELLED,
-        STATUS_COMPLETE,
-        STATUS_EXISTS,
-        STATUS_FAILED,
-    }
-    reported_terminal_ids: set[str] = {
-        item.item_id
-        for item in queue.items()
-        if item.status in terminal_statuses
-    }
+    terminal_statuses = {STATUS_CANCELLED, STATUS_COMPLETE, STATUS_EXISTS, STATUS_FAILED}
 
-    def refresh() -> None:
-        indicator.refresh()
+    def __init__(self, main_window: MainWindow, app_context: AppContext):
+        self.window = main_window
+        self.context = app_context
+        self.queue = app_context.download_queue
+        self.indicator = main_window._download_queue_indicator
+        self.center: DownloadCenterWindow | None = None
+        self._lifetime = UiLifetime()
+        self.indicator.bind(self.queue, owner=self)
+        # retry() retains the item ID but replaces its stop event for each
+        # attempt. Keep that object as a durable attempt token: intermediate
+        # queued/downloading UI deliveries can be coalesced away.
+        self.reported_terminal_attempts = {
+            item.item_id: item.stop_event
+            for item in self.queue.items() if item.status in self.terminal_statuses
+        }
+        self._changed_callback = latest_main_thread(self.refresh)
+        self._batch_callback = lambda: idle_on_main(self.after_batch)
+        self.queue.set_on_changed(self._changed_callback)
+        self.queue.set_on_batch_complete(self._batch_callback)
+        self._changed_callback()
 
-    schedule_refresh = latest_main_thread(refresh)
+    def refresh(self) -> None:
+        if not self._lifetime.disposed:
+            self.indicator.refresh()
 
-    def after_batch() -> None:
+    def after_batch(self) -> None:
+        if self._lifetime.disposed:
+            return
+        queue = self.queue
+        indicator = self.indicator
+        reported_terminal_attempts = self.reported_terminal_attempts
+        terminal_statuses = self.terminal_statuses
+        main_window = self.window
+        app_context = self.context
         batch_items = [
             item
             for item in queue.items()
             if item.status in terminal_statuses
-            and item.item_id not in reported_terminal_ids
+            and reported_terminal_attempts.get(item.item_id) is not item.stop_event
         ]
-        reported_terminal_ids.update(item.item_id for item in batch_items)
+        if not batch_items:
+            return
+        reported_terminal_attempts.update((item.item_id, item.stop_event) for item in batch_items)
         indicator.on_batch_complete()
-        center = getattr(app_context, "_download_center_window", None)
+        center = self.center
         if center is not None:
             center.refresh_after_downloads()
         message, needs_attention = download_batch_message(batch_items)
@@ -192,8 +188,40 @@ def init_download_queue_ui(main_window: typing.Any, app_context: typing.Any) -> 
             items=batch_items,
         )
 
-    queue.set_on_changed(schedule_refresh)
-    queue.set_on_batch_complete(lambda: idle_on_main(after_batch))
+    def present_center(self) -> DownloadCenterWindow:
+        if self.center is None:
+            self.center = DownloadCenterWindow(
+                self.window, self.context, self.context.download_manager, self.queue
+            )
+        self.center.present()
+        return self.center
+
+    def dispose(self) -> None:
+        if self._lifetime.disposed:
+            return
+        self._lifetime.dispose()
+        self.queue.clear_callbacks(
+            on_changed=self._changed_callback, on_batch_complete=self._batch_callback
+        )
+        if self.center is not None:
+            self.center.dispose()
+        self.indicator.dispose(owner=self)
+
+
+def init_download_queue_ui(
+    main_window: MainWindow, app_context: AppContext
+) -> DownloadQueueIndicator:
+    prior = main_window._download_ui
+    center = None
+    if prior is not None:
+        # Transfer the cache before releasing the old UI binding. Rebinding
+        # callbacks has never meant closing the retained browser.
+        center, prior.center = prior.center, None
+        prior.dispose()
+    binding = DownloadQueueUiBinding(main_window, app_context)
+    binding.center = center
+    main_window._download_ui = binding
+    queue, indicator = binding.queue, binding.indicator
     if os.environ.get("UVR_DEBUG_QUEUE"):
         _seed_debug_queue(queue)
     chip_debug_scenarios = parse_chip_debug_scenarios()
@@ -201,7 +229,6 @@ def init_download_queue_ui(main_window: typing.Any, app_context: typing.Any) -> 
         _start_chip_debug_cycle(queue, indicator, chip_debug_scenarios)
     if os.environ.get("UVR_DEBUG_QUEUE_POPUP"):
         _auto_open_popover(main_window, indicator)
-    schedule_refresh()
     return indicator
 
 
@@ -221,9 +248,7 @@ def _auto_open_popover(main_window: typing.Any, indicator: DownloadQueueIndicato
             handler_id[0] = None
 
     handler_id = [None]
-    handler_id[0] = main_window.connect(
-        "map", lambda *_a: idle_on_main(open_once)
-    )
+    handler_id[0] = main_window.connect("map", lambda *_a: idle_on_main(open_once))
 
 
 def _seed_debug_queue(queue: DownloadQueue) -> None:
@@ -252,7 +277,7 @@ def _seed_debug_queue(queue: DownloadQueue) -> None:
         )
         for index, (name, arch, status, progress, detail) in enumerate(samples)
     ]
-    with queue._lock:  # noqa: SLF001 - dev-only seeding of the shared queue
+    with queue._lock:  # dev-only seeding of the shared queue
         queue._items.extend(items)
     debug("download", f"seeded debug queue with {len(items)} items")
 
@@ -322,10 +347,10 @@ def chip_debug_items_for(scenario: str) -> list[DownloadQueueItem]:
 
 
 def _replace_queue_items(queue: DownloadQueue, items: list[DownloadQueueItem]) -> None:
-    with queue._lock:  # noqa: SLF001 - dev-only queue seeding
+    with queue._lock:  # dev-only queue seeding
         queue._items.clear()
         queue._items.extend(items)
-    queue._notify()  # noqa: SLF001 - dev-only queue seeding
+    queue._notify()  # dev-only queue seeding
 
 
 def _start_chip_debug_cycle(
@@ -340,7 +365,7 @@ def _start_chip_debug_cycle(
     Interval seconds: ``UVR_DEBUG_QUEUE_CHIP_INTERVAL`` (default 4).
     """
     interval_s = max(1, int(os.environ.get("UVR_DEBUG_QUEUE_CHIP_INTERVAL", "4")))
-    indicator._sticky = True  # noqa: SLF001 - dev-only sticky chip
+    indicator._sticky = True  # dev-only sticky chip
     index = 0
 
     def apply_scenario() -> None:
@@ -372,7 +397,7 @@ def start_download_size_cache_warmup(app_context: typing.Any) -> None:
     app_context._size_cache_warmup_started = True
 
     def worker() -> None:
-        manager = _get_manager(app_context)
+        manager = app_context.download_manager
         if manager.ensure_catalogues():
             manager.schedule_size_cache_warmup()
         else:
@@ -396,18 +421,11 @@ def open_download_center(
     shortcut so an already-open window is not reset.
     """
     start_download_size_cache_warmup(app_context)
-    center = getattr(app_context, "_download_center_window", None)
-    if center is None:
-        manager = _get_manager(app_context)
-        queue = _get_queue(app_context, manager)
-        center = DownloadCenterWindow(
-            parent_window,
-            app_context,
-            manager,
-            queue,
-        )
-        app_context._download_center_window = center
-    center.present()
+    if parent_window._download_ui is None:
+        init_download_queue_ui(parent_window, app_context)
+    binding = parent_window._download_ui
+    assert binding is not None
+    center = binding.present_center()
     if purpose is not None or arch is not None:
         center.select_catalogue(purpose=purpose, arch=arch)
     return center
@@ -417,16 +435,15 @@ def open_download_center(
 # Manual downloads dialog
 # ---------------------------------------------------------------------------
 
+
 def open_manual_downloads(parent: typing.Any, app_context: typing.Any):
-    manager = _get_manager(app_context)
+    manager = app_context.download_manager
     data = manager.manual_download_rows()
 
-    dialog = Adw.Dialog()
-    dialog.set_title("Manual downloads")
+    builder = load_builder("manual-downloads")
+    dialog = object_from_builder(builder, "dialog", Adw.Dialog)
     configure_dialog_width(dialog, parent, fallback=520)
-    dialog.set_content_height(560)
-
-    page = Adw.PreferencesPage()
+    page = object_from_builder(builder, "page", Adw.PreferencesPage)
 
     catalogue = [
         ("VR models", VR_ARCH_TYPE, data["vr"]),
@@ -445,40 +462,30 @@ def open_manual_downloads(parent: typing.Any, app_context: typing.Any):
             row.set_title(manual_row.display)
             links = manual_row.resolve_links()
             for label, url in links:
-                link_row = Adw.ActionRow()
-                link_row.set_use_markup(False)
+                link_builder = load_builder("manual-download-link")
+                link_row = object_from_builder(link_builder, "row", Adw.ActionRow)
                 link_row.set_title(label)
                 link_row.set_subtitle(url)
-                open_button = Gtk.Button(icon_name="adw-external-link-symbolic", valign=Gtk.Align.CENTER)
+                open_button = object_from_builder(link_builder, "open_button", Gtk.Button)
                 set_icon_button_a11y(open_button, f"Open {label} in default browser")
                 open_button.connect(
                     "clicked",
                     lambda _b, u=url: open_uri_in_browser(parent, u),
                 )
-                link_row.add_suffix(open_button)
-                link_row.set_activatable_widget(open_button)
                 row.add_row(link_row)
-            dir_row = Adw.ActionRow()
-            dir_row.set_use_markup(False)
-            dir_row.set_title("Install folder")
-            dir_row.set_subtitle(DownloadManager.model_directory(arch, selectable))
-            dir_button = Gtk.Button(label="Open", valign=Gtk.Align.CENTER)
+            folder_builder = load_builder("manual-download-folder")
+            dir_row = object_from_builder(folder_builder, "row", Adw.ActionRow)
+            install_folder = DownloadManager.model_directory(arch, selectable)
+            dir_row.set_subtitle(install_folder)
+            dir_button = object_from_builder(folder_builder, "open_button", Gtk.Button)
             set_icon_button_a11y(dir_button, OPEN_INSTALL_FOLDER_HINT)
             dir_button.connect(
                 "clicked",
-                lambda _b, d=DownloadManager.model_directory(arch, selectable): open_folder_in_file_manager(
-                    parent, d
-                ),
+                lambda _b, d=install_folder: open_folder_in_file_manager(parent, d),
             )
-            dir_row.add_suffix(dir_button)
             row.add_row(dir_row)
             group.add(row)
         page.add(group)
 
-    scroller = Gtk.ScrolledWindow(propagate_natural_height=False, vexpand=True)
-    fill_dialog_width(scroller)
-    fill_dialog_width(page)
-    scroller.set_child(page)
-    set_dialog_content(dialog, scroller)
     present_modal_dialog(dialog, parent)
     return dialog

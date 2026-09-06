@@ -6,7 +6,7 @@ import functools
 import json
 import os
 import re
-from typing import Any, TYPE_CHECKING, Dict, Iterable, List, Mapping, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Mapping, Optional, Tuple
 
 from bundled.constants import (
     DEMUCS_ARCH_TYPE,
@@ -157,7 +157,7 @@ def resolve_mapper_basename(label: str, name_mapper: Optional[Dict[str, str]]) -
     for file_key, display_name in name_mapper.items():
         if label == display_name:
             return os.path.splitext(file_key)[0]
-    for file_key, display_name in name_mapper.items():
+    for file_key in name_mapper:
         if os.path.splitext(file_key)[0] == label:
             return label
     # Separator- and case-insensitive pass before the substring fallback below,
@@ -166,7 +166,7 @@ def resolve_mapper_basename(label: str, name_mapper: Optional[Dict[str, str]]) -
     for file_key, display_name in name_mapper.items():
         if normalized == _normalize_mapper_label(display_name):
             return os.path.splitext(file_key)[0]
-    for file_key, display_name in name_mapper.items():
+    for file_key in name_mapper:
         if normalized == _normalize_mapper_label(os.path.splitext(file_key)[0]):
             return os.path.splitext(file_key)[0]
     for file_key, display_name in name_mapper.items():

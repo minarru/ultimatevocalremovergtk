@@ -14,11 +14,18 @@ from ui.download_center import DownloadCenterWindow
 
 def _bare_refresh_window() -> DownloadCenterWindow:
     win = object.__new__(DownloadCenterWindow)
+    from ui.catalogue_browser import CatalogueBrowserState
+    win.browser = CatalogueBrowserState()
+    from ui.lifetime import UiLifetime
+    win._lifetime = UiLifetime()
+    win._listening = False
+    win._sort_mode = "name"
+    win._arch_filter = "all"
     win._refreshing = True
     win._catalogue_online = True
     win._catalogue_notice = ""
-    win._available = {MDX_ARCH_TYPE: ["Existing Vocal Model"]}
-    win._unsupported = {}
+    win.browser.available = {MDX_ARCH_TYPE: ["Existing Vocal Model"]}
+    win.browser.unsupported = {}
     win.refresh_button = mock.MagicMock()
     win._refresh_spinner = mock.MagicMock()
     win.status_label = mock.MagicMock()
@@ -32,8 +39,9 @@ def _bare_refresh_window() -> DownloadCenterWindow:
     win._set_catalogue_page_message = mock.MagicMock()
     win._toast = mock.MagicMock()
     win.manager = mock.MagicMock()
-    win._pinned_snapshot = None
-    win._pending_source_delta = False
+    win.manager.latest_snapshot = None
+    win.browser.snapshot = None
+    win.browser.pending_source = False
     return win
 
 
@@ -43,7 +51,7 @@ class RefreshResilienceTests(unittest.TestCase):
 
         win._refresh_done(False, {}, {})
 
-        self.assertEqual(win._available, {MDX_ARCH_TYPE: ["Existing Vocal Model"]})
+        self.assertEqual(win.browser.available, {MDX_ARCH_TYPE: ["Existing Vocal Model"]})
         self.assertIn("showing saved catalogue", win._catalogue_notice)
         cast(Any, win._rebuild_catalogue).assert_called_once_with()
         cast(Any, win._set_catalogue_page_message).assert_not_called()
@@ -81,19 +89,35 @@ class RefreshResilienceTests(unittest.TestCase):
 class MatchingCountTests(unittest.TestCase):
     def test_count_honors_purpose_and_includes_visible_unsupported_rows(self) -> None:
         win = object.__new__(DownloadCenterWindow)
-        win._available = {MDX_ARCH_TYPE: ["Lead Vocal Model", "Karaoke Instrumental Model"]}
-        win._unsupported = {MDX_ARCH_TYPE: [("Future Vocal Model", "needs a newer build")]}
+        from ui.catalogue_browser import CatalogueBrowserState
+        win.browser = CatalogueBrowserState()
+        from ui.lifetime import UiLifetime
+        win._lifetime = UiLifetime()
+        win._listening = False
+        win._sort_mode = "name"
+        win._arch_filter = "all"
+        win.browser.available = {MDX_ARCH_TYPE: ["Lead Vocal Model", "Karaoke Instrumental Model"]}
+        win.browser.unsupported = {MDX_ARCH_TYPE: [("Future Vocal Model", "needs a newer build")]}
         win._hide_unsupported = False
         win._purpose = PURPOSE_VOCALS
         win._arch_filter = ARCH_FILTER_ALL
-        cast(Any, win).manager = SimpleNamespace(catalogue_meta={})
+        cast(Any, win).manager = SimpleNamespace(latest_snapshot=None,catalogue_meta_by_family={},catalogue_meta={})
 
+        from tests.browser_ui_helpers import seed_browser_sources
+        seed_browser_sources(win)
         self.assertEqual(win._matching_count(MDX_ARCH_TYPE, "model"), 2)
 
     def test_purpose_only_filter_reports_the_visible_count(self) -> None:
         win = object.__new__(DownloadCenterWindow)
-        win._available = {MDX_ARCH_TYPE: ["Lead Vocal Model", "Karaoke Model"]}
-        win._unsupported = {}
+        from ui.catalogue_browser import CatalogueBrowserState
+        win.browser = CatalogueBrowserState()
+        from ui.lifetime import UiLifetime
+        win._lifetime = UiLifetime()
+        win._listening = False
+        win._sort_mode = "name"
+        win._arch_filter = "all"
+        win.browser.available = {MDX_ARCH_TYPE: ["Lead Vocal Model", "Karaoke Model"]}
+        win.browser.unsupported = {}
         win._hide_unsupported = False
         win._refreshing = False
         win._purpose = PURPOSE_VOCALS
@@ -108,8 +132,10 @@ class MatchingCountTests(unittest.TestCase):
         search.get_text.return_value = ""
         win._search_entries = {MDX_ARCH_TYPE: search}
         win._search_entry = search
-        cast(Any, win).manager = SimpleNamespace(catalogue_meta={})
+        cast(Any, win).manager = SimpleNamespace(latest_snapshot=None,catalogue_meta_by_family={},catalogue_meta={})
 
+        from tests.browser_ui_helpers import seed_browser_sources
+        seed_browser_sources(win)
         win._update_download_button()
 
         win.status_label.set_label.assert_called_once_with("1 vocals model in MDX-Net")

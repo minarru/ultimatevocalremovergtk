@@ -116,32 +116,35 @@ install_system_deps() {
     if command -v apt-get >/dev/null 2>&1; then
         sudo apt-get update
         sudo apt-get install -y ffmpeg python3-venv python3-pip python3-gi \
-            gir1.2-gtk-4.0 gir1.2-adw-1 libglib2.0-bin libsndfile1 rubberband-cli
+            gir1.2-gtk-4.0 gir1.2-adw-1 libglib2.0-dev-bin blueprint-compiler \
+            libsndfile1 rubberband-cli
     elif command -v dnf >/dev/null 2>&1; then
         sudo dnf install -y ffmpeg python3-pip python3-gobject gtk4 libadwaita \
-            libsndfile rubberband
+            blueprint-compiler libsndfile rubberband
     elif command -v pacman >/dev/null 2>&1; then
         sudo pacman -Syu --needed ffmpeg python-pip python-virtualenv python-gobject \
-            gtk4 libadwaita glib2 libsndfile rubberband
+            gtk4 libadwaita glib2 blueprint-compiler libsndfile rubberband
     elif command -v zypper >/dev/null 2>&1; then
         sudo zypper install -y ffmpeg python3-pip python3-gobject gtk4 libadwaita \
-            libsndfile1 rubberband
+            blueprint-compiler libsndfile1 rubberband
     else
         echo "Unsupported package manager. Install ffmpeg, Python venv/pip, GTK4," >&2
-        echo "libadwaita, PyGObject, libsndfile, and rubberband manually." >&2
+        echo "libadwaita, PyGObject, blueprint-compiler, libsndfile, and rubberband manually." >&2
         exit 1
     fi
 }
 
-# Bundle resources/ (icons + style.css) into ui/data/uvr.gresource.
+# Compile Blueprint layouts and bundle resources into ui/data/uvr.gresource.
 compile_gresources() {
     local script="${PROJECT_ROOT}/resources/compile_resources.sh"
     if [[ ! -x "${script}" ]]; then
         chmod +x "${script}" 2>/dev/null || true
     fi
-    if [[ -x "${script}" ]]; then
-        "${script}" || echo "Warning: could not compile GResource icons (see above)." >&2
+    if [[ ! -x "${script}" ]]; then
+        echo "Resource compiler not found or not executable: ${script}" >&2
+        return 1
     fi
+    "${script}"
 }
 
 # Owning user of the venv directory (empty if it doesn't exist / can't stat).

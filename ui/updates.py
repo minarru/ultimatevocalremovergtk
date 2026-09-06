@@ -6,77 +6,49 @@ Codeberg for a newer source release. Upgrade is documented on the release page
 
 Entry point: :func:`open_update_view` (wire to a ``win.updates`` action).
 """
-import typing
 
 import threading
+import typing
 
 from gi.repository import Adw, Gtk
 
 from bundled.constants import FORK_RELEASE_PAGE, LOADING_VERSION_INFO_TEXT
 from core.downloads import DownloadManager
 
-from .dialogs.utils import present_modal_dialog, set_dialog_content
+from .dialogs.utils import present_modal_dialog
 from .dispatch import idle_on_main
 from .files import open_uri_in_browser
+from .template import load_builder, object_from_builder
 
 
 def _get_manager(app_context: typing.Any) -> DownloadManager:
     if app_context is None:
         return DownloadManager()
-    manager = getattr(app_context, "download_manager", None)
-    if isinstance(manager, DownloadManager):
-        return manager
-    existing = getattr(app_context, "_download_manager", None)
-    if existing is None:
-        existing = DownloadManager()
-        setattr(app_context, "_download_manager", existing)
-    return existing
+    return app_context.download_manager
 
 
 class UpdateView:
-    def __init__(self, parent: typing.Any, app_context: typing.Any=None):
+    def __init__(self, parent: typing.Any, app_context: typing.Any = None):
         self.parent = parent
         self.context = app_context
         self.manager = _get_manager(app_context)
         self._update_link = FORK_RELEASE_PAGE
 
-        self.dialog = Adw.Dialog()
-        self.dialog.set_title("Application Version")
-        self.dialog.set_content_width(480)
-        self.dialog.set_follows_content_size(True)
-
-        page = Adw.PreferencesPage()
-
+        builder = load_builder("update-view")
+        self.dialog = object_from_builder(builder, "dialog", Adw.Dialog)
         status = self.manager.update_status()
-        version_group = Adw.PreferencesGroup(title="Application Version")
-        version_group.add(
-            Adw.ActionRow(title="Version", subtitle=str(status["version"] or "unknown"))
-        )
+        version_row = object_from_builder(builder, "version_row", Adw.ActionRow)
+        version_row.set_subtitle(str(status["version"] or "unknown"))
+        upstream_row = object_from_builder(builder, "upstream_row", Adw.ActionRow)
         if status.get("upstream_base"):
-            version_group.add(
-                Adw.ActionRow(
-                    title="Based on",
-                    subtitle=str(status["upstream_base"]),
-                )
-            )
-        page.add(version_group)
-
-        update_group = Adw.PreferencesGroup(title="Updates")
-        self.status_row = Adw.ActionRow(title="Status", subtitle=LOADING_VERSION_INFO_TEXT)
-        update_group.add(self.status_row)
-
-        self.upgrade_row = Adw.ActionRow(title="Upgrade")
-        self.upgrade_row.set_visible(False)
-        update_group.add(self.upgrade_row)
-
-        self.update_row = Adw.ActionRow(title="Get the latest version")
-        self.update_button = Gtk.Button(label="Check again", valign=Gtk.Align.CENTER)
+            upstream_row.set_subtitle(str(status["upstream_base"]))
+            upstream_row.set_visible(True)
+        self.status_row = object_from_builder(builder, "status_row", Adw.ActionRow)
+        self.status_row.set_subtitle(LOADING_VERSION_INFO_TEXT)
+        self.upgrade_row = object_from_builder(builder, "upgrade_row", Adw.ActionRow)
+        self.update_row = object_from_builder(builder, "update_row", Adw.ActionRow)
+        self.update_button = object_from_builder(builder, "update_button", Gtk.Button)
         self.update_button.connect("clicked", self._on_check_or_update)
-        self.update_row.add_suffix(self.update_button)
-        update_group.add(self.update_row)
-        page.add(update_group)
-
-        set_dialog_content(self.dialog, page)
 
     def present(self) -> None:
         present_modal_dialog(self.dialog, self.parent)
@@ -121,7 +93,7 @@ class UpdateView:
             open_uri_in_browser(self.parent, self._update_link)
 
 
-def open_update_view(parent_window: typing.Any, app_context: typing.Any=None):
+def open_update_view(parent_window: typing.Any, app_context: typing.Any = None):
     """Open the version / update view. Wire this to a ``win.updates`` action."""
     view = UpdateView(parent_window, app_context)
     view.present()

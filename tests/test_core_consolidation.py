@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import os
 import tempfile
-import unittest
 import threading
+import unittest
+from dataclasses import FrozenInstanceError
 from unittest.mock import Mock, patch
 
-from bundled.constants import MDX_ARCH_TYPE
 from core.input_discovery import InputDiscoveryPolicy, InputDiscoveryService
 from core.job_plan import JobResolver, JobSpec, ValidationLevel
 from core.settings import Settings
@@ -82,7 +82,6 @@ class IdentityServiceTests(unittest.TestCase):
             barrier.wait()
             results.append(context.repo)
 
-        from unittest.mock import patch
 
         with patch("ui.context.ModelRepository", side_effect=make_repo), patch(
             "core.model_hash_cache.flatten_trusted", return_value={}
@@ -130,7 +129,7 @@ class JobPlanTests(unittest.TestCase):
             self.assertEqual(plan.inventory_generation, 4)
             self.assertEqual(plan.models[0].id, "mdx:model_a")
             self.assertEqual(len(plan.inputs[0].outputs), 2)
-            with self.assertRaises(Exception):
+            with self.assertRaises(FrozenInstanceError):
                 plan.command = "ensemble"  # type: ignore[misc]
 
 

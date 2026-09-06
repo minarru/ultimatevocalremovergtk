@@ -6,7 +6,6 @@ from core.download_queue import DownloadQueueItem
 from ui.widgets.download_queue_icons import (
     ICON_CANCEL,
     ICON_CANCELLED,
-    ICON_FAILED,
     ICON_ROW_SUCCESS,
 )
 from ui.widgets.download_queue_indicator import (

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 import os
-from typing import List, Optional, Tuple
+from typing import List, Tuple
 
 from . import paths
 from .apollo import checkpoint_md5

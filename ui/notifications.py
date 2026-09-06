@@ -1,8 +1,8 @@
 """Desktop notification helpers with per-type settings gates."""
 
 from __future__ import annotations
-import typing
 
+import typing
 from typing import Optional
 
 from gi.repository import Gio, GLib, Gtk
@@ -64,7 +64,7 @@ def send_desktop_notification(
         icon_name = _NOTIFY_ICONS.get(ident, APP_ID)
         try:
             notification.set_icon(Gio.ThemedIcon.new(icon_name))
-        except Exception:  # noqa: BLE001 - icon is best-effort
+        except Exception:  # icon is best-effort
             pass
         if output_dir:
             target = GLib.Variant("s", output_dir)
@@ -75,5 +75,5 @@ def send_desktop_notification(
             )
         app.send_notification(ident, notification)
         debug("download", f"notification sent ident={ident} title={title!r}")
-    except Exception as exc:  # noqa: BLE001 - notifications must never break the UI
+    except Exception as exc:  # notifications must never break the UI
         debug("download", f"notification failed ident={ident} err={type(exc).__name__}: {exc}")

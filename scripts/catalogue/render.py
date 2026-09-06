@@ -11,19 +11,13 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Sequence, Tuple
 
-from catalogue.collect import (
-    COMMUNITY_CACHE_DIR,
-    REFERENCE_TSV_PATH,
-    ROOT,
-    YAML_CACHE_DIR,
-    CommunityRef,
-    ModelEntry,
-    catalogue_projection,
-)
+from catalogue import locations
+from catalogue.evidence import catalogue_projection
+from catalogue.types import CommunityRef, ModelEntry
 from core.model_naming import load_model_display_manifest
 
 if TYPE_CHECKING:
-    from catalogue.stem_audit import StemSemanticReferenceRow
+    from catalogue.audit_types import StemSemanticReferenceRow
 
 
 def _reference_tsv_text(refs: Dict[str, CommunityRef]) -> str:
@@ -234,7 +228,7 @@ def stem_semantics_reference_tsv(
     rows: Sequence[StemSemanticReferenceRow],
 ) -> str:
     """Serialize immutable audit-owned rows without resolving declarations."""
-    from catalogue.stem_audit import (
+    from catalogue.audit_types import (
         STEM_SEMANTICS_IDENTITY_HEADERS,
         STEM_SEMANTICS_REFERENCE_HEADERS,
     )
@@ -517,7 +511,7 @@ def _render(
         "",
         "Intent sources: catalogue label, YAML metadata, and community",
         "[upseem/uvr5-cli-no-ui models.txt](https://github.com/upseem/uvr5-cli-no-ui/blob/main/models.txt)",
-        f"(cached as `{os.path.relpath(REFERENCE_TSV_PATH, ROOT)}`).",
+        f"(cached as `{os.path.relpath(locations.REFERENCE_TSV_PATH, locations.ROOT)}`).",
         "",
         "## How to read this",
         "",
@@ -767,8 +761,8 @@ def _provenance_lines(report: Any) -> List[str]:
     lines.append(f"- Source upstream live: {bool(getattr(report, 'upstream_live', False))}")
 
     for label, cache_dir in (
-        ("community", COMMUNITY_CACHE_DIR),
-        ("yaml", YAML_CACHE_DIR),
+        ("community", locations.COMMUNITY_CACHE_DIR),
+        ("yaml", locations.YAML_CACHE_DIR),
     ):
         lines.append(f"- Cache {label}: {_cache_age_text(cache_dir)}")
     lines.append("")

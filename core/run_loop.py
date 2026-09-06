@@ -287,7 +287,7 @@ def with_worker_lifecycle(
         callbacks.console(PROCESS_STOPPED_BY_USER)
         callbacks.stopped()
         _release_inference_resources(runner)
-    except Exception as exc:  # noqa: BLE001 - surfaced through the callback
+    except Exception as exc:  # surfaced through the callback
         if runner._is_stopped:
             debug("worker", f"{label} stopped during error path")
             callbacks.console(PROCESS_STOPPED_BY_USER)

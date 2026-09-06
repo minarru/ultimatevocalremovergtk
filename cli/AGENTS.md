@@ -10,7 +10,7 @@ The command-line front end. A presentation layer, exactly like `ui/`.
   value)` pairs and flow through `SettingsResolver`; `--set` is the last CLI
   layer.
 - **Read-only listing passes `allow_network=False` into catalogue helpers.**
-  Display resolution can otherwise fetch remote metadata through compatibility helpers.
+  Resolving display names may otherwise fetch remote metadata.
 - **Planning / validate / identity** use
   `access_policy(allow_network=False, allow_metadata_writes=False)` /
   `mdx_c_network(False)`, not `catalogue_offline()`. Downloads default online.
@@ -20,7 +20,9 @@ The command-line front end. A presentation layer, exactly like `ui/`.
 - **Diagnostics never own stdout.** Route structured diagnostics through
   `core.debug_log`; JSON/JSONL stdout remains machine-readable. `--verbose`
   prints the effective plan and is independent from `--debug` / `--trace`.
-- **Ctrl-C is cooperative then forced.** `run_runner_cli` in `cli/execution.py` owns SIGINT/SIGTERM handlers and restores them in `finally`; `core.blocking_runner.run_blocking` captures `KeyboardInterrupt`.
+- **Ctrl-C is cooperative then forced.** `cli.execution.run_runner_cli` owns
+  signal installation and restores previous SIGINT/SIGTERM handlers in `finally`.
+  `core.blocking_runner.run_blocking` captures runner exceptions and interruptions.
 - **Clean defaults are the implicit profile.** GUI state is read only through
   `--profile gui`; named profiles are sparse and never write back to the GUI.
 - **Models own their family.** Public IDs are `vr:`, `mdx:`, `demucs:`, or
@@ -37,7 +39,8 @@ The command-line front end. A presentation layer, exactly like `ui/`.
 - **Dry runs verify model files but have no run-side effects.** They hash and
   resolve checkpoint metadata, but do not load weights, create output, check
   heavy runtime dependencies, or start a runner.
-- **CLI `run_batch` calls `JobRunner.start_resolved` once per input.** Models
+- **CLI `run_batch` calls `JobRunner.start_resolved` once per input.** The core
+  API also supports multiple planned inputs. Models
   assemble once and are reused; `run_batch` runs each planned input on its own
   staging directory and promotes it before starting the next, so a mid-batch
   death keeps what already finished. Promotion follows `--on-exists` under a
@@ -56,3 +59,20 @@ The command-line front end. A presentation layer, exactly like `ui/`.
 ```bash
 .venv/bin/python -m unittest discover -s tests -t . -p 'test_cli*.py' -q
 ```
+
+## Command and promotion ownership
+
+`discovery.py` is the parser/command facade. Handlers live under `commands/` by
+model reads, durable model registration, catalogue transfer, ensembles, settings,
+devices and completion. `model_metadata`, `ensemble_rows`, `settings_fields` and
+`formatting` are shared lower providers. Tests patch the handler's actual owner;
+facade import aliases do not forward patches. Shallow model list and detailed
+model show retain different metadata acquisition boundaries.
+
+`promotion_plan.py` owns immutable original entries, output associations and
+suffix remapping. `promotion.py` owns the transaction: fresh occupancy checks,
+no-replace publication, complete-unit retry, overwrite backups and reverse
+rollback. `execution.py` retains the public compatibility imports. Per-directory
+locks serialize threads; filesystem no-replace operations protect other processes.
+`start_resolved` captures its own resolved settings snapshot before the worker;
+callers still construct models with their intended settings.

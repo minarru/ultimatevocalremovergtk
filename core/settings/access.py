@@ -6,8 +6,8 @@ without importing the GTK layer. ``ui.settings_bind`` re-exports these.
 
 from __future__ import annotations
 
-from dataclasses import fields, is_dataclass
 import difflib
+from dataclasses import fields, is_dataclass
 from enum import Enum
 from typing import Any, Iterable
 

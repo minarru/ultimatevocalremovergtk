@@ -95,12 +95,12 @@ class _StubUnpickler(pickle.Unpickler):
     collapses to an inert placeholder. That is all a key diff needs.
     """
 
-    def find_class(self, module: str, name: str) -> Any:  # noqa: D102
+    def find_class(self, module: str, name: str) -> Any:
         if (module, name) == ("collections", "OrderedDict"):
             return _AttrDict
         return lambda *args, **kwargs: None
 
-    def persistent_load(self, pid: Any) -> Any:  # noqa: D102
+    def persistent_load(self, pid: Any) -> Any:
         return None
 
 
@@ -108,7 +108,7 @@ def parse_torch_pickle_keys(data: bytes) -> List[str]:
     """Return the ``state_dict`` keys held in a torch ``data.pkl`` payload."""
     try:
         obj = _StubUnpickler(io.BytesIO(data)).load()
-    except Exception as exc:  # noqa: BLE001 - any malformed pickle is a probe failure
+    except Exception as exc:  # any malformed pickle is a probe failure
         raise ValueError(f"could not read checkpoint pickle: {exc}") from exc
     return _keys_of_state_dict(obj)
 

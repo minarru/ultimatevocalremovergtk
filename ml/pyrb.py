@@ -3,13 +3,12 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
-import sys
 import tempfile
+from typing import Any
 
 import numpy as np
 import six
 import soundfile as sf
-from typing import Any
 
 __all__ = ['time_stretch', 'pitch_shift']
 

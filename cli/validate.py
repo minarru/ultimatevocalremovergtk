@@ -3,16 +3,19 @@
 from __future__ import annotations
 
 import argparse
+
+from core.job_plan import (
+    ValidationLevel,
+)
+from core.job_plan import (
+    format_effective_plan as format_resolved_plan,
+)
+
 from .job import (
     resolve_ensemble_job,
     resolve_separate_job,
 )
 from .reporting import emit_document, fail, report_mode
-
-from core.job_plan import (
-    ValidationLevel,
-    format_effective_plan as format_resolved_plan,
-)
 
 LEVELS = tuple(level.value for level in ValidationLevel)
 

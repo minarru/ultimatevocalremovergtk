@@ -1,0 +1,31 @@
+using Gtk 4.0;
+
+template $UVRDualBatchFileColumn : Gtk.Box {
+  orientation: vertical;
+  spacing: 6;
+  hexpand: true;
+  Gtk.Label header {
+    xalign: 0;
+    styles ["heading"]
+  }
+  Gtk.ScrolledWindow {
+    vexpand: true;
+    hscrollbar-policy: automatic;
+    vscrollbar-policy: automatic;
+    min-content-height: 300;
+    min-content-width: 240;
+    child: Gtk.ListBox listbox {
+      selection-mode: single;
+      styles ["boxed-list"]
+    };
+  }
+  Gtk.Box {
+    orientation: horizontal;
+    spacing: 6;
+    Gtk.Button add_button { label: "Add files"; hexpand: true; }
+    Gtk.Button up_button { icon-name: "go-up-symbolic"; }
+    Gtk.Button down_button { icon-name: "go-down-symbolic"; }
+    Gtk.Button remove_button { icon-name: "list-remove-symbolic"; }
+    Gtk.Button clear_button { icon-name: "edit-clear-all-symbolic"; }
+  }
+}

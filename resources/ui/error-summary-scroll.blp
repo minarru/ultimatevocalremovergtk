@@ -1,0 +1,12 @@
+using Gtk 4.0;
+
+Gtk.ScrolledWindow scroller {
+  hscrollbar-policy: never;
+  vscrollbar-policy: automatic;
+  propagate-natural-height: false;
+  propagate-natural-width: true;
+  hexpand: true;
+  vexpand: false;
+  valign: start;
+  styles ["uvr-error-summary-scroll"]
+}

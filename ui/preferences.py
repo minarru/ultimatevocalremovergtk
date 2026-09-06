@@ -65,7 +65,14 @@ from .help_text import (
 )
 from .hints import set_icon_button_a11y, set_tooltip
 from .settings_bind import enum_value, get_flat, set_flat
-from .widgets.rows import get_combo_value, make_combo_row, set_combo_value
+from .shared_settings import gpu_dependent_enabled
+from .template import load_builder, object_from_builder
+from .widgets.rows import (
+    configure_combo_row,
+    configure_switch_row,
+    get_combo_value,
+    set_combo_value,
+)
 
 _PERSIST_DEBOUNCE_MS = 250
 
@@ -238,172 +245,97 @@ class PreferencesDialog(Adw.PreferencesDialog):
         # Guards programmatic widget updates from being treated as user edits.
         self._loading = False
         self._persist_timeout_id = 0
+        self._catalogue_refresh_generation = 0
 
         self.set_title("Settings")
 
-        self.add(self._build_general_page())
-        self.add(self._build_processing_page())
+        builder = load_builder("preferences")
+        self.add(self._build_general_page(builder))
+        self.add(self._build_processing_page(builder))
 
         self._reload_widgets()
+        from .lifetime import UiLifetime
+
+        self._lifetime = UiLifetime()
         self.connect("closed", self._on_dialog_closed)
 
     # -- Page construction ------------------------------------------------------
 
-    def _build_general_page(self) -> Adw.PreferencesPage:
-        page = Adw.PreferencesPage(title="General", icon_name="emblem-system-symbolic")
+    def _build_general_page(self, builder: Gtk.Builder) -> Adw.PreferencesPage:
+        page = object_from_builder(builder, "general_page", Adw.PreferencesPage)
 
-        appearance_group = Adw.PreferencesGroup(title="Appearance")
-        self.color_scheme_row = make_combo_row(
-            "Color scheme",
+        self.color_scheme_row = configure_combo_row(
+            object_from_builder(builder, "color_scheme_row", Adw.ComboRow),
             [label for label, _value in _COLOR_SCHEME_OPTIONS],
         )
         self.color_scheme_row.connect("notify::selected", self._on_color_scheme_changed)
-        appearance_group.add(self.color_scheme_row)
-        page.add(appearance_group)
 
-        diagnostics_group = Adw.PreferencesGroup(
-            title="Diagnostics",
-            description="Write a rotating troubleshooting log under the application cache directory",
-        )
-        self.diagnostic_level_row = make_combo_row(
-            "Diagnostic logging",
+        self.diagnostic_level_row = configure_combo_row(
+            object_from_builder(builder, "diagnostic_level_row", Adw.ComboRow),
             [label for label, _value in _DIAGNOSTIC_LEVEL_OPTIONS],
-            subtitle="Errors are always recorded; Debug and Trace add progressively more detail",
         )
         self.diagnostic_level_row.connect("notify::selected", self._on_diagnostic_level_changed)
-        diagnostics_group.add(self.diagnostic_level_row)
-
-        self.diagnostic_sensitive_row = Adw.SwitchRow(
-            title="Include sensitive details",
-            subtitle="Include local paths and URL paths; credentials and URL queries are never logged",
+        self.diagnostic_sensitive_row = configure_switch_row(
+            object_from_builder(builder, "diagnostic_sensitive_row", Adw.SwitchRow)
         )
         self.diagnostic_sensitive_row.connect(
             "notify::active", self._on_diagnostic_sensitive_changed
         )
-        diagnostics_group.add(self.diagnostic_sensitive_row)
-        page.add(diagnostics_group)
 
-        profiles_group = Adw.PreferencesGroup(
-            title="Saved settings profiles",
-            description="Save the current settings as a named profile, or load / remove an existing one",
+        self.profile_combo = configure_combo_row(
+            object_from_builder(builder, "profile_combo", Adw.ComboRow),
+            [_NO_PROFILES],
         )
-
-        self.profile_combo = make_combo_row("Profile", [_NO_PROFILES])
-        load_button = Gtk.Button(label="_Load", use_underline=True, valign=Gtk.Align.CENTER)
+        load_button = object_from_builder(builder, "profile_load_button", Gtk.Button)
         load_button.connect("clicked", self._on_load_profile)
-        remove_button = Gtk.Button(icon_name="user-trash-symbolic", valign=Gtk.Align.CENTER)
+        remove_button = object_from_builder(builder, "profile_remove_button", Gtk.Button)
         set_icon_button_a11y(remove_button, REMOVE_PROFILE_HINT)
-        remove_button.add_css_class("destructive-action")
         remove_button.connect("clicked", self._on_remove_profile)
-        self.profile_combo.add_suffix(load_button)
-        self.profile_combo.add_suffix(remove_button)
-        profiles_group.add(self.profile_combo)
 
-        self.profile_name_row = Adw.EntryRow(title="Save current settings as")
-        self.profile_name_row.set_show_apply_button(True)
+        self.profile_name_row = object_from_builder(builder, "profile_name_row", Adw.EntryRow)
         self.profile_name_row.connect("apply", self._on_save_profile)
-        profiles_group.add(self.profile_name_row)
-        page.add(profiles_group)
 
-        reset_group = Adw.PreferencesGroup(title="Reset")
-        reset_row = Adw.ActionRow(
-            title="Reset all settings to default",
-            subtitle="Restore every option to its built-in default value",
-        )
-        reset_button = Gtk.Button(label="Reset", valign=Gtk.Align.CENTER)
-        reset_button.add_css_class("destructive-action")
+        reset_button = object_from_builder(builder, "reset_button", Gtk.Button)
         reset_button.connect("clicked", self._on_reset_clicked)
-        reset_row.add_suffix(reset_button)
-        reset_group.add(reset_row)
-        page.add(reset_group)
 
-        notifications_group = Adw.PreferencesGroup(
-            title="Desktop notifications",
-            description="System notifications when tasks finish in the background",
-        )
-        self._notification_switches = {}
-        for key, title, subtitle in (
-            (
+        self._notification_switches: dict[str, Adw.SwitchRow] = {
+            key: configure_switch_row(object_from_builder(builder, f"{key}_row", Adw.SwitchRow))
+            for key in (
                 "notify_process_complete",
-                "Processing complete",
-                "When separation, ensemble, or audio tools finish successfully",
-            ),
-            (
                 "notify_process_failed",
-                "Processing failed",
-                "When a run stops with an error",
-            ),
-            (
                 "notify_download_complete",
-                "Downloads finished",
-                "When queued model downloads complete successfully",
-            ),
-            (
                 "notify_download_failed",
-                "Download failed",
-                "When a queued model download fails",
-            ),
-        ):
-            row = Adw.SwitchRow(title=title, subtitle=subtitle)
+            )
+        }
+        for key, row in self._notification_switches.items():
             row.connect("notify::active", self._on_bool_changed, key)
-            notifications_group.add(row)
-            self._notification_switches[key] = row
-        page.add(notifications_group)
 
-        run_group = Adw.PreferencesGroup(
-            title="Run confirmation",
-            description="Review resolved models, outputs, and device before processing",
-        )
-        self.confirm_processing_plan_row = Adw.SwitchRow(
-            title="Confirm processing plan before starting",
-            subtitle="Applies to Separation and Ensemble runs",
+        self.confirm_processing_plan_row = configure_switch_row(
+            object_from_builder(builder, "confirm_processing_plan_row", Adw.SwitchRow)
         )
         self.confirm_processing_plan_row.connect(
             "notify::active", self._on_bool_changed, "confirm_processing_plan"
         )
-        run_group.add(self.confirm_processing_plan_row)
-        page.add(run_group)
 
         return page
 
-    def _build_processing_page(self) -> Adw.PreferencesPage:
-        page = Adw.PreferencesPage(title="Processing", icon_name="applications-system-symbolic")
+    def _build_processing_page(self, builder: Gtk.Builder) -> Adw.PreferencesPage:
+        page = object_from_builder(builder, "processing_page", Adw.PreferencesPage)
 
-        process_group = Adw.PreferencesGroup(title="General process settings")
-        self._process_switches = {}
-        for key, title, subtitle in (
-            (
+        self._process_switches: dict[str, Adw.SwitchRow] = {
+            key: configure_switch_row(object_from_builder(builder, f"{key}_row", Adw.SwitchRow))
+            for key in (
                 "is_testing_audio",
-                "Settings test mode",
-                "Prefix outputs with a timestamp for testing",
-            ),
-            ("is_add_model_name", "Model test mode", "Append the model name to output file names"),
-            (
+                "is_add_model_name",
                 "is_create_model_folder",
-                "Generate model folder",
-                "Save outputs inside a per-model subfolder",
-            ),
-            (
                 "is_accept_any_input",
-                "Accept any input",
-                "Allow any input file type, not just common audio",
-            ),
-            ("is_normalization", "Normalize output", "Limit peaks above 1.0 on saved audio"),
-            (
+                "is_normalization",
                 "is_match_mix_level",
-                "Match stem levels to mix",
-                "Scale multi-stem outputs so their sum matches the input mix",
-            ),
-            (
                 "is_prevent_export_clipping",
-                "Prevent export clipping",
-                "Scale peaks to fit PCM/FLAC/MP3 without hard clipping",
-            ),
-        ):
-            row = Adw.SwitchRow(title=title, subtitle=subtitle)
+            )
+        }
+        for key, row in self._process_switches.items():
             row.connect("notify::active", self._on_bool_changed, key)
-            process_group.add(row)
-            self._process_switches[key] = row
         set_tooltip(self._process_switches["is_add_model_name"], IS_MODEL_TESTING_AUDIO_HELP)
         set_tooltip(self._process_switches["is_create_model_folder"], IS_CREATE_MODEL_FOLDER_HELP)
         set_tooltip(self._process_switches["is_accept_any_input"], IS_ACCEPT_ANY_INPUT_HELP)
@@ -414,28 +346,12 @@ class PreferencesDialog(Adw.PreferencesDialog):
             IS_PREVENT_EXPORT_CLIPPING_HELP,
         )
 
-        amp_adjustment = Gtk.Adjustment(
-            lower=0.0, upper=1.0, step_increment=0.05, page_increment=0.1
-        )
-        self.amplification_row = Adw.SpinRow(
-            title="Amplification threshold",
-            subtitle="Raise quiet outputs to this peak level (0 = off)",
-            adjustment=amp_adjustment,
-            digits=2,
-        )
+        self.amplification_row = object_from_builder(builder, "amplification_row", Adw.SpinRow)
         set_tooltip(self.amplification_row, AMPLIFICATION_THRESHOLD_HELP)
         self.amplification_row.connect("notify::value", self._on_amplification_changed)
-        process_group.add(self.amplification_row)
-
-        self.output_name_preview_row = Adw.ActionRow(
-            title="Example output name",
-            subtitle=preview_output_name(self.settings),
+        self.output_name_preview_row = object_from_builder(
+            builder, "output_name_preview_row", Adw.ActionRow
         )
-        self.output_name_preview_row.set_subtitle_lines(2)
-        process_group.add(self.output_name_preview_row)
-        page.add(process_group)
-
-        hardware_group = Adw.PreferencesGroup(title="Hardware")
 
         # Populate asynchronously — ``nvidia-smi`` can take up to ~2s.
         cached = getattr(self.context, "gpu_devices", None)
@@ -445,118 +361,72 @@ class PreferencesDialog(Adw.PreferencesDialog):
             device_opts = list(GPU_DEVICE_NUM_OPTS)
             device_subtitle = "Detecting…"
 
-        self.device_row = make_combo_row("GPU device", device_opts, subtitle=device_subtitle)
+        self.device_row = configure_combo_row(
+            object_from_builder(builder, "device_row", Adw.ComboRow),
+            device_opts,
+        )
+        self._device_detection_subtitle = device_subtitle
+        self._sync_gpu_device_row()
         set_tooltip(self.device_row, IS_CUDA_SELECT_HELP)
         self.device_row.connect("notify::selected", self._on_combo_changed, "device_set")
-        hardware_group.add(self.device_row)
         if cached is None:
             threading.Thread(target=self._probe_gpu_devices, daemon=True).start()
 
-        self.directml_row = Adw.SwitchRow(
-            title="Use DirectML",
-            subtitle="Windows AMD/Intel GPU via DirectML (PyTorch models only; MDX ONNX stays on CPU)",
+        self.directml_row = configure_switch_row(
+            object_from_builder(builder, "directml_row", Adw.SwitchRow)
         )
         self.directml_row.connect("notify::active", self._on_bool_changed, "is_use_directml")
-        if system_name() == "Windows":
-            hardware_group.add(self.directml_row)
-        page.add(hardware_group)
+        if system_name() != "Windows":
+            hardware_group = object_from_builder(builder, "hardware_group", Adw.PreferencesGroup)
+            hardware_group.remove(self.directml_row)
 
-        sample_group = Adw.PreferencesGroup(title="Sample mode")
-        self.sample_mode_row = Adw.SwitchRow(
-            title="Sample mode",
-            subtitle="Process only a short clip of each input",
+        self.sample_mode_row = configure_switch_row(
+            object_from_builder(builder, "sample_mode_row", Adw.SwitchRow)
         )
         self.sample_mode_row.connect("notify::active", self._on_bool_changed, "model_sample_mode")
-        sample_group.add(self.sample_mode_row)
-
-        adjustment = Gtk.Adjustment(lower=5, upper=120, step_increment=5, page_increment=10)
-        self.sample_duration_row = Adw.SpinRow(
-            title="Sample clip duration (seconds)", adjustment=adjustment
-        )
+        self.sample_duration_row = object_from_builder(builder, "sample_duration_row", Adw.SpinRow)
         self.sample_duration_row.connect("notify::value", self._on_duration_changed)
-        sample_group.add(self.sample_duration_row)
-        page.add(sample_group)
-
-        long_group = Adw.PreferencesGroup(
-            title="Long files",
-            description="Whole-file time slicing for hour+ tracks (not MDX/Demucs segment size)",
-        )
-        chunk_adjustment = Gtk.Adjustment(
-            lower=0, upper=3600, step_increment=60, page_increment=300
-        )
-        self.long_chunk_row = Adw.SpinRow(
-            title="Chunk duration (seconds)",
-            subtitle="0 = off; try 600 for long podcasts",
-            adjustment=chunk_adjustment,
-            digits=0,
-        )
+        self.long_chunk_row = object_from_builder(builder, "long_chunk_row", Adw.SpinRow)
         set_tooltip(self.long_chunk_row, LONG_FILE_CHUNK_HELP)
         self.long_chunk_row.connect("notify::value", self._on_long_chunk_changed)
-        long_group.add(self.long_chunk_row)
-
-        overlap_adjustment = Gtk.Adjustment(
-            lower=0.0, upper=30.0, step_increment=0.5, page_increment=1.0
-        )
-        self.long_chunk_overlap_row = Adw.SpinRow(
-            title="Chunk overlap (seconds)",
-            subtitle="Crossfade between slices",
-            adjustment=overlap_adjustment,
-            digits=1,
+        self.long_chunk_overlap_row = object_from_builder(
+            builder, "long_chunk_overlap_row", Adw.SpinRow
         )
         set_tooltip(self.long_chunk_overlap_row, LONG_FILE_CHUNK_OVERLAP_HELP)
         self.long_chunk_overlap_row.connect("notify::value", self._on_long_chunk_overlap_changed)
-        long_group.add(self.long_chunk_overlap_row)
-        page.add(long_group)
-
-        maintenance_group = Adw.PreferencesGroup(
-            title="Maintenance",
-            description="Automatic cleanup of leftover working files",
-        )
-        self.cleanup_ensemble_temps_row = Adw.SwitchRow(
-            title="Clean up old ensemble temp folders",
-            subtitle="On startup, remove folders in ensemble_temps older than 7 days",
+        self.cleanup_ensemble_temps_row = configure_switch_row(
+            object_from_builder(builder, "cleanup_ensemble_temps_row", Adw.SwitchRow)
         )
         self.cleanup_ensemble_temps_row.connect(
             "notify::active",
             self._on_bool_changed,
             "is_cleanup_ensemble_temps",
         )
-        maintenance_group.add(self.cleanup_ensemble_temps_row)
-
-        self.auto_update_model_params_row = Adw.SwitchRow(
-            title="Update model parameters with catalogue",
-            subtitle="Refresh recognition data when the Download Center catalogue is refreshed",
+        self.auto_update_model_params_row = configure_switch_row(
+            object_from_builder(builder, "auto_update_model_params_row", Adw.SwitchRow)
         )
         self.auto_update_model_params_row.connect(
             "notify::active",
             self._on_bool_changed,
             "is_auto_update_model_params",
         )
-        maintenance_group.add(self.auto_update_model_params_row)
-
-        self.catalogue_cache_refresh_row = Adw.ActionRow(
-            title="Refresh catalogue cache",
-            subtitle="Download fresh model listings and update installed model names",
+        self.catalogue_cache_refresh_row = object_from_builder(
+            builder, "catalogue_cache_refresh_row", Adw.ActionRow
         )
-        self.catalogue_cache_refresh_button = Gtk.Button(
-            label="Refresh",
-            valign=Gtk.Align.CENTER,
+        self.catalogue_cache_refresh_button = object_from_builder(
+            builder, "catalogue_cache_refresh_button", Gtk.Button
         )
         self.catalogue_cache_refresh_button.connect("clicked", self._on_catalogue_cache_refresh)
-        self.catalogue_cache_refresh_spinner = Gtk.Spinner(
-            valign=Gtk.Align.CENTER,
-            visible=False,
+        self.catalogue_cache_refresh_spinner = object_from_builder(
+            builder, "catalogue_cache_refresh_spinner", Gtk.Spinner
         )
-        self.catalogue_cache_refresh_row.add_suffix(self.catalogue_cache_refresh_spinner)
-        self.catalogue_cache_refresh_row.add_suffix(self.catalogue_cache_refresh_button)
-        maintenance_group.add(self.catalogue_cache_refresh_row)
-        page.add(maintenance_group)
 
         return page
 
     def _on_catalogue_cache_refresh(self, _button: Gtk.Button) -> None:
         if getattr(self, "_catalogue_cache_refreshing", False):
             return
+        self._catalogue_refresh_generation += 1
         self._catalogue_cache_refreshing = True
         self.catalogue_cache_refresh_button.set_sensitive(False)
         self.catalogue_cache_refresh_spinner.set_visible(True)
@@ -564,10 +434,11 @@ class PreferencesDialog(Adw.PreferencesDialog):
         self.catalogue_cache_refresh_row.set_subtitle("Refreshing catalogue cache…")
         threading.Thread(
             target=self._catalogue_cache_refresh_worker,
+            args=(self._catalogue_refresh_generation,),
             daemon=True,
         ).start()
 
-    def _catalogue_cache_refresh_worker(self) -> None:
+    def _catalogue_cache_refresh_worker(self, generation: int) -> None:
         from core.debug_log import debug
 
         try:
@@ -593,26 +464,27 @@ class PreferencesDialog(Adw.PreferencesDialog):
                         if not completion_published:
                             early_completion = summary
                             return
-                    self._on_catalogue_evidence_refresh_completed(summary)
+                    self._on_catalogue_evidence_refresh_completed(summary, generation)
 
                 queued = manager.force_revalidate_catalogue_evidence(evidence_completed)
                 if queued:
                     idle_on_main(
                         self._finish_catalogue_cache_refresh,
                         "Catalogue refreshed; output details updating",
+                        generation,
                     )
                     with completion_lock:
                         completion_published = True
                         completed = early_completion
                     if completed is not None:
-                        self._on_catalogue_evidence_refresh_completed(completed)
+                        self._on_catalogue_evidence_refresh_completed(completed, generation)
                     debug(
                         "download",
                         f"preferences catalogue evidence queued={len(queued)}",
                     )
                     return
             message = final_message
-        except Exception as exc:  # noqa: BLE001 - shown in Preferences and log
+        except Exception as exc:  # shown in Preferences and log
             from .errorlog import log_error
 
             log_error("Preferences", exc, context="refreshing catalogue cache")
@@ -623,18 +495,24 @@ class PreferencesDialog(Adw.PreferencesDialog):
                 error=str(exc).strip() or type(exc).__name__,
             )
         debug("download", f"preferences catalogue refresh result={message!r}")
-        idle_on_main(self._finish_catalogue_cache_refresh, message)
+        idle_on_main(self._finish_catalogue_cache_refresh, message, generation)
 
-    def _on_catalogue_evidence_refresh_completed(self, summary: typing.Any) -> None:
+    def _on_catalogue_evidence_refresh_completed(
+        self, summary: typing.Any, generation: int
+    ) -> None:
         """Marshal a cache-worker aggregate result onto the GTK main thread."""
-        idle_on_main(self._finish_catalogue_evidence_refresh, summary)
+        idle_on_main(self._finish_catalogue_evidence_refresh, summary, generation)
 
-    def _finish_catalogue_evidence_refresh(self, summary: typing.Any) -> None:
+    def _finish_catalogue_evidence_refresh(self, summary: typing.Any, generation: int) -> None:
+        if self._lifetime.disposed or generation != self._catalogue_refresh_generation:
+            return
         message = catalogue_evidence_refresh_feedback(summary)
         self.catalogue_cache_refresh_row.set_subtitle(message)
         self.add_toast(Adw.Toast.new(message))
 
-    def _finish_catalogue_cache_refresh(self, message: str) -> None:
+    def _finish_catalogue_cache_refresh(self, message: str, generation: int) -> None:
+        if self._lifetime.disposed or generation != self._catalogue_refresh_generation:
+            return
         self._catalogue_cache_refreshing = False
         self.catalogue_cache_refresh_button.set_sensitive(True)
         self.catalogue_cache_refresh_spinner.stop()
@@ -693,9 +571,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
             if not set_combo_value(self.device_row, self.settings.process.device or DEFAULT):
                 set_combo_value(self.device_row, DEFAULT)
 
-            from ui.shared_settings import gpu_dependent_enabled
-
-            self.device_row.set_sensitive(gpu_dependent_enabled(self.settings.process.use_gpu))
+            self._sync_gpu_device_row()
 
             self.sample_mode_row.set_active(bool(self.settings.process.sample_mode))
             self.cleanup_ensemble_temps_row.set_active(bool(self.settings.ensemble.cleanup_temps))
@@ -716,7 +592,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
                 long_chunk = 0.0
             self.long_chunk_row.set_value(max(0.0, min(3600.0, long_chunk)))
             try:
-                long_overlap = float(self.settings.process.long_file_chunk_overlap_seconds or 2.0)
+                long_overlap = float(self.settings.process.long_file_chunk_overlap_seconds)
             except (TypeError, ValueError):
                 long_overlap = 2.0
             self.long_chunk_overlap_row.set_value(max(0.0, min(30.0, long_overlap)))
@@ -809,6 +685,11 @@ class PreferencesDialog(Adw.PreferencesDialog):
         self._apply_diagnostic_policy()
         self._persist()
 
+    def _apply_runtime_settings(self) -> None:
+        """Apply profile/reset values whose widget handlers are suppressed on reload."""
+        apply_color_scheme(enum_value(self.settings.ui.color_scheme) or "auto")
+        self._apply_diagnostic_policy()
+
     def _apply_diagnostic_policy(self) -> None:
         from core.debug_log import update_policy
 
@@ -862,6 +743,8 @@ class PreferencesDialog(Adw.PreferencesDialog):
             self._persist_timeout_id = 0
             self._flush_persist()
 
+        self._lifetime.dispose()
+
     @staticmethod
     def _device_row_options(devices: typing.Any):
         if devices:
@@ -874,6 +757,16 @@ class PreferencesDialog(Adw.PreferencesDialog):
             subtitle = "No GPU detected"
         return opts, subtitle
 
+    def _sync_gpu_device_row(self) -> None:
+        enabled = gpu_dependent_enabled(self.settings.process.use_gpu)
+        self.device_row.set_sensitive(enabled)
+        subtitle = self._device_detection_subtitle
+        if not enabled:
+            subtitle = (
+                "Enable GPU conversion on Separation or Ensemble to choose a device.\n" + subtitle
+            )
+        self.device_row.set_subtitle(subtitle)
+
     def _probe_gpu_devices(self) -> None:
         from core.gpu import list_gpu_devices
 
@@ -882,6 +775,8 @@ class PreferencesDialog(Adw.PreferencesDialog):
         idle_on_main(self._apply_gpu_devices, devices)
 
     def _apply_gpu_devices(self, devices: typing.Any) -> None:
+        if self._lifetime.disposed:
+            return
         if not hasattr(self, "device_row"):
             return
         current = get_combo_value(self.device_row)
@@ -891,7 +786,8 @@ class PreferencesDialog(Adw.PreferencesDialog):
             from .widgets.rows import set_combo_values
 
             set_combo_values(self.device_row, opts)
-            self.device_row.set_subtitle(subtitle)
+            self._device_detection_subtitle = subtitle
+            self._sync_gpu_device_row()
             if current in opts:
                 set_combo_value(self.device_row, current)
         finally:
@@ -978,6 +874,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
             self.settings.update(loaded.to_dict())
         else:
             self.settings.update({k: v for k, v in data.items() if k in FLAT_TO_PATH})
+        self._apply_runtime_settings()
         error = self.context.try_save_settings(trigger="profile-load")
         from core.debug_log import debug
 
@@ -1043,7 +940,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
         from core.debug_log import debug
 
         self.settings.reset_to_default()
-        self._apply_diagnostic_policy()
+        self._apply_runtime_settings()
         error = self.context.try_save_settings(trigger="reset")
         debug("settings", "profile reset confirmed")
         self._reload_widgets()

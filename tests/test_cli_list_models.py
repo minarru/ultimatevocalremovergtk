@@ -15,13 +15,10 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import Mock, patch
 
-from cli.discovery import (
-    _print_detail,
-    _print_rows,
-    cmd_devices_list,
-    cmd_models_download,
-    cmd_profile_list,
-)
+from cli.commands.devices import cmd_devices_list
+from cli.commands.formatting import _print_detail, _print_rows
+from cli.commands.model_catalogue import cmd_models_download
+from cli.commands.settings import cmd_profile_list
 from cli.main import main
 from core.model_catalogue import CatalogEntryId
 from core.model_identity import (
@@ -387,7 +384,7 @@ class DiscoveryTests(unittest.TestCase):
         self.assertEqual(item["architectural_facts"]["demucs_stem_count"], 4)
 
     def test_generic_model_inspection_uses_only_projection_contract_fields(self) -> None:
-        from cli.discovery import _stem_semantics_fields
+        from cli.commands.model_metadata import _stem_semantics_fields
 
         self.assertEqual(
             set(_stem_semantics_fields(None)),
@@ -452,7 +449,7 @@ class DiscoveryTests(unittest.TestCase):
         )
         manager: Any = SimpleNamespace(
             _coordinator=SimpleNamespace(
-                _latest=SimpleNamespace(
+                latest_snapshot=SimpleNamespace(
                     revision=None,
                     meta_by_family={
                         "vr": {},
@@ -521,7 +518,7 @@ class DiscoveryTests(unittest.TestCase):
 
     def test_profile_list_contains_virtual_profiles(self) -> None:
         out = io.StringIO()
-        with patch("cli.discovery.list_profiles", return_value=["fast"]), redirect_stdout(out):
+        with patch("cli.commands.settings.list_profiles", return_value=["fast"]), redirect_stdout(out):
             self.assertEqual(cmd_profile_list(self.args()), 0)
         names = [item["name"] for item in json.loads(out.getvalue())["items"]]
         self.assertEqual(names, ["defaults", "gui", "fast"])
@@ -849,7 +846,7 @@ class ModelsListInstalledDefaultTests(unittest.TestCase):
         self.assertTrue(args.all_known)
 
     def test_default_list_skips_uninstalled_aliases(self) -> None:
-        from cli.discovery import cmd_models_list
+        from cli.commands.models import cmd_models_list
 
         installed = ModelRecord(
             id='mdx:on_disk',
@@ -874,9 +871,9 @@ class ModelsListInstalledDefaultTests(unittest.TestCase):
         )
         out = io.StringIO()
         with (
-            patch("cli.discovery.iter_model_records", return_value=(installed, alias)),
+            patch("cli.commands.models.iter_model_records", return_value=(installed, alias)),
             patch("core.model_repository.ModelRepository"),
-            patch("cli.discovery._model_info", side_effect=lambda record, repo: record.to_dict()),
+            patch("cli.commands.models._model_info", side_effect=lambda record, repo: record.to_dict()),
             redirect_stdout(out),
         ):
             code = cmd_models_list(args)
@@ -886,7 +883,7 @@ class ModelsListInstalledDefaultTests(unittest.TestCase):
         self.assertEqual(ids, ["mdx:on_disk"])
 
     def test_all_known_reports_every_record_from_the_published_index(self) -> None:
-        from cli.discovery import cmd_models_list
+        from cli.commands.models import cmd_models_list
 
         records = (
             ModelRecord(
@@ -946,7 +943,7 @@ class ModelsListInstalledDefaultTests(unittest.TestCase):
 
     def test_all_known_projects_catalogue_evidence_without_config_parsing(self) -> None:
         from bundled.constants import MDX_ARCH_TYPE
-        from cli.discovery import cmd_models_list
+        from cli.commands.models import cmd_models_list
         from core.catalog_sources import EntryMeta
         from core.catalogue_types import (
             CatalogueEvidenceState,
@@ -999,7 +996,7 @@ class ModelsListInstalledDefaultTests(unittest.TestCase):
             meta_by_family={"vr": {}, "mdx": {selection: entry}, "demucs": {}, "apollo": {}},
         )
         coordinator = Mock()
-        coordinator._latest = snapshot
+        coordinator.latest_snapshot = snapshot
         args = argparse.Namespace(
             family=None,
             all_known=True,
@@ -1062,7 +1059,7 @@ class ModelsListInstalledDefaultTests(unittest.TestCase):
 
     def test_all_known_installed_mdx_c_uses_snapshot_without_dry_resolution(self) -> None:
         from bundled.constants import MDX_ARCH_TYPE
-        from cli.discovery import cmd_models_list
+        from cli.commands.models import cmd_models_list
         from core.catalog_sources import EntryMeta
         from core.catalogue_types import StemSemanticProjection, StemSemanticRoute
         from core.model_identity import CatalogueRef
@@ -1106,7 +1103,7 @@ class ModelsListInstalledDefaultTests(unittest.TestCase):
             stem_semantics=projection,
         )
         coordinator = Mock()
-        coordinator._latest = SimpleNamespace(
+        coordinator.latest_snapshot = SimpleNamespace(
             meta_by_family={"vr": {}, "mdx": {selection: entry}, "demucs": {}, "apollo": {}},
         )
 
@@ -1129,7 +1126,7 @@ class ModelsListInstalledDefaultTests(unittest.TestCase):
                         "core.model_identity.ModelIdentityService._published_index",
                         return_value=IdentityIndex({record.id: record}),
                     ),
-                    patch("cli.discovery._model_info", return_value=record.to_dict()) as detail,
+                    patch("cli.commands.models._model_info", return_value=record.to_dict()) as detail,
                     patch(
                         "core.mdx_config_fetch.ensure_mdx_c_config",
                         side_effect=AssertionError("list rendering fetched a config"),
@@ -1157,7 +1154,7 @@ class ModelsListInstalledDefaultTests(unittest.TestCase):
 
     def test_all_known_owns_an_offline_catalogue_backed_repository(self) -> None:
         from bundled.constants import VR_ARCH_TYPE
-        from cli.discovery import cmd_models_list
+        from cli.commands.models import cmd_models_list
         from core.catalog_sources import EntryMeta
 
         selection = "VR Model: Catalogue Only"
@@ -1183,10 +1180,10 @@ class ModelsListInstalledDefaultTests(unittest.TestCase):
             unsupported={},
         )
         coordinator = Mock()
-        coordinator._latest = None
+        coordinator.latest_snapshot = None
 
         def ensure_snapshot(**_kwargs: object) -> object:
-            coordinator._latest = snapshot
+            coordinator.latest_snapshot = snapshot
             return snapshot
 
         coordinator.ensure.side_effect = ensure_snapshot
@@ -1216,7 +1213,7 @@ class ModelsListInstalledDefaultTests(unittest.TestCase):
         coordinator.close.assert_called_once_with()
 
     def test_list_does_not_rename_corrupt_settings_json(self) -> None:
-        from cli.discovery import cmd_models_list
+        from cli.commands.models import cmd_models_list
 
         with tempfile.TemporaryDirectory() as tmp:
             json_path = os.path.join(tmp, "settings.json")
@@ -1236,7 +1233,7 @@ class ModelsListInstalledDefaultTests(unittest.TestCase):
                 patch("core.settings.io.SETTINGS_JSON_FILE", json_path),
                 patch("core.settings.io.SETTINGS_PICKLE_FILE", pickle_path),
                 patch("core.settings.io.SETTINGS_PICKLE_BAK", f"{pickle_path}.bak"),
-                patch("cli.discovery.iter_model_records", return_value=()),
+                patch("cli.commands.models.iter_model_records", return_value=()),
                 redirect_stdout(io.StringIO()),
             ):
                 code = cmd_models_list(args)
@@ -1248,7 +1245,7 @@ class ModelsListInstalledDefaultTests(unittest.TestCase):
                 self.assertEqual(handle.read(), "not-json{")
 
     def test_list_does_not_migrate_legacy_settings_pickle(self) -> None:
-        from cli.discovery import cmd_models_list
+        from cli.commands.models import cmd_models_list
 
         with tempfile.TemporaryDirectory() as tmp:
             json_path = os.path.join(tmp, "settings.json")
@@ -1268,7 +1265,7 @@ class ModelsListInstalledDefaultTests(unittest.TestCase):
                 patch("core.settings.io.SETTINGS_JSON_FILE", json_path),
                 patch("core.settings.io.SETTINGS_PICKLE_FILE", pickle_path),
                 patch("core.settings.io.SETTINGS_PICKLE_BAK", f"{pickle_path}.bak"),
-                patch("cli.discovery.iter_model_records", return_value=()),
+                patch("cli.commands.models.iter_model_records", return_value=()),
                 redirect_stdout(io.StringIO()),
             ):
                 code = cmd_models_list(args)
@@ -1448,7 +1445,7 @@ class ModelsValidateInventoryTests(unittest.TestCase):
             checkpoint = os.path.join(root, "unsupported.ckpt")
             Path(checkpoint).write_bytes(b"")
             out = io.StringIO()
-            with patch("cli.discovery.DEMUCS_MODELS_DIR", root), redirect_stdout(out):
+            with patch("cli.commands.models.DEMUCS_MODELS_DIR", root), redirect_stdout(out):
                 code = main(["models", "validate", "--report", "json"])
 
         self.assertEqual(code, 0)
@@ -1470,7 +1467,7 @@ class ModelsValidateInventoryTests(unittest.TestCase):
 
 class ModelsCatalogSizeBatchTests(unittest.TestCase):
     def test_online_catalog_prefetches_sizes_once(self) -> None:
-        from cli.discovery import cmd_models_catalog
+        from cli.commands.model_catalogue import cmd_models_catalog
 
         service = Mock()
         service.refresh.return_value = True
@@ -1505,7 +1502,7 @@ class ModelsCatalogSizeBatchTests(unittest.TestCase):
         prefetch.assert_called_once()
 
     def test_offline_catalog_skips_size_prefetch(self) -> None:
-        from cli.discovery import cmd_models_catalog
+        from cli.commands.model_catalogue import cmd_models_catalog
 
         service = Mock()
         service.refresh.return_value = True

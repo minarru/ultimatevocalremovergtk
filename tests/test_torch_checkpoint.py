@@ -1,6 +1,6 @@
-import typing
 import importlib
 import sys
+import typing
 import unittest
 from unittest.mock import patch
 

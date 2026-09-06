@@ -10,8 +10,8 @@ from __future__ import annotations
 import argparse
 from typing import Any, Optional, Sequence
 
-from core.settings.coerce import enum_value
 from core.settings.access import parse_setting_assignment
+from core.settings.coerce import enum_value
 from core.types import FlacBitDepth, Mp3Bitrate, OpusBitrate, SaveFormat, WavType
 
 # dest -> settings path for symmetric BooleanOptionalAction flags.

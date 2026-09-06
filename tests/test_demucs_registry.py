@@ -16,7 +16,6 @@ from unittest.mock import patch
 
 from core.model_identity import DemucsSpec
 
-
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -61,7 +60,6 @@ class DemucsCatalogueSpecTests(unittest.TestCase):
     def test_explicit_version_is_not_overwritten_by_label(self) -> None:
         from types import SimpleNamespace
 
-        from bundled.constants import DEMUCS_ARCH_TYPE
         from core.model_inventory import _demucs_spec
 
         entry = SimpleNamespace(
@@ -763,7 +761,7 @@ class DemucsRegistrationTests(unittest.TestCase):
     def test_projection_failure_cannot_report_failure_after_durable_commit(
         self,
     ) -> None:
-        from cli.discovery import cmd_models_register
+        from cli.commands.model_registration import cmd_models_register
 
         with tempfile.TemporaryDirectory() as tmp:
             source = os.path.join(tmp, "custom.th")
@@ -789,7 +787,7 @@ class DemucsRegistrationTests(unittest.TestCase):
             with (
                 patch("core.paths.DEMUCS_MODELS_DIR", models_dir),
                 patch(
-                    "cli.discovery._registered_demucs_info",
+                    "cli.commands.model_registration._registered_demucs_info",
                     side_effect=ValueError("simulated projection failure"),
                 ),
                 redirect_stdout(output),

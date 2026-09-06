@@ -1,0 +1,21 @@
+using Gtk 4.0;
+using Adw 1;
+
+Adw.Dialog dialog {
+  title: "Manual downloads";
+  content-height: 560;
+  child: Adw.ToolbarView {
+    [top]
+    Adw.HeaderBar {}
+    content: Gtk.ScrolledWindow {
+      propagate-natural-height: false;
+      vexpand: true;
+      hexpand: true;
+      halign: fill;
+      child: Adw.PreferencesPage page {
+        hexpand: true;
+        halign: fill;
+      };
+    };
+  };
+}

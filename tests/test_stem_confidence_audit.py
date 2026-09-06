@@ -16,7 +16,10 @@ from unittest.mock import patch
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 
-from catalogue import collect, stem_audit  # noqa: E402
+from catalogue import cache as collect  # noqa: E402
+from catalogue import confidence as stem_audit  # noqa: E402
+
+from scripts.model_tool_support import CatalogueTarget  # noqa: E402
 
 
 def _entry(entry_id: str, *, curated: bool = False) -> stem_audit.StemConfidenceEntry:
@@ -118,8 +121,8 @@ class ConfidenceAuditCacheTests(unittest.TestCase):
 
 
 class ConfidenceAuditSelectionAndPolicyTests(unittest.TestCase):
-    def _target(self, entry_id: str, label: str) -> SimpleNamespace:
-        return SimpleNamespace(entry_id=entry_id, label=label)
+    def _target(self, entry_id: str, label: str) -> CatalogueTarget:
+        return CatalogueTarget(entry_id=entry_id, label=label)
 
     def test_only_and_limit_filter_before_the_remote_work(self) -> None:
         targets = [
@@ -130,23 +133,19 @@ class ConfidenceAuditSelectionAndPolicyTests(unittest.TestCase):
         self.assertEqual([target.entry_id for target in picked], ["karaoke"])
 
     def test_offline_config_lookup_passes_the_shared_policy_to_the_cache_reader(self) -> None:
-        target = SimpleNamespace(
-            config_url="https://example.test/model.yaml", config_name="model.yaml"
-        )
+        target = CatalogueTarget("model", "Model", config_url="https://example.test/model.yaml")
         policy = collect.FetchPolicy(allow_network=False, allow_cache_writes=False)
-        with patch("catalogue.collect._fetch_yaml_bytes", return_value=(None, None)) as fetched:
+        with patch("catalogue.cache.fetch_yaml_bytes", return_value=(None, None)) as fetched:
             with self.assertRaisesRegex(OSError, "offline"):
                 stem_audit._confidence_config(target, policy)
         self.assertIs(fetched.call_args.kwargs["policy"], policy)
 
     def test_warm_legacy_config_cache_is_reused_until_refresh(self) -> None:
-        target = SimpleNamespace(
-            config_url="https://example.test/model.yaml", config_name="model.yaml"
-        )
+        target = CatalogueTarget("model", "Model", config_url="https://example.test/model.yaml")
         with (
-            patch("catalogue.stem_audit.os.path.isfile", return_value=True),
+            patch("catalogue.confidence.os.path.isfile", return_value=True),
             patch("core.model_data.load_mdx_c_config", return_value={"training": {}}) as loaded,
-            patch("catalogue.collect._fetch_yaml_bytes", side_effect=AssertionError("cache miss")),
+            patch("catalogue.cache.fetch_yaml_bytes", side_effect=AssertionError("cache miss")),
         ):
             self.assertEqual(
                 stem_audit._confidence_config(target, collect.FetchPolicy()), {"training": {}}
@@ -154,7 +153,7 @@ class ConfidenceAuditSelectionAndPolicyTests(unittest.TestCase):
         loaded.assert_called_once()
 
     def test_checkpoint_hash_metadata_controls_curated_confidence(self) -> None:
-        target = SimpleNamespace(
+        target = CatalogueTarget(
             entry_id="model",
             label="Some model",
             config_url="https://example.test/model.yaml",

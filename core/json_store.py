@@ -8,10 +8,9 @@ import os
 import shutil
 import tempfile
 import threading
-from contextlib import contextmanager
 from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
-
 
 _LOCKS_GUARD = threading.Lock()
 _PATH_LOCKS: dict[str, threading.RLock] = {}

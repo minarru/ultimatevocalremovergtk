@@ -23,7 +23,6 @@ from . import paths
 from .json_store import locked_json_path, read_json_object, write_json_atomic
 from .model_identity import DemucsSpec, parse_stored_model_id
 
-
 _DEMUCS_REGISTRY_SCHEMA_VERSION = 1
 _DEMUCS_VERSIONS = frozenset({"v1", "v2", "v3", "v4"})
 _DEMUCS_LAYOUTS = frozenset({"2_stem", "4_stem", "6_stem"})

@@ -53,7 +53,7 @@ class _Repo:
 
     def __init__(self, snapshot: Any, files: dict[str, list[str]] | None = None):
         self._files = files or {}
-        self.catalogue: Any = SimpleNamespace(_latest=snapshot)
+        self.catalogue: Any = SimpleNamespace(latest_snapshot=snapshot)
         self._inventory_lock = None
         self.invalidations = 0
         self.presentation_invalidations = 0

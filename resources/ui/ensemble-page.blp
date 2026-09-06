@@ -1,0 +1,160 @@
+using Gtk 4.0;
+using Adw 1;
+
+Gtk.Box page {
+  orientation: vertical;
+  vexpand: true;
+
+  Adw.Banner ensemble_banner {
+    revealed: false;
+  }
+}
+
+Adw.PreferencesGroup files_group {
+  title: "Files";
+
+  [header-suffix]
+  Gtk.Button view_inputs_button {
+    icon-name: "view-list-symbolic";
+    valign: center;
+    action-name: "win.view_inputs";
+    styles ["flat"]
+  }
+}
+
+Adw.PreferencesGroup ensemble_group {
+  title: "Ensemble options";
+
+  Adw.ComboRow saved_row {
+    title: "Saved ensemble";
+
+    [suffix]
+    Gtk.Button save_button {
+      icon-name: "document-save-symbolic";
+      valign: center;
+      styles ["flat"]
+    }
+
+    [suffix]
+    Gtk.Button delete_button {
+      icon-name: "user-trash-symbolic";
+      valign: center;
+      styles ["flat"]
+    }
+  }
+
+  Adw.ComboRow main_stem_row {
+    title: "Main stem pair";
+
+    [prefix]
+    Gtk.Image {
+      icon-name: "view-list-symbolic";
+    }
+  }
+
+  Adw.ActionRow models_trigger_row {
+    title: "Member models";
+    activatable: true;
+
+    [suffix]
+    Gtk.Image {
+      icon-name: "go-next-symbolic";
+    }
+  }
+
+  Adw.ActionRow member_options_row {
+    title: "Member model options";
+    subtitle: "Batch size, secondary models, and more";
+    activatable: true;
+
+    [suffix]
+    Gtk.Image {
+      icon-name: "go-next-symbolic";
+    }
+  }
+
+  Adw.ComboRow preset_row {
+    title: "Algorithm preset";
+
+    [prefix]
+    Gtk.Image {
+      icon-name: "emblem-favorite-symbolic";
+    }
+  }
+
+  Adw.SwitchRow derive_complement_row {
+    title: "Derive complement from mix";
+    visible: false;
+  }
+
+  Adw.ComboRow primary_algo_row {
+    title: "Primary algorithm";
+
+    [prefix]
+    Gtk.Image {
+      icon-name: "media-playlist-shuffle-symbolic";
+    }
+  }
+
+  Adw.ComboRow secondary_algo_row {
+    title: "Secondary algorithm";
+
+    [prefix]
+    Gtk.Image {
+      icon-name: "media-playlist-shuffle-symbolic";
+    }
+  }
+}
+
+Adw.PreferencesGroup stems_group {
+  title: "Save stems";
+  visible: false;
+}
+
+Adw.PreferencesGroup processing_group {
+  title: "Processing";
+}
+
+Adw.SwitchRow gpu_row {
+  title: "GPU conversion";
+
+  [prefix]
+  Gtk.Image {
+    icon-name: "pci-card-symbolic";
+  }
+}
+
+Adw.SwitchRow autocast_row {
+  title: "FP16 autocast";
+  subtitle: "Faster VR/MDX/Roformer on modern NVIDIA GPUs";
+
+  [prefix]
+  Gtk.Image {
+    icon-name: "emblem-system-symbolic";
+  }
+}
+
+Adw.SwitchRow sample_row {
+  title: "Sample mode";
+
+  [prefix]
+  Gtk.Image {
+    icon-name: "preferences-system-time-symbolic";
+  }
+}
+
+Adw.ExpanderRow advanced_row {
+  title: "Advanced ensemble options";
+
+  Adw.SwitchRow save_all_row {
+    title: "Save all outputs";
+  }
+
+  Adw.SwitchRow append_name_row {
+    title: "Append ensemble name to output";
+  }
+
+  Adw.SwitchRow wav_ensemble_row {
+    title: "Ensemble waveforms";
+  }
+}

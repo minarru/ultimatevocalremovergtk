@@ -30,9 +30,8 @@ class ApolloFromPretrainTests(unittest.TestCase):
             "model_name": "TinyApollo",
             "state_dict": model.state_dict(),
         }
-        with patch("ml.apollo_model_data.base_model.load_torch_checkpoint", return_value=envelope):
-            with patch("ml.apollo_model_data.get", return_value=_TinyApollo) as get_mock:
-                loaded = BaseModel.from_pretrain("dummy.ckpt", sr=44100, feature_dim=4)
+        with patch("ml.apollo_model_data.get", return_value=_TinyApollo) as get_mock:
+            loaded = BaseModel.from_checkpoint(envelope, sr=44100, feature_dim=4)
         get_mock.assert_called_once_with("TinyApollo")
         self.assertIsInstance(loaded, _TinyApollo)
 
@@ -44,11 +43,10 @@ class ApolloFromPretrainTests(unittest.TestCase):
             "pytorch-lightning_version": "2.0.0",
             "state_dict": weights,
         }
-        with patch("ml.apollo_model_data.base_model.load_torch_checkpoint", return_value=lightning):
-            with patch("ml.apollo_model_data.get", return_value=_TinyApollo) as get_mock:
-                loaded = BaseModel.from_pretrain(
-                    "epoch.ckpt", sr=44100, win=20, feature_dim=4, layer=1
-                )
+        with patch("ml.apollo_model_data.get", return_value=_TinyApollo) as get_mock:
+            loaded = BaseModel.from_checkpoint(
+                lightning, sr=44100, win=20, feature_dim=4, layer=1
+            )
         get_mock.assert_called_once_with("Apollo")
         self.assertIsInstance(loaded, _TinyApollo)
         for key, tensor in model.state_dict().items():
@@ -59,9 +57,8 @@ class ApolloFromPretrainTests(unittest.TestCase):
         weights = {f"audio_model.{k}": v for k, v in model.state_dict().items()}
         weights["audio_model.net.99.extra.weight"] = torch.ones(2, 2)
         lightning = {"state_dict": weights}
-        with patch("ml.apollo_model_data.base_model.load_torch_checkpoint", return_value=lightning):
-            with patch("ml.apollo_model_data.get", return_value=_TinyApollo):
-                loaded = BaseModel.from_pretrain("epoch.ckpt", feature_dim=4)
+        with patch("ml.apollo_model_data.get", return_value=_TinyApollo):
+            loaded = BaseModel.from_checkpoint(lightning, feature_dim=4)
         self.assertNotIn("net.99.extra.weight", loaded.state_dict())
 
 

@@ -15,7 +15,12 @@ shares the same :attr:`~core.ModelRepository.on_unrecognized_model` handler.
 """
 
 import threading
-from typing import Any, Callable, Optional, Sequence
+from typing import TYPE_CHECKING, Callable, Optional, Sequence
+
+if TYPE_CHECKING:
+    from core.catalogue_coordinator import CatalogueCoordinator
+    from core.download_queue import DownloadQueue
+    from core.downloads import DownloadManager
 
 from core import ModelRepository
 from core.debug_log import debug, log_event
@@ -31,7 +36,9 @@ class AppContext:
         self._runner = None
         self._catalogue = None
         self._catalogue_lock = threading.Lock()
-        self._download_manager = None
+        self._download_manager: DownloadManager | None = None
+        self._download_queue: DownloadQueue | None = None
+        self._size_cache_warmup_started = False
         self._get_dialog_parent: Optional[Callable[[], object]] = None
         #: Session cache for :func:`core.gpu.list_gpu_devices` (None until probed).
         self.gpu_devices = None
@@ -68,7 +75,7 @@ class AppContext:
         self._unrecognized_hook_installed = True
 
     @property
-    def catalogue(self) -> Any:
+    def catalogue(self) -> "CatalogueCoordinator":
         if self._catalogue is None:
             with self._catalogue_lock:
                 if self._catalogue is None:
@@ -78,14 +85,21 @@ class AppContext:
         return self._catalogue
 
     @property
-    def download_manager(self) -> Any:
-        manager = getattr(self, "_download_manager", None)
+    def download_manager(self) -> "DownloadManager":
+        manager = self._download_manager
         if manager is None:
             from core.downloads import DownloadManager
 
             manager = DownloadManager(coordinator=self.catalogue, repo=self.repo)
             self._download_manager = manager
         return manager
+
+    @property
+    def download_queue(self) -> "DownloadQueue":
+        if self._download_queue is None:
+            from core.download_queue import DownloadQueue
+            self._download_queue = DownloadQueue(self.download_manager, on_changed=lambda: None, repo=self.repo)
+        return self._download_queue
 
     @property
     def repo(self) -> ModelRepository:
@@ -107,6 +121,10 @@ class AppContext:
 
             self._runner = JobRunner(self.settings, self.repo)
         return self._runner
+
+    def restore_runner_settings(self) -> None:
+        if self._runner is not None:
+            self._runner.settings = self.settings
 
     def save_settings(self, *, trigger: str = "unspecified") -> None:
         path = self.settings.path
@@ -143,7 +161,7 @@ class AppContext:
         """Cooperatively stop (or force-terminate) every started worker."""
         if self._runner is not None:
             self._runner.stop(force=force)
-        queue = getattr(self, "_download_queue", None)
+        queue = self._download_queue
         if queue is not None:
             queue.cancel_all()
         from core.download_sizes import request_shutdown
@@ -152,11 +170,11 @@ class AppContext:
         from core.catalogue_stem_cache import request_shutdown as stop_stem_workers
 
         stop_stem_workers()
-        catalogue = getattr(self, "_catalogue", None)
+        catalogue = self._catalogue
         if catalogue is not None:
             catalogue.close()
 
     def active_download_count(self) -> int:
         """Return queued/downloading model count without creating a queue."""
-        queue = getattr(self, "_download_queue", None)
+        queue = self._download_queue
         return queue.active_count() if queue is not None else 0

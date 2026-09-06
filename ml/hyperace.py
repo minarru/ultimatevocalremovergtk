@@ -232,7 +232,7 @@ class HyperACE(Module):
     def __init__(
         self, in_channels: Sequence[int], out_channels: int,
         num_hyperedges: int = 8, num_heads: int = 8,
-        k: int = 2, l: int = 1, c_h: float = 0.5, c_l: float = 0.25,
+        k: int = 2, num_layers: int = 1, c_h: float = 0.5, c_l: float = 0.25,
     ) -> None:
         super().__init__()
         c2, c3, c4, c5 = in_channels
@@ -250,7 +250,7 @@ class HyperACE(Module):
         )
         self.high_order_fuse = Conv(self.c_h * k, self.c_h, 1, 1)
         self.low_order_branch = nn.Sequential(
-            *[DS_C3k(self.c_l, self.c_l, n=1, k=3, e=1.0) for _ in range(l)]
+            *[DS_C3k(self.c_l, self.c_l, n=1, k=3, e=1.0) for _ in range(num_layers)]
         )
         self.final_fuse = Conv(self.c_h + self.c_l + self.c_s, out_channels, 1, 1)
 
@@ -424,10 +424,10 @@ class _TfcTdfBlock(Module):
 class TFC_TDF(Module):
     """Stack of :class:`_TfcTdfBlock`. Distinct from ``ml.tfc_tdf_v3``'s MDX23C block."""
 
-    def __init__(self, in_c: int, c: int, l: int, f: int, bn: int = 4) -> None:
+    def __init__(self, in_c: int, c: int, num_layers: int, f: int, bn: int = 4) -> None:
         super().__init__()
         blocks = []
-        for _ in range(l):
+        for _ in range(num_layers):
             blocks.append(_TfcTdfBlock(in_c, c, f, bn))
             in_c = c
         self.blocks = nn.ModuleList(blocks)
@@ -520,7 +520,7 @@ class SegmModel(Module):
         if num_hyperedges is None:
             num_hyperedges = 32 if is_v2 else 16
         # v1 runs a wider high-order branch and a deeper low-order one.
-        k, l = (2, 1) if is_v2 else (3, 2)
+        k, num_layers = (2, 1) if is_v2 else (3, 2)
 
         self.backbone = Backbone(
             in_channels=in_dim, base_channels=base_channels,
@@ -530,7 +530,7 @@ class SegmModel(Module):
         _c2, _c3, c4, _c5 = enc_channels
 
         self.hyperace = HyperACE(
-            enc_channels, c4, num_hyperedges, num_heads, k=k, l=l
+            enc_channels, c4, num_hyperedges, num_heads, k=k, num_layers=num_layers
         )
         self.decoder = Decoder(enc_channels, c4, enc_channels)
         self.upsample_head = ProgressiveUpsampleHead(

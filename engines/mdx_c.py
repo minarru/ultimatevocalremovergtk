@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import inspect
 import typing
-import warnings
 
 import numpy as np
 
 from bundled.constants import *
+from core.constructor_kwargs import analyze_constructor_kwargs
+from core.debug_log import log_event
 from core.model_stem_semantics import (
     is_vocal_target,
 )
@@ -19,11 +19,8 @@ from core.stems import (
     StemRouteKind,
 )
 from ml import spec_utils
-
-warnings.filterwarnings("ignore")
-
-from ml.bs_roformer import BSRoformer  # noqa: E402
-from ml.mel_band_roformer import MelBandRoformer  # noqa: E402
+from ml.bs_roformer import BSRoformer
+from ml.mel_band_roformer import MelBandRoformer
 
 
 def _load_torch_checkpoint(path: str):
@@ -56,11 +53,14 @@ def _mdx_c_hop_length(config: typing.Any) -> int:
 # consumer -- this module deliberately knows nothing about them.
 def filter_init_kwargs(model_cls: typing.Any, cfg: typing.Any) -> dict:
     """Drop YAML keys that are not accepted by a model class ``__init__``."""
-    params = inspect.signature(model_cls.__init__).parameters
-    if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
-        return dict(cfg)
-    allowed = {name for name in params if name != 'self'}
-    return {key: cfg[key] for key in cfg if key in allowed}
+    analysis = analyze_constructor_kwargs(model_cls, cfg)
+    if analysis.dropped:
+        log_event(
+            "model", "model_config_keys_ignored", level="warning",
+            architecture=model_cls.__name__,
+            dropped_keys=tuple(sorted(str(key) for key in analysis.dropped)),
+        )
+    return analysis.accepted
 
 
 def scnet_variant_from_state_dict(keys: typing.Sequence[str]) -> typing.Optional[str]:

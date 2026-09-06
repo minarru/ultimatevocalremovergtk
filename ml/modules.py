@@ -10,11 +10,11 @@ NormFactory: TypeAlias = Callable[[int], nn.Module]
 
 
 class TFC(nn.Module):
-    def __init__(self, c: int, l: int, k: int, norm: NormFactory) -> None:
+    def __init__(self, c: int, num_layers: int, k: int, norm: NormFactory) -> None:
         super(TFC, self).__init__()
 
         self.H = nn.ModuleList()
-        for _i in range(l):
+        for _i in range(num_layers):
             self.H.append(
                 nn.Sequential(
                     nn.Conv2d(in_channels=c, out_channels=c, kernel_size=k, stride=1, padding=k // 2),
@@ -30,11 +30,11 @@ class TFC(nn.Module):
 
 
 class DenseTFC(nn.Module):
-    def __init__(self, c: int, l: int, k: int, norm: NormFactory) -> None:
+    def __init__(self, c: int, num_layers: int, k: int, norm: NormFactory) -> None:
         super(DenseTFC, self).__init__()
 
         self.conv = nn.ModuleList()
-        for _i in range(l):
+        for _i in range(num_layers):
             self.conv.append(
                 nn.Sequential(
                     nn.Conv2d(in_channels=c, out_channels=c, kernel_size=k, stride=1, padding=k // 2),
@@ -53,7 +53,7 @@ class TFC_TDF(nn.Module):
     def __init__(
         self,
         c: int,
-        l: int,
+        num_layers: int,
         f: int,
         k: int,
         bn: int | None,
@@ -66,7 +66,7 @@ class TFC_TDF(nn.Module):
 
         self.use_tdf = bn is not None
 
-        self.tfc = DenseTFC(c, l, k, norm) if dense else TFC(c, l, k, norm)
+        self.tfc = DenseTFC(c, num_layers, k, norm) if dense else TFC(c, num_layers, k, norm)
 
         if self.use_tdf:
             assert bn is not None

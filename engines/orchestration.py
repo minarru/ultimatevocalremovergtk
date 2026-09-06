@@ -1,8 +1,8 @@
 from __future__ import annotations
-import typing
 
 import os
-from typing import Any, TYPE_CHECKING
+import typing
+from typing import TYPE_CHECKING, Any
 
 from bundled.constants import *
 from core.debug_log import trace_phase

@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple, cast
+from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 from torch import nn
 from torch.nn import functional as F
 
 from ml.bandit_bsrnn.bsrnn import BandsplitCoreBase
+
 from .bandsplit import BandSplitModule
 from .maskestim import (
     MaskEstimationModule,
@@ -14,11 +15,7 @@ from .maskestim import (
     OverlappingMaskEstimationModule,
     PatchingMaskEstimationModule,
 )
-from .tfmodel import (
-    ConvolutionalTimeFreqModule,
-    SeqBandModellingModule,
-    TransformerTimeFreqModule
-)
+from .tfmodel import ConvolutionalTimeFreqModule, SeqBandModellingModule, TransformerTimeFreqModule
 
 
 class MultiMaskBandSplitCoreBase(BandsplitCoreBase):

@@ -1,0 +1,66 @@
+using Gtk 4.0;
+
+Gtk.ListBoxRow queue_row {
+  child: Gtk.Grid queue_grid {
+    column-spacing: 12;
+    row-spacing: 6;
+    margin-start: 6;
+    margin-end: 6;
+    margin-top: 6;
+    margin-bottom: 6;
+
+    Gtk.Label status_label {
+      xalign: 0.0;
+      width-request: 300;
+      margin-bottom: 6;
+      hexpand: true;
+      ellipsize: middle;
+      max-width-chars: 40;
+
+      layout {
+        column: 0;
+        row: 0;
+      }
+    }
+
+    Gtk.ProgressBar row_progress {
+      show-text: false;
+      valign: center;
+      margin-start: 2;
+      margin-bottom: 4;
+      hexpand: true;
+
+      layout {
+        column: 0;
+        row: 1;
+      }
+    }
+
+    Gtk.Label detail_label {
+      xalign: 0.0;
+      wrap: true;
+      wrap-mode: word_char;
+      ellipsize: end;
+      use-markup: true;
+      styles ["dim-label", "numeric"]
+
+      layout {
+        column: 0;
+        row: 2;
+      }
+    }
+
+    Gtk.Button action_button {
+      icon-name: "cross-small-symbolic";
+      valign: center;
+      margin-start: 20;
+      styles ["circular"]
+
+      layout {
+        column: 1;
+        row: 0;
+        row-span: 3;
+      }
+    }
+  };
+}

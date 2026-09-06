@@ -11,6 +11,7 @@ vocal-splitter / Demucs pre-process machinery. Audio tools live in
 :mod:`core.audio_tools`.
 """
 
+import copy
 import os
 import time
 import typing
@@ -148,6 +149,10 @@ class JobRunner:
 
     # -- Public control ---------------------------------------------------------
 
+    @property
+    def last_oom_exported(self) -> bool:
+        return bool(self._last_oom_exported)
+
     def is_running(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
 
@@ -265,6 +270,7 @@ class JobRunner:
         """
         if self.is_running():
             return
+        self.settings = copy.deepcopy(job.settings)
         from kthread import KThread
 
         self._reset_run_state()
@@ -364,7 +370,7 @@ class JobRunner:
                     failed_inputs=sum(item.status == "failed" for item in outcomes),
                 )
                 callbacks.complete()
-        except Exception as exc:  # noqa: BLE001 - surfaced through the callback
+        except Exception as exc:  # surfaced through the callback
             self.last_outcomes = tuple(outcomes)
             if self._is_stopped:
                 log_event(
@@ -429,7 +435,7 @@ class JobRunner:
         try:
             mode: Literal["single", "ensemble"] = "ensemble" if use_ensemble else "single"
             self._run_separation([planned.path], item_callbacks, mode)
-        except Exception as exc:  # noqa: BLE001 - convert to outcome
+        except Exception as exc:  # convert to outcome
             return InputOutcome(
                 path=planned.path,
                 status="failed",
@@ -533,11 +539,11 @@ class JobRunner:
             )
             callbacks.console(f"{message}\n")
             try:
-                # Lazy import: keep core free of a hard ui dependency at load time.
-                from ui import errorlog as errorlog_mod
+                # Record even when no GUI is installed.
+                from core import error_log as errorlog_mod
 
                 errorlog_mod.log_error("Sample mode", exc, context=message)
-            except Exception:  # noqa: BLE001 - logging must not abort the run
+            except Exception:  # logging must not abort the run
                 debug("model", f"sample clip fallback log failed: {exc}")
 
         prep_started = time.perf_counter()

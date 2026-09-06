@@ -1,10 +1,9 @@
 """JobRunner separator lifecycle."""
-import typing
 import types
-
+import typing
 import unittest
-from unittest import mock
 from types import SimpleNamespace
+from unittest import mock
 
 from core.job_runner import JobRunner
 from core.separator_run import run_separator

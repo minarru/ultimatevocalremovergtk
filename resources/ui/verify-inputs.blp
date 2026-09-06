@@ -1,0 +1,34 @@
+using Gtk 4.0;
+using Adw 1;
+
+Adw.Window window {
+  default-width: 620;
+  default-height: 560;
+  content: Adw.ToolbarView {
+    [top]
+    Adw.HeaderBar {
+      [start]
+      Gtk.Button add_button { icon-name: "list-add-symbolic"; }
+      [start]
+      Gtk.Button clear_button { icon-name: "edit-clear-all-symbolic"; }
+      [end]
+      Gtk.Button remove_unreadable_button {
+        label: "Remove unreadable";
+        styles ["destructive-action"]
+      }
+      [end]
+      Gtk.Button verify_button {
+        use-underline: true;
+        styles ["suggested-action"]
+      }
+    }
+    content: Adw.ToastOverlay toast_overlay {
+      child: Gtk.ScrolledWindow {
+        vexpand: true;
+        child: Adw.PreferencesPage page {
+          Adw.PreferencesGroup files_group {}
+        };
+      };
+    };
+  };
+}

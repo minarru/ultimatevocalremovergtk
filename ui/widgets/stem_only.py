@@ -3,35 +3,14 @@
 from __future__ import annotations
 
 import typing
-from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional, Sequence, Set, Tuple
 
 from gi.repository import Adw, GLib, Gtk
 
 from bundled.constants import (
     ALL_STEMS,
-    BASS_STEM,
-    DRUM_STEM,
-    GUITAR_STEM,
-    INST_STEM,
-    NO_BASS_STEM,
-    NO_DRUM_STEM,
-    NO_GUITAR_STEM,
-    NO_OTHER_STEM,
-    NO_PIANO_STEM,
-    NO_STEM,
-    OTHER_STEM,
-    PIANO_STEM,
-    PRIMARY_STEM,
-    SECONDARY_STEM,
-    VOCAL_STEM,
     secondary_stem,
 )
-from core.model_stem_semantics import (
-    VOCALS_OTHER_DISPLAY_OVERRIDES,
-    stem_display_overrides,
-)
-from core.stem_roles import StemLiteral
 from core.stem_selection import (
     _FOCUS_INSTRUMENTAL,
     _FOCUS_VOCALS,
@@ -46,308 +25,87 @@ from core.stem_selection import (
     SubsetView,
 )
 from core.stems import (
-    StemBucket,
     StemRoute,
-    bucket_for_model_stem,
-    canonical_stem_alias,
-    concept_is,
     persisted_stem_focus,
 )
 
 from ..dialogs.utils import present_modal_dialog, set_form_dialog_content
 from ..help_text import (
-    DEMUCS_STEMS_SAVE_HELP,
     MDX_STEMS_HINT,
-    QUICK_EXPORT_INSTRUMENTAL_HINT,
-    QUICK_EXPORT_VOCALS_HINT,
-    SAVE_STEM_ONLY_HELP,
-    SAVE_STEMS_NO_MODEL_HELP,
-    STEM_ONLY_ALL_HINT,
-    primary_stem_only_tooltip,
-    secondary_stem_only_tooltip,
 )
 from ..markup import set_row_subtitle
-from ..spacing import inset_md
-from .rows import get_combo_value, make_combo_row, set_combo_tag_values, set_combo_value
-
-# Stable display order for "<stem> Only" entries.
-_STEM_ONLY_ORDER = (INST_STEM, VOCAL_STEM, BASS_STEM, DRUM_STEM, OTHER_STEM)
-_CHOOSE_STEM = "choose"
-_CHOOSE_STEM_LABEL = "Choose Stem"
-_REFRESH_REPICK_SUMMARY = "Choose a stem again after the model refresh"
-
-STEM_ONLY_ICON_FALLBACK = "audio-x-generic-symbolic"
-
-STEM_ONLY_ICONS: Dict[str, str] = {
-    VOCAL_STEM: "person-talking-symbolic",
-    INST_STEM: "bullhorn-symbolic",
-    BASS_STEM: "audio-input-microphone-symbolic",
-    DRUM_STEM: "audio-speakers-symbolic",
-    OTHER_STEM: "folder-music-symbolic",
-    GUITAR_STEM: "audio-speakers-symbolic",
-    PIANO_STEM: "folder-music-symbolic",
-    "Speech": "person-talking-symbolic",
-    "Music": "folder-music-symbolic",
-    "Sfx": "speaker-3-symbolic",
-    "Effects": "speaker-3-symbolic",
-}
-ALL_STEMS_ICON = "ungroup-symbolic"
-
-# UI-only: names with no ensemble/bucket significance today. Kept separate
-# from the shared core table on purpose -- folding them in would change
-# core/stems.canonical_ensemble_stem_tag's output for these
-# stems (verified: it passes them through unchanged today). See
-# docs/superpowers/specs/2026-08-09-stem-export-semantics-design.md.
-_STEM_ALIASES: Dict[str, str] = {
-    "speech": "Speech",
-    "music": "Music",
-    "sfx": "Sfx",
-    "effects": "Effects",
-}
-
-# Friendlier export-filter labels for complement stems.
-_COMPLEMENT_DISPLAY: Dict[str, str] = {
-    f"{NO_STEM}{VOCAL_STEM}": INST_STEM,
-    f"{NO_STEM}{VOCAL_STEM.lower()}": INST_STEM,
-    "No vocals": INST_STEM,
-    NO_OTHER_STEM: "Mix minus Other",
-    f"{NO_STEM}{OTHER_STEM.lower()}": "Mix minus Other",
-    f"{NO_STEM}{OTHER_STEM}": "Mix minus Other",
-    NO_BASS_STEM: NO_BASS_STEM,
-    f"{NO_STEM}{BASS_STEM.lower()}": NO_BASS_STEM,
-    NO_DRUM_STEM: NO_DRUM_STEM,
-    f"{NO_STEM}{DRUM_STEM.lower()}": NO_DRUM_STEM,
-    NO_GUITAR_STEM: NO_GUITAR_STEM,
-    NO_PIANO_STEM: NO_PIANO_STEM,
-}
-
-# Back-compat alias for tests and callers that referenced the old private dict.
-_LEAD_VOCAL_PAIR_LABELS = VOCALS_OTHER_DISPLAY_OVERRIDES
-
-
-def roformer_lead_vocal_label_overrides(model: typing.Any) -> Optional[Dict[str, str]]:
-    """Return stem display overrides for the selected model."""
-    return stem_display_overrides(model)
-
-
-def canonical_stem_name(stem: Optional[str]) -> Optional[str]:
-    """Normalize model/yaml stem strings to canonical UVR labels."""
-    if not stem:
-        return stem
-    shared = canonical_stem_alias(stem)
-    if shared is not None:
-        return shared
-    if stem in _STEM_ALIASES:
-        return _STEM_ALIASES[stem]
-    lowered = stem.lower()
-    if lowered in _STEM_ALIASES:
-        return _STEM_ALIASES[lowered]
-    if stem.startswith(NO_STEM) and len(stem) > len(NO_STEM):
-        suffix = stem[len(NO_STEM) :]
-        canonical_suffix = canonical_stem_alias(suffix) or _STEM_ALIASES.get(suffix.lower(), suffix)
-        if canonical_suffix == suffix and suffix[:1].islower():
-            canonical_suffix = suffix.title()
-        return f"{NO_STEM}{canonical_suffix}"
-    return stem
-
-
-def stem_display_label(stem: Optional[str], *, overrides: Optional[Dict[str, str]] = None) -> str:
-    """Human-readable label for combos, checklists, and export summaries."""
-    if not stem:
-        return ""
-    if overrides:
-        if stem in overrides:
-            return overrides[stem]
-        canonical = canonical_stem_name(stem) or stem
-        if canonical in overrides:
-            return overrides[canonical]
-    canonical = canonical_stem_name(stem) or stem
-    if canonical in _COMPLEMENT_DISPLAY:
-        return _COMPLEMENT_DISPLAY[canonical]
-    if stem in _COMPLEMENT_DISPLAY:
-        return _COMPLEMENT_DISPLAY[stem]
-    return canonical
-
-
-def stem_only_tooltip(stem: str, *, overrides: Optional[Dict[str, str]] = None) -> str:
-    return (
-        f"Export only {stem_display_label(stem, overrides=overrides)}; skip the other output file"
-    )
-
-
-_QUICK_EXPORT_LABELS = {
-    _QUICK_ALL: ALL_STEMS,
-    _QUICK_INSTRUMENTAL: f"{INST_STEM} only",
-    _QUICK_VOCALS: f"{VOCAL_STEM} only",
-}
-
-_QUICK_EXPORT_HINTS = {
-    _QUICK_ALL: STEM_ONLY_ALL_HINT,
-    _QUICK_INSTRUMENTAL: QUICK_EXPORT_INSTRUMENTAL_HINT,
-    _QUICK_VOCALS: QUICK_EXPORT_VOCALS_HINT,
-}
-
-
-def stem_only_icon(stem: Optional[str]) -> Optional[str]:
-    if not stem:
-        return None
-    if stem == ALL_STEMS:
-        return ALL_STEMS_ICON
-    canonical = canonical_stem_name(stem) or stem
-    return STEM_ONLY_ICONS.get(canonical, STEM_ONLY_ICON_FALLBACK)
-
-
-def _stem_only_rank(stem: str) -> int:
-    if stem in _STEM_ONLY_ORDER:
-        return _STEM_ONLY_ORDER.index(stem)
-    return len(_STEM_ONLY_ORDER) + 1
-
-
-@dataclass(frozen=True)
-class StemOnlyOption:
-    name: str
-    tooltip: str
-    display_label: str
-    icon_name: Optional[str]
-    settings_key: Optional[str]
-
-
-def build_stem_only_options(
-    *,
-    primary_stem: Optional[str],
-    secondary_stem: Optional[str],
-    primary_key: str,
-    secondary_key: str,
-    stem_label_overrides: Optional[Dict[str, str]] = None,
-    routes: Optional[Sequence[StemRoute]] = None,
-) -> List[StemOnlyOption]:
-    """Build export entries for All Stems + each stem's Only option."""
-    options = [
-        StemOnlyOption(_TOGGLE_ALL, STEM_ONLY_ALL_HINT, ALL_STEMS, ALL_STEMS_ICON, None),
-    ]
-    if routes and any(
-        not isinstance(route.role, StemLiteral) or not route.role.tag.startswith("legacy:")
-        for route in routes
-    ):
-        ordered_routes = sorted(routes, key=lambda route: not route.logical_primary)
-        for index, route in enumerate(ordered_routes):
-            stored_id = persisted_stem_focus(route)
-            if not stored_id:
-                continue
-            settings_key = primary_key if index == 0 else secondary_key
-            options.append(
-                StemOnlyOption(
-                    stored_id,
-                    f"Export only {route.label}; skip the other output file",
-                    route.label,
-                    stem_only_icon(route.label),
-                    settings_key,
-                )
-            )
-        if len(options) > 1:
-            return options
-    if primary_stem and secondary_stem:
-        entries = [
-            (primary_stem, primary_key),
-            (secondary_stem, secondary_key),
-        ]
-        option_ids = _exclusive_option_ids(
-            primary_stem, secondary_stem, primary_key, secondary_key, routes
-        )
-        if stem_label_overrides:
-            entries.sort(
-                key=lambda entry: (
-                    0
-                    if bucket_for_model_stem(
-                        stem_display_label(entry[0], overrides=stem_label_overrides),
-                        stem_count=2,  # a primary/secondary pair, by construction
-                    )
-                    in (
-                        StemBucket.VOCALS,
-                        StemBucket.LEAD_VOCALS,
-                        StemBucket.BACKING_VOCALS,
-                    )
-                    else 1,
-                    _stem_only_rank(stem_display_label(entry[0], overrides=stem_label_overrides)),
-                )
-            )
-        else:
-            entries.sort(key=lambda entry: _stem_only_rank(entry[0]))
-        for stem, key in entries:
-            display = stem_display_label(stem, overrides=stem_label_overrides)
-            options.append(
-                StemOnlyOption(
-                    option_ids.get(stem, key),
-                    stem_only_tooltip(stem, overrides=stem_label_overrides),
-                    display,
-                    stem_only_icon(stem),
-                    key,
-                )
-            )
-    else:
-        options.append(
-            StemOnlyOption(
-                primary_key,
-                primary_stem_only_tooltip(),
-                PRIMARY_STEM,
-                None,
-                primary_key,
-            )
-        )
-        options.append(
-            StemOnlyOption(
-                secondary_key,
-                secondary_stem_only_tooltip(),
-                SECONDARY_STEM,
-                None,
-                secondary_key,
-            )
-        )
-    return options
-
-
-def _exclusive_option_ids(
-    primary_stem: str,
-    secondary_stem: str,
-    primary_key: str,
-    secondary_key: str,
-    routes: Optional[Sequence[StemRoute]],
-) -> Dict[str, str]:
-    ids = {primary_stem: primary_key, secondary_stem: secondary_key}
-    if not routes:
-        return ids
-    unused = list(routes)
-    for stem in (primary_stem, secondary_stem):
-        match = next(
-            (route for route in unused if route.native is not None and route.native.matches(stem)),
-            None,
-        )
-        if match is not None:
-            ids[stem] = match.concept
-            unused.remove(match)
-    for stem in (primary_stem, secondary_stem):
-        if ids[stem] in (primary_key, secondary_key) and unused:
-            ids[stem] = unused.pop(0).concept
-    return ids
-
-
-def _subset_option_ids(
-    stems: Sequence[str],
-    routes: Optional[Sequence[StemRoute]],
-) -> Dict[str, str]:
-    ids = {stem: stem for stem in stems}
-    if not routes:
-        return ids
-    unused = [route for route in routes if route.native is not None]
-    for stem in stems:
-        match = next(
-            (route for route in unused if route.native is not None and route.native.matches(stem)),
-            None,
-        )
-        if match is not None:
-            ids[stem] = match.concept
-            unused.remove(match)
-    return ids
+from ..stem_labels import (
+    _CHOOSE_STEM as _CHOOSE_STEM,
+)
+from ..stem_labels import (
+    _CHOOSE_STEM_LABEL as _CHOOSE_STEM_LABEL,
+)
+from ..stem_labels import (
+    _COMPLEMENT_DISPLAY as _COMPLEMENT_DISPLAY,
+)
+from ..stem_labels import (
+    _LEAD_VOCAL_PAIR_LABELS as _LEAD_VOCAL_PAIR_LABELS,
+)
+from ..stem_labels import (
+    _QUICK_EXPORT_HINTS as _QUICK_EXPORT_HINTS,
+)
+from ..stem_labels import (
+    _QUICK_EXPORT_LABELS as _QUICK_EXPORT_LABELS,
+)
+from ..stem_labels import (
+    _REFRESH_REPICK_SUMMARY as _REFRESH_REPICK_SUMMARY,
+)
+from ..stem_labels import (
+    _STEM_ALIASES as _STEM_ALIASES,
+)
+from ..stem_labels import (
+    _STEM_ONLY_ORDER as _STEM_ONLY_ORDER,
+)
+from ..stem_labels import (
+    ALL_STEMS_ICON as ALL_STEMS_ICON,
+)
+from ..stem_labels import (
+    STEM_ONLY_ICON_FALLBACK as STEM_ONLY_ICON_FALLBACK,
+)
+from ..stem_labels import (
+    STEM_ONLY_ICONS as STEM_ONLY_ICONS,
+)
+from ..stem_labels import (
+    StemOnlyOption as StemOnlyOption,
+)
+from ..stem_labels import (
+    _exclusive_option_ids as _exclusive_option_ids,
+)
+from ..stem_labels import (
+    _export_label_for_choice as _export_label_for_choice,
+)
+from ..stem_labels import (
+    _stem_only_rank as _stem_only_rank,
+)
+from ..stem_labels import (
+    _subset_option_ids as _subset_option_ids,
+)
+from ..stem_labels import (
+    build_stem_only_options as build_stem_only_options,
+)
+from ..stem_labels import (
+    canonical_stem_name as canonical_stem_name,
+)
+from ..stem_labels import (
+    roformer_lead_vocal_label_overrides as roformer_lead_vocal_label_overrides,
+)
+from ..stem_labels import (
+    stem_display_label as stem_display_label,
+)
+from ..stem_labels import (
+    stem_only_icon as stem_only_icon,
+)
+from ..stem_labels import (
+    stem_only_tooltip as stem_only_tooltip,
+)
+from ..stem_presentation import StemPresentation, project_stems
+from ..template import load_builder, object_from_builder
+from .rows import configure_combo_row, get_combo_value, set_combo_tag_values, set_combo_value
 
 
 def _fill_export_combo(
@@ -355,15 +113,6 @@ def _fill_export_combo(
 ) -> Dict[str, StemOnlyOption]:
     set_combo_tag_values(row, [(opt.name, opt.display_label) for opt in options])
     return {opt.name: opt for opt in options}
-
-
-def _export_label_for_choice(name: str, options: Dict[str, StemOnlyOption]) -> str:
-    if name == _TOGGLE_ALL:
-        return "Exporting all outputs"
-    option = options.get(name)
-    if option is not None:
-        return f"Exporting {option.display_label} only"
-    return "Exporting selected outputs"
 
 
 class SaveStemsSection:
@@ -390,30 +139,33 @@ class SaveStemsSection:
         self._repick_required = False
         self._repick_restore_token: Optional[object] = None
 
-        self._exclusive_row = make_combo_row("Export", [])
+        builder = load_builder("stem_only")
+        self._holder = object_from_builder(builder, "stem_holder", Gtk.Box)
+        self._exclusive_row = configure_combo_row(
+            object_from_builder(builder, "exclusive_row", Adw.ComboRow), []
+        )
         self._exclusive_row.connect("notify::selected", self._on_exclusive_changed)
 
-        self._quick_row = make_combo_row("Quick export", [])
+        self._quick_row = configure_combo_row(
+            object_from_builder(builder, "quick_row", Adw.ComboRow), []
+        )
         self._quick_row.connect("notify::selected", self._on_quick_export_changed)
 
-        self._custom_row = Adw.ActionRow(
-            title="Custom stems",
-            subtitle="Open to choose specific stems",
-            activatable=True,
-        )
-        self._custom_row.add_suffix(Gtk.Image(icon_name="go-next-symbolic"))
+        self._custom_row = object_from_builder(builder, "custom_row", Adw.ActionRow)
         self._custom_row.connect("activated", self._open_custom_stems_dialog)
 
-        self._demucs_focus_row = make_combo_row("Stem focus", [])
+        self._demucs_focus_row = configure_combo_row(
+            object_from_builder(builder, "demucs_focus_row", Adw.ComboRow), []
+        )
         self._demucs_focus_row.connect("notify::selected", self._on_demucs_focus_changed)
 
-        self._demucs_export_row = make_combo_row("Export", [])
+        self._demucs_export_row = configure_combo_row(
+            object_from_builder(builder, "demucs_export_row", Adw.ComboRow), []
+        )
         self._demucs_export_row.connect("notify::selected", self._on_demucs_export_changed)
 
-        self.selection_warning_row = Adw.ActionRow(
-            title="Stem selection needs review",
-            subtitle=("Available stem roles changed. Choose a stem again before starting."),
-            visible=False,
+        self.selection_warning_row = object_from_builder(
+            builder, "selection_warning_row", Adw.ActionRow
         )
 
         self._rows = (
@@ -424,19 +176,9 @@ class SaveStemsSection:
             self._demucs_export_row,
             self.selection_warning_row,
         )
-        # Holder until attach_to() reparents rows into the outer Save stems group.
-        self._holder = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        for row in self._rows:
-            self._holder.append(row)
-
         # Compatibility aliases used by tests / metadata helpers.
-        self._exclusive_block = self._exclusive_row
-        self._quick_block = self._quick_row
-        self._subset_block = self._custom_row
-        self._demucs_focus_block = self._demucs_focus_row
-        self._demucs_export_block = self._demucs_export_row
 
-        self._build_custom_stems_dialog()
+        self._build_custom_stems_dialog(builder)
         self._hide_all_rows()
 
     @property
@@ -600,33 +342,10 @@ class SaveStemsSection:
                 group.add(row)
         self._host = group
 
-    def _build_custom_stems_dialog(self) -> None:
-        self._custom_listbox = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
-        self._custom_listbox.add_css_class("boxed-list")
-
-        scroller = Gtk.ScrolledWindow()
-        scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        scroller.set_min_content_height(280)
-        scroller.set_vexpand(True)
-        scroller.set_child(self._custom_listbox)
-
-        description = Gtk.Label(
-            label="Choose which stems to export. Selecting All stems clears individual picks.",
-            wrap=True,
-            xalign=0.0,
-        )
-        description.add_css_class("dim-label")
-
-        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
-        inset_md(content)
-        content.append(description)
-        content.append(scroller)
-
-        self._custom_dialog = Adw.Dialog()
-        self._custom_dialog.set_title("Custom stems")
-        self._custom_dialog.set_content_width(400)
-        self._custom_dialog.set_content_height(480)
-        self._custom_dialog.set_follows_content_size(True)
+    def _build_custom_stems_dialog(self, builder: Gtk.Builder) -> None:
+        self._custom_listbox = object_from_builder(builder, "custom_listbox", Gtk.ListBox)
+        content = object_from_builder(builder, "custom_content", Gtk.Box)
+        self._custom_dialog = object_from_builder(builder, "custom_dialog", Adw.Dialog)
         set_form_dialog_content(
             self._custom_dialog,
             content,
@@ -693,7 +412,7 @@ class SaveStemsSection:
             self._exclusive_options = _fill_export_combo(self._exclusive_row, options)
         finally:
             self._loading = was_loading
-        self._exclusive_row.set_visible(True)
+        self._exclusive_row.set_visible("exclusive" in self.presentation().visible_rows)
         self._apply_semantics_tooltip(self._exclusive_row)
 
     def configure_subset(
@@ -737,7 +456,7 @@ class SaveStemsSection:
                 ]
             set_combo_tag_values(self._quick_row, self._subset_quick_items)
             self._quick_row.set_visible(self._subset_quick_supported)
-            self._custom_row.set_visible(True)
+            self._custom_row.set_visible("custom" in self.presentation().visible_rows)
         finally:
             self._loading = was_loading
         target = self._quick_row if show_quick_export else self._custom_row
@@ -868,42 +587,33 @@ class SaveStemsSection:
                 ),
             )
 
+    def presentation(self) -> StemPresentation:
+        return project_stems(
+            self._state,
+            exclusive_choice=get_combo_value(self._exclusive_row) or _TOGGLE_ALL,
+            exclusive_options=tuple(self._exclusive_options.values()),
+            quick_visible=self._quick_row.get_visible(),
+            demucs_active=self._demucs_active_name(),
+            demucs_export_choice=get_combo_value(self._demucs_export_row) or _TOGGLE_ALL,
+            demucs_export_visible=self._demucs_export_row.get_visible(),
+            demucs_export_options=tuple(self._demucs_export_options.values()),
+            overrides=self._stem_label_overrides,
+            repick=self._repick_required,
+            semantics=self._export_semantics_note,
+        )
+
     def export_summary(self) -> str:
-        if not self._has_model:
-            return SAVE_STEMS_NO_MODEL_HELP
-        if self._repick_required:
-            return _REFRESH_REPICK_SUMMARY
-        if self.mode == "exclusive":
-            name = get_combo_value(self._exclusive_row) or _TOGGLE_ALL
-            return _export_label_for_choice(name, self._exclusive_options)
-        if self.mode == "subset":
-            return self._subset_export_summary()
-        if self.mode == "demucs":
-            return self._demucs_export_summary()
-        return SAVE_STEMS_NO_MODEL_HELP
+        return self.presentation().export_summary
 
     def export_description_lines(self) -> List[str]:
         """Group description lines (summary only; semantics live on the row)."""
         return [self.export_summary()]
 
     def expected_output_count(self) -> int:
-        if self._repick_required:
-            return 0
-        return self._state.expected_output_count(
-            exclusive_choice=get_combo_value(self._exclusive_row) or _TOGGLE_ALL,
-            demucs_active=self._demucs_active_name(),
-            demucs_export_choice=get_combo_value(self._demucs_export_row) or _TOGGLE_ALL,
-            demucs_export_visible=self._demucs_export_row.get_visible(),
-        )
+        return self.presentation().expected_count
 
     def active_hint(self) -> str:
-        if self._export_semantics_note:
-            return self._export_semantics_note
-        if self.mode == "subset":
-            return MDX_STEMS_HINT
-        if self.mode == "demucs":
-            return DEMUCS_STEMS_SAVE_HELP
-        return SAVE_STEM_ONLY_HELP
+        return self.presentation().hint
 
     @property
     def repick_required(self) -> bool:
@@ -1040,16 +750,9 @@ class SaveStemsSection:
         self._custom_row.set_sensitive(True)
 
     def _apply_subset_dimming(self) -> None:
-        """Dim the inactive path so Quick vs Custom ownership is obvious."""
-        if not self._quick_row.get_visible():
-            self._quick_row.set_opacity(1.0)
-            self._custom_row.set_opacity(1.0)
-            self._quick_row.set_sensitive(True)
-            self._custom_row.set_sensitive(True)
-            return
-        custom_active = self._subset_mode == "custom"
-        self._quick_row.set_opacity(0.55 if custom_active else 1.0)
-        self._custom_row.set_opacity(1.0 if custom_active else 0.55)
+        presentation = self.presentation()
+        self._quick_row.set_opacity(presentation.quick_opacity)
+        self._custom_row.set_opacity(presentation.custom_opacity)
         self._quick_row.set_sensitive(True)
         self._custom_row.set_sensitive(True)
 
@@ -1101,35 +804,8 @@ class SaveStemsSection:
         self._state.apply_subset_chip_selection(mode, selected)
         self._refresh_custom_subtitle()
 
-    def _subset_export_summary(self) -> str:
-        if self._subset_mode == _QUICK_INSTRUMENTAL:
-            return "Exporting Instrumental only (derived)"
-        if self._subset_mode == _QUICK_VOCALS:
-            return "Exporting Vocals only"
-        if self._subset_mode == _QUICK_ALL or self._custom_all:
-            return "Exporting all stems"
-        selected = self._natives_in_selection(self._custom_selected)
-        if not selected:
-            return "Exporting all stems"
-        if (
-            len(selected) == 1
-            and self._subset_route(selected[0]) is None
-            and concept_is(selected[0], StemBucket.OTHER, stem_count=len(self._subset_stems))
-        ):
-            return "Exporting Other stem"
-        return "Exporting " + ", ".join(self._subset_label(stem) for stem in selected)
-
     def _refresh_custom_subtitle(self) -> None:
-        if self._subset_mode != "custom":
-            set_row_subtitle(self._custom_row, "Open to choose specific stems")
-            return
-        if self._custom_all or not self._custom_selected:
-            set_row_subtitle(self._custom_row, ALL_STEMS)
-            return
-        labels = [
-            self._subset_label(stem) for stem in self._natives_in_selection(self._custom_selected)
-        ]
-        set_row_subtitle(self._custom_row, ", ".join(labels) if labels else ALL_STEMS)
+        set_row_subtitle(self._custom_row, self.presentation().custom_subtitle)
 
     def _rebuild_custom_checklist(self) -> None:
         child = self._custom_listbox.get_first_child()
@@ -1314,21 +990,6 @@ class SaveStemsSection:
         else:
             self._demucs_export_row.set_visible(False)
 
-    def _demucs_export_summary(self) -> str:
-        if self._demucs_is_all_stems():
-            return "Exporting all stems"
-        if self._demucs_is_quick_instrumental():
-            return "Exporting Instrumental only (derived)"
-        if self._demucs_is_quick_vocals():
-            return "Exporting Vocals only"
-        focus = self._demucs_focus_value()
-        focus_label = stem_display_label(focus)
-        if self._demucs_export_row.get_visible():
-            name = get_combo_value(self._demucs_export_row) or _TOGGLE_ALL
-            summary = _export_label_for_choice(name, self._demucs_export_options)
-            return summary.replace("Exporting", f"{focus_label} focus —", 1)
-        return f"{focus_label} focus — {focus_label} only"
-
     def _on_demucs_focus_changed(self, *_args: typing.Any) -> None:
         if self._loading:
             return
@@ -1366,123 +1027,3 @@ class SaveStemsSection:
         if self._loading or self._on_changed is None:
             return
         self._on_changed()
-
-    # -- Test helpers (preserve prior internal call shapes) --------------------
-
-    class _QuickExportProxy:
-        def __init__(self, section: "SaveStemsSection"):
-            self._section = section
-
-        def set_active(self, name: str) -> None:
-            was_loading = self._section._loading
-            self._section._loading = True
-            try:
-                set_combo_value(self._section._quick_row, name)
-            finally:
-                self._section._loading = was_loading
-
-        def active_name(self) -> str:
-            return get_combo_value(self._section._quick_row) or _QUICK_ALL
-
-    class _SubsetProxy:
-        def __init__(self, section: "SaveStemsSection"):
-            self._section = section
-
-        @property
-        def _chips(self) -> Dict[str, "SaveStemsSection._ChipProxy"]:
-            ids = self._section._subset_ids()
-            chips: Dict[str, SaveStemsSection._ChipProxy] = {
-                ALL_STEMS: SaveStemsSection._ChipProxy(self._section, ALL_STEMS)
-            }
-            for stem in self._section._subset_stems:
-                proxy = SaveStemsSection._ChipProxy(self._section, stem)
-                chips[stem] = proxy
-                concept = ids.get(stem, stem)
-                chips.setdefault(concept, proxy)
-            return chips
-
-        def rebuild(self, stems: List[str], *, stem_label_overrides: typing.Any = None) -> None:
-            self._section._subset_stems = list(stems)
-            if stem_label_overrides is not None:
-                self._section._stem_label_overrides = stem_label_overrides
-            self._section._rebuild_custom_checklist()
-
-        def set_selection(
-            self,
-            selected: Set[str],
-            *,
-            full_stems: List[str],
-            highlight_all_when_empty: bool = True,
-        ) -> None:
-            self._section._subset_stems = list(full_stems)
-            self._section._set_custom_selection(
-                selected, highlight_all_when_empty=highlight_all_when_empty
-            )
-
-        def selected_stems(self) -> List[str]:
-            if self._section._custom_all:
-                return []
-            return self._section._natives_in_selection(self._section._custom_selected)
-
-        def is_all_active(self) -> bool:
-            return self._section._custom_all
-
-    class _ChipProxy:
-        def __init__(self, section: "SaveStemsSection", stem: str):
-            self._section = section
-            self._stem = stem
-
-        def get_active(self) -> bool:
-            if self._stem == ALL_STEMS:
-                return self._section._custom_all
-            concept = self._section._subset_token_id(self._stem)
-            return (not self._section._custom_all) and (
-                concept in self._section._custom_selected
-                or self._stem in self._section._custom_selected
-            )
-
-    class _DemucsFocusProxy:
-        def __init__(self, section: "SaveStemsSection"):
-            self._section = section
-
-        def set_active_name(self, name: str) -> None:
-            was_loading = self._section._loading
-            self._section._loading = True
-            try:
-                set_combo_value(self._section._demucs_focus_row, name)
-            finally:
-                self._section._loading = was_loading
-
-        def active_name(self) -> str:
-            return self._section._demucs_active_name()
-
-        def focus_value(self) -> str:
-            return self._section._demucs_focus_value()
-
-        def is_quick_vocals(self) -> bool:
-            return self._section._demucs_is_quick_vocals()
-
-        def is_quick_instrumental(self) -> bool:
-            return self._section._demucs_is_quick_instrumental()
-
-        def is_all_stems(self) -> bool:
-            return self._section._demucs_is_all_stems()
-
-        def needs_export_filter(self) -> bool:
-            return self._section._demucs_needs_export_filter()
-
-        @property
-        def _focus_map(self) -> Dict[str, str]:
-            return self._section._demucs_focus_map
-
-    @property
-    def _quick_export(self) -> _QuickExportProxy:
-        return self._QuickExportProxy(self)
-
-    @property
-    def _subset(self) -> _SubsetProxy:
-        return self._SubsetProxy(self)
-
-    @property
-    def _demucs_focus(self) -> _DemucsFocusProxy:
-        return self._DemucsFocusProxy(self)

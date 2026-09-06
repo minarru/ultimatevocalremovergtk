@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import unittest
+
 from ui.widget_state import fetch
 
 

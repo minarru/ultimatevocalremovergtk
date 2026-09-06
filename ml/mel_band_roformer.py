@@ -1,32 +1,31 @@
 from __future__ import annotations
 
 from functools import partial
-from typing import Any, Callable, Tuple, TypeVar, cast
+from typing import Any, Callable, TypeVar, cast
 
 import torch
-from torch import nn, einsum, Tensor
-from torch.nn import Module, ModuleList, Sequential
 import torch.nn.functional as F
+from beartype import BeartypeConf
+from beartype import beartype as _beartype
+from beartype.typing import Callable as BeartypeCallable
+from beartype.typing import Optional as BeartypeOptional
+from beartype.typing import Tuple as BeartypeTuple
+from einops import pack, rearrange, reduce, repeat, unpack
+from einops.layers.torch import Rearrange
+from librosa import filters
+from rotary_embedding_torch import RotaryEmbedding
+from torch import Tensor, nn
+from torch.nn import Module, ModuleList, Sequential
+from torch.utils.checkpoint import checkpoint
+
+from ml.stft_device import needs_cpu_stft, torch_istft, torch_stft
 
 from .attend import Attend
-
-from beartype.typing import Tuple as BeartypeTuple, Optional as BeartypeOptional, Callable as BeartypeCallable
-from beartype import BeartypeConf, beartype as _beartype
 
 # Model yamls write integer literals for float hyper-parameters
 # (``attn_dropout: 0``). PEP 484's implicit numeric tower accepts int where
 # float is annotated; beartype's default configuration does not.
 beartype = _beartype(conf=BeartypeConf(is_pep484_tower=True))
-
-from rotary_embedding_torch import RotaryEmbedding
-
-from einops import rearrange, pack, unpack, reduce, repeat
-from einops.layers.torch import Rearrange
-
-from librosa import filters
-
-from ml.stft_device import needs_cpu_stft, torch_istft, torch_stft
-from torch.utils.checkpoint import checkpoint
 
 T = TypeVar('T')
 
@@ -254,7 +253,7 @@ class BandSplit(Module):
         splits = x.split(self.dim_inputs, dim=-1)
 
         outs = []
-        for split_input, to_feature in zip(splits, cast(list[Sequential], list(self.to_features))):
+        for split_input, to_feature in zip(splits, cast(list[Sequential], list(self.to_features)), strict=True):
             split_output = to_feature(split_input)
             outs.append(split_output)
 
@@ -273,7 +272,7 @@ def MLP(
     net: list[Module] = []
     dims = (dim_in, *((resolved_dim_hidden,) * depth), dim_out)
 
-    for ind, (layer_dim_in, layer_dim_out) in enumerate(zip(dims[:-1], dims[1:])):
+    for ind, (layer_dim_in, layer_dim_out) in enumerate(zip(dims[:-1], dims[1:], strict=True)):
         is_last = ind == (len(dims) - 2)
 
         net.append(nn.Linear(layer_dim_in, layer_dim_out))
@@ -313,7 +312,7 @@ class MaskEstimator(Module):
 
         outs = []
 
-        for band_features, mlp in zip(bands, cast(list[Sequential], list(self.to_freqs))):
+        for band_features, mlp in zip(bands, cast(list[Sequential], list(self.to_freqs)), strict=True):
             freq_out = mlp(band_features)
             outs.append(freq_out)
 

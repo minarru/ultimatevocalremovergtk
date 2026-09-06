@@ -10,12 +10,13 @@ from bundled.error_handling import *
 from core.debug_log import debug, trace_phase
 from core.export_naming import stem_wav_path
 from core.gpu_backend import resolve_inference_backend
-from core.progress_ticks import InferenceProgress
 from core.run_estimate import save_progress_local_step
 from core.stems import StemBucket, StemLiteral, StemRoute, export_stem_key, filename_tag
 from ml import spec_utils
 
 from .orchestration import process_chain_model
+from .runtime import EngineInvocation, EngineRunContext, EngineState
+from .runtime_compat import EngineLegacyOptions
 
 if TYPE_CHECKING:
     from core.model_config import ModelConfig
@@ -24,7 +25,7 @@ if TYPE_CHECKING:
 cpu = torch.device('cpu')
 
 
-class SeperateAttributes:
+class SeperateAttributes(EngineLegacyOptions):
     def __init__(
         self,
         model_data: ModelConfig,
@@ -38,16 +39,12 @@ class SeperateAttributes:
         master_vocal_source: Any = None,
     ) -> None:
 
-        self.list_all_models: list
-        self.process_data = process_data
-        self.progress_value = 0
-        self.progress_total = 0
-        self._infer_progress = InferenceProgress()
-        self._save_stem_total = 1
-        self._save_stem_index = 0
-        self.set_progress_bar = process_data.set_progress_bar
-        self.write_to_console = process_data.write_to_console
-        self.check_run_control = process_data.check_run_control
+        self.context = EngineRunContext(
+            model_data, process_data,
+            EngineInvocation(main_model_primary_stem_4_stem, main_process_method,
+                             is_return_dual, main_model_primary, vocal_stem_path),
+        )
+        self.state = EngineState()
         self.audio_file_base_voc_split: Any = None
         if vocal_stem_path:
             self.audio_file, self.audio_file_base = vocal_stem_path
@@ -69,25 +66,7 @@ class SeperateAttributes:
         else:
             self.audio_file = process_data.audio_file
             self.audio_file_base = process_data.audio_file_base
-        self.export_path = process_data.export_path
-        self.cached_source_callback = process_data.cached_source_callback
-        self.cached_model_source_holder = process_data.cached_model_source_holder
-        self.is_4_stem_ensemble = process_data.is_4_stem_ensemble
-        self.list_all_models = process_data.list_all_models
-        self.process_iteration = process_data.process_iteration
         self.is_return_dual = is_return_dual
-        self.settings = model_data.settings
-        self.is_pitch_change = model_data.is_pitch_change
-        self.semitone_shift = model_data.semitone_shift
-        self.is_match_frequency_pitch = model_data.is_match_frequency_pitch
-        self.overlap = model_data.overlap
-        self.overlap_mdx = model_data.overlap_mdx
-        self.overlap_mdx23 = model_data.overlap_mdx23
-        self.is_mdx_combine_stems = model_data.is_mdx_combine_stems
-        self.is_mdx_include_stem_complement = model_data.is_mdx_include_stem_complement
-        self.is_mdx_c = model_data.is_mdx_c
-        self.mdx_c_configs: Any = model_data.mdx_c_configs
-        self.mdxnet_stem_select = model_data.mdxnet_stem_select
         self.mdxnet_stems_selected = getattr(model_data, "mdxnet_stems_selected", []) or []
         self.available_stem_routes = tuple(getattr(model_data, "available_stem_routes", ()) or ())
         self.selected_stem_routes = tuple(getattr(model_data, "selected_stem_routes", ()) or ())
@@ -95,20 +74,12 @@ class SeperateAttributes:
         self.selected_stem_routes_explicit: bool | None = (
             selection_provenance if isinstance(selection_provenance, bool) else None
         )
-        self.mixer_path = model_data.mixer_path
-        self.model_samplerate = model_data.model_samplerate
-        self.model_capacity = model_data.model_capacity
-        self.is_vr_51_model = model_data.is_vr_51_model
-        self.is_pre_proc_model = model_data.is_pre_proc_model
         self.is_secondary_model_activated = (
-            model_data.is_secondary_model_activated if not self.is_pre_proc_model else False
+            self.context.secondary.is_secondary_model_activated if not self.is_pre_proc_model else False
         )
         self.is_secondary_model = (
-            model_data.is_secondary_model if not self.is_pre_proc_model else True
+            self.context.common.is_secondary_model if not self.is_pre_proc_model else True
         )
-        self.process_method = model_data.process_method
-        self.model_path = model_data.model_path
-        self.model_name = model_data.model_name
         self.backend_name = (
             getattr(model_data, "backend_name", None)
             or model_data.model_basename
@@ -116,83 +87,38 @@ class SeperateAttributes:
             or ""
         )
         self.model_cache_key = self.backend_name or model_data.model_basename or ""
-        self.model_basename = model_data.model_basename
         self.model_display_label = (
             getattr(model_data, "model_display_label", None)
             or model_data.model_name
             or model_data.model_basename
             or ""
         )
-        self.wav_type_set = model_data.wav_type_set
-        self.mp3_bit_set = model_data.mp3_bit_set
-        self.flac_bit_set = model_data.flac_bit_set
-        self.opus_bit_set = getattr(model_data, "opus_bit_set", "192k")
-        self.save_format = model_data.save_format
-        self.is_gpu_conversion = model_data.is_gpu_conversion
-        self.is_normalization = model_data.is_normalization
-        self.is_match_mix_level = bool(getattr(model_data, "is_match_mix_level", False))
-        self.is_prevent_export_clipping = bool(
-            getattr(model_data, "is_prevent_export_clipping", False)
-        )
-        self.amplification_threshold = float(
-            getattr(model_data, "amplification_threshold", 0.0) or 0.0
-        )
-        self.is_ensemble_mode = model_data.is_ensemble_mode
         self.is_save_all_outputs_ensemble = bool(process_data.is_save_all_outputs_ensemble)
         # Long-file chunking / ensemble scratch: keep stem arrays, skip disk write.
         self.capture_stems_only = bool(process_data.capture_stems_only)
-        self._ensemble_stem_buffers = {}
-        self._ensemble_stem_paths = {}
-        self.secondary_model = model_data.secondary_model  #
-        self.primary_model_primary_stem = model_data.primary_model_primary_stem
-        self.primary_stem_native = model_data.primary_stem_native
-        self.primary_stem: str = str(model_data.primary_stem or "")  #
-        self.secondary_stem: str = str(model_data.secondary_stem or "")  #
-        self.is_invert_spec = model_data.is_invert_spec  #
-        self.is_deverb_vocals = model_data.is_deverb_vocals
-        self.is_mixer_mode = model_data.is_mixer_mode  #
-        self.secondary_model_scale = model_data.secondary_model_scale  #
-        self.is_demucs_pre_proc_model_inst_mix = model_data.is_demucs_pre_proc_model_inst_mix  #
-        self.primary_source_map = {}
-        self.secondary_source_map = {}
-        self.primary_source: Any = None
-        self.secondary_source: Any = None
-        self.secondary_source_primary: Any = None
-        self.secondary_source_secondary: Any = None
+        self.primary_stem: str = str(self.context.routing.primary_stem or "")  #
+        self.secondary_stem: str = str(self.context.routing.secondary_stem or "")  #
         self.main_model_primary_stem_4_stem = main_model_primary_stem_4_stem
         self.main_model_primary = main_model_primary
-        self.ensemble_primary_stem = model_data.ensemble_primary_stem
-        self.is_multi_stem_ensemble = model_data.is_multi_stem_ensemble
         self.is_other_gpu = False
         self.is_deverb = True
-        self.DENOISER_MODEL = model_data.DENOISER_MODEL
-        self.DEVERBER_MODEL = model_data.DEVERBER_MODEL
         self.is_source_swap = False
-        self.vocal_split_model = model_data.vocal_split_model
-        self.is_vocal_split_model = model_data.is_vocal_split_model
         self.master_vocal_path: Any = None
         self.set_master_inst_source: Any = None
         self.master_inst_source: Any = master_inst_source
         self.master_vocal_source: Any = master_vocal_source
         self.is_save_inst_vocal_splitter = (
-            isinstance(master_inst_source, np.ndarray) and model_data.is_save_inst_vocal_splitter
+            isinstance(master_inst_source, np.ndarray) and self.context.common.is_save_inst_vocal_splitter
         )
-        self.is_inst_only_voc_splitter = model_data.is_inst_only_voc_splitter
-        self.is_karaoke = model_data.is_karaoke
-        self.is_bv_model = model_data.is_bv_model
-        self.is_bv_model_rebalenced = model_data.bv_model_rebalance and self.is_vocal_split_model
-        self.is_sec_bv_rebalance = model_data.is_sec_bv_rebalance
+        self.is_bv_model_rebalenced = self.context.common.bv_model_rebalance and self.is_vocal_split_model
         self.stem_path_init = self.stem_export_wav_path(self.secondary_stem)
-        self.deverb_vocal_opt = model_data.deverb_vocal_opt
-        self.is_save_vocal_only = model_data.is_save_vocal_only
         self.device = cpu
         self.run_type = ['CPUExecutionProvider']
-        self.device_set = model_data.device_set
         self._backend_name = "cpu"
         backend = resolve_inference_backend(
             use_gpu=bool(self.is_gpu_conversion),
             device_set=self.device_set,
-            is_use_directml=model_data.is_use_directml,
+            is_use_directml=self.context.device.is_use_directml,
             is_macos=is_macos,
         )
         self.device = backend.torch_device
@@ -208,13 +134,11 @@ class SeperateAttributes:
         # MDX-C-style nets selected via the model's yaml config; ``is_roformer``
         # comes from the model-data JSON and the config itself drives which
         # roformer architecture is built in ``SeperateMDXC.demix``.
-        self.is_roformer = model_data.is_roformer
         # ``is_target_instrument`` / ``is_vocal_main_target`` enable the new
         # roformer stem handling (single target_instrument treated as
         # vocals+instrumental). Gate them on ``is_roformer`` so classic
         # (non-roformer) MDX-C models keep their original single-stem behaviour.
-        self.is_target_instrument = model_data.is_target_instrument and self.is_roformer
-        self.roformer_config: Any = model_data.mdx_c_configs
+        self.is_target_instrument = self.context.mdx.is_target_instrument and self.is_roformer
 
         if main_model_primary and self.is_multi_stem_ensemble:
             self.primary_stem, self.secondary_stem = (
@@ -222,73 +146,53 @@ class SeperateAttributes:
                 secondary_stem(main_model_primary),
             )
 
-        if model_data.process_method == MDX_ARCH_TYPE:
-            self.is_mdx_ckpt = model_data.is_mdx_ckpt
+        if self.context.identity.process_method == MDX_ARCH_TYPE:
             self.primary_model_name, self.primary_sources = self.cached_source_callback(
                 MDX_ARCH_TYPE, model_name=self.model_cache_key
             )
-            self.is_denoise = model_data.is_denoise  #
-            self.is_denoise_model = model_data.is_denoise_model  #
-            self.is_mdx_c_seg_def = model_data.is_mdx_c_seg_def  #
-            self.mdx_batch_size = model_data.mdx_batch_size
-            self.compensate = model_data.compensate
-            self.mdx_segment_size = model_data.mdx_segment_size
             # Needed by export_stem_key: without a stem count, a 4-stem
             # model's MUSDB ``other`` residual is read as the 2-stem
             # instrumental complement and exported as ``Instrumental``.
-            self.mdx_stem_count = model_data.mdx_stem_count
-            self.mdx_model_stems = model_data.mdx_model_stems
 
             if self.is_mdx_c:
                 if not self.is_4_stem_ensemble:
                     if not self.is_target_instrument:
                         self.primary_stem = str(
                             (
-                                model_data.ensemble_primary_stem
+                                self.context.ensemble.ensemble_primary_stem
                                 if process_data.is_ensemble_master
-                                else model_data.primary_stem
+                                else self.context.routing.primary_stem
                             )
                             or ""
                         )
                         self.secondary_stem = str(
                             (
-                                model_data.ensemble_secondary_stem
+                                self.context.ensemble.ensemble_secondary_stem
                                 if process_data.is_ensemble_master
-                                else model_data.secondary_stem
+                                else self.context.routing.secondary_stem
                             )
                             or ""
                         )
             else:
-                dim_f_set = model_data.mdx_dim_f_set
-                dim_t_set = model_data.mdx_dim_t_set
+                dim_f_set = self.context.mdx.mdx_dim_f_set
+                dim_t_set = self.context.mdx.mdx_dim_t_set
                 if dim_f_set is None:
                     dim_f_set = int(MDX_POP_DIMF[0])
                 if dim_t_set is None:
                     dim_t_set = 8
                 self.dim_f, self.dim_t = int(dim_f_set), 2 ** int(dim_t_set)
 
-            self.n_fft: int = int(model_data.mdx_n_fft_scale_set or 0)
-            self.chunks = model_data.chunks
-            self.margin = model_data.margin
+            self.n_fft: int = int(self.context.mdx.mdx_n_fft_scale_set or 0)
             self.adjust = 1
             self.dim_c = 4
             self.hop = 1024
 
-        if model_data.process_method == DEMUCS_ARCH_TYPE:
+        if self.context.identity.process_method == DEMUCS_ARCH_TYPE:
             self.demucs_stems = (
-                model_data.demucs_stems
+                self.context.demucs.demucs_stems
                 if main_process_method not in [MDX_ARCH_TYPE, VR_ARCH_TYPE]
                 else None
             )
-            self.secondary_model_4_stem = model_data.secondary_model_4_stem
-            self.secondary_model_4_stem_scale = model_data.secondary_model_4_stem_scale
-            self.segment = model_data.segment
-            self.demucs_version = model_data.demucs_version
-            self.demucs_source_list = model_data.demucs_source_list
-            self.demucs_source_map = model_data.demucs_source_map
-            self.is_demucs_combine_stems = model_data.is_demucs_combine_stems
-            self.demucs_stem_count = model_data.demucs_stem_count
-            self.pre_proc_model = model_data.pre_proc_model
             self.device = (
                 cpu
                 if self.is_other_gpu and self.demucs_version not in [DEMUCS_V3, DEMUCS_V4]
@@ -297,17 +201,17 @@ class SeperateAttributes:
 
             self.primary_stem = str(
                 (
-                    model_data.ensemble_primary_stem
+                    self.context.ensemble.ensemble_primary_stem
                     if process_data.is_ensemble_master
-                    else model_data.primary_stem
+                    else self.context.routing.primary_stem
                 )
                 or ""
             )
             self.secondary_stem = str(
                 (
-                    model_data.ensemble_secondary_stem
+                    self.context.ensemble.ensemble_secondary_stem
                     if process_data.is_ensemble_master
-                    else model_data.secondary_stem
+                    else self.context.routing.secondary_stem
                 )
                 or ""
             )
@@ -329,38 +233,29 @@ class SeperateAttributes:
             if self.is_secondary_model and not process_data.is_ensemble_master:
                 if (
                     not self.demucs_stem_count == 2
-                    and model_data.primary_model_primary_stem == INST_STEM
+                    and self.context.routing.primary_model_primary_stem == INST_STEM
                 ):
                     self.primary_stem = VOCAL_STEM
                     self.secondary_stem = INST_STEM
                 else:
-                    self.primary_stem = str(model_data.primary_model_primary_stem or "")
+                    self.primary_stem = str(self.context.routing.primary_model_primary_stem or "")
                     self.secondary_stem = secondary_stem(self.primary_stem)
 
-            self.shifts = model_data.shifts
             self.is_split_mode = (
-                model_data.is_split_mode if not self.demucs_version == DEMUCS_V4 else True
+                self.context.demucs.is_split_mode if not self.demucs_version == DEMUCS_V4 else True
             )
             self.primary_model_name, self.primary_sources = self.cached_source_callback(
                 DEMUCS_ARCH_TYPE, model_name=self.model_cache_key
             )
 
-        if model_data.process_method == VR_ARCH_TYPE:
+        if self.context.identity.process_method == VR_ARCH_TYPE:
             self.primary_model_name, self.primary_sources = self.cached_source_callback(
                 VR_ARCH_TYPE, model_name=self.model_cache_key
             )
-            self.mp = model_data.vr_model_param
-            self.high_end_process = model_data.is_high_end_process
-            self.is_tta = model_data.is_tta
-            self.is_post_process = model_data.is_post_process
-            self.is_gpu_conversion = model_data.is_gpu_conversion
-            self.batch_size = model_data.batch_size
-            self.window_size = model_data.window_size
             self.input_high_end_h = None
             self.input_high_end = None
-            self.post_process_threshold = model_data.post_process_threshold
             self.aggressiveness = {
-                'value': model_data.aggression_setting,
+                'value': self.context.vr.aggression_setting,
                 'split_bin': self.mp.param['band'][1]['crop_stop'],
                 'aggr_correction': self.mp.param.get('aggr_correction'),
             }

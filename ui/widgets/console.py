@@ -5,28 +5,34 @@ worker via the callbacks marshaled onto the main loop (see
 :mod:`ui.dispatch`), so :meth:`ConsoleView.append` is only ever called on
 the GTK main thread.
 """
-import typing
 
+import typing
 from typing import Callable, Optional
 
 from gi.repository import GLib, Gtk
 
 from bundled.constants import DONE
+from ui.resources import RESOURCE_PREFIX, require_resource_bundle
+
+_TEMPLATE_RESOURCE = f"{RESOURCE_PREFIX}/ui/console.ui"
+require_resource_bundle(_TEMPLATE_RESOURCE)
 
 #: Soft cap matching typical terminal scrollback; trim from the head when exceeded.
 _CONSOLE_LINE_CAP = 5000
 
 
+@Gtk.Template(resource_path=_TEMPLATE_RESOURCE)
 class ConsoleView(Gtk.ScrolledWindow):
+    __gtype_name__ = "ConsoleView"
+
+    _buffer: Gtk.TextBuffer = Gtk.Template.Child("buffer")
+    _view: Gtk.TextView = Gtk.Template.Child("view")
+
     #: Matches revealer slide duration in :class:`ui.widgets.log_panel.LogPanel`.
     _LAYOUT_SETTLE_MS = 250
 
     def __init__(self, on_changed: Optional[Callable[[bool], None]] = None):
         super().__init__()
-        self.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        self.set_vexpand(True)
-        self.set_propagate_natural_height(False)
-        self.set_overflow(Gtk.Overflow.HIDDEN)
 
         self._on_changed = on_changed
         self._scroll_idle_id: Optional[int] = None
@@ -34,17 +40,6 @@ class ConsoleView(Gtk.ScrolledWindow):
         self._viewport_idle_id: Optional[int] = None
         self._map_handler_id: Optional[int] = None
         self._defer_scroll = False
-        self._buffer = Gtk.TextBuffer()
-        self._view = Gtk.TextView(buffer=self._buffer)
-        self._view.set_editable(False)
-        self._view.set_cursor_visible(False)
-        self._view.set_monospace(True)
-        self._view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
-        self._view.set_left_margin(8)
-        self._view.set_right_margin(8)
-        self._view.set_top_margin(8)
-        self._view.set_bottom_margin(8)
-        self.set_child(self._view)
 
         vadj = self.get_vadjustment()
         vadj.connect("notify::upper", self._on_viewport_changed)
@@ -149,9 +144,7 @@ class ConsoleView(Gtk.ScrolledWindow):
         self._scroll_to_end()
         if self._reconcile_scroll_id is not None:
             GLib.source_remove(self._reconcile_scroll_id)
-        self._reconcile_scroll_id = GLib.timeout_add(
-            self._LAYOUT_SETTLE_MS, self._reconcile_scroll
-        )
+        self._reconcile_scroll_id = GLib.timeout_add(self._LAYOUT_SETTLE_MS, self._reconcile_scroll)
 
     def _scroll_to_end(self) -> None:
         if self._defer_scroll:

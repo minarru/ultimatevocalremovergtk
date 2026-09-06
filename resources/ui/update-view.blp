@@ -1,0 +1,48 @@
+using Gtk 4.0;
+using Adw 1;
+
+Adw.Dialog dialog {
+  title: "Application Version";
+  content-width: 480;
+  follows-content-size: true;
+
+  child: Adw.ToolbarView {
+    [top]
+    Adw.HeaderBar {}
+
+    content: Adw.PreferencesPage {
+      Adw.PreferencesGroup {
+        title: "Application Version";
+
+        Adw.ActionRow version_row {
+          title: "Version";
+        }
+        Adw.ActionRow upstream_row {
+          title: "Based on";
+          visible: false;
+        }
+      }
+
+      Adw.PreferencesGroup {
+        title: "Updates";
+
+        Adw.ActionRow status_row {
+          title: "Status";
+        }
+        Adw.ActionRow upgrade_row {
+          title: "Upgrade";
+          visible: false;
+        }
+        Adw.ActionRow update_row {
+          title: "Get the latest version";
+
+          [suffix]
+          Gtk.Button update_button {
+            label: "Check again";
+            valign: center;
+          }
+        }
+      }
+    };
+  };
+}

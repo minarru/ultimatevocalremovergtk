@@ -14,6 +14,19 @@ import soundfile as sf
 import torch
 from scipy.signal import correlate, hilbert
 
+from bundled.constants import (
+    AUDIO_AVERAGE as AVERAGE,
+)
+from bundled.constants import (
+    CHUNK_MIN,
+    HYBRID_SPEC,
+    MAX_MAG_AVG_PHASE,
+    MAX_SPEC,
+    MEDIAN_SPEC,
+    MIN_SPEC,
+    SOFT_SPEC,
+)
+
 from . import pyrb
 
 SaveFormatFn = Callable[[str], None]
@@ -53,16 +66,7 @@ else:
     wav_resolution = "sinc_fastest"
     wav_resolution_float_resampling = wav_resolution 
 
-from bundled.constants import (
-    AUDIO_AVERAGE as AVERAGE,
-    CHUNK_MIN,
-    HYBRID_SPEC,
-    MAX_MAG_AVG_PHASE,
-    MAX_SPEC,
-    MEDIAN_SPEC,
-    MIN_SPEC,
-    SOFT_SPEC,
-)
+
 
 LIN_ENSE = 'Linear Ensemble'
 
@@ -208,7 +212,7 @@ def merge_artifacts(y_mask: np.ndarray, thres: float = 0.01, min_range: int = 64
             start_idx = start_idx[artifact_idx]
             end_idx = end_idx[artifact_idx]
             old_e = None
-            for s, e in zip(start_idx, end_idx):
+            for s, e in zip(start_idx, end_idx, strict=True):
                 if old_e is not None and s - old_e < fade_size:
                     s = old_e - fade_size * 2
 
@@ -238,9 +242,9 @@ def merge_artifacts(y_mask: np.ndarray, thres: float = 0.01, min_range: int = 64
     return mask
 
 def align_wave_head_and_tail(a: np.ndarray, b: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    l = min([a[0].size, b[0].size])  
+    length = min([a[0].size, b[0].size])
     
-    return a[:l,:l], b[:l,:l]
+    return a[:length,:length], b[:length,:length]
     
 def convert_channels(spec: np.ndarray, mp: Any, band: int) -> np.ndarray:
     cc = mp.param['band'][band].get('convert_channels')
@@ -260,14 +264,14 @@ def convert_channels(spec: np.ndarray, mp: Any, band: int) -> np.ndarray:
     return np.asfortranarray([spec_left, spec_right])
     
 def combine_spectrograms(specs: Mapping[int, np.ndarray], mp: Any, is_v51_model: bool = False) -> np.ndarray:
-    l = min([specs[i].shape[2] for i in specs])    
-    spec_c = np.zeros(shape=(2, mp.param['bins'] + 1, l), dtype=np.complex64)
+    length = min([specs[i].shape[2] for i in specs])
+    spec_c = np.zeros(shape=(2, mp.param['bins'] + 1, length), dtype=np.complex64)
     offset = 0
     bands_n = len(mp.param['band'])
     
     for d in range(1, bands_n + 1):
         h = mp.param['band'][d]['crop_stop'] - mp.param['band'][d]['crop_start']
-        spec_c[:, offset:offset+h, :l] = specs[d][:, mp.param['band'][d]['crop_start']:mp.param['band'][d]['crop_stop'], :l]
+        spec_c[:, offset:offset+h, :length] = specs[d][:, mp.param['band'][d]['crop_start']:mp.param['band'][d]['crop_stop'], :length]
         offset += h
         
     if offset > mp.param['bins']:
@@ -322,7 +326,9 @@ def wave_to_spectrogram(wave: np.ndarray, hop_length: int, n_fft: int, mp: Any, 
 
     return spec
 
-def spectrogram_to_wave(spec: np.ndarray, hop_length: int = 1024, mp: Any = {}, band: int = 0, is_v51_model: bool = True) -> np.ndarray:
+def spectrogram_to_wave(spec: np.ndarray, hop_length: int = 1024, mp: Any = None, band: int = 0, is_v51_model: bool = True) -> np.ndarray:
+    if mp is None:
+        raise ValueError("model parameters are required for spectrogram_to_wave")
     spec_left = np.asfortranarray(spec[0])
     spec_right = np.asfortranarray(spec[1])
     
@@ -783,7 +789,7 @@ def ensemble_inputs(
 
 def to_shape(x: np.ndarray, target_shape: Sequence[int]) -> np.ndarray:
     padding_list = []
-    for x_dim, target_dim in zip(x.shape, target_shape):
+    for x_dim, target_dim in zip(x.shape, target_shape, strict=False):
         pad_value = (target_dim - x_dim)
         pad_tuple = ((0, pad_value))
         padding_list.append(pad_tuple)
@@ -793,7 +799,7 @@ def to_shape(x: np.ndarray, target_shape: Sequence[int]) -> np.ndarray:
 def to_shape_minimize(x: np.ndarray, target_shape: Sequence[int]) -> np.ndarray:
     
     padding_list = []
-    for x_dim, target_dim in zip(x.shape, target_shape):
+    for x_dim, target_dim in zip(x.shape, target_shape, strict=False):
         pad_value = (target_dim - x_dim)
         pad_tuple = ((0, pad_value))
         padding_list.append(pad_tuple)

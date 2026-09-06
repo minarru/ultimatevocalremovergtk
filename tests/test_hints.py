@@ -18,7 +18,7 @@ class _A11yWidget(_TooltipWidget):
         self.props = {}
 
     def update_property(self, properties: typing.Any, values: typing.Any):
-        for prop, value in zip(properties, values):
+        for prop, value in zip(properties, values, strict=True):
             self.props[prop] = value
 
 

@@ -25,7 +25,7 @@ class MetadataRefreshTransactionTests(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         destinations = [os.path.join(tmp.name, f"mapper-{index}.json") for index in range(4)]
         originals = [{"old": index} for index in range(4)]
-        for path, payload in zip(destinations, originals):
+        for path, payload in zip(destinations, originals, strict=True):
             with open(path, "w", encoding="utf-8") as handle:
                 json.dump(payload, handle)
         return destinations, originals
@@ -39,7 +39,7 @@ class MetadataRefreshTransactionTests(unittest.TestCase):
             downloads_mod, "_NAME_MAPPER_DESTS", frozenset()
         ), mock.patch.object(downloads_mod, "_urlopen", side_effect=responses):
             self.assertFalse(downloads_mod.DownloadManager().update_model_settings())
-        for path, expected in zip(destinations, originals):
+        for path, expected in zip(destinations, originals, strict=True):
             with open(path, encoding="utf-8") as handle:
                 self.assertEqual(json.load(handle), expected)
 
@@ -65,7 +65,7 @@ class MetadataRefreshTransactionTests(unittest.TestCase):
             repo = mock.Mock()
             self.assertFalse(downloads_mod.DownloadManager().update_model_settings(repo))
             repo.invalidate_models.assert_not_called()
-        for path, expected in zip(destinations, originals):
+        for path, expected in zip(destinations, originals, strict=True):
             with open(path, encoding="utf-8") as handle:
                 self.assertEqual(json.load(handle), expected)
 

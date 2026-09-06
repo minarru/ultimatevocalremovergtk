@@ -1,0 +1,26 @@
+using Gtk 4.0;
+
+Gtk.Box columns_box {
+  orientation: horizontal;
+  spacing: 24;
+  homogeneous: true;
+  hexpand: true;
+  margin-top: 18;
+  margin-bottom: 18;
+  margin-start: 12;
+  margin-end: 12;
+
+  Gtk.Box col_start {
+    orientation: vertical;
+    spacing: 18;
+    hexpand: true;
+    valign: start;
+  }
+
+  Gtk.Box col_end {
+    orientation: vertical;
+    spacing: 18;
+    hexpand: true;
+    valign: start;
+  }
+}

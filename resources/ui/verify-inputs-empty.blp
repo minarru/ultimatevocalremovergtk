@@ -1,0 +1,13 @@
+using Gtk 4.0;
+using Adw 1;
+
+Adw.ActionRow row {
+  title: "No files selected";
+  subtitle: "Add audio files to verify them before starting a run";
+  [suffix]
+  Gtk.Button add_button {
+    label: "Add files";
+    valign: center;
+    styles ["suggested-action"]
+  }
+}

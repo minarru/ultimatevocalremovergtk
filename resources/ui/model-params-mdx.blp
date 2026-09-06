@@ -1,0 +1,54 @@
+using Gtk 4.0;
+using Adw 1;
+
+Adw.Dialog dialog {
+  title: "Specify Model Parameters";
+  content-width: 440;
+  follows-content-size: true;
+}
+
+Gtk.Box content {
+  orientation: vertical;
+  margin-top: 12;
+  margin-bottom: 12;
+  margin-start: 12;
+  margin-end: 12;
+
+  Adw.PreferencesPage {
+    Adw.PreferencesGroup group {
+      description: "This model's parameters could not be detected automatically.";
+
+      Adw.ComboRow stem_row {
+        title: "Primary stem";
+      }
+
+      Adw.EntryRow dim_f_row {
+        title: "Dim_f";
+      }
+
+      Adw.EntryRow dim_t_row {
+        title: "Dim_t";
+      }
+
+      Adw.EntryRow n_fft_row {
+        title: "N_FFT scale";
+      }
+
+      Adw.EntryRow compensate_row {
+        title: "Volume compensation";
+      }
+
+      Adw.SwitchRow kara_row {
+        title: "Karaoke model";
+      }
+
+      Adw.SwitchRow bv_row {
+        title: "Backing-vocal model";
+      }
+
+      Adw.ActionRow balance_row {
+        title: "BV rebalance";
+      }
+    }
+  }
+}

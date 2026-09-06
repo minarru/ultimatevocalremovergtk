@@ -1,0 +1,35 @@
+using Gtk 4.0;
+
+Gtk.Box page_box {
+  orientation: vertical;
+  spacing: 8;
+  vexpand: true;
+
+  Gtk.ScrolledWindow scroller {
+    hscrollbar-policy: never;
+    vscrollbar-policy: automatic;
+    vexpand: true;
+    hexpand: true;
+
+    Gtk.Box columns_box {
+      orientation: horizontal;
+      spacing: 18;
+      homogeneous: false;
+      hexpand: true;
+
+      Gtk.Box col_start {
+        orientation: vertical;
+        spacing: 18;
+        hexpand: true;
+        valign: start;
+      }
+
+      Gtk.Box col_end {
+        orientation: vertical;
+        spacing: 18;
+        hexpand: true;
+        valign: start;
+      }
+    }
+  }
+}

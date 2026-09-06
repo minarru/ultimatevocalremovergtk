@@ -11,7 +11,6 @@ graceful fallback to :class:`Gtk.ShortcutsWindow` on older runtimes.
 Entry point: :func:`present_shortcuts`.
 """
 import typing
-
 from typing import List, Tuple
 
 from gi.repository import Adw, Gtk

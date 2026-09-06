@@ -1,0 +1,21 @@
+using Gtk 4.0;
+using Adw 1;
+
+Gtk.Box options_page {
+  orientation: vertical;
+  vexpand: true;
+  hexpand: true;
+
+  Gtk.ScrolledWindow options_scroller {
+    hscrollbar-policy: never;
+    vscrollbar-policy: automatic;
+    propagate-natural-height: false;
+    vexpand: true;
+    hexpand: true;
+    min-content-width: 360;
+
+    Adw.Clamp options_clamp {
+      vexpand: true;
+    }
+  }
+}

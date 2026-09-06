@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Shared guidance for coding agents working in this repository.
+Shared guidance for coding agents working in this repository. Module AGENTS.md files add scoped rules; CLAUDE.md files import the same guidance for Claude Code.
 
 ## Project
 
@@ -56,8 +56,9 @@ only the Python files touched by a change:
 .venv/bin/ruff format path/to/file.py
 ```
 
-The full-tree commands are useful for auditing, but currently report accepted
-backlog and are **not CI gates**:
+The configured lint backlog is cleared: `ruff check .` should pass. Formatting
+still has an accepted backlog. Both commands remain local checks and are
+**not CI gates**:
 
 ```bash
 .venv/bin/ruff check .
@@ -67,6 +68,9 @@ backlog and are **not CI gates**:
 Do not apply unrestricted `ruff check --fix` or bulk-format the repository as
 part of unrelated work. Existing intentional wildcard and lazy-import patterns
 use scoped configuration or inline `noqa` comments; preserve their rationale.
+`RUF100` checks for obsolete suppressions. Keep explanations as ordinary comments
+when their suppression is no longer needed. Package re-exports should use explicit
+aliases or `__all__` instead of a blanket unused-import exception.
 
 Other:
 
@@ -90,11 +94,21 @@ python scripts/model_probe.py --entry <id> --check-keys   # + range-fetch the ch
 python scripts/generate_models_catalogue.py --audit-stem-confidence --guessed-only
 ```
 
-## Architecture and scope
+## Architecture and module guidance
 
-Before changing application code, read [docs/development-architecture.md](docs/development-architecture.md) for the settings, model identity, planning, stem routing, and export contracts. Keep backend code independent of GTK and CLI presentation; keep heavy imports lazy. Canonical model IDs are `family:basename`, never display labels. Resolve writable data through `core.paths` and preserve the single bundled model manifest authority.
+The GTK UI and CLI are peers over the framework-independent core. Orchestration
+flows through core, engines and scientific code; engines may use shared core
+services. Backend code must not import frontends or tkinter. Keep heavy imports
+lazy at core/CLI import time and GTK callbacks on the main loop.
 
-Scoped guidance lives in [ui/AGENTS.md](ui/AGENTS.md), [cli/AGENTS.md](cli/AGENTS.md), and [scripts/AGENTS.md](scripts/AGENTS.md). Read the relevant scoped file when changing those modules from the repository root.
+Read [the architecture reference](docs/development-architecture.md) before changing
+backend orchestration, model/stem contracts, or UI/backend integration. It preserves
+the responsibility boundaries, settings, identity, export and run invariants.
+Canonical model IDs are `family:basename`; display labels never recover identity.
+Use typed settings and preserve per-page edited-field commits and active-tab guards.
+
+For module work, also read [ui/AGENTS.md](ui/AGENTS.md),
+[cli/AGENTS.md](cli/AGENTS.md), or [scripts/AGENTS.md](scripts/AGENTS.md) as applicable.
 
 ## Repository workflow
 
@@ -109,7 +123,10 @@ not merge `main` back into `dev`, because its intentional removals would propaga
 cherry-pick any main-only hotfix into `dev` instead. See
 [docs/superpowers/README.md](docs/superpowers/README.md).
 
-CI is **GitHub Actions** in [`.github/workflows/`](.github/workflows/). `test.yml` runs unittest + basedpyright on pushes to `main` and every PR. `release.yml` fires on `v*` tags and **asserts the tag equals all three version strings**: `VERSION` in [__version__.py](__version__.py), and `latest_version` in both [packaging/release.json](packaging/release.json) and [bundled/release.json](bundled/release.json). Bump all four together or the release check fails.
+CI is **GitHub Actions** in [`.github/workflows/`](.github/workflows/). `test.yml` runs unittest + basedpyright on pushes to `main` and every PR base.
+The required unittest/typecheck jobs use Ubuntu 24.04; Ubuntu 26.04 unittest is
+an explicit nonblocking preview. Venvs use distro Python with distro GI; see
+[docs/environment.md](docs/environment.md#automated-environments-and-optional-branch-coverage). `release.yml` fires on `v*` tags and **asserts the tag equals all three version strings**: `VERSION` in [__version__.py](__version__.py), and `latest_version` in both [packaging/release.json](packaging/release.json) and [bundled/release.json](bundled/release.json). Bump all four together or the release check fails.
 
 ```bash
 gh run list
@@ -142,5 +159,5 @@ Known bugs and roadmap gaps are tracked in [docs/tracked-issues.md](docs/tracked
 - Never call `widget.destroy()` in a test or smoke script — with no running main loop it segfaults.
 - GTK widget behaviour and layout-diagnosis notes live in [ui/AGENTS.md](ui/AGENTS.md), loaded when working under `ui/`.
 - Headless CLI layer rules live in [cli/AGENTS.md](cli/AGENTS.md), loaded when working under `cli/`.
-- **Read-only CLI commands default to offline.** Display resolution can reach remote catalogue metadata through compatibility helpers unless network access is disabled. Read-only listing passes `allow_network=False` into catalogue helpers. Planning / validate / identity use `access_policy(allow_network=False, allow_metadata_writes=False)` / `mdx_c_network(False)`, not `catalogue_offline()`.
+- **Read-only CLI commands default to offline.** `map_basenames_to_display`, `all_model_tags`, and `karaoke_model_list` (used by `--vocal-split`) reach `_merged_for_display()`, which may fetch remote metadata unless network access is disabled. Read-only listing passes `allow_network=False` into catalogue helpers. Planning / validate / identity use `access_policy(allow_network=False, allow_metadata_writes=False)` / `mdx_c_network(False)`, not `catalogue_offline()`.
 - This working tree often carries long-lived uncommitted edits (model metadata under `models/*/model_data/`) and ignored portable state under `.uvr-runtime/`; a legacy root `registered_models.json` may also remain until the next registry mutation migrates it. Never stage runtime state or run unscoped `git checkout -- .`, `git restore .`, `git reset --hard`, `git stash` or `git clean`; restore only exact paths, and stage explicitly rather than `git add -A`.

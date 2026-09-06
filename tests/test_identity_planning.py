@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import tempfile
-import typing
 import unittest
 from types import SimpleNamespace
 from typing import Literal
@@ -30,6 +29,7 @@ from core.model_identity import (
 from core.model_repository import ModelRepository
 from core.settings import Settings
 from core.types import ProcessMethod
+from tests.planning_fixtures import ConfigurationFiles, resolver_with_ports
 
 
 class DryResolutionArchitectureTests(unittest.TestCase):
@@ -161,7 +161,6 @@ class ActivePathTests(unittest.TestCase):
         )
 
     def test_enabled_missing_secondary_raises(self) -> None:
-        from core.job_plan import JobResolver
 
         settings = Settings.defaults()
         settings.process.method = ProcessMethod.MDX
@@ -169,14 +168,14 @@ class ActivePathTests(unittest.TestCase):
         settings.mdx.is_secondary_model_activate = True
         settings.mdx.voc_inst_secondary_model = "mdx:missing"
         primary = _record("mdx:primary")
-        resolver = JobResolver(Mock())
+        resolver = resolver_with_ports(Mock())
         resolver.identities.lookup = Mock(
             side_effect=lambda model_id: (
                 primary if model_id == primary.id else (_ for _ in ()).throw(ValueError("missing"))
             )
         )
         with self.assertRaises(ValueError):
-            resolver._dependency_map(settings, "separate")
+            resolver.dependencies.dependencies(settings, "separate")
 
     def test_enabled_missing_secondary_raises_during_model_assembly(self) -> None:
         from bundled.constants import MDX_ARCH_TYPE, VOCAL_STEM
@@ -236,7 +235,7 @@ class ActivePathTests(unittest.TestCase):
             "mdx:voc-inst-helper": _record("mdx:voc-inst-helper"),
             "mdx:drums-helper": _record("mdx:drums-helper"),
         }
-        resolver = JobResolver(Mock(inventory_generation=0))
+        resolver = resolver_with_ports(Mock(inventory_generation=0))
         resolver.identities.lookup = Mock(side_effect=records.__getitem__)
         primary_model = Mock(model_status=True, primary_stem="instrumental")
         final_model = Mock(
@@ -245,7 +244,7 @@ class ActivePathTests(unittest.TestCase):
             compensate=None,
             model_hash_dir="",
         )
-        resolver._assemble = Mock(side_effect=[[primary_model], [final_model]])
+        resolver.materializer.assemble = Mock(side_effect=[[primary_model], [final_model]])
 
         with tempfile.NamedTemporaryFile(suffix=".wav") as source:
             plan = resolver.resolve(
@@ -257,7 +256,7 @@ class ActivePathTests(unittest.TestCase):
             set(plan.model_dependencies),
             {"mdx.model", "mdx.voc_inst_secondary_model"},
         )
-        final_dependencies = resolver._assemble.call_args_list[1].kwargs["model_dependencies"]
+        final_dependencies = resolver.materializer.assemble.call_args_list[1].kwargs["model_dependencies"]
         self.assertEqual(
             final_dependencies["mdx.voc_inst_secondary_model"].id,
             "mdx:voc-inst-helper",
@@ -280,7 +279,7 @@ class ActivePathTests(unittest.TestCase):
             "mdx:voc-inst-helper": _record("mdx:voc-inst-helper"),
             "mdx:drums-helper": _record("mdx:drums-helper"),
         }
-        resolver = JobResolver(Mock(inventory_generation=0))
+        resolver = resolver_with_ports(Mock(inventory_generation=0))
         resolver.identities.lookup = Mock(side_effect=records.__getitem__)
         topology_model = SimpleNamespace(
             model_status=True,
@@ -295,7 +294,7 @@ class ActivePathTests(unittest.TestCase):
             is_karaoke=False,
             is_bv_model=False,
         )
-        resolver._assemble = Mock(return_value=[topology_model])
+        resolver.materializer.assemble = Mock(return_value=[topology_model])
 
         with tempfile.NamedTemporaryFile(suffix=".wav") as source:
             plan = resolver.resolve(
@@ -318,7 +317,7 @@ class ActivePathTests(unittest.TestCase):
             basename="primary",
             display="Primary",
             backend_name="old.ckpt",
-            artifacts=ModelArtifacts("old.ckpt"),
+            artifacts=ModelArtifacts("old.ckpt", ("refresh.yaml",)),
             installed=True,
         )
         new = ModelRecord(
@@ -327,13 +326,14 @@ class ActivePathTests(unittest.TestCase):
             basename="primary",
             display="Primary",
             backend_name="new.ckpt",
-            artifacts=ModelArtifacts("new.ckpt"),
+            artifacts=ModelArtifacts("new.ckpt", ("refresh.yaml",)),
             installed=True,
         )
         helper = _record("mdx:helper")
-        resolver = JobResolver(Mock(inventory_generation=0))
+        records = {old.id: old, helper.id: helper}
+        resolver = resolver_with_ports(Mock(inventory_generation=0))
         resolver.identities.lookup = Mock(
-            side_effect=lambda model_id: old if model_id == old.id else helper
+            side_effect=lambda model_id: records[model_id]
         )
         probe = Mock(model_status=True, primary_stem="Vocals")
         final = Mock(
@@ -342,26 +342,24 @@ class ActivePathTests(unittest.TestCase):
             compensate=None,
             model_hash_dir="",
         )
-        resolver._assemble = Mock(side_effect=[[probe], [final]])
+        assembly = Mock(side_effect=[[probe], [final]])
+        resolver.materializer.assemble = assembly
 
-        def ensure(dependencies: typing.Mapping[str, ModelRecord], **_kwargs: object):
-            refreshed = dict(dependencies)
-            refreshed["mdx.model"] = new
-            return refreshed
-
-        resolver._ensure_mdx_yaml_configs = Mock(side_effect=ensure)
+        configs = ConfigurationFiles()
+        resolver = JobResolver(resolver.repo, identities=resolver.identities,
+                               materializer=resolver.materializer, configs=configs)
+        resolver.identities.invalidate = lambda: records.update({old.id: new})
         with tempfile.NamedTemporaryFile(suffix=".wav") as source:
             plan = resolver.resolve(
                 JobSpec("separate", settings, (source.name,), "/tmp/out"),
                 ValidationLevel.MODEL,
             )
 
-        self.assertIs(resolver._assemble.call_args_list[0].args[2][0], new)
+        self.assertIs(assembly.call_args_list[0].args[2][0], new)
         self.assertIs(plan.model_dependencies["mdx.model"], new)
-        self.assertIs(
-            resolver._ensure_mdx_yaml_configs.call_args_list[1].args[0]["mdx.model"],
-            new,
-        )
+        self.assertIs(assembly.call_args_list[1].kwargs["model_dependencies"]["mdx.model"], new)
+        self.assertEqual(configs.calls, [("exists", "refresh.yaml"), ("ensure", "refresh.yaml"),
+                                        ("exists", "refresh.yaml")])
         self.assertEqual(
             plan.model_identity_digest,
             compute_model_identity_digest(plan.model_dependencies),
@@ -384,7 +382,7 @@ class ActivePathTests(unittest.TestCase):
                 "mdx:other-helper",
             )
         }
-        resolver = JobResolver(Mock(inventory_generation=0))
+        resolver = resolver_with_ports(Mock(inventory_generation=0))
         resolver.identities.lookup = Mock(side_effect=records.__getitem__)
 
         def model(primary: str) -> SimpleNamespace:
@@ -405,7 +403,7 @@ class ActivePathTests(unittest.TestCase):
 
         probe_models = [model("Vocals"), model("other")]
         final_models = [model("Vocals"), model("other")]
-        resolver._assemble = Mock(side_effect=[probe_models, final_models])
+        resolver.materializer.assemble = Mock(side_effect=[probe_models, final_models])
         with tempfile.NamedTemporaryFile(suffix=".wav") as source:
             plan = resolver.resolve(
                 JobSpec("ensemble", settings, (source.name,), "/tmp/out"),
@@ -421,7 +419,7 @@ class ActivePathTests(unittest.TestCase):
                 "mdx.other_secondary_model",
             },
         )
-        final_dependencies = resolver._assemble.call_args_list[1].kwargs["model_dependencies"]
+        final_dependencies = resolver.materializer.assemble.call_args_list[1].kwargs["model_dependencies"]
         self.assertIs(
             final_dependencies["mdx.voc_inst_secondary_model"],
             records["mdx:voc-helper"],
@@ -442,11 +440,11 @@ class ActivePathTests(unittest.TestCase):
                 settings.demucs.is_pre_proc_model_activate = True
                 settings.demucs.pre_proc_model = pre_proc.id
                 records = {primary.id: primary, pre_proc.id: pre_proc}
-                resolver = JobResolver(Mock())
+                resolver = resolver_with_ports(Mock())
                 resolver.identities.lookup = Mock(side_effect=records.__getitem__)
 
                 self.assertEqual(
-                    resolver._dependency_map(settings, "separate"),
+                    resolver.dependencies.dependencies(settings, "separate"),
                     {
                         "demucs.model": primary,
                         "demucs.pre_proc_model": pre_proc,
@@ -462,14 +460,14 @@ class ActivePathTests(unittest.TestCase):
         settings.demucs.is_pre_proc_model_activate = True
         settings.demucs.pre_proc_model = pre_proc.id
         records = {primary.id: primary, pre_proc.id: pre_proc}
-        resolver = JobResolver(Mock())
+        resolver = resolver_with_ports(Mock())
         resolver.identities.lookup = Mock(side_effect=records.__getitem__)
 
         with self.assertRaisesRegex(
             ValueError,
             r"demucs\.pre_proc_model .* requires family mdx, vr",
         ):
-            resolver._dependency_map(settings, "separate")
+            resolver.dependencies.dependencies(settings, "separate")
 
 
 class DigestTests(unittest.TestCase):
@@ -531,10 +529,9 @@ class ResolvedPlanIdentityTests(unittest.TestCase):
             installed=True,
             mdx=MdxSpec("classic_onnx"),
         )
-        resolver = JobResolver(Mock(inventory_generation=3))
-        resolver.identities = Mock()
+        resolver = resolver_with_ports(Mock(inventory_generation=3))
+        resolver.identities.lookup = Mock()
         resolver.identities.lookup.return_value = record
-        resolver.identities.resolve.side_effect = AssertionError("fuzzy resolution used")
 
         with tempfile.NamedTemporaryFile(suffix=".wav") as handle:
             plan = resolver.resolve(
@@ -548,7 +545,6 @@ class ResolvedPlanIdentityTests(unittest.TestCase):
         self.assertEqual(plan.models[0].backend_name, record.backend_name)
         self.assertEqual(plan.models[0].artifacts, record.artifacts)
         self.assertEqual(plan.models[0].mdx, record.mdx)
-        resolver.identities.resolve.assert_not_called()
 
     def test_enriched_display_reaches_the_descriptor_and_naming(self) -> None:
         """Identity stays raw; only the label is friendly.
@@ -574,10 +570,9 @@ class ResolvedPlanIdentityTests(unittest.TestCase):
             installed=True,
             mdx=MdxSpec("mel_band_roformer"),
         )
-        resolver = JobResolver(Mock(inventory_generation=1))
-        resolver.identities = Mock()
+        resolver = resolver_with_ports(Mock(inventory_generation=1))
+        resolver.identities.lookup = Mock()
         resolver.identities.lookup.return_value = record
-        resolver.identities.resolve.side_effect = AssertionError("fuzzy resolution used")
 
         # An MDX-C spec resolves its yaml; this test is about the label only.
         with (
@@ -623,8 +618,8 @@ class ResolvedPlanIdentityTests(unittest.TestCase):
 
         digests = []
         for record in (raw, friendly):
-            resolver = JobResolver(Mock(inventory_generation=0))
-            resolver.identities = Mock()
+            resolver = resolver_with_ports(Mock(inventory_generation=0))
+            resolver.identities.lookup = Mock()
             resolver.identities.lookup.return_value = record
             with tempfile.NamedTemporaryFile(suffix=".wav") as handle:
                 plan = resolver.resolve(
@@ -649,8 +644,8 @@ class ResolvedPlanIdentityTests(unittest.TestCase):
             artifacts=original.artifacts,
             installed=True,
         )
-        resolver = JobResolver(Mock(inventory_generation=0))
-        resolver.identities = Mock()
+        resolver = resolver_with_ports(Mock(inventory_generation=0))
+        resolver.identities.lookup = Mock()
         resolver.identities.lookup.return_value = original
         with tempfile.NamedTemporaryFile(suffix=".wav") as handle:
             plan = resolver.resolve(
@@ -680,7 +675,7 @@ class ApolloSettingsStayCanonicalTests(unittest.TestCase):
             installed=True,
         )
         resolver = AudioJobResolver(Mock(inventory_generation=0))
-        resolver.identities = Mock()
+        resolver.identities.lookup = Mock()
         resolver.identities.lookup.return_value = record
         resolver._resolve_apollo(settings, [], ValidationLevel.CONFIG)
         self.assertEqual(settings.audio_tools.apollo_model, "apollo:restorer")
@@ -697,7 +692,7 @@ class ApolloSettingsStayCanonicalTests(unittest.TestCase):
         self.assertNotIn("apollo:", tool.apollo_model_location)
 
     def test_apollo_inference_observes_explicit_checkpoint_path(self) -> None:
-        import ml.apollo_inference
+        import engines.apollo
         from core.audio_tools import AudioTools
 
         with tempfile.TemporaryDirectory() as output:
@@ -708,7 +703,7 @@ class ApolloSettingsStayCanonicalTests(unittest.TestCase):
             backend = SimpleNamespace(torch_device="cpu", backend_name="cpu")
             with (
                 patch.object(
-                    ml.apollo_inference,
+                    engines.apollo,
                     "restore_process",
                     return_value=np.zeros((2, 16)),
                 ) as restore_process,
@@ -805,11 +800,10 @@ class DemucsInferenceIdentityTests(unittest.TestCase):
 
 class MdxYamlFetchPolicyTests(unittest.TestCase):
     def test_plan_offline_does_not_fetch(self) -> None:
-        from core.job_plan import JobResolver
 
         record = _mdx_record_missing_yaml()
-        resolver = JobResolver(_repo_with_mdx_c_missing_yaml())
-        resolver.identities = Mock()
+        resolver = resolver_with_ports(_repo_with_mdx_c_missing_yaml())
+        resolver.identities.lookup = Mock()
         resolver.identities.lookup.return_value = record
         with patch(
             "core.mdx_config_fetch.ensure_mdx_c_config", side_effect=AssertionError("fetch")
@@ -819,7 +813,6 @@ class MdxYamlFetchPolicyTests(unittest.TestCase):
         self.assertIn("model.configuration", [item.code for item in plan.diagnostics])
 
     def test_plan_online_fetches_once_then_relooks_up(self) -> None:
-        from core.job_plan import JobResolver
 
         fetches: list[str] = []
 
@@ -828,18 +821,17 @@ class MdxYamlFetchPolicyTests(unittest.TestCase):
             return True
 
         record = _mdx_record_missing_yaml()
-        resolver = JobResolver(_repo_with_mdx_c_missing_yaml())
-        resolver.identities = Mock()
+        resolver = resolver_with_ports(_repo_with_mdx_c_missing_yaml())
+        resolver.identities.lookup = Mock()
         resolver.identities.lookup.return_value = record
         with (
             patch("core.mdx_config_fetch.ensure_mdx_c_config", side_effect=fake_ensure),
-            patch.object(resolver, "_assemble", return_value=[Mock(model_status=True)]),
+            patch.object(resolver.materializer, "assemble", return_value=[Mock(model_status=True)]),
         ):
             resolver.resolve(_separate_spec(), ValidationLevel.CONFIG, allow_network=True)
         self.assertEqual(len(fetches), 1)
 
     def test_online_recovery_requires_complete_identity_after_relookup(self) -> None:
-        from core.job_plan import JobResolver
 
         incomplete = ModelRecord(
             id="mdx:TestModel",
@@ -852,8 +844,8 @@ class MdxYamlFetchPolicyTests(unittest.TestCase):
             identity_complete=False,
             identity_error="unknown MDX YAML architecture for TestModel.ckpt",
         )
-        resolver = JobResolver(_repo_with_mdx_c_missing_yaml())
-        resolver.identities = Mock()
+        resolver = resolver_with_ports(_repo_with_mdx_c_missing_yaml())
+        resolver.identities.lookup = Mock()
         resolver.identities.lookup.return_value = incomplete
         with (
             tempfile.TemporaryDirectory() as directory,
@@ -865,7 +857,6 @@ class MdxYamlFetchPolicyTests(unittest.TestCase):
         self.assertIn("model.configuration", [item.code for item in plan.diagnostics])
 
     def test_unrelated_incomplete_identity_does_not_enter_yaml_recovery(self) -> None:
-        from core.job_plan import JobResolver
 
         incomplete = ModelRecord(
             id="mdx:TestModel",
@@ -878,8 +869,8 @@ class MdxYamlFetchPolicyTests(unittest.TestCase):
             identity_complete=False,
             identity_error="identity metadata is incomplete",
         )
-        resolver = JobResolver(_repo_with_mdx_c_missing_yaml())
-        resolver.identities = Mock()
+        resolver = resolver_with_ports(_repo_with_mdx_c_missing_yaml())
+        resolver.identities.lookup = Mock()
         resolver.identities.lookup.return_value = incomplete
         with patch(
             "core.mdx_config_fetch.ensure_mdx_c_config",
@@ -907,7 +898,7 @@ class KaraokeSplitterPlanningTests(unittest.TestCase):
         }
         repo = Mock(inventory_generation=0)
         repo.karaoke_model_list.return_value = eligible_ids
-        resolver = JobResolver(repo)
+        resolver = resolver_with_ports(repo)
         resolver.identities.lookup = Mock(side_effect=records.__getitem__)  # type: ignore[method-assign]
         return resolver.resolve(
             JobSpec("separate", settings, (source.name,), "/tmp/out"),
@@ -957,7 +948,7 @@ class KaraokeSplitterPlanningTests(unittest.TestCase):
         repo.karaoke_model_list.side_effect = AssertionError(
             "karaoke pool probed before missing YAML recovery"
         )
-        resolver = JobResolver(repo)
+        resolver = resolver_with_ports(repo)
         resolver.identities.lookup = Mock(side_effect=records.__getitem__)  # type: ignore[method-assign]
 
         with (
@@ -1067,7 +1058,7 @@ class OfflineMdxConfigDiagnosticTests(unittest.TestCase):
         )
         repo = Mock()
         repo.inventory_generation = 0
-        resolver = JobResolver(repo)
+        resolver = resolver_with_ports(repo)
         resolver.identities.lookup = Mock(return_value=record)  # type: ignore[method-assign]
         return resolver
 
@@ -1238,9 +1229,9 @@ class DemucsSecondarySlotAgreementTests(unittest.TestCase):
             peer.id: peer,
             helper.id: helper,
         }
-        resolver = JobResolver(Mock(inventory_generation=0))
+        resolver = resolver_with_ports(Mock(inventory_generation=0))
         resolver.identities.lookup = Mock(side_effect=records.__getitem__)
-        resolver._assemble = Mock(
+        resolver.materializer.assemble = Mock(
             side_effect=[
                 [self._assembled_model("Vocals"), self._assembled_model("Vocals")],
                 [self._assembled_model("Vocals"), self._assembled_model("Vocals")],

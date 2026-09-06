@@ -121,7 +121,7 @@ def _start_background_refresh() -> None:
         global _refresh_in_flight
         try:
             load_politrees_links(force=True)
-        except Exception as exc:  # noqa: BLE001 - background best-effort
+        except Exception as exc:  # background best-effort
             debug("download", f"politrees background refresh failed err={exc}")
         except BaseException:
             # Test network guard is a BaseException; never kill the daemon thread.

@@ -1,12 +1,13 @@
 """Circular progress ring with finish morph (Nautilus ProgressPaintable)."""
 
 from __future__ import annotations
-import typing
 
+import typing
 from typing import TYPE_CHECKING, Optional
 
 from gi.repository import Adw, Gdk, Gtk
 
+from ui.resources import RESOURCE_PREFIX, require_resource_bundle
 from ui.widgets.download_queue_icons import (
     ICON_CHIP_CANCELLED,
     ICON_CHIP_FAILED,
@@ -33,8 +34,18 @@ MORPH_OUTCOMES = {
 }
 
 
+_TEMPLATE_RESOURCE = f"{RESOURCE_PREFIX}/ui/progress-ring.ui"
+require_resource_bundle(_TEMPLATE_RESOURCE)
+
+
+@Gtk.Template(resource_path=_TEMPLATE_RESOURCE)
 class ProgressRing(Gtk.Overlay):
     """18px symbolic ring that crossfades into a terminal icon when finished."""
+
+    __gtype_name__ = "UVRProgressRing"
+
+    _draw_area: Gtk.DrawingArea = Gtk.Template.Child("draw_area")
+    _icon: Gtk.Image = Gtk.Template.Child("icon")
 
     def __init__(self) -> None:
         super().__init__()
@@ -44,22 +55,13 @@ class ProgressRing(Gtk.Overlay):
         self._outcome = "active"
         self._done_animation: Optional[Adw.TimedAnimation] = None
 
-        self._draw_area = Gtk.DrawingArea()
         self._draw_area.set_content_width(RING_SIZE)
         self._draw_area.set_content_height(RING_SIZE)
         self._draw_area.set_draw_func(self._on_draw, None)
 
         self.set_size_request(RING_SIZE, RING_SIZE)
-        self.add_css_class("uvr-progress-ring")
 
-        self._icon = Gtk.Image()
         self._icon.set_pixel_size(DISPLAY_PIXEL_SIZE)
-        self._icon.set_halign(Gtk.Align.CENTER)
-        self._icon.set_valign(Gtk.Align.CENTER)
-        self._icon.set_opacity(0.0)
-
-        self.set_child(self._draw_area)
-        self.add_overlay(self._icon)
         self._set_icon_name(ICON_CHIP_SUCCESS)
 
     def _set_icon_name(self, icon_name: str) -> None:

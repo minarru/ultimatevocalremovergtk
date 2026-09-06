@@ -7,6 +7,7 @@ import tempfile
 import unittest
 
 from core import model_hash_cache as mhc
+from tests.model_config_fixtures import model_config_shell
 
 
 class ModelHashCacheTests(unittest.TestCase):
@@ -141,7 +142,6 @@ class ModelHashWireTests(unittest.TestCase):
     def test_get_model_hash_remembers_into_settings(self) -> None:
         from unittest import mock
 
-        from core.model_config import ModelConfig
         from core.model_repository import ModelRepository
         from core.settings import Settings
 
@@ -155,7 +155,7 @@ class ModelHashWireTests(unittest.TestCase):
         repo = ModelRepository()
         repo.model_hash_table = {}
 
-        cfg = ModelConfig.__new__(ModelConfig)
+        cfg = model_config_shell()
         cfg.settings = settings
         cfg.repo = repo
         cfg.model_path = path
@@ -182,7 +182,6 @@ class ModelHashWireTests(unittest.TestCase):
         from unittest import mock
 
         from core import model_hash_cache as mhc
-        from core.model_config import ModelConfig
         from core.model_repository import ModelRepository
         from core.settings import Settings
 
@@ -202,7 +201,7 @@ class ModelHashWireTests(unittest.TestCase):
         with open(path, "wb") as handle:
             handle.write(b"a completely different, longer payload")
 
-        cfg = ModelConfig.__new__(ModelConfig)
+        cfg = model_config_shell()
         cfg.settings = settings
         cfg.repo = repo
         cfg.model_path = path
@@ -226,7 +225,6 @@ class ModelHashWireTests(unittest.TestCase):
         """
         from unittest import mock
 
-        from core.model_config import ModelConfig
         from core.model_repository import ModelRepository
         from core.settings import Settings
 
@@ -240,7 +238,7 @@ class ModelHashWireTests(unittest.TestCase):
         repo = ModelRepository()
         repo.model_hash_table = {path: "MEMONLY"}
 
-        cfg = ModelConfig.__new__(ModelConfig)
+        cfg = model_config_shell()
         cfg.settings = settings
         cfg.repo = repo
         cfg.model_path = path

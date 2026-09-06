@@ -8,6 +8,9 @@ from unittest import mock
 from core.job_plan import PlannedInput, ResolvedJob, ValidationLevel, settings_fingerprint
 from core.settings import Settings
 from ui.run_control import RunController, _format_mmss, _starting_progress_text
+from ui.run_error_context import RunErrorContext
+from ui.run_host import GtkRunHost
+from ui.run_progress import RunProgressPresenter
 
 
 def _resolved_job(
@@ -90,15 +93,20 @@ class EnsembleErrorContextSnapshotTests(unittest.TestCase):
             content_stack=SimpleNamespace(get_visible_child_name=lambda: "ensemble"),
             _ensemble_page=SimpleNamespace(input_row=SimpleNamespace(paths=["/tmp/song.wav"])),
         )
-        controller = cast(Any, RunController.__new__(RunController))
-        controller._window = window
+        from ui.ensemble.window import EnsemblePage
+        page = cast(Any, EnsemblePage.__new__(EnsemblePage))
+        page.settings = settings
+        page.context = window.context
+        page.input_row = window._ensemble_page.input_row
+        window._ensemble_page = page
+        controller = RunController(GtkRunHost(cast(Any, window)))
 
         with mock.patch(
             "core.error_context.ModelIdentityService.lookup",
             autospec=True,
             side_effect=lambda _service, model_id: records[model_id],
         ):
-            context = controller._snapshot_error_context(object())
+            context = controller._snapshot_error_context(mock.Mock()).fields()
 
         self.assertEqual(context["models"], ["Friendly First", "Friendly Second"])
         self.assertEqual(settings.ensemble.selected_models, ["mdx:first", "vr:second"])
@@ -108,9 +116,8 @@ class SetRunningUnlockTests(unittest.TestCase):
     def test_unlock_keeps_model_options_enabled(self) -> None:
         """Regression: unlock must clear Stop before syncing Model options.
 
-        ``is_running()`` is ``_running_target and stop_button.sensitive``. If
-        sync runs while Stop is still sensitive, Model options is disabled
-        again after a completed separation.
+        Action synchronization must observe idle lifecycle state, otherwise
+        Model options remains disabled after a completed separation.
         """
         stop_sensitive = {"value": True}
         stop_button = mock.Mock()
@@ -133,8 +140,8 @@ class SetRunningUnlockTests(unittest.TestCase):
         window.lookup_action.side_effect = lambda name: actions.get(name)
 
         controller = RunController.__new__(RunController)
-        controller._window = window
-        controller._running_target = object()
+        controller = RunController(GtkRunHost(cast(Any, window)))
+        controller._running_target = mock.Mock()
 
         def sync_model_options_action() -> None:
             model_options.set_enabled(not controller.is_running())
@@ -160,7 +167,7 @@ class HandleCloseRequestTests(unittest.TestCase):
         window.stop_button = stop_button
 
         controller = RunController.__new__(RunController)
-        controller._window = window
+        controller = RunController(GtkRunHost(cast(Any, window)))
         target = mock.Mock()
         controller._running_target = target
         controller._on_close_complete = None
@@ -187,7 +194,7 @@ class HandleCloseRequestTests(unittest.TestCase):
         window = mock.Mock(stop_button=stop_button, context=context)
 
         controller = RunController.__new__(RunController)
-        controller._window = window
+        controller = RunController(GtkRunHost(cast(Any, window)))
         controller._running_target = None
         controller._on_close_complete = None
         controller._shutdown_dialog = None
@@ -207,14 +214,14 @@ class HandleCloseRequestTests(unittest.TestCase):
         window = mock.Mock(context=context)
 
         controller = RunController.__new__(RunController)
-        controller._window = window
-        controller._shutdown_target = None
-        controller._shutdown_attempts = 0
+        controller = RunController(GtkRunHost(cast(Any, window)))
+        controller.shutdown.shutdown_target = None
+        controller.shutdown.shutdown_attempts = 0
         controller._close_deferred = True
         controller._complete_shutdown = mock.Mock()
 
-        self.assertTrue(controller._poll_shutdown())
-        self.assertFalse(controller._poll_shutdown())
+        self.assertTrue(controller.shutdown.poll_shutdown())
+        self.assertFalse(controller.shutdown.poll_shutdown())
         controller._complete_shutdown.assert_called_once_with(deferred=True)
 
 
@@ -233,18 +240,18 @@ class ApplicationQuitTests(unittest.TestCase):
 
 class OnProgressBarTests(unittest.TestCase):
     def _controller(self) -> tuple[RunController, mock.Mock]:
-        from core.run_estimate import ProgressEtaTracker
 
         window = mock.Mock()
         window.log_panel = mock.Mock()
         controller = RunController.__new__(RunController)
-        controller._window = window
+        controller = RunController(GtkRunHost(cast(Any, window)))
         controller._run_ui_suspended = False
-        controller._eta_tracker = ProgressEtaTracker()
-        controller._last_progress_ui_at = 0.0
-        controller._last_progress_phase = None
-        controller._last_progress_pass = None
-        controller._last_progress_combine = None
+        controller.progress = RunProgressPresenter()
+        controller.progress.reset(controller._run_started_at)
+        controller.progress._last_progress_ui_at = 0.0
+        controller.progress._last_progress_phase = None
+        controller.progress._last_progress_pass = None
+        controller.progress._last_progress_combine = None
         controller._run_started_at = 0.0
         return controller, window
 
@@ -252,7 +259,7 @@ class OnProgressBarTests(unittest.TestCase):
         controller, window = self._controller()
         controller._on_progress(0.4, local_step=0.50, pass_index=1, pass_total=1)
         first = window.log_panel.set_progress_fraction.call_args[0][0]
-        controller._last_progress_ui_at = 0.0
+        controller.progress._last_progress_ui_at = 0.0
         controller._on_progress(0.93, local_step=0.93, pass_index=1, pass_total=1)
         second = window.log_panel.set_progress_fraction.call_args[0][0]
         self.assertGreater(second, first)
@@ -287,11 +294,11 @@ class AudioPreflightTests(unittest.TestCase):
         )
         window = mock.Mock()
         controller = RunController.__new__(RunController)
-        controller._window = window
+        controller = RunController(GtkRunHost(cast(Any, window)))
         controller._set_preflight_busy = mock.Mock()
         controller._accept_plan = mock.Mock()
         controller._present_plan_confirmation = mock.Mock()
-        target = object()
+        target = mock.Mock()
 
         controller._finish_preflight(target, "fingerprint", plan, None)
 
@@ -304,6 +311,7 @@ class AudioPreflightTests(unittest.TestCase):
         from core.job_plan import ModelDescriptor, ValidationLevel
         from core.model_identity import ModelArtifacts
         from ui.audio_tools.window import AudioToolsPage
+        from ui.shared_settings import SharedSettingsBindings, SharedSettingsSession
 
         settings = Settings.defaults()
         settings.audio_tools.apollo_model = "apollo:restorer"
@@ -329,6 +337,7 @@ class AudioPreflightTests(unittest.TestCase):
         )
         runner = mock.Mock(apollo_backend_name=None)
         page = SimpleNamespace(
+            _shared_session=SharedSettingsSession(settings, SharedSettingsBindings(), can_commit=lambda: True),
             _current_tool=mock.Mock(return_value=APOLLO_RESTORE),
             _dual_pairs=[],
             inputs_row=SimpleNamespace(paths=["/tmp/song.wav"]),
@@ -376,7 +385,7 @@ class StartTargetSettingsCopyTests(unittest.TestCase):
 
         target = mock.Mock()
         controller = RunController.__new__(RunController)
-        controller._window = window
+        controller = RunController(GtkRunHost(cast(Any, window)))
         controller._callbacks = mock.Mock(return_value=object())
 
         controller._start_target(target, plan)
@@ -399,7 +408,7 @@ class StartTargetSettingsCopyTests(unittest.TestCase):
         target = mock.Mock()
         callbacks = object()
         controller = RunController.__new__(RunController)
-        controller._window = window
+        controller = RunController(GtkRunHost(cast(Any, window)))
         controller._callbacks = mock.Mock(return_value=callbacks)
 
         controller._start_target(target, plan)
@@ -434,7 +443,7 @@ class StartTargetSettingsCopyTests(unittest.TestCase):
         target = mock.Mock()
         callbacks = object()
         controller = RunController.__new__(RunController)
-        controller._window = window
+        controller = RunController(GtkRunHost(cast(Any, window)))
         controller._callbacks = mock.Mock(return_value=callbacks)
 
         controller._start_target(target, plan)
@@ -459,6 +468,14 @@ class StartTargetSettingsCopyTests(unittest.TestCase):
         page_runner.settings = window_settings
         target = mock.Mock()
         target._runner = page_runner
+        target.runner = page_runner
+        target.settings = window_settings
+        from ui.audio_tools.window import AudioToolsPage
+        target.bind_run_settings.side_effect = lambda settings: AudioToolsPage.bind_run_settings(target, settings)
+        target.restore_runner_settings.side_effect = lambda: AudioToolsPage.restore_runner_settings(target)
+        from ui.context import AppContext
+        context.settings = window_settings
+        context.restore_runner_settings.side_effect = lambda: AppContext.restore_runner_settings(context)
 
         window = mock.Mock()
         window.settings = window_settings
@@ -466,7 +483,7 @@ class StartTargetSettingsCopyTests(unittest.TestCase):
         window._audio_tools_page = target
 
         controller = RunController.__new__(RunController)
-        controller._window = window
+        controller = RunController(GtkRunHost(cast(Any, window)))
         controller._callbacks = mock.Mock(return_value=object())
 
         controller._start_target(target, plan)
@@ -490,7 +507,7 @@ class PlanRecheckTests(unittest.TestCase):
         target.build_job_spec.return_value = mock.Mock(settings=settings)
         window = mock.Mock()
         controller = RunController.__new__(RunController)
-        controller._window = window
+        controller = RunController(GtkRunHost(cast(Any, window)))
         controller._set_preflight_busy = mock.Mock()
         controller._start_target = mock.Mock()
         controller._begin_preflight = mock.Mock()
@@ -511,7 +528,7 @@ class PlanRecheckTests(unittest.TestCase):
         target.build_job_spec.return_value = mock.Mock(settings=settings)
         window = mock.Mock()
         controller = RunController.__new__(RunController)
-        controller._window = window
+        controller = RunController(GtkRunHost(cast(Any, window)))
         controller._set_preflight_busy = mock.Mock()
         controller._start_target = mock.Mock()
         controller._begin_preflight = mock.Mock()
@@ -533,7 +550,7 @@ class PlanRecheckTests(unittest.TestCase):
         target.build_job_spec.return_value = JobSpec("separate", settings, ("/in/new.wav",), "/out")
         window = mock.Mock()
         controller = RunController.__new__(RunController)
-        controller._window = window
+        controller = RunController(GtkRunHost(cast(Any, window)))
         controller._set_preflight_busy = mock.Mock()
         controller._begin_preflight = mock.Mock()
         with mock.patch("threading.Thread") as thread:
@@ -556,7 +573,7 @@ class PlanRecheckTests(unittest.TestCase):
         )
         window = mock.Mock()
         controller = RunController.__new__(RunController)
-        controller._window = window
+        controller = RunController(GtkRunHost(cast(Any, window)))
         controller._set_preflight_busy = mock.Mock()
         controller._begin_preflight = mock.Mock()
         with mock.patch("threading.Thread") as thread:
@@ -575,7 +592,7 @@ class PlanRecheckTests(unittest.TestCase):
         target.build_job_spec.return_value = JobSpec("separate", settings, ("/in/new.wav",), "/out")
         window = mock.Mock()
         controller = RunController.__new__(RunController)
-        controller._window = window
+        controller = RunController(GtkRunHost(cast(Any, window)))
         controller._set_preflight_busy = mock.Mock()
         controller._start_target = mock.Mock()
         controller._begin_preflight = mock.Mock()
@@ -595,7 +612,7 @@ class BeginRunOutputTests(unittest.TestCase):
         window.context.runner.settings = Settings.defaults()
         target = mock.Mock()
         controller = RunController.__new__(RunController)
-        controller._window = window
+        controller = RunController(GtkRunHost(cast(Any, window)))
         controller._operation_id = None
         controller._operation_started_at = 0.0
         controller._running_target = None
@@ -616,7 +633,7 @@ class BeginRunOutputTests(unittest.TestCase):
         target = mock.Mock()
         target.start.side_effect = RuntimeError("pre-begin failure")
         controller = RunController.__new__(RunController)
-        controller._window = window
+        controller = RunController(GtkRunHost(cast(Any, window)))
         controller._operation_id = None
         controller._operation_started_at = 0.0
         controller._running_target = None
@@ -627,8 +644,9 @@ class BeginRunOutputTests(unittest.TestCase):
             )
         )
 
-        with mock.patch("ui.run_control.new_operation_id", return_value="ui-run-failed"):
+        with mock.patch("ui.run_control.new_operation_id", return_value="ui-run-failed"), mock.patch("ui.run_control.log_event") as event:
             controller._start_target(target)
+        event.assert_called_once_with("ui", "run_start_failed", level="error", operation_id="ui-run-failed", elapsed_seconds=mock.ANY)
 
         controller.fail_to_start.assert_called_once()
         self.assertIsNone(controller._operation_id)
@@ -636,7 +654,6 @@ class BeginRunOutputTests(unittest.TestCase):
 
     def test_preflight_operation_is_reused_when_run_begins(self) -> None:
         from core import debug_log
-        from core.run_estimate import ProgressEtaTracker
         from core.settings import Settings
 
         window = mock.Mock()
@@ -645,11 +662,12 @@ class BeginRunOutputTests(unittest.TestCase):
         window.log_panel = mock.Mock()
         window.console = mock.Mock()
         controller = RunController.__new__(RunController)
-        controller._window = window
+        controller = RunController(GtkRunHost(cast(Any, window)))
         controller._operation_id = "ui-run-preflight"
         controller._operation_started_at = 10.0
-        controller._eta_tracker = ProgressEtaTracker()
-        controller._snapshot_error_context = mock.Mock(return_value={})
+        controller.progress = RunProgressPresenter()
+        controller.progress.reset(controller._run_started_at)
+        controller._snapshot_error_context = mock.Mock(return_value=RunErrorContext("test"))
         controller._run_label_for = mock.Mock(return_value="Separation")
         controller._set_running = mock.Mock()
         debug_log.set_operation_id("ui-run-preflight")
@@ -662,7 +680,7 @@ class BeginRunOutputTests(unittest.TestCase):
             mock.patch("core.error_context.clear_run_error_context"),
             mock.patch("core.error_context.set_run_error_context"),
         ):
-            controller.begin_run(object())
+            controller.begin_run(mock.Mock())
 
         new_operation_id.assert_not_called()
         self.assertEqual(controller._operation_id, "ui-run-preflight")
@@ -680,7 +698,7 @@ class BeginRunOutputTests(unittest.TestCase):
         target.build_job_spec.return_value = spec
         window = mock.Mock()
         controller = RunController.__new__(RunController)
-        controller._window = window
+        controller = RunController(GtkRunHost(cast(Any, window)))
         controller._operation_id = None
         controller._operation_started_at = 0.0
         controller._preflight_in_progress = False
@@ -747,7 +765,6 @@ class BeginRunOutputTests(unittest.TestCase):
         self.assertIsNone(debug_log.current_operation_id())
 
     def test_begin_run_uses_runner_export_path(self) -> None:
-        from core.run_estimate import ProgressEtaTracker
         from core.settings import Settings
 
         window_settings = Settings.defaults()
@@ -764,9 +781,10 @@ class BeginRunOutputTests(unittest.TestCase):
         window.console = mock.Mock()
 
         controller = RunController.__new__(RunController)
-        controller._window = window
-        controller._eta_tracker = ProgressEtaTracker()
-        controller._snapshot_error_context = mock.Mock(return_value={})
+        controller = RunController(GtkRunHost(cast(Any, window)))
+        controller.progress = RunProgressPresenter()
+        controller.progress.reset(controller._run_started_at)
+        controller._snapshot_error_context = mock.Mock(return_value=RunErrorContext("test"))
         controller._run_label_for = mock.Mock(return_value="Separation")
         controller._set_running = mock.Mock()
 
@@ -776,13 +794,12 @@ class BeginRunOutputTests(unittest.TestCase):
             mock.patch("core.error_context.clear_run_error_context"),
             mock.patch("core.error_context.set_run_error_context"),
         ):
-            controller.begin_run(object())
+            controller.begin_run(mock.Mock())
 
         self.assertEqual(controller._run_output_dir, "/plan/out")
 
     def test_begin_run_creates_operation_context_and_completion_clears_it(self) -> None:
         from core import debug_log
-        from core.run_estimate import ProgressEtaTracker
         from core.settings import Settings
 
         window = mock.Mock()
@@ -791,9 +808,10 @@ class BeginRunOutputTests(unittest.TestCase):
         window.log_panel = mock.Mock()
         window.console = mock.Mock()
         controller = RunController.__new__(RunController)
-        controller._window = window
-        controller._eta_tracker = ProgressEtaTracker()
-        controller._snapshot_error_context = mock.Mock(return_value={})
+        controller = RunController(GtkRunHost(cast(Any, window)))
+        controller.progress = RunProgressPresenter()
+        controller.progress.reset(controller._run_started_at)
+        controller._snapshot_error_context = mock.Mock(return_value=RunErrorContext("test"))
         controller._run_label_for = mock.Mock(return_value="Separation")
         controller._set_running = mock.Mock()
         controller._restore_runner_settings = mock.Mock()
@@ -808,7 +826,7 @@ class BeginRunOutputTests(unittest.TestCase):
             mock.patch("core.error_context.clear_run_error_context"),
             mock.patch("core.error_context.set_run_error_context"),
         ):
-            controller.begin_run(object())
+            controller.begin_run(mock.Mock())
             self.assertEqual(debug_log.current_operation_id(), "ui-run-7")
             controller._on_complete()
 
@@ -818,13 +836,15 @@ class BeginRunOutputTests(unittest.TestCase):
         window = mock.Mock()
         window.console = mock.Mock()
         controller = RunController.__new__(RunController)
-        controller._window = window
+        controller = RunController(GtkRunHost(cast(Any, window)))
         controller._set_running = mock.Mock()
         controller._report_error = mock.Mock()
         controller._restore_runner_settings = mock.Mock()
-        controller._running_target = object()
+        controller._running_target = mock.Mock()
 
-        controller.fail_to_start("Unable to start", RuntimeError("boom"))
+        with mock.patch("ui.run_control.log_event") as event:
+            controller.fail_to_start("Unable to start", RuntimeError("boom"))
+        event.assert_not_called()  # No operation began in this restoration fixture.
 
         controller._restore_runner_settings.assert_called_once()
         self.assertIsNone(controller._running_target)
@@ -879,14 +899,19 @@ class ActiveModelLabelTests(unittest.TestCase):
         self.assertEqual(_model_output_label(cast(Any, model)), "my_private_model")
 
     def test_model_config_takes_its_label_from_the_identity_record(self) -> None:
-        """Locks the assignment in core/model_config/config.py."""
-        import inspect
+        from unittest.mock import MagicMock
 
-        from core.model_config import config as config_mod
+        from core.model_config import ModelConfig
+        from core.model_identity import ModelArtifacts, ModelRecord
+        from core.settings import Settings
 
-        source = inspect.getsource(config_mod)
-        self.assertRegex(
-            source,
-            r"self\.model_display_label\s*=\s*(?:\(\s*)?"
-            r"identity\.display\s+if\s+identity\s+is\s+not\s+None\s+else\s+model_name",
+        identity = ModelRecord(
+            id="mdx:missing-label-fixture", family="mdx", basename="missing-label-fixture",
+            display="Readable model label", backend_name="missing-label-fixture",
+            artifacts=ModelArtifacts("missing-label-fixture.onnx"), installed=False,
         )
+        model = ModelConfig(Settings(), MagicMock(), "ignored caller label", identity=identity,
+                            is_dry_check=True)
+        self.assertEqual(model.model_display_label, "Readable model label")
+        self.assertEqual(model.model_name, "Readable model label")
+        self.assertEqual(model.backend_name, "missing-label-fixture")

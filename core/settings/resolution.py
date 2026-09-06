@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable
 from typing import Any
 
 from .access import apply_settings_overrides

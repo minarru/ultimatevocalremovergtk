@@ -3,7 +3,7 @@
 import sys
 from typing import Optional, Sequence
 
-from gi.repository import Adw, Gio, GLib, Gtk
+from gi.repository import Adw, Gio, GLib
 
 from core import Settings, ensure_data_dir
 
@@ -41,11 +41,11 @@ class UVRApplication(Adw.Application):
 
         try:
             adw_ver = f"{Adw.MAJOR_VERSION}.{Adw.MINOR_VERSION}"
-        except Exception:  # noqa: BLE001
+        except Exception:
             adw_ver = "unknown"
         try:
             from __version__ import VERSION
-        except Exception:  # noqa: BLE001
+        except Exception:
             VERSION = "unknown"
         log_event(
             "ui",

@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+from typing import Any
+
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
-from typing import Any
+
+from ml.stft_device import needs_cpu_stft, torch_istft, torch_stft
 
 from .base_model import BaseModel
-from ml.stft_device import needs_cpu_stft, torch_istft, torch_stft
+
 
 class RMSNorm(nn.Module):
     def __init__(self, dimension: int, groups: int = 1) -> None:

@@ -8,35 +8,29 @@ delegates on the window.
 """
 
 from __future__ import annotations
-import typing
 
 import os
 import threading
 import time
+import typing
 from typing import TYPE_CHECKING, Any, Callable, Optional
 
-from gi.repository import Adw, Gio, GLib, Gtk
+from gi.repository import Adw, GLib
 
 from bundled.constants import (
     QUIT_WHILE_PROCESSING_CONFIRM,
     STOP_PROCESS_CONFIRM,
     STOP_PROCESSING,
 )
-
 from core.debug_log import (
     clear_run_start,
     debug,
     log_event,
     mark_run_start,
     new_operation_id,
-    next_seq,
     operation,
-    preview_text,
-    set_correlation_seq,
     set_operation_id,
-    verbose,
 )
-from core.run_estimate import ProgressEtaTracker
 from core.separate_import import engines_imported, warm_status
 
 from .dispatch import gtk_job_callbacks, idle_on_main, reset_progress_log
@@ -46,9 +40,14 @@ from .notifications import (
     NOTIFY_PROCESS_FAILED,
     send_desktop_notification,
 )
+from .protocols import RunHost, RunReadiness, RunTarget
+from .run_error_context import RunErrorContext
+from .run_lifecycle import RunShutdownCoordinator
+from .run_progress import RunProgressPresenter
 
 if TYPE_CHECKING:
-    from .window import MainWindow
+    from core.job_callbacks import JobCallbacks
+    from core.settings import Settings
 
 _OPEN_FOLDER_LABEL = "Open Folder"
 _NOTIFY_COMPLETE_TITLE = "{label} complete"
@@ -73,56 +72,52 @@ def _starting_progress_text() -> str:
     return _PROGRESS_LOADING_ENGINES
 
 
-def target_blocked_reason(target: typing.Any) -> Optional[str]:
+def target_blocked_reason(target: RunReadiness | None) -> Optional[str]:
     """Return a target readiness reason without allowing UI validation to fail."""
     if target is None:
         return "Choose a processing mode"
     try:
         return target.start_blocked_reason()
-    except Exception:  # noqa: BLE001 - readiness must never break the UI
+    except Exception:  # readiness must never break the UI
         return None
 
 
 class RunController:
     """Run lifecycle shared by Separation, Ensemble and Audio Tools."""
 
-    def __init__(self, window: MainWindow):
-        self._window = window
-        self._running_target: Any = None
+    def __init__(self, host: RunHost):
+        self._host = host
+        self._running_target: RunTarget | None = None
         self._run_output_dir = ""
         self._run_label = "Processing"
         self._run_started_at = 0.0
         self._operation_id: Optional[str] = None
         self._operation_started_at = 0.0
-        self._eta_tracker = ProgressEtaTracker()
-        self._last_progress_ui_at = 0.0
-        self._last_progress_phase: Optional[str] = None
-        self._last_progress_pass: Optional[int] = None
-        self._last_progress_combine: Optional[int] = None
+        self.progress = RunProgressPresenter()
         self._stop_confirm_dialog: Optional[Adw.AlertDialog] = None
         self._shutdown_dialog: Optional[Adw.AlertDialog] = None
         self._oom_dialog: Optional[Adw.AlertDialog] = None
-        self._cleanup_target: Any = None
-        self._cleanup_attempts = 0
-        self._shutdown_target: Any = None
-        self._shutdown_attempts = 0
         self._on_close_complete: Optional[Callable[[bool], None]] = None
         self._close_deferred = False
-        self._exit_cleanup_pending = False
-        self._exit_cleanup_timeout_id: Optional[int] = None
-        # get_application() is typed Gtk.Application; Adw.Application is a subclass.
-        self._exit_app: Optional[Gtk.Application] = None
+        self._closing = False
+        self.shutdown = RunShutdownCoordinator(
+            host,
+            GLib,
+            self._schedule_release_inference_memory,
+            lambda: self._complete_shutdown(deferred=self._close_deferred),
+            self._on_stop_cleanup,
+        )
         self._run_ui_suspended = False
         self._preflight_in_progress = False
         self._plan_dialog: Optional[Adw.AlertDialog] = None
         self._preflight_start_label: Optional[str] = None
 
     @property
-    def running_target(self) -> Any:
+    def running_target(self) -> RunTarget | None:
         return self._running_target
 
     def is_running(self) -> bool:
-        return self._running_target is not None and self._window.stop_button.get_sensitive()
+        return self._running_target is not None
 
     def handle_close_request(self, on_complete: Callable[[bool], None]) -> bool:
         """Handle the main window close gesture.
@@ -138,10 +133,10 @@ class RunController:
             self._stop_confirm_dialog = None
             self._run_ui_suspended = False
             target = self._running_target
-            if target is not None and hasattr(target, "unpause"):
+            if target is not None:
                 target.unpause()
             if self.is_running():
-                self._window._start_pulse()
+                self._host.set_pulse(True)
             # Close the dialog itself, not just our reference to it — otherwise
             # its "response"/"closed" handlers stay live and can later fire
             # against state already mutated by the shutdown-confirm flow below.
@@ -150,54 +145,77 @@ class RunController:
             self._close_deferred = True
             self._present_shutdown_confirm()
             return True
+        self._closing = True
         on_complete = self._on_close_complete
         self._on_close_complete = None
         if on_complete is not None:
             on_complete(False)
         self._stop_all_workers(force=True)
-        self._begin_exit_cleanup()
+        self.shutdown.begin_exit_cleanup()
         return False
 
-    def handle_start(self, target: typing.Any) -> None:
+    def handle_start(self, target: RunTarget | None) -> None:
         """Validate readiness, then hand off to the active run target."""
         reason = target_blocked_reason(target)
         if reason is not None:
             debug("ui", f"handle_start blocked reason={reason!r}")
-            self._window.toast(reason)
+            self._host.toast(reason)
             return
 
-        if self._preflight_in_progress or self._plan_dialog is not None:
+        assert target is not None  # None is rejected by the readiness reason above.
+        if self._closing or self.is_running() or self._preflight_in_progress or self._plan_dialog is not None:
             return
         self._ensure_operation()
-        if hasattr(target, "build_job_spec"):
-            self._begin_preflight(target)
-            return
+        self._begin_preflight(target)
 
-        self._start_target(target)
+    def _operation_is_current(self, operation_id: str | None) -> bool:
+        return not self._closing and self._operation_id == operation_id
 
-    def _callbacks(self) -> typing.Any:
+    def _deliver_operation(
+        self, operation_id: str | None, callback: Callable[..., None], *args: Any
+    ) -> None:
+        if self._operation_is_current(operation_id):
+            callback(*args)
+
+    def _callbacks(self) -> JobCallbacks:
+        operation_id = self._operation_id
+
+        def current_run(callback: Callable[..., None]) -> Callable[..., None]:
+            def invoke(*args: Any, **kwargs: Any) -> None:
+                if self._operation_is_current(operation_id):
+                    callback(*args, **kwargs)
+
+            return invoke
+
+        def oom_choice(request: Any) -> None:
+            if self._operation_is_current(operation_id):
+                self._on_oom_choice(request)
+            else:
+                from core.oom_choice import OOM_CHOICE_STOP
+
+                request.respond(OOM_CHOICE_STOP)
+
         return gtk_job_callbacks(
-            on_progress=self._on_progress,
-            on_console=self._append_console,
-            on_complete=self._on_complete,
-            on_stopped=self._on_stopped,
-            on_error=self._on_error,
-            on_oom_choice=self._on_oom_choice,
+            on_progress=current_run(self._on_progress),
+            on_console=current_run(self._append_console),
+            on_complete=current_run(self._on_complete),
+            on_stopped=current_run(self._on_stopped),
+            on_error=current_run(self._on_error),
+            on_oom_choice=oom_choice,
         )
 
-    def _start_target(self, target: typing.Any, plan: typing.Any=None) -> None:
+    def _start_target(self, target: RunTarget, plan: typing.Any=None) -> None:
         from core.audio_plan import ResolvedAudioJob
         from core.job_plan import ResolvedJob
 
         operation_id = self._ensure_operation()
-        runner = self._window.context.runner
         if plan is not None:
             import copy
             plan_settings = copy.deepcopy(plan.settings)
-            runner.settings = plan_settings
+            self._host.bind_run_settings(plan_settings)
             self._apply_page_runner_settings(target, plan_settings)
         else:
-            runner.settings = self._window.settings
+            self._host.bind_run_settings(self._host.settings)
         callbacks = self._callbacks()
         debug("ui", f"handle_start -> {type(target).__name__}.start()")
         try:
@@ -205,7 +223,7 @@ class RunController:
                 target.start(callbacks, plan=plan)
             else:
                 target.start(callbacks)
-        except Exception as exc:  # noqa: BLE001 - surface launch failures in the UI
+        except Exception as exc:  # surface launch failures in the UI
             self.fail_to_start(
                 f"Unable to start {type(target).__name__}: {exc}",
                 exc,
@@ -220,48 +238,31 @@ class RunController:
                 reason="target_not_launched",
             )
 
-    def _apply_page_runner_settings(
-        self, target: typing.Any, settings: typing.Any
-    ) -> None:
-        """Audio Tools owns a page-local runner; apply the plan copy there too."""
-        import copy
-
-        if not hasattr(target, "_runner"):
-            return
-        page_runner = getattr(target, "_runner", None)
-        if page_runner is None:
-            page_runner = target.runner
-        page_runner.settings = copy.deepcopy(settings)
+    def _apply_page_runner_settings(self, target: RunTarget, settings: Settings) -> None:
+        target.bind_run_settings(settings)
 
     def _restore_runner_settings(self) -> None:
-        window = self._window
-        if window.context._runner is not None:
-            window.context.runner.settings = window.settings
-        page = getattr(window, "_audio_tools_page", None)
-        if page is not None:
-            page_runner = getattr(page, "_runner", None)
-            if page_runner is not None:
-                page_runner.settings = window.settings
+        self._host.restore_runner_settings()
 
     def _set_preflight_busy(self, busy: bool) -> None:
         self._preflight_in_progress = busy
-        button = self._window.start_button
         if busy:
-            self._preflight_start_label = button.get_label()
-            button.set_label("Preparing…")
-            button.set_sensitive(False)
+            self._preflight_start_label = self._host.start_label()
+            self._host.set_start_label("Preparing…")
+            self._host.enable_start(False)
+            self._host.set_start_blocked_reason(None)
         else:
-            button.set_label(self._preflight_start_label or "Start")
+            self._host.set_start_label(self._preflight_start_label or "Start")
             self._preflight_start_label = None
-            self._window._refresh_start_readiness()
+            self._host.refresh_readiness()
 
-    def _begin_preflight(self, target: typing.Any) -> None:
+    def _begin_preflight(self, target: RunTarget) -> None:
         from core.job_plan import settings_fingerprint
 
         try:
             spec = target.build_job_spec()
-        except Exception as exc:  # noqa: BLE001 - presented through normal UI
-            self._window.toast(f"Could not prepare processing plan: {exc}")
+        except Exception as exc:  # presented through normal UI
+            self._host.toast(f"Could not prepare processing plan: {exc}")
             self._finish_operation(
                 "run_preflight_failed",
                 level="error",
@@ -285,17 +286,18 @@ class RunController:
             with operation(operation_id):
                 try:
                     if isinstance(spec, AudioJobSpec):
-                        plan = AudioJobResolver(self._window.context.repo).resolve(
+                        plan = AudioJobResolver(self._host.repo).resolve(
                             spec, ValidationLevel.RUNTIME
                         )
                     else:
-                        plan = JobResolver(self._window.context.repo).resolve(
+                        plan = JobResolver(self._host.repo).resolve(
                             spec, ValidationLevel.RUNTIME
                         )
                     error: BaseException | None = None
-                except Exception as exc:  # noqa: BLE001 - marshalled to GTK
+                except Exception as exc:  # marshalled to GTK
                     plan, error = None, exc
             idle_on_main(
+                self._deliver_operation, operation_id,
                 self._finish_preflight, target, fingerprint, plan, error
             )
 
@@ -304,12 +306,12 @@ class RunController:
         ).start()
 
     def _finish_preflight(
-        self, target: typing.Any, fingerprint: str, plan: typing.Any,
+        self, target: RunTarget, fingerprint: str, plan: typing.Any,
         error: BaseException | None,
     ) -> None:
         self._set_preflight_busy(False)
         if error is not None:
-            self._window.toast(f"Could not prepare processing plan: {error}")
+            self._host.toast(f"Could not prepare processing plan: {error}")
             self._finish_operation(
                 "run_preflight_failed",
                 level="error",
@@ -319,7 +321,7 @@ class RunController:
             return
         errors = [item.message for item in plan.diagnostics if item.severity == "error"]
         if errors:
-            self._window.toast(errors[0])
+            self._host.toast(errors[0])
             self._finish_operation(
                 "run_preflight_rejected",
                 reason=errors[0],
@@ -330,13 +332,13 @@ class RunController:
         if isinstance(plan, ResolvedAudioJob):
             self._accept_plan(target, fingerprint, plan)
             return
-        if not self._window.settings.ui.confirm_processing_plan:
+        if not self._host.settings.ui.confirm_processing_plan:
             self._accept_plan(target, fingerprint, plan)
             return
         self._present_plan_confirmation(target, fingerprint, plan)
 
     def _present_plan_confirmation(
-        self, target: typing.Any, fingerprint: str, plan: typing.Any
+        self, target: RunTarget, fingerprint: str, plan: typing.Any
     ) -> None:
         from core.job_plan import format_effective_plan
 
@@ -350,12 +352,16 @@ class RunController:
         dialog.set_default_response("cancel")
         dialog.set_close_response("cancel")
 
+        operation_id = self._operation_id
+
         def response(_dialog: typing.Any, choice: str) -> None:
+            if self._plan_dialog is not dialog or not self._operation_is_current(operation_id):
+                return
             self._plan_dialog = None
+            self._host.refresh_readiness()
             if choice == "start":
                 self._accept_plan(target, fingerprint, plan)
             else:
-                self._window._refresh_start_readiness()
                 self._finish_operation(
                     "run_cancelled",
                     reason="plan_confirmation",
@@ -363,17 +369,18 @@ class RunController:
 
         dialog.connect("response", response)
         self._plan_dialog = dialog
-        dialog.present(self._window)
+        self.refresh_start_readiness()
+        dialog.present(self._host.dialog_parent)
 
     def _accept_plan(
-        self, target: typing.Any, fingerprint: str, plan: typing.Any
+        self, target: RunTarget, fingerprint: str, plan: typing.Any
     ) -> None:
         from core.job_plan import settings_fingerprint
 
         try:
             current = target.build_job_spec()
-        except Exception as exc:  # noqa: BLE001
-            self._window.toast(f"Could not recheck processing plan: {exc}")
+        except Exception as exc:
+            self._host.toast(f"Could not recheck processing plan: {exc}")
             self._finish_operation(
                 "run_preflight_failed",
                 level="error",
@@ -383,11 +390,11 @@ class RunController:
             )
             return
         if settings_fingerprint(current.settings) != fingerprint:
-            self._window.toast("Processing settings or models changed; reviewing the updated plan")
+            self._host.toast("Processing settings or models changed; reviewing the updated plan")
             self._begin_preflight(target)
             return
         if not _resolved_job_matches_spec(plan, current):
-            self._window.toast(
+            self._host.toast(
                 "Input files or output folder changed; reviewing the updated plan"
             )
             self._begin_preflight(target)
@@ -402,15 +409,15 @@ class RunController:
             with operation(operation_id):
                 try:
                     is_current = (
-                        AudioJobResolver(self._window.context.repo).is_current(plan)
+                        AudioJobResolver(self._host.repo).is_current(plan)
                         if isinstance(plan, ResolvedAudioJob)
-                        else JobResolver(self._window.context.repo).is_current(plan)
+                        else JobResolver(self._host.repo).is_current(plan)
                     )
                     error: BaseException | None = None
-                except Exception as exc:  # noqa: BLE001 - marshalled to GTK
+                except Exception as exc:  # marshalled to GTK
                     is_current, error = False, exc
             idle_on_main(
-                self._finish_plan_recheck,
+                self._deliver_operation, operation_id, self._finish_plan_recheck,
                 target, fingerprint, plan, is_current, error,
             )
 
@@ -419,14 +426,14 @@ class RunController:
         ).start()
 
     def _finish_plan_recheck(
-        self, target: typing.Any, fingerprint: str, plan: typing.Any,
+        self, target: RunTarget, fingerprint: str, plan: typing.Any,
         is_current: bool, error: BaseException | None,
     ) -> None:
         from core.job_plan import settings_fingerprint
 
         self._set_preflight_busy(False)
         if error is not None:
-            self._window.toast(f"Could not recheck processing plan: {error}")
+            self._host.toast(f"Could not recheck processing plan: {error}")
             self._finish_operation(
                 "run_preflight_failed",
                 level="error",
@@ -440,8 +447,8 @@ class RunController:
             settings_unchanged = (
                 settings_fingerprint(current.settings) == fingerprint
             )
-        except Exception as exc:  # noqa: BLE001
-            self._window.toast(f"Could not recheck processing plan: {exc}")
+        except Exception as exc:
+            self._host.toast(f"Could not recheck processing plan: {exc}")
             self._finish_operation(
                 "run_preflight_failed",
                 level="error",
@@ -451,20 +458,20 @@ class RunController:
             )
             return
         if not is_current or not settings_unchanged:
-            self._window.toast(
+            self._host.toast(
                 "Processing settings or models changed; reviewing the updated plan"
             )
             self._begin_preflight(target)
             return
         if not _resolved_job_matches_spec(plan, current):
-            self._window.toast(
+            self._host.toast(
                 "Input files or output folder changed; reviewing the updated plan"
             )
             self._begin_preflight(target)
             return
         self._start_target(target, plan)
 
-    def begin_run(self, target: typing.Any) -> None:
+    def begin_run(self, target: RunTarget) -> None:
         """Shared bookkeeping when any run target starts its worker."""
         from core.error_context import clear_run_error_context, set_run_error_context
 
@@ -472,7 +479,7 @@ class RunController:
         mark_run_start()
         reset_progress_log()
         clear_run_error_context()
-        set_run_error_context(**self._snapshot_error_context(target))
+        set_run_error_context(**self._snapshot_error_context(target).fields())
         log_event(
             "ui",
             "run_started",
@@ -481,26 +488,18 @@ class RunController:
             warm_status=warm_status(),
         )
         self._running_target = target
-        runner = getattr(self._window.context, "runner", None)
-        runner_export = ""
-        if runner is not None:
-            runner_export = runner.settings.process.export_path or ""
-        self._run_output_dir = runner_export or self._window.settings.process.export_path or ""
+        self._run_output_dir = self._host.run_output_dir()
         self._run_label = self._run_label_for(target)
-        self._window.log_panel.set_run_label(self._run_label)
+        self._host.set_run_label(self._run_label)
         self._run_started_at = time.monotonic()
-        self._eta_tracker.reset()
-        self._last_progress_ui_at = 0.0
-        self._last_progress_phase = None
-        self._last_progress_pass = None
-        self._last_progress_combine = None
-        self._window.console.clear()
-        self._window.log_panel.set_progress_fraction(0.0)
-        self._window.log_panel.set_progress_text(_starting_progress_text())
-        self._window._start_pulse()
+        self.progress.reset(self._run_started_at)
+        self._host.clear_console()
+        self._host.set_progress_fraction(0.0)
+        self._host.set_progress_text(_starting_progress_text())
+        self._host.set_pulse(True)
         self._set_running(True)
-        self._window._reveal_log_panel(True)
-        self._window.log_panel.prepare_for_run()
+        self._host.reveal_log()
+        self._host.prepare_log()
         debug("ui", "begin_run UI ready (log revealed, prepare_for_run done)")
 
     def _ensure_operation(self) -> str:
@@ -521,12 +520,11 @@ class RunController:
             error=str(exc),
         )
         clear_run_start()
-        self._window._stop_pulse()
-        self._set_running(False)
-        self._window.console.append(f"\n{message}\n")
+        self._host.set_pulse(False)
+        self._restore_idle_controls()
+        self._host.set_progress_text("Failed")
+        self._host.append_console(f"\n{message}\n")
         self._report_error(message, exc)
-        self._running_target = None
-        self._restore_runner_settings()
 
     def _finish_operation(
         self,
@@ -555,30 +553,23 @@ class RunController:
         set_operation_id(None)
 
     def handle_start_action(self) -> None:
-        if self._window.start_button.get_sensitive():
-            self.handle_start(self._window._run_target)
+        if self._host.start_enabled():
+            self.handle_start(self._host.target)
 
     def handle_stop_action(self) -> None:
-        if self._window.stop_button.get_sensitive():
+        if self._host.stop_enabled():
             self.handle_stop()
 
     def handle_stop(self) -> None:
-        if not self._window.stop_button.get_sensitive():
+        if not self._host.stop_enabled():
             return
         if self._stop_confirm_dialog is not None:
             return
         debug("ui", "handle_stop presenting confirm dialog")
         self._present_stop_confirm()
 
-    def _run_label_for(self, target: typing.Any) -> str:
-        window = self._window
-        if target is window._separation_target:
-            return "Separation"
-        if target is window._ensemble_page:
-            return "Ensemble"
-        if target is window._audio_tools_page:
-            return "Audio tools"
-        return "Processing"
+    def _run_label_for(self, target: RunTarget) -> str:
+        return target.run_label
 
     def _present_stop_confirm(self) -> None:
         heading, body = STOP_PROCESS_CONFIRM
@@ -590,6 +581,7 @@ class RunController:
         dialog.set_close_response("cancel")
 
         target = self._running_target
+        operation_id = self._operation_id
         self._suspend_run_ui_for_dialog()
 
         pending: dict[str, Any] = {"run": None}
@@ -601,19 +593,31 @@ class RunController:
                 self._defer_dialog_action(run, label="stop-closed")
 
         def on_response(_dlg: typing.Any, response: str) -> None:
+            if self._stop_confirm_dialog is not dialog:
+                return
             self._stop_confirm_dialog = None
+            if not self._operation_is_current(operation_id):
+                return
             if response == "stop":
                 captured = self._running_target or target
-                pending["run"] = lambda: self._confirm_stop(captured)
-                if captured is not None and hasattr(captured, "stop"):
+                def stop_current() -> None:
+                    if self._operation_is_current(operation_id):
+                        self._confirm_stop(captured)
+
+                pending["run"] = stop_current
+                if captured is not None:
                     captured.stop()
                 self._defer_dialog_action(pending["run"], label="stop")
                 pending["run"] = None
             else:
-                if target is not None and hasattr(target, "unpause"):
-                    resume = lambda: self._resume_after_dialog_cancel(target)
+                if target is not None:
+                    def resume() -> None:
+                        self._deliver_operation(
+                            operation_id, self._resume_after_dialog_cancel, target
+                        )
                 else:
-                    resume = self._resume_run_ui_after_dialog
+                    def resume() -> None:
+                        self._deliver_operation(operation_id, self._resume_run_ui_after_dialog)
                 pending["run"] = resume
                 self._defer_dialog_action(resume, label="stop-cancel")
                 pending["run"] = None
@@ -621,7 +625,7 @@ class RunController:
         dialog.connect("closed", on_closed)
         dialog.connect("response", on_response)
         self._stop_confirm_dialog = dialog
-        dialog.present(self._window)
+        dialog.present(self._host.dialog_parent)
 
     def _present_shutdown_confirm(self) -> None:
         download_count = self._active_download_count()
@@ -649,6 +653,7 @@ class RunController:
         dialog.set_close_response("cancel")
 
         target = self._running_target
+        operation_id = self._operation_id
         self._suspend_run_ui_for_dialog()
 
         pending: dict[str, Any] = {"run": None}
@@ -660,22 +665,28 @@ class RunController:
                 self._defer_dialog_action(run, label="shutdown-closed")
 
         def on_response(_dlg: typing.Any, response: str) -> None:
+            if self._shutdown_dialog is not dialog:
+                return
             self._shutdown_dialog = None
             if response == "quit":
                 captured = self._running_target or target
                 pending["run"] = lambda: self._confirm_shutdown_stop(captured)
-                if captured is not None and hasattr(captured, "stop"):
+                if captured is not None:
                     captured.stop()
-                self._window.context.stop_all_workers(force=False)
+                self._host.stop_context_workers(force=False)
                 self._defer_dialog_action(pending["run"], label="shutdown")
                 pending["run"] = None
             else:
                 self._close_deferred = False
                 self._on_close_complete = None
-                if target is not None and hasattr(target, "unpause"):
-                    resume = lambda: self._resume_after_dialog_cancel(target)
+                if target is not None:
+                    def resume() -> None:
+                        self._deliver_operation(
+                            operation_id, self._resume_after_dialog_cancel, target
+                        )
                 else:
-                    resume = self._resume_run_ui_after_dialog
+                    def resume() -> None:
+                        self._deliver_operation(operation_id, self._resume_run_ui_after_dialog)
                 pending["run"] = resume
                 self._defer_dialog_action(resume, label="shutdown-cancel")
                 pending["run"] = None
@@ -683,7 +694,7 @@ class RunController:
         dialog.connect("closed", on_closed)
         dialog.connect("response", on_response)
         self._shutdown_dialog = dialog
-        dialog.present(self._window)
+        dialog.present(self._host.dialog_parent)
 
     def _defer_dialog_action(self, callback: Callable[[], None], *, label: str = "") -> None:
         """Run a dialog follow-up on the next main-loop tick (never block on ``closed``)."""
@@ -702,137 +713,80 @@ class RunController:
     def _suspend_run_ui_for_dialog(self) -> None:
         """Pause run-driven widget updates while a confirm dialog is on screen."""
         self._run_ui_suspended = True
-        self._window._stop_pulse()
+        self._host.set_pulse(False)
         target = self._running_target
-        if target is not None and hasattr(target, "pause"):
+        if target is not None:
             target.pause()
 
     def _resume_run_ui_after_dialog(self) -> None:
         debug("ui", f"resume_run_ui after dialog dismissed running={self.is_running()}")
         self._run_ui_suspended = False
         if self.is_running():
-            self._window._start_pulse()
+            self._host.set_pulse(True)
 
-    def _resume_after_dialog_cancel(self, target: Any) -> None:
-        if target is not None and hasattr(target, "unpause"):
+    def _resume_after_dialog_cancel(self, target: RunTarget | None) -> None:
+        if target is not None:
             target.unpause()
         self._resume_run_ui_after_dialog()
 
     def _append_console(self, text: str) -> None:
         if self._run_ui_suspended:
             return
-        self._window.console.append(text)
+        self._host.append_console(text)
 
-    def _confirm_shutdown_stop(self, target: Any) -> None:
+    def _confirm_shutdown_stop(self, target: RunTarget | None) -> None:
+        self._closing = True
         debug("ui", f"shutdown stop confirmed target={type(target).__name__ if target else None}")
         self._run_ui_suspended = False
-        self._window._stop_pulse()
+        self._host.set_pulse(False)
         self._set_running(False)
         self._running_target = None
-        self._cleanup_target = None
+        self.shutdown.cleanup_target = None
         clear_run_start()
         self._finish_operation("run_stopped", reason="shutdown")
         if target is not None:
-            if hasattr(target, "unpause"):
-                target.unpause()
-            self._window.console.append(f"\n{STOP_PROCESSING}\n")
+            target.unpause()
+            self._host.append_console(f"\n{STOP_PROCESSING}\n")
             target.stop()
-        self._schedule_shutdown_poll(target)
-
-    def _schedule_shutdown_poll(self, target: Any) -> None:
-        debug("cleanup", f"shutdown poll scheduled target={type(target).__name__ if target else None}")
-        self._shutdown_target = target
-        self._shutdown_attempts = 0
-        GLib.timeout_add(50, self._poll_shutdown)
-
-    def _poll_shutdown(self) -> bool:
-        target = self._shutdown_target
-        self._shutdown_attempts += 1
-        worker_alive = self._worker_is_running(target) if target is not None else False
-        downloads_alive = self._active_download_count() > 0
-        alive = worker_alive or downloads_alive
-        if not alive:
-            debug("cleanup", f"shutdown poll attempt={self._shutdown_attempts} worker_alive=False")
-            self._shutdown_target = None
-            self._complete_shutdown(deferred=self._close_deferred)
-            return False
-        if self._shutdown_attempts >= 80:
-            debug("cleanup", f"shutdown poll attempt={self._shutdown_attempts} timeout force=True")
-            self._shutdown_target = None
-            self._complete_shutdown(deferred=self._close_deferred)
-            return False
-        if verbose():
-            debug("cleanup", f"shutdown poll attempt={self._shutdown_attempts} worker_alive=True")
-        return True
+        self.shutdown.schedule_shutdown_poll(target)
 
     def _complete_shutdown(self, *, deferred: bool) -> None:
         debug("ui", f"complete_shutdown deferred={deferred}")
-        self._cleanup_target = None
-        self._shutdown_target = None
-        self._window._stop_pulse()
+        self.shutdown.cleanup_target = None
+        self.shutdown.shutdown_target = None
+        self._host.set_pulse(False)
         self._stop_all_workers(force=True)
         on_complete = self._on_close_complete
         self._on_close_complete = None
         self._close_deferred = False
         if on_complete is not None:
             on_complete(deferred)
-        self._begin_exit_cleanup()
+        self.shutdown.begin_exit_cleanup()
         if deferred:
-            self._window.destroy()
+            self._host.destroy()
 
-    def _confirm_stop(self, target: Any) -> None:
-        if target is None:
+    def _confirm_stop(self, target: RunTarget | None) -> None:
+        if target is None or self._running_target is not target:
             return
         debug("ui", f"stop confirmed target={type(target).__name__}")
         self._run_ui_suspended = False
-        if hasattr(target, "unpause"):
-            target.unpause()
-        self._finish_run_ui(stopped=True, defer_cleanup=True)
-        self._window.console.append(f"\n{STOP_PROCESSING}\n")
+        target.unpause()
+        self._host.enable_stop(False)
+        self._host.enable_start(False)
+        self._host.set_pulse(False)
+        self._host.set_progress_text("Stopping…")
+        self._run_ui_suspended = True
+        self._host.append_console(f"\n{STOP_PROCESSING}\n")
         target.stop()
-        self._schedule_inference_cleanup(target)
-
-    def _schedule_inference_cleanup(self, target: Any) -> None:
-        debug("cleanup", f"cleanup poll scheduled target={type(target).__name__}")
-        self._cleanup_target = target
-        self._cleanup_attempts = 0
-        GLib.timeout_add(50, self._poll_inference_cleanup)
-
-    def _worker_is_running(self, target: Any) -> bool:
-        window = self._window
-        page = getattr(window, "_audio_tools_page", None)
-        if page is not None and target is page:
-            return page.runner.is_running()
-        return window.context.runner.is_running()
-
-    def _poll_inference_cleanup(self) -> bool:
-        target = self._cleanup_target
-        if target is None:
-            return False
-        self._cleanup_attempts += 1
-        alive = self._worker_is_running(target)
-        if not alive:
-            debug("cleanup", f"poll attempt={self._cleanup_attempts} worker_alive=False releasing")
-            self._cleanup_target = None
-            self._schedule_release_inference_memory(force_if_alive=False)
-            return False
-        if self._cleanup_attempts >= 80:
-            debug("cleanup", f"poll attempt={self._cleanup_attempts} timeout force=True")
-            self._cleanup_target = None
-            self._schedule_release_inference_memory(force_if_alive=True)
-            return False
-        if verbose():
-            debug("cleanup", f"poll attempt={self._cleanup_attempts} worker_alive=True")
-        return True
+        self.shutdown.schedule_inference_cleanup(target)
 
     def _finish_run_ui(self, *, stopped: bool = False, defer_cleanup: bool = False) -> None:
         debug("ui", f"finish_run_ui stopped={stopped} defer_cleanup={defer_cleanup}")
         if stopped and not defer_cleanup:
             self._schedule_release_inference_memory(wait_for_stop=0.5)
-        self._window._stop_pulse()
-        self._set_running(False)
-        self._running_target = None
-        self._window.log_panel.clear_progress()
+        self._host.set_pulse(False)
+        self._restore_idle_controls()
+        self._host.clear_progress()
         clear_run_start()
         if stopped:
             self._finish_operation("run_stopped", reason="user")
@@ -840,6 +794,7 @@ class RunController:
     def _on_oom_choice(self, request: typing.Any) -> None:
         """Present the mid-run OOM dialog; ``request.respond`` unblocks the worker."""
         from core.oom_choice import OOM_CHOICE_STOP
+
         from .oom_dialog import present_oom_choice_dialog
 
         if self._oom_dialog is not None:
@@ -855,57 +810,62 @@ class RunController:
             f"retry={getattr(request, 'can_retry', False)}",
         )
         self._run_ui_suspended = True
-        self._window._stop_pulse()
+        self._host.set_pulse(False)
+
+        operation_id = self._operation_id
 
         def on_choice(choice: str) -> None:
+            if not self._operation_is_current(operation_id) or self._running_target is None:
+                request.respond(OOM_CHOICE_STOP)
+                return
             self._oom_dialog = None
             self._run_ui_suspended = False
             if self.is_running():
-                self._window._start_pulse()
+                self._host.set_pulse(True)
             label = {
                 "export": "Export completed outputs",
                 "stop": "Stop",
                 "retry": "Retry with smaller segment",
             }.get(choice, choice)
-            self._window.console.append(f"\nGPU OOM recovery: {label}\n")
+            self._host.append_console(f"\nGPU OOM recovery: {label}\n")
             request.respond(choice)
 
         self._oom_dialog = present_oom_choice_dialog(
-            self._window,
+            self._host.dialog_parent,
             request,
             on_choice=on_choice,
         )
+
+    def _on_stop_cleanup(self, target: RunTarget) -> None:
+        if self._running_target is target:
+            self._on_stopped()
 
     def _on_stopped(self) -> None:
         from core.error_context import clear_run_error_context
 
         debug("ui", "on_stopped cooperative worker stop")
         clear_run_error_context()
-        self._cleanup_target = None
-        runner = getattr(self._window.context, "runner", None)
-        exported = bool(getattr(runner, "_last_oom_exported", False))
+        self.shutdown.cleanup_target = None
+        exported = self._host.exported_after_oom()
         self._finish_run_ui(stopped=True)
-        self._restore_runner_settings()
         if exported:
             toast = Adw.Toast.new("Exported completed ensemble outputs.")
             output_dir = self._run_output_dir
             if output_dir and os.path.isdir(output_dir):
                 toast.set_button_label(_OPEN_FOLDER_LABEL)
                 toast.connect("button-clicked", self._on_open_output_folder, output_dir)
-            self._window.toast_overlay.add_toast(toast)
+            self._host.add_toast(toast)
 
     def _on_complete(self) -> None:
         from core.error_context import clear_run_error_context
 
         clear_run_error_context()
-        self._window._stop_pulse()
-        self._set_running(False)
-        self._window.log_panel.set_progress_fraction(1.0)
-        self._window.log_panel.set_progress_text(_PROGRESS_DONE)
-        self._window.log_panel.mark_run_complete()
-        self._running_target = None
+        self._host.set_pulse(False)
+        self._restore_idle_controls()
+        self._host.set_progress_fraction(1.0)
+        self._host.set_progress_text(_PROGRESS_DONE)
+        self._host.mark_run_complete()
         clear_run_start()
-        self._restore_runner_settings()
         output_dir = self._run_output_dir
         self._show_complete_toast(output_dir)
         self._send_completion_notification(output_dir)
@@ -919,16 +879,14 @@ class RunController:
             error_type=type(exc).__name__,
             error=str(exc),
         )
-        self._window._stop_pulse()
-        self._set_running(False)
-        self._window.log_panel.set_progress_text("Failed")
+        self._host.set_pulse(False)
+        self._restore_idle_controls()
+        self._host.set_progress_text("Failed")
         message = f"Process failed: {exc}"
-        self._window.console.append(f"\n{message}\n")
+        self._host.append_console(f"\n{message}\n")
         self._report_error(message, exc)
         self._send_failure_notification()
-        self._running_target = None
         clear_run_start()
-        self._restore_runner_settings()
         # Worker already parks on failure; park again here in case UI cleanup
         # races ahead of the worker finally/except path.
         self._schedule_release_inference_memory(park_weights=True)
@@ -938,13 +896,13 @@ class RunController:
         if output_dir and os.path.isdir(output_dir):
             toast.set_button_label(_OPEN_FOLDER_LABEL)
             toast.connect("button-clicked", self._on_open_output_folder, output_dir)
-        self._window.toast_overlay.add_toast(toast)
+        self._host.add_toast(toast)
 
     def _on_open_output_folder(self, _toast: Adw.Toast, output_dir: str) -> None:
         open_folder_in_file_manager(
-            self._window,
+            self._host.dialog_parent,
             output_dir,
-            on_error=self._window.toast,
+            on_error=self._host.toast,
         )
 
     def _send_completion_notification(self, output_dir: str) -> None:
@@ -957,8 +915,8 @@ class RunController:
             body = _NOTIFY_COMPLETE_BODY_PLAIN
         open_folder = output_dir if output_dir and os.path.isdir(output_dir) else None
         send_desktop_notification(
-            self._window.get_application(),
-            self._window.settings,
+            self._host.get_application(),
+            self._host.settings,
             setting_key=NOTIFY_PROCESS_COMPLETE,
             ident="uvr-complete",
             title=title,
@@ -969,8 +927,8 @@ class RunController:
     def _send_failure_notification(self) -> None:
         title = _NOTIFY_FAILED_TITLE.format(label=self._run_label)
         send_desktop_notification(
-            self._window.get_application(),
-            self._window.settings,
+            self._host.get_application(),
+            self._host.settings,
             setting_key=NOTIFY_PROCESS_FAILED,
             ident="uvr-failed",
             title=title,
@@ -988,235 +946,98 @@ class RunController:
         combine_total: Optional[int] = None,
         **_extra: typing.Any,
     ) -> None:
-        if self._run_ui_suspended:
-            return
-        now = time.monotonic()
-        self._eta_tracker.update(
-            fraction,
-            now,
-            local_step=local_step,
-            pass_index=pass_index,
-            pass_total=pass_total,
-            detail=detail,
-            combine_index=combine_index,
-            combine_total=combine_total,
+        presentation = self.progress.update(
+            fraction, time.monotonic(), suspended=self._run_ui_suspended,
+            local_step=local_step, pass_index=pass_index, pass_total=pass_total,
+            detail=detail, combine_index=combine_index, combine_total=combine_total,
         )
-        phase = self._eta_tracker.phase(fraction)
-        force_ui = (
-            fraction >= 1.0 - _PROGRESS_EPSILON
-            or phase != self._last_progress_phase
-            or pass_index != self._last_progress_pass
-            or combine_index != self._last_progress_combine
-        )
-        if (
-            not force_ui
-            and (now - self._last_progress_ui_at) < _PROGRESS_UI_MIN_INTERVAL
-        ):
+        if presentation is None:
             return
-        self._last_progress_ui_at = now
-        self._last_progress_phase = phase
-        self._last_progress_pass = pass_index
-        self._last_progress_combine = combine_index
-
-        elapsed = max(0.0, now - self._run_started_at)
-        self._window.log_panel.set_progress_text(
-            self._eta_tracker.format_text(fraction, elapsed, now=now)
-        )
-
-        if fraction >= 1.0 - _PROGRESS_EPSILON:
-            self._window._stop_pulse()
-            self._window.log_panel.set_progress_fraction(1.0)
-            return
-        if fraction <= _PROGRESS_EPSILON and self._eta_tracker.held_display <= 0:
-            self._window._start_pulse()
-            return
-
-        display = self._eta_tracker.inference_display_fraction(fraction)
-        if local_step is None:
-            # Audio tools and other callers that only send a global fraction.
-            display = fraction
-        elif display is None:
-            phase = self._eta_tracker.phase(fraction)
-            if (
-                phase == "loading"
-                and self._eta_tracker.held_display <= _PROGRESS_EPSILON
-            ):
-                self._window._start_pulse()
-                return
-            # Ticked save / deverb / combine: paint the runner fraction.
-            display = fraction
-        self._window._stop_pulse()
-        self._window.log_panel.set_progress_fraction(display)
+        self._host.set_progress_text(presentation.text)
+        if presentation.pulse == "start":
+            self._host.set_pulse(True)
+        else:
+            self._host.set_pulse(False)
+        if presentation.fraction is not None:
+            self._host.set_progress_fraction(presentation.fraction)
 
     def _report_error(self, message: str, exc: BaseException) -> None:
         from .errorlog import log_error, present_error_dialog
 
-        window = self._window
-        target = self._running_target or window._run_target
+        target = self._running_target or self._host.target
         key = (
-            target.error_key if target is not None else window._active_view().method_key
+            target.error_key if target is not None else self._host.fallback_error_key
         )
         formatted = log_error(key, exc)
         label = self._run_label_for(target) if target is not None else "Process"
         present_error_dialog(
-            window,
+            self._host.dialog_parent,
             heading=f"{label} failed",
             exception=exc,
             formatted_log=formatted,
-            on_copied=lambda: window.toast("Report copied to clipboard"),
+            on_copied=lambda: self._host.toast("Report copied to clipboard"),
         )
 
-    def _snapshot_error_context(self, target: typing.Any) -> dict:
-        from core.error_context import (
-            build_audio_tools_context,
-            build_ensemble_context,
-            build_separation_context,
-        )
+    def _snapshot_error_context(self, target: RunTarget) -> RunErrorContext:
+        # Preserve capture from the visible page/shared settings at begin_run.
+        return self._host.context_target.snapshot_error_context()
 
-        window = self._window
-        settings = window.settings
-        repo = window.context.repo
-        tab = window.content_stack.get_visible_child_name()
-
-        if tab == "ensemble":
-            page = getattr(window, "_ensemble_page", None)
-            paths = list(page.input_row.paths) if page is not None else []
-            return build_ensemble_context(settings, paths, repo=repo)
-        if tab == "audio_tools":
-            from bundled.constants import (
-                APOLLO_RESTORE,
-                CHANGE_PITCH,
-                MANUAL_ENSEMBLE,
-                TIME_STRETCH,
-            )
-            from core.audio_tools import DUAL_INPUT_TOOLS
-
-            page = getattr(window, "_audio_tools_page", None)
-            tool = page._current_tool() if page is not None else "Audio Tools"
-            paths: list[str] = []
-            if page is not None:
-                if tool in DUAL_INPUT_TOOLS:
-                    paths = [os.path.basename(left) for left, _right in page._dual_pairs]
-                else:
-                    paths = list(page.inputs_row.paths)
-            return build_audio_tools_context(settings, tool, paths)
-
-        method_key = window._active_view().method_key
-        return build_separation_context(
-            settings,
-            repo,
-            list(window.input_row.paths),
-            method_key,
-        )
+    def _restore_idle_controls(self) -> None:
+        self.shutdown.cleanup_target = None
+        self._running_target = None
+        for name in ("_stop_confirm_dialog", "_oom_dialog"):
+            dialog = getattr(self, name)
+            setattr(self, name, None)
+            if dialog is not None:
+                dialog.force_close()
+        self._run_ui_suspended = False
+        self._restore_runner_settings()
+        self._set_running(False)
 
     def _set_running(self, running: bool) -> None:
-        # Update Stop first: ``is_running()`` is ``_running_target and stop
-        # sensitive``. On unlock, ``_sync_model_options_action`` must see
-        # ``is_running() is False`` or Model options stays disabled.
-        self._window.stop_button.set_sensitive(running)
+        # Clear the run before action/model refresh; Stop sensitivity alone is
+        # not lifecycle state (it is also disabled while stopping).
+        if not running:
+            self._running_target = None
+        self._host.enable_stop(running)
         self._set_options_sensitive(not running)
         self._set_edit_actions_sensitive(not running)
         if running:
-            self._window.start_button.set_sensitive(False)
+            self._host.enable_start(False)
+            self._host.set_start_blocked_reason(None)
         else:
             self.refresh_start_readiness()
 
     def _set_options_sensitive(self, sensitive: bool) -> None:
-        """Lock editable option surfaces while leaving tabs and logs usable."""
-        for page in getattr(self._window, "_options_pages", ()):
-            page.set_sensitive(sensitive)
+        self._host.set_options_sensitive(sensitive)
 
     def _set_edit_actions_sensitive(self, sensitive: bool) -> None:
-        for name in ("settings", "view_inputs", "model_options", "download"):
-            action = self._window.lookup_action(name)
-            # lookup_action is typed Gio.Action, which has no set_enabled.
-            if isinstance(action, Gio.SimpleAction):
-                action.set_enabled(sensitive)
-        if sensitive:
-            self._window._sync_model_options_action()
-            deferred = getattr(self._window, "_deferred_model_refresh", None)
-            if deferred is not None:
-                self._window._apply_model_refresh(source=deferred)
+        self._host.set_edit_actions_sensitive(sensitive)
 
     def _active_download_count(self) -> int:
-        context: Any = getattr(self._window, "context", None)
-        getter: Any = getattr(context, "active_download_count", None)
-        return int(typing.cast(Any, getter())) if callable(getter) else 0
+        return self._host.active_download_count()
 
     def refresh_start_readiness(self) -> Optional[str]:
         """Synchronize Start sensitivity, tooltip and accessibility description."""
-        if self._running_target is not None and self._window.stop_button.get_sensitive():
+        if (
+            self._running_target is not None
+            or self._preflight_in_progress
+            or self._plan_dialog is not None
+        ):
+            self._host.enable_start(False)
+            self._host.set_start_blocked_reason(None)
             return None
-        target = getattr(self._window, "_run_target", None)
+        target = self._host.target
         reason = target_blocked_reason(target)
-        button = self._window.start_button
-        button.set_sensitive(reason is None)
+        self._host.enable_start(reason is None)
         description = reason or "Start processing"
-        button.set_tooltip_text(description)
-        button.update_property(
-            [Gtk.AccessibleProperty.DESCRIPTION],
-            [description],
-        )
+        self._host.describe_start(description)
+        self._host.set_start_blocked_reason(reason)
         return reason
 
     def _stop_all_workers(self, *, force: bool = False) -> None:
         debug("ui", f"stop_all_workers force={force}")
-        self._window.context.stop_all_workers(force=force)
-        page = getattr(self._window, "_audio_tools_page", None)
-        if page is not None:
-            runner = getattr(page, "_runner", None)
-            if runner is not None:
-                runner.stop(force=force)
-
-    def _begin_exit_cleanup(self) -> None:
-        if self._exit_cleanup_pending:
-            return
-        self._exit_cleanup_pending = True
-        app = self._window.get_application()
-        self._exit_app = app
-        if app is not None:
-            app.hold()
-        else:
-            debug("ui", "exit cleanup begin: window has no application ref")
-        if self._exit_cleanup_timeout_id is not None:
-            GLib.source_remove(self._exit_cleanup_timeout_id)
-        self._exit_cleanup_timeout_id = GLib.timeout_add(
-            _EXIT_CLEANUP_TIMEOUT_MS,
-            self._on_exit_cleanup_timeout,
-        )
-        self._schedule_release_inference_memory(
-            force_if_alive=True,
-            clear_weight_cache=True,
-            on_done=self._finish_exit_cleanup,
-        )
-
-    def _on_exit_cleanup_timeout(self) -> bool:
-        self._exit_cleanup_timeout_id = None
-        if not self._exit_cleanup_pending:
-            return False
-        debug("cleanup", "exit cleanup timed out; forcing worker stop and quit")
-        self._stop_all_workers(force=True)
-        self._finish_exit_cleanup()
-        return False
-
-    def _finish_exit_cleanup(self) -> None:
-        if not self._exit_cleanup_pending:
-            return
-        self._exit_cleanup_pending = False
-        if self._exit_cleanup_timeout_id is not None:
-            GLib.source_remove(self._exit_cleanup_timeout_id)
-            self._exit_cleanup_timeout_id = None
-        app = self._exit_app or self._window.get_application()
-        self._exit_app = None
-        if app is not None:
-            debug("ui", "exit cleanup finish: release and quit")
-            app.release()
-            app.quit()
-        else:
-            debug("ui", "exit cleanup finish: no application ref; forcing process exit")
-            from .shutdown import finalize_process_exit
-
-            finalize_process_exit(0)
+        self._host.stop_all_workers(force=force)
 
     def _schedule_release_inference_memory(
         self,
@@ -1266,21 +1087,10 @@ class RunController:
             f"force_if_alive={force_if_alive} clear_weight_cache={clear_weight_cache} "
             f"park_weights={park_weights}",
         )
-        window = self._window
-        window.context.runner.release_inference_memory(
-            wait_for_stop=wait_for_stop,
-            force_if_alive=force_if_alive,
-            clear_weight_cache=clear_weight_cache,
-            park_weights=park_weights,
+        self._host.release_inference_memory(
+            wait_for_stop=wait_for_stop, force_if_alive=force_if_alive,
+            clear_weight_cache=clear_weight_cache, park_weights=park_weights,
         )
-        page = getattr(window, "_audio_tools_page", None)
-        if page is not None:
-            page.runner.release_inference_memory(
-                wait_for_stop=wait_for_stop,
-                force_if_alive=force_if_alive,
-                clear_weight_cache=clear_weight_cache,
-                park_weights=park_weights,
-            )
 
 
 def _resolved_job_matches_spec(plan: typing.Any, spec: typing.Any) -> bool:

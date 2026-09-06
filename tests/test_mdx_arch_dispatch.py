@@ -3,13 +3,14 @@
 import unittest
 from typing import Any
 
+from engines.mdx_c import _mdx_c_hop_length, build_mdx_c_model
+
 ConfigDict: Any
 try:
     from ml_collections import ConfigDict
 except ImportError:
     ConfigDict = None
 
-from engines.mdx_c import build_mdx_c_model, _mdx_c_hop_length
 
 
 @unittest.skipIf(ConfigDict is None, "ml_collections not installed")
@@ -145,7 +146,7 @@ class MdxArchDispatchTests(unittest.TestCase):
         self.assertEqual(model.__class__.__name__, "MultiMaskMultiSourceBandSplitRNNSimple")
 
     def test_bs_roformer_accepts_mlp_expansion_factor(self) -> None:
-        from ml.bs_roformer import BSRoformer, DEFAULT_FREQS_PER_BANDS
+        from ml.bs_roformer import DEFAULT_FREQS_PER_BANDS, BSRoformer
 
         model = BSRoformer(
             dim=256,
@@ -240,7 +241,7 @@ class MdxArchDispatchTests(unittest.TestCase):
         checkpoint's state dict; this test locks in the same sharing via
         object identity so a future refactor can't silently instantiate a
         fresh PoPE per layer instead of reusing the module."""
-        from ml.bs_roformer import BSRoformer, DEFAULT_FREQS_PER_BANDS
+        from ml.bs_roformer import DEFAULT_FREQS_PER_BANDS, BSRoformer
 
         model = BSRoformer(
             dim=32,
@@ -266,7 +267,7 @@ class MdxArchDispatchTests(unittest.TestCase):
     def test_bs_roformer_preserves_input_length(self) -> None:
         import torch
 
-        from ml.bs_roformer import BSRoformer, DEFAULT_FREQS_PER_BANDS
+        from ml.bs_roformer import DEFAULT_FREQS_PER_BANDS, BSRoformer
 
         model = BSRoformer(
             dim=64,
@@ -376,3 +377,52 @@ class MdxArchDispatchTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ConstructorDiagnosticTests(unittest.TestCase):
+    def test_selected_constructor_reports_semantic_drop_once(self) -> None:
+        from types import SimpleNamespace
+        from unittest import mock
+
+        class ExplicitRoformer:
+            def __init__(self, freqs_per_bands: object, dim: int = 2) -> None:
+                self.bands = freqs_per_bands
+                self.dim = dim
+
+        bands = [2, 4]
+        config = SimpleNamespace(model={"freqs_per_bands": bands, "dim": 7, "use_value_residual": "private-config-value"})
+        with mock.patch("engines.mdx_c.BSRoformer", ExplicitRoformer), mock.patch("engines.mdx_c.log_event", create=True) as event:
+            model = build_mdx_c_model(config)
+        self.assertIs(model.bands, bands)
+        self.assertEqual(model.dim, 7)
+        event.assert_called_once_with("model", "model_config_keys_ignored", level="warning", architecture="ExplicitRoformer", dropped_keys=("use_value_residual",))
+        self.assertNotIn("private-config-value", repr(event.call_args))
+
+    def test_no_drop_emits_no_event_and_constructor_errors_propagate(self) -> None:
+        from unittest import mock
+
+        from engines.mdx_c import filter_init_kwargs
+
+        class Explicit:
+            def __init__(self, accepted: int) -> None:
+                raise ValueError("constructor failure")
+
+        with mock.patch("engines.mdx_c.log_event", create=True) as event:
+            kwargs = filter_init_kwargs(Explicit, {"accepted": 3})
+            with self.assertRaisesRegex(ValueError, "constructor failure"):
+                Explicit(**kwargs)
+        event.assert_not_called()
+
+    def test_runtime_mixed_key_mapping_remains_accepted(self) -> None:
+        from unittest import mock
+
+        from engines.mdx_c import filter_init_kwargs
+
+        class Explicit:
+            def __init__(self, accepted: int) -> None:
+                pass
+
+        with mock.patch("engines.mdx_c.log_event", create=True) as event:
+            result = filter_init_kwargs(Explicit, {"accepted": 3, 1: 7, "unsupported": 4})
+        self.assertEqual(result, {"accepted": 3})
+        event.assert_called_once_with("model", "model_config_keys_ignored", level="warning", architecture="Explicit", dropped_keys=("1", "unsupported"))

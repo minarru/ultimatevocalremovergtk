@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import subprocess
+import sys
 import typing
 import unittest
 from types import SimpleNamespace
@@ -46,8 +48,6 @@ class VocalSplitRowTests(unittest.TestCase):
     def _row(self):
         from core.model_identity import ModelArtifacts, ModelRecord
         from core.model_repository import ModelRepository
-        from ui.widgets.vocal_split_row import VocalSplitRow
-
         repo = ModelRepository()
 
         # Mutable so a test can install a model mid-session, the way a download
@@ -89,18 +89,104 @@ class VocalSplitRowTests(unittest.TestCase):
         def on_changed():
             self.changed += 1
 
-        return VocalSplitRow(repo, on_changed)
+        return self._bind_row(repo, on_changed)
 
     def _row_with_repo(self, repo: typing.Any) -> typing.Any:
         """A row over a real repository: nothing about eligibility is patched."""
-        from ui.widgets.vocal_split_row import VocalSplitRow
-
         self.changed = 0
 
         def on_changed():
             self.changed += 1
 
-        return VocalSplitRow(repo, on_changed)
+        return self._bind_row(repo, on_changed)
+
+    def _bind_row(self, repo: typing.Any, changed: typing.Callable[[], None]):
+        from core.settings import Settings
+        from ui.protocols import VocalSplitEdit
+        from ui.shared_settings import SharedSettingsSession, shared_settings_bindings
+        from ui.widgets.vocal_split_row import VocalSplitRow
+
+        session: SharedSettingsSession | None = None
+        def on_changed(event: VocalSplitEdit):
+            if session is not None:
+                session.vocal_changed(event)
+            changed()
+        row = VocalSplitRow(repo, on_changed)
+        apply = row.apply_from_settings
+        def load(settings: Settings):
+            nonlocal session
+            session = SharedSettingsSession(settings, shared_settings_bindings(vocal_row=row), can_commit=lambda: True)
+            session.refresh(lambda: apply(settings))
+        row.apply_from_settings = load
+        return row
+
+    def test_direct_construction_initializes_adwaita_in_fresh_process(self) -> None:
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import gi; gi.require_version('Gtk', '4.0'); "
+                "gi.require_version('Adw', '1'); from gi.repository import Gtk; "
+                "Gtk.init(); from ui.widgets.vocal_split_row import VocalSplitRow; "
+                "row = VocalSplitRow(None, lambda *_: None); "
+                "assert row.splitter_row is not None; "
+                "assert row.split_switch is not None",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_deverb_option_edit_commits_typed_value_only(self):
+        from core.types.settings_enums import DeverbVocalOpt
+        from ui.widgets.rows import set_combo_value
+        settings = self._settings()
+        row = self._row()
+        row.apply_from_settings(settings)
+        settings.process.deverb_vocals = True
+        set_combo_value(row.deverb_row, "All Vocal Types")
+        self.assertIs(settings.process.deverb_vocal_opt, DeverbVocalOpt.ALL_VOCAL_TYPES)
+        self.assertTrue(settings.process.deverb_vocals)
+
+    def test_two_live_rows_merge_vocal_edits_without_refresh(self):
+        from ui.widgets.rows import combo_values
+        settings = self._settings(set_vocal_splitter="vr:UVR-BVE-4B")
+        row_a = self._row()
+        row_b = self._bind_row(row_a._repo, lambda: None)
+        row_a.apply_from_settings(settings)
+        row_a.set_expanded(True)
+        # Observe the available canonical picker before the other row edits it.
+        row_a.deverb_switch.set_active(True)
+        row_a.deverb_switch.set_active(False)
+        self.karaoke_models.append("vr:UVR-BVE-5B")
+        row_b.apply_from_settings(settings)
+        row_b.set_expanded(True)
+        row_b.splitter_row.set_selected(combo_values(row_b.splitter_row).index("UVR-BVE-5B"))
+        row_b.split_switch.set_active(True)
+        row_b.save_inst_switch.set_active(True)
+        row_a.deverb_switch.set_active(True)
+        self.assertEqual(settings.process.vocal_splitter, "vr:UVR-BVE-5B")
+        self.assertTrue(settings.process.vocal_splitter_enabled)
+        self.assertTrue(settings.process.save_inst_vocal_splitter)
+        self.assertTrue(settings.process.deverb_vocals)
+        row_b.deverb_switch.set_active(True)
+        row_b.deverb_switch.set_active(False)
+        row_a.save_inst_switch.set_active(True)
+        self.assertFalse(settings.process.deverb_vocals, "a later unrelated edit must not replay the old True")
+
+    def test_unrelated_edit_preserves_newer_shared_vocal_choices(self):
+        settings = self._settings(set_vocal_splitter="vr:missing-id")
+        row = self._row()
+        row.apply_from_settings(settings)
+        settings.process.vocal_splitter = "vr:newer-missing-id"
+        settings.process.vocal_splitter_enabled = True
+        settings.process.save_inst_vocal_splitter = True
+        row.deverb_switch.set_active(True)
+        self.assertEqual(settings.process.vocal_splitter, "vr:newer-missing-id")
+        self.assertTrue(settings.process.vocal_splitter_enabled)
+        self.assertTrue(settings.process.save_inst_vocal_splitter)
+        self.assertTrue(settings.process.deverb_vocals)
 
     def test_applies_stored_switches(self):
         row = self._row()
@@ -251,13 +337,12 @@ class VocalSplitRowTests(unittest.TestCase):
 
     def test_shared_settings_repick_replaces_another_rows_stale_gate(self):
         from ui.widgets.rows import combo_values, get_combo_value
-        from ui.widgets.vocal_split_row import VocalSplitRow
 
         missing = "vr:later"
         replacement = "vr:UVR-BVE-4B"
         settings = self._settings(set_vocal_splitter=missing)
         row_a = self._row()
-        row_b = VocalSplitRow(row_a._repo, lambda: None)
+        row_b = self._bind_row(row_a._repo, lambda: None)
 
         row_a.apply_from_settings(settings)
         row_a.set_expanded(True)
@@ -288,7 +373,7 @@ class VocalSplitRowTests(unittest.TestCase):
             raise RuntimeError("catalogue unavailable")
 
         repo.karaoke_model_list = raising_karaoke
-        row = VocalSplitRow(repo, lambda: None)
+        row = VocalSplitRow(repo, lambda _event: None)
 
         settings = self._settings(set_vocal_splitter="VR Arc: UVR-BVE-4B")
         row.apply_from_settings(settings)

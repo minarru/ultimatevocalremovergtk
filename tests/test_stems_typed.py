@@ -666,19 +666,14 @@ class RunExportRoutesTests(unittest.TestCase):
                     explicit,
                 )
 
-    def test_model_config_snapshots_route_selection_provenance(self) -> None:
-        from unittest.mock import MagicMock
+    def test_model_config_keeps_route_selection_provenance_live(self) -> None:
+        from tests.test_model_option_parity import partial_model
 
-        from core.model_config.config import ModelConfig
-
-        model = MagicMock()
-        model.available_stem_routes = ()
-        model.selected_stem_routes = ()
+        model = partial_model()
         model.selected_stem_routes_explicit = True
-
-        ModelConfig._sync_option_groups(model)  # type: ignore[arg-type]
-
         self.assertIs(model.stem_routing.selected_routes_explicit, True)
+        model.stem_routing.selected_routes_explicit = False
+        self.assertIs(model.selected_stem_routes_explicit, False)
 
     def test_giant_default_false_route_is_not_materialized_by_final_mode_focus(self) -> None:
         from core.model_stem_manifest import resolve_model_stem_semantics

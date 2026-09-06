@@ -1,7 +1,6 @@
 """Tests for fork release metadata and semver helpers."""
-import typing
-
 import json
+import typing
 import unittest
 from unittest.mock import patch
 

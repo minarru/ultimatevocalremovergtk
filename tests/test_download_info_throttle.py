@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from core.downloads import DownloadManager, _INFO_UPDATE_INTERVAL_S
+from core.downloads import _INFO_UPDATE_INTERVAL_S, DownloadManager
 
 
 class _FakeChunkResponse:
@@ -32,7 +32,7 @@ class _FakeChunkResponse:
 
 class DownloadInfoThrottleTests(unittest.TestCase):
     def test_on_info_throttled_during_chunked_download(self) -> None:
-        manager = DownloadManager.__new__(DownloadManager)
+        manager = DownloadManager()
         chunk_size = 64 * 1024
         payload = b"x" * (chunk_size * 20)
         info_calls: list[str] = []
@@ -43,7 +43,7 @@ class DownloadInfoThrottleTests(unittest.TestCase):
                 "core.downloads._urlopen",
                 return_value=_FakeChunkResponse(payload),
             ):
-                with mock.patch("core.downloads.time.monotonic") as monotonic:
+                with mock.patch("core.download_transfer.time.monotonic") as monotonic:
                     monotonic.side_effect = [index * _INFO_UPDATE_INTERVAL_S for index in range(200)]
                     manager._download_file_url(
                         "https://example.com/model.onnx",

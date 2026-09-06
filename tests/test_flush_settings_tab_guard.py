@@ -79,20 +79,18 @@ class FlushSettingsTabGuardTests(unittest.TestCase):
         # The stale Separation-page format row: still on the WAV/PCM_16
         # defaults, as it would be if the user never revisited Separation
         # after switching to another tab.
-        window.format_row = OutputFormatRow(lambda: None)
+        window._shared_session = None
+        window.format_row = OutputFormatRow(window._on_format_changed)
         window.format_row.apply_from_settings(window.settings)
         window.gpu_row = make_switch_row("GPU conversion")
         window.autocast_row = make_switch_row("FP16 autocast")
         window.sample_row = make_switch_row("Sample mode")
-        # Repo is unused by ``persist_to_settings`` (only the lazily-populated
-        # model combo touches it, on expansion), so a stub suffices here.
-        # Deliberately not ``apply_from_settings``-ed: unlike ``format_row``,
-        # ``VocalSplitRow._on_row_changed`` persists straight through to
-        # whatever settings object it was last applied with, so leaving
-        # ``_settings`` unset here means a switch toggle below does not
-        # auto-persist -- only ``_flush_settings``'s own explicit call can,
-        # which is the behavior under test.
-        window.vocal_split_row = VocalSplitRow(None, lambda: None)
+        # Leave these switch signals disconnected to exercise defensive flush.
+        window.vocal_split_row = VocalSplitRow(None, lambda _event: None)
+        window._install_shared_session()
+        from ui.shared_settings import SharedSettingsSession
+        assert isinstance(window._shared_session, SharedSettingsSession)
+        window._shared_session.refresh(lambda: None)
         return window
 
     def test_ensemble_edit_survives_close_while_ensemble_visible(self):
@@ -154,6 +152,166 @@ class FlushSettingsTabGuardTests(unittest.TestCase):
         self.assertEqual(window.settings.get("wav_type_set"), "PCM_24")
         self.assertTrue(window.settings.get("is_set_vocal_splitter"))
 
+
+
+@unittest.skipUnless(
+    os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"),
+    "GTK widget construction needs a display",
+)
+class ConnectedSharedSettingsTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from tests.private_gtk import require_private_gtk
+        require_private_gtk()
+        from gi.repository import Adw
+        cls.app = Adw.Application(application_id="org.uvr.test.shared-sessions")
+        cls.app.register()
+
+    def setUp(self):
+        import tempfile
+        from unittest.mock import patch
+
+        from core.settings import Settings
+        from ui.window import MainWindow
+        self.settings = Settings.defaults()
+        self.settings.process.save_format = self.SaveFormat.WAV
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        with patch.object(Settings, "load", return_value=self.settings):
+            self.window = MainWindow()
+        self.addCleanup(self.window.set_visible, False)
+        self.addCleanup(self.window._unsubscribe_model_events)
+        # Keep the real close/save path, but direct persistence to a test file.
+        save = self.settings.save
+        self.saved_path = os.path.join(self.tmp.name, "settings.json")
+        self.save_patch = patch.object(self.settings, "save", side_effect=lambda: save(self.saved_path))
+        self.save_patch.start()
+        self.addCleanup(self.save_patch.stop)
+
+    from core.types import SaveFormat
+
+    def test_ensemble_callbacks_activation_and_close_preserve_edits(self):
+        from core.settings import Settings
+        from core.types.settings_enums import WavType
+        from ui.widgets.format_row import quality_spec
+        window = self.window
+        window.content_stack.set_visible_child_name("ensemble")
+        page = window._ensemble_page
+        page.format_row._select_quality_value("PCM_24", quality_spec("WAV"))
+        page.gpu_row.set_active(True)
+        page.autocast_row.set_active(True)
+        page.sample_row.set_active(True)
+        self.settings.process.vocal_splitter = "vr:unavailable-newer"
+        page.vocal_split_row.split_switch.set_active(True)
+        page.vocal_split_row.save_inst_switch.set_active(True)
+        page.vocal_split_row.deverb_switch.set_active(True)
+        self.assertIs(self.settings.process.wav_type, WavType.PCM_24)
+        self.assertTrue(self.settings.process.use_gpu)
+        self.assertEqual(self.settings.process.vocal_splitter, "vr:unavailable-newer")
+        window._finalize_close(False)
+        saved = Settings.load(self.saved_path)
+        self.assertIs(saved.process.wav_type, WavType.PCM_24)
+        self.assertTrue(saved.process.use_gpu)
+        self.assertTrue(saved.process.autocast)
+        self.assertTrue(saved.process.sample_mode)
+        self.assertTrue(saved.process.vocal_splitter_enabled)
+        self.assertTrue(saved.process.save_inst_vocal_splitter)
+        self.assertTrue(saved.process.deverb_vocals)
+        self.assertEqual(saved.process.vocal_splitter, "vr:unavailable-newer")
+        window.content_stack.set_visible_child_name("separation")
+        self.assertEqual(window.format_row.quality_value, "PCM_24")
+        self.assertTrue(window.gpu_row.get_active())
+        self.assertTrue(window.sample_row.get_active())
+        self.assertTrue(window.vocal_split_row.deverb_switch.get_active())
+
+    def test_audio_callbacks_close_and_switch_back(self):
+        from core.settings import Settings
+        from core.types.settings_enums import OpusBitrate
+        from ui.widgets.format_row import quality_spec
+        window = self.window
+        window.content_stack.set_visible_child_name("audio_tools")
+        page = window._audio_tools_page
+        page.format_row.set_save_format("OPUS")
+        page.format_row._select_quality_value("256k", quality_spec("OPUS"))
+        page.apollo_gpu_row.set_active(True)
+        self.assertIs(self.settings.process.save_format, self.SaveFormat.OPUS)
+        self.assertIs(self.settings.process.opus_bitrate, OpusBitrate.K256)
+        self.assertTrue(self.settings.process.use_gpu)
+        window._finalize_close(False)
+        saved = Settings.load(self.saved_path)
+        self.assertIs(saved.process.save_format, self.SaveFormat.OPUS)
+        self.assertIs(saved.process.opus_bitrate, OpusBitrate.K256)
+        self.assertTrue(saved.process.use_gpu)
+        window.content_stack.set_visible_child_name("separation")
+        self.assertEqual(window.format_row.save_format, "OPUS")
+        self.assertEqual(window.format_row.quality_value, "256k")
+        self.assertTrue(window.gpu_row.get_active())
+
+    def test_refresh_and_inactive_connected_callbacks_cannot_persist(self):
+        from unittest.mock import patch
+        window = self.window
+        window.content_stack.set_visible_child_name("ensemble")
+        page = window._ensemble_page
+        # An inactive surface cannot write even when notify signals arrive.
+        window.gpu_row.set_active(True)
+        window.sample_row.set_active(True)
+        window.format_row.set_save_format("MP3")
+        window.vocal_split_row.deverb_switch.set_active(True)
+        self.assertFalse(self.settings.process.use_gpu)
+        self.assertFalse(self.settings.process.sample_mode)
+        self.assertFalse(self.settings.process.deverb_vocals)
+        self.assertIs(self.settings.process.save_format, self.SaveFormat.WAV)
+        # Active refresh may emit switch signals; metadata work must stay suppressed.
+        self.settings.process.use_gpu = True
+        self.settings.process.sample_mode = True
+        with patch.object(page, "_update_stems_group_metadata") as metadata:
+            page._sync_shared_from_settings()
+        metadata.assert_not_called()
+        self.settings.process.use_gpu = False
+        page._flush_run_settings()
+        self.assertFalse(self.settings.process.use_gpu)
+        window.content_stack.set_visible_child_name("separation")
+        self.assertFalse(window.gpu_row.get_active())
+        self.assertTrue(window.sample_row.get_active())
+        self.assertFalse(window.vocal_split_row.deverb_switch.get_active())
+        self.assertEqual(window.format_row.save_format, "WAV")
+
+    def test_verify_inputs_retains_global_authority_on_another_tab(self):
+        from pathlib import Path
+        window = self.window
+        path = str(Path(self.tmp.name) / "input.wav")
+        Path(path).touch()
+        window.context.set_unreadable_input_paths([path, "/old.wav"])
+        window.content_stack.set_visible_child_name("ensemble")
+        window._on_external_inputs_changed([path])
+        self.assertEqual(self.settings.process.input_paths, [path])
+        self.assertEqual(window.context.unreadable_input_paths, {path})
+        self.assertEqual(window.input_row.paths, [path])
+        # External update is adopted; a newer global edit cannot be replayed.
+        self.settings.process.input_paths = []
+        window._flush_settings()
+        self.assertEqual(self.settings.process.input_paths, [])
+
+    def test_audio_spec_and_start_flush_pending_shared_edits(self):
+        from unittest.mock import Mock, patch
+        window = self.window
+        window.content_stack.set_visible_child_name("audio_tools")
+        page = window._audio_tools_page
+        # Use notify=False to exercise defensive preflight capture, not a mock session.
+        page.output_row.set_path(self.tmp.name, notify=False)
+        spec = page.build_job_spec()
+        self.assertEqual(spec.settings.process.export_path, self.tmp.name)
+        self.assertEqual(self.settings.process.export_path, self.tmp.name)
+        second = os.path.join(self.tmp.name, "second")
+        os.mkdir(second)
+        page.output_row.set_path(second, notify=False)
+        observed = []
+        page._runner = Mock()
+        page._runner.start.side_effect = lambda *_args, **_kw: observed.append(self.settings.process.export_path)
+        with patch.object(window, "begin_run"):
+            page.start(Mock())
+        self.assertEqual(observed, [second])
+        self.assertEqual(self.settings.process.export_path, second)
 
 if __name__ == "__main__":
     unittest.main()

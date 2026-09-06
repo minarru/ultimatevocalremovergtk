@@ -1,17 +1,19 @@
 from __future__ import annotations
 
-import unittest
 import dataclasses
 import tempfile
+import unittest
 from pathlib import Path
-from unittest.mock import Mock
-from unittest.mock import patch
+from types import SimpleNamespace
+from typing import Any
+from unittest.mock import Mock, patch
 
 from core.export_naming import OutputNamingContext
-from core.job_plan import PlannedInput, PlannedOutput, ResolvedJob, ValidationLevel
 from core.job_callbacks import JobCallbacks
+from core.job_plan import PlannedInput, PlannedOutput, ResolvedJob, ValidationLevel
 from core.job_runner import InputOutcome, JobRunner
 from core.settings import Settings
+from core.types import ProcessMethod, SaveFormat
 
 
 def _job(paths: tuple[str, ...], output: str) -> ResolvedJob:
@@ -40,6 +42,72 @@ def _job(paths: tuple[str, ...], output: str) -> ResolvedJob:
 
 
 class StartResolvedTests(unittest.TestCase):
+    def test_captures_nested_plan_settings_before_worker_and_restores_stage(self) -> None:
+        original = Settings.defaults()
+        original.process.export_path = "/constructor"
+        original.process.save_format = SaveFormat.WAV
+        original.process.method = ProcessMethod.VR
+        original.mdx.compensate = 1.1
+        runner = JobRunner(original)
+        job = _job(("/a.wav",), "/resolved")
+        job.settings.process.save_format = SaveFormat.FLAC
+        job.settings.process.method = ProcessMethod.MDX
+        job.settings.mdx.compensate = 2.5
+        observed = []
+        worker = Mock()
+
+        def assemble(_dependencies: Any):
+            observed.append((runner.settings.process.method, runner.settings.process.save_format, runner.settings.mdx.compensate))
+            return []
+
+        def run(planned: PlannedInput, _callbacks: JobCallbacks):
+            observed.append((runner.settings.process.export_path, original.process.export_path,
+                             job.settings.process.export_path))
+            return InputOutcome(planned.path, "success")
+
+        with patch("kthread.KThread", return_value=worker) as thread, patch.object(
+            runner, "resolve_models", side_effect=assemble
+        ), patch.object(runner, "_run_one_planned", side_effect=run):
+            runner.start_resolved(job, JobCallbacks(), export_paths=("/stage",))
+            job.settings.process.save_format = SaveFormat.MP3
+            job.settings.process.method = ProcessMethod.DEMUCS
+            job.settings.mdx.compensate = 9.0
+            thread.call_args.kwargs["target"](*thread.call_args.kwargs["args"])
+
+        self.assertEqual(observed, [(ProcessMethod.MDX, "FLAC", 2.5), ("/stage", "/constructor", "/resolved")])
+        self.assertEqual(runner.settings.process.export_path, "/resolved")
+        self.assertEqual(original.mdx.compensate, 1.1)
+        self.assertIsNot(runner.settings, job.settings)
+
+    def test_busy_start_does_not_copy_or_replace_active_settings(self) -> None:
+        runner = JobRunner(Settings.defaults())
+        active = runner.settings
+        job = _job((), "/ignored")
+        with patch.object(runner, "is_running", return_value=True), patch(
+            "copy.deepcopy", side_effect=AssertionError("busy start copied settings")
+        ):
+            runner.start_resolved(job, JobCallbacks())
+        self.assertIs(runner.settings, active)
+
+    def test_supplied_models_keep_mutable_identity_across_inputs(self) -> None:
+        runner = JobRunner(Settings.defaults())
+        model = SimpleNamespace(backoff=0)
+        seen = []
+        worker = Mock()
+
+        def run(planned: PlannedInput, _callbacks: JobCallbacks):
+            assert runner._run_models is not None
+            seen.append((runner._run_models[0] is model, model.backoff))
+            model.backoff += 1
+            return InputOutcome(planned.path, "success")
+
+        with patch("kthread.KThread", return_value=worker) as thread, patch.object(
+            runner, "resolve_models", side_effect=AssertionError("reassembled supplied models")
+        ), patch.object(runner, "_run_one_planned", side_effect=run):
+            runner.start_resolved(_job(("/a", "/b"), "/out"), JobCallbacks(), models=[model])
+            thread.call_args.kwargs["target"](*thread.call_args.kwargs["args"])
+        self.assertEqual(seen, [(True, 0), (True, 1)])
+
     def test_worker_lifecycle_keeps_explicit_operation_id(self) -> None:
         from core import debug_log
 

@@ -4,18 +4,13 @@ from __future__ import annotations
 
 from typing import Any, Iterable, Mapping, Optional, Sequence
 
-from bundled.constants import (
-    DEMUCS_ARCH_TYPE,
-    ENSEMBLE_PARTITION,
-    MDX_ARCH_TYPE,
-    VR_ARCH_PM,
-    VR_ARCH_TYPE,
-)
 from core.model_applicability import (
     applicable_stack_names,
-    member_arch_counts,
     stack_name_for_method_key,
     stack_name_for_model_reference,
+)
+from core.model_applicability import (
+    member_arch_counts as member_arch_counts,
 )
 
 OPEN_CONTEXT_SEPARATION = "separation"

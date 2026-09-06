@@ -1,0 +1,23 @@
+using Gtk 4.0;
+using Adw 1;
+
+template $OutputFormatRow: Adw.ActionRow {
+  title: "Output format";
+
+  [suffix]
+  Gtk.Box {
+    orientation: horizontal;
+    spacing: 6;
+    valign: center;
+
+    Gtk.DropDown format_drop {
+      valign: center;
+      width-request: 96;
+    }
+
+    Gtk.DropDown quality_drop {
+      valign: center;
+      width-request: 132;
+    }
+  }
+}

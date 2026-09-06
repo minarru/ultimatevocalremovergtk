@@ -1,6 +1,10 @@
-# Development architecture
+# Development architecture reference
 
-The orchestration flow is `ui` / `cli` → `core` → `engines` → `ml`; this is not a strict import DAG. Engines may use shared core services, while backend code must remain independent of the frontends. `bundled` is read by all:
+Read before changing backend orchestration, model/stem contracts, or UI/backend integration. Paths in inline code are repository-relative.
+
+## Architecture
+
+Orchestration flows `ui` / `cli` → `core` → `engines` → `ml`; this is not a strict import DAG. Engines may import shared core services. Backend code must not import either frontend, and scientific constructors receive application checkpoint policy through injected adapters. `bundled` is read by all:
 
 - **`bundled/`** — read-only shipped data: [model_manifest.json](../bundled/model_manifest.json) (the one atomic presentation, reviewed-stem, MDX-runtime-contract, lifecycle, and exact catalogue/config-evidence authority), `constants/` (stems, process methods, help strings, and a frozen legacy settings-key table for pickle migration), `error_handling.py` (traceback-substring → user message matching), changelog, and download metadata. Imported as `from bundled.constants import *` in engine/model code to mirror upstream's flat namespace.
 - **`core/`** — Tk-free backend facade. Public surface is re-exported in [core/__init__.py](../core/__init__.py): `Settings`, `ModelConfig`/`ModelRepository`/`assemble_model` (`ModelRepository` lives in [core/model_repository.py](../core/model_repository.py); MDX-C yaml and hash-JSON helpers remain in [core/model_data.py](../core/model_data.py)), `ProcessData`, `JobRunner`/`JobCallbacks` (callbacks live in [core/job_callbacks.py](../core/job_callbacks.py); single/ensemble file-pass hooks live in [core/run_hooks.py](../core/run_hooks.py)), `AudioToolRunner`.
@@ -8,6 +12,45 @@ The orchestration flow is `ui` / `cli` → `core` → `engines` → `ml`; this i
 - **`engines/`** — separation orchestration. `SeperateAttributes` ([engines/base.py](../engines/base.py)) is the shared engine base; `SeperateVR` / `SeperateMDX` / `SeperateMDXC` / `SeperateDemucs` are constructed by [engines/separator_factory.py](../engines/separator_factory.py). GUI startup preloads those modules through [core/separate_import.py](../core/separate_import.py) so the first run does not stall on torch.
 - **`ml/`** — networks and DSP (VR network, MDX/MDX-C, BS/Mel-Band Roformer, SCNet, Bandit, Apollo, `spec_utils`). Ported upstream code; type-checked at the same `standard` level as the app (same `reportMissingParameterType` floor).
 - **`vendor/demucs/`** — vendored Demucs fork.
+
+### Maintained responsibility boundaries
+
+- `core.catalogue_coordinator.CatalogueCoordinator.latest_snapshot` exposes the
+  published immutable snapshot without refresh. `DownloadManager` composes
+  `catalogue_source_loader`, `catalogue_evidence.CatalogueEvidenceService` and
+  `download_transfer`; evidence reservations publish pending metadata before workers
+  start. A snapshot publication emits at most one delta notification.
+- `core/model_config/{base,vr,mdx,demucs}.py` owns typed option groups; flat legacy
+  properties
+  remain live adapters. Family builders under `core/model_config/builders/`
+  preserve construction order. `engines/runtime.py` owns invocation/context/state;
+  `runtime_compat.py` keeps per-pass legacy overrides live. Demucs and MDX-C use
+  separate `*_runtime.py` acquisition/inference and `*_export.py` plan owners.
+- `core/job_plan.py` composes `job_dependencies`, `job_acquisition`,
+  `job_materialization`, `job_diagnostics` and pure `job_projection`, backed by
+  injected identities/materializer/probe ports in those owners. Materialization
+  owns model/cache observations;
+  projection consumes facts. `JobRunner.start_resolved` captures private resolved
+  settings before starting its worker. Legacy GUI `start` and Audio Tools still
+  need their caller settings bindings.
+- Core's public facade is lazy. `core/error_log.py` stores errors and atomically
+  appends concurrent reports without GTK; UI owns weak, disposable subscriptions.
+  Apollo execution/progress belongs to `engines/apollo.py`, while scientific
+  construction and tensor processing stay below it. Checkpoint adapters supply
+  the trusted application loader to scientific constructors.
+- `core/constructor_kwargs.py` is stdlib-only signature analysis. Runtime
+  filtering emits one ignored-key diagnostic at the existing Debug/Trace warning
+  threshold; probe reports retain their schema and compatibility rules. Raw
+  dropped keys stay in encounter order internally: runtime sorts string names,
+  while the probe preserves raw sorting (including mixed-key rejection).
+- Generator ownership is `scripts/catalogue/{types,locations,cache,config_evidence,
+  evidence,entry_rules,audit_types,audit_reference,audit_rules,manifest_candidate,
+  confidence}.py`; `collect` and `stem_audit` compose those services. Tests use
+  top-level `catalogue` imports consistently, bootstrapped by
+  `tests/generator_fixtures.py`, and discover the nine behavior modules with
+  `-p 'test_generate_models_catalogue*.py'`. Never re-export TestCases or add a
+  loader aggregator that duplicates discovery. Optional local branch coverage
+  commands live in the environment guide; no coverage or Ruff CI gate.
 
 ### Invariants worth preserving
 
@@ -19,7 +62,7 @@ The orchestration flow is `ui` / `cli` → `core` → `engines` → `ml`; this i
 
 **Enum settings are `str, Enum` — but don't stringify them.** `process.method` and `process.save_format` are enums ([core/types/enums.py](../core/types/enums.py)), as are the closed vocabularies in [core/types/settings_enums.py](../core/types/settings_enums.py) (wav type, bitrate, denoise/phase options, audio tool, manual-ensemble algorithm, colour scheme). `ensemble.main_stem` is instead a plain `str` in [core/settings/model.py](../core/settings/model.py), normalized against the unified manifest's `pair.*` definitions and reserved `mode.*` IDs by [core/stem_pairs.py](../core/stem_pairs.py). `==` against a bundled constant, dict lookup, `.lower()` and `json.dumps` all behave as the value string, so most code Just Works. `str(v)` and `f"{v}"` do **not** — they yield `"SaveFormat.WAV"`, not `"WAV"`. Route filenames, paths and log lines through `enum_value` ([core/settings/coerce.py](../core/settings/coerce.py)), re-exported for the UI from [ui/settings_bind.py](../ui/settings_bind.py); it unwraps enums and passes everything else through.
 
-**Shared settings have per-page widgets.** Separation, Ensemble and Audio Tools each hold their own copies of the global keys (format/quality, GPU, autocast, sample mode, vocal splitter). Bind a widget to one and you must re-apply it in that page's `_sync_shared_from_settings` — which runs on *every* tab activation — not only in the one-time `load()`. Miss it and the stale widget writes all its keys back over whatever another page just edited.
+**Shared settings have per-page widgets.** Separation, Ensemble and Audio Tools each hold their own copies of the global keys (format/quality, GPU, autocast, sample mode, vocal splitter). Bind a widget to one and you must re-apply it in that page's `_sync_shared_from_settings` — which runs on *every* tab activation — not only in the one-time `load()`. Shared fields belong in the typed bindings in [ui/shared_settings.py](../ui/shared_settings.py). Each page's `SharedSettingsSession` adopts displayed values during refresh and commits only actual edits, with the existing active-tab guard. Callbacks identify the edited field; never copy a whole stale widget group back to Settings.
 
 **Threading: worker → main loop.** `JobRunner` runs separation on a `KThread` worker and calls plain callbacks from that thread. GTK may only be touched on the main loop, so every callback crosses via `GLib.idle_add` in [ui/dispatch.py](../ui/dispatch.py) (`gtk_job_callbacks`, `main_thread`, `idle_on_main`). Never call a widget straight from engine/runner code.
 
@@ -37,7 +80,7 @@ The orchestration flow is `ui` / `cli` → `core` → `engines` → `ml`; this i
 
 ### Separation run pipeline
 
-`JobRunner.start` uses supplied models or calls `assemble_model(settings, repo, arch_type=...)` (ensemble when `process.method` is Ensemble Mode), which returns the list of `ModelConfig` objects for the run. Long inputs are sliced/rejoined by [core/audio_chunking.py](../core/audio_chunking.py) (`slice_mix` → per-chunk inference → `concat_stems`).
+When models are not supplied, `JobRunner.start` calls `assemble_model(settings, repo, arch_type=...)` (ensemble when `process.method` is Ensemble Mode), which returns the list of `ModelConfig` objects for the run. Long inputs are sliced/rejoined by [core/audio_chunking.py](../core/audio_chunking.py) (`slice_mix` → per-chunk inference → `concat_stems`).
 
 **One `ModelConfig` can mean several inference passes.** Beyond the primary model, `ModelConfig.secondary_model_data` may attach a secondary model, a Demucs pre-process model, a vocal-splitter chain, and per-stem 4-stem secondaries. Engines invoke these through `process_secondary_model` / `process_chain_model` in [engines/orchestration.py](../engines/orchestration.py). The progress denominator comes from `count_inference_passes_from_models` ([core/run_estimate.py](../core/run_estimate.py)) via `true_model_count` — **if you add a pass, count it there or the progress bar silently lies.**
 
@@ -49,7 +92,7 @@ Note the coupling: `Ensembler.get_files_to_ensemble` collects members by **filen
 
 `instrumental` on a multi-source MDX-C model is a **derived** route with no native key: `derive_mdx_multi_complement` ([engines/mdx_c.py](../engines/mdx_c.py)) either sums the remaining sources or subtracts the primary from the mix depending on Combine Stems. That is a recipe change only — it must never change the route's concept, label or filename.
 
-**Stem focus is validated at plan time, and severity follows provenance.** `_stem_focus_diagnostics` ([core/job_plan.py](../core/job_plan.py)) makes an unavailable stem an `error` when it came from the CLI and a `warning` (fall back to every viable output) when inherited from a GUI profile. For 4-stem and multi-stem ensembles focus filters only the **final** combined outputs — members must still emit their complete stem set for aggregation — and `select_ensemble_stem_routes` reports `INSUFFICIENT_MEMBERS` separately from unmatched when fewer than two members contribute.
+**Stem focus is validated at plan time, and severity follows provenance.** `stem_focus_diagnostics` ([core/job_diagnostics.py](../core/job_diagnostics.py)) makes an unavailable stem an `error` when it came from the CLI and a `warning` (fall back to every viable output) when inherited from a GUI profile. For 4-stem and multi-stem ensembles focus filters only the **final** combined outputs — members must still emit their complete stem set for aggregation — and `select_ensemble_stem_routes` reports `INSUFFICIENT_MEMBERS` separately from unmatched when fewer than two members contribute.
 
 **Semantic review and catalogue evidence availability are independent.** Reviewed/waived/raw stem status comes only from the unified manifest; `ready`, `pending`, `unavailable`, `stale`, and `not_applicable` describe whether exact catalogue/config evidence can currently be validated. A timeout, cold cache, or stale last-known-good entry must not downgrade a reviewed declaration to raw, and successful parsed evidence may report drift but must never invent semantics.
 
@@ -58,3 +101,27 @@ Note the coupling: `Ensembler.get_files_to_ensemble` collects members by **filen
 ### UI structure
 
 `UVRApplication` ([ui/application.py](../ui/application.py)) → `MainWindow` ([ui/window.py](../ui/window.py)), with one `AppContext` ([ui/context.py](../ui/context.py)) holding the shared `Settings` and lazily-built repository/runner. Per-method option panels are `MethodView` subclasses in [ui/views/](../ui/views/) registered in `METHOD_VIEWS` — add a method there rather than editing the window assembly. Options shared across Separation/Ensemble/Audio Tools live in [ui/shared_settings.py](../ui/shared_settings.py).
+
+Fixed widget trees belong in Blueprint sources under [resources/ui/](../resources/ui/).
+Python owns settings, signal handlers, model and catalogue collections, drawing,
+and asynchronous work. Use `Gtk.Template` for widget subclasses and the typed
+`load_builder` / `object_from_builder` helpers in [ui/template.py](../ui/template.py)
+for controller-owned layouts. A dynamic list can instantiate a declarative row
+shell and fill its values in Python; it does not need a second Python definition
+of the fixed layout. Keep settings writes in their existing owners rather than
+adding bidirectional template bindings.
+
+Template modules register and validate their exact resource before the class
+decorator runs. This registration is display-independent; builder loading
+initializes libadwaita before constructing widgets. Preserve that distinction for
+direct dialog imports and headless backend imports. Optional newer libadwaita
+widgets must remain behind runtime capability checks and must not appear in a
+baseline resource that older supported systems must load.
+
+Edit `.blp` files, then run `./resources/compile_resources.sh`; generated `.ui`
+files and the resource manifest are disposable. Commit the rebuilt
+`ui/data/uvr.gresource` with its source changes. The supported compiler packages,
+launcher rebuild behavior, and isolated GTK test commands are documented in
+[the environment guide](environment.md#blueprint-and-resource-builds).
+See [layout ownership](blueprint-layouts.md) for component boundaries and the
+reasons native or dynamic construction remains in Python.

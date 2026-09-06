@@ -1,4 +1,8 @@
-# Maintenance scripts
+# Maintenance scripts guidance
+
+Follow the root [AGENTS.md](../AGENTS.md) and read the [architecture reference](../docs/development-architecture.md) before changing catalogue contracts. Commands below run from the repository root.
+
+## Maintenance scripts
 
 Three model-maintenance command entry points under `scripts/`, plus `model_tool_support.py` and the `scripts/catalogue/` collection/rendering package. None are part of the app.
 
@@ -49,3 +53,4 @@ Three model-maintenance command entry points under `scripts/`, plus `model_tool_
 - Script artifacts publish through `core.json_store.write_text_atomic` / `write_json_atomic`:
   a failed write must not truncate a checked-in document, and the sweep parent treats an
   unreadable child `result.json` as a classified job failure rather than crashing.
+

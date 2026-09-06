@@ -77,48 +77,29 @@ class DemucsEvalModeTests(unittest.TestCase):
         A BatchNorm-carrying checkpoint left in train mode normalises on the
         current chunk rather than the stored running statistics.
         """
-        import ast
-        import inspect
-        import textwrap
+        from types import SimpleNamespace
+        from unittest.mock import patch
 
-        from engines.demucs_engine import SeperateDemucs
+        from bundled.constants import DEMUCS_V1, DEMUCS_V2, DEMUCS_V3, DEMUCS_V4
+        from engines.demucs_runtime import DemucsAcquisitionRequest, acquire_demucs_model
 
-        src = textwrap.dedent(inspect.getsource(SeperateDemucs.seperate))
-        tree = ast.parse(src)
+        for version in (DEMUCS_V1, DEMUCS_V2, DEMUCS_V3, DEMUCS_V4):
+            with self.subTest(version=version):
+                model = torch.nn.BatchNorm1d(2)
+                self.assertTrue(model.training)
+                state = model.state_dict()
+                checkpoint = ((lambda model=model: model), (), {}, state) if version == DEMUCS_V1 else state
+                request = DemucsAcquisitionRequest("/tmp/fixture.th", version, sources=["vocals"])
+                with (
+                    patch("engines.demucs_runtime.load_torch_checkpoint", return_value=checkpoint),
+                    patch("engines.demucs_runtime.auto_load_demucs_model_v2", return_value=model),
+                    patch("engines.demucs_runtime._gm", return_value=model),
+                    patch("engines.demucs_runtime.demucs_segments", return_value=model),
+                ):
+                    loaded = acquire_demucs_model(request, "cpu", weight_cache=SimpleNamespace(get=lambda _key: None), cache_key="fixture")
+                self.assertIs(loaded, model)
+                self.assertFalse(loaded.training)
 
-        # Locate the if/elif chain dispatching on self.demucs_version, then
-        # check every branch of it — including the trailing else.
-        def is_version_test(node: ast.AST) -> bool:
-            return "self.demucs_version ==" in ast.unparse(node)
-
-        chain: ast.If | None = None
-        for node in ast.walk(tree):
-            if isinstance(node, ast.If) and is_version_test(node.test):
-                chain = node
-                break
-        self.assertIsNotNone(chain, "demucs_version dispatch chain not found")
-
-        bodies: list[tuple[str, list[ast.stmt]]] = []
-        node = chain
-        while isinstance(node, ast.If):
-            bodies.append((ast.unparse(node.test), node.body))
-            nxt = node.orelse
-            if len(nxt) == 1 and isinstance(nxt[0], ast.If):
-                node = nxt[0]
-            else:
-                if nxt:
-                    bodies.append(("else", nxt))
-                break
-
-        self.assertGreaterEqual(len(bodies), 3, "expected v1 / v2 / newer branches")
-        for label, body in bodies:
-            block = ast.unparse(ast.Module(body=body, type_ignores=[]))
-            if "self.demucs = " not in block:
-                continue  # not a model-construction branch
-            with self.subTest(branch=label[:60]):
-                self.assertIn(
-                    ".eval()", block, f"branch {label!r} loads a model without .eval()"
-                )
 
 
 if __name__ == "__main__":

@@ -1,10 +1,9 @@
 """Tests for GPU / ONNX backend resolution."""
 import typing
-
 import unittest
 from unittest import mock
 
-from core.gpu_backend import InferenceBackend, resolve_inference_backend
+from core.gpu_backend import resolve_inference_backend
 
 
 class GpuBackendTests(unittest.TestCase):

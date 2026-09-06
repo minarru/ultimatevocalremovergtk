@@ -3,10 +3,12 @@ from abc import ABC
 import torch
 from torch import nn
 
-from .bandsplit import BandSplitModule
+from .bandsplit import BandSplitModule as BandSplitModule
 from .tfmodel import (
-    SeqBandModellingModule,
-    TransformerTimeFreqModule,
+    SeqBandModellingModule as SeqBandModellingModule,
+)
+from .tfmodel import (
+    TransformerTimeFreqModule as TransformerTimeFreqModule,
 )
 
 

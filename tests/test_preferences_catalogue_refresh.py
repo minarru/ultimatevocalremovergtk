@@ -44,6 +44,64 @@ class PreferencesCatalogueRefreshTests(unittest.TestCase):
         with mock.patch.object(PreferencesDialog, "_probe_gpu_devices"):
             return PreferencesDialog(Context())
 
+    def test_profile_load_applies_live_theme_and_diagnostic_policy(self) -> None:
+        from gi.repository import Adw
+
+        from core import debug_log
+        from core.settings import Settings
+        from core.types.settings_enums import ColorScheme
+        from ui.application import apply_color_scheme
+
+        dialog = self._dialog()
+        style = Adw.StyleManager.get_default()
+        self.addCleanup(style.set_color_scheme, style.get_color_scheme())
+        self.addCleanup(
+            debug_log.update_policy,
+            level=debug_log.current_level(),
+            include_sensitive=debug_log.include_sensitive(),
+        )
+        profile = Settings.defaults()
+        profile.ui.color_scheme = ColorScheme.LIGHT
+        for data in (profile.to_dict(), profile.to_json_dict()):
+            with self.subTest(nested="process" in data):
+                apply_color_scheme("dark")
+                debug_log.update_policy(level="trace", include_sensitive=True)
+                with mock.patch.object(dialog._profiles, "load", return_value=data):
+                    dialog._on_load_profile_confirmed(None, "load", "test")
+                self.assertEqual(style.get_color_scheme(), Adw.ColorScheme.FORCE_LIGHT)
+                self.assertEqual(debug_log.current_level(), "errors")
+                self.assertFalse(debug_log.include_sensitive())
+
+    def test_reset_applies_default_theme_and_diagnostic_policy(self) -> None:
+        from gi.repository import Adw
+
+        from core import debug_log
+        from ui.application import apply_color_scheme
+
+        dialog = self._dialog()
+        style = Adw.StyleManager.get_default()
+        self.addCleanup(style.set_color_scheme, style.get_color_scheme())
+        self.addCleanup(
+            debug_log.update_policy,
+            level=debug_log.current_level(),
+            include_sensitive=debug_log.include_sensitive(),
+        )
+        apply_color_scheme("dark")
+        debug_log.update_policy(level="trace", include_sensitive=True)
+        dialog._on_reset_confirmed(None, "reset")
+        self.assertEqual(style.get_color_scheme(), Adw.ColorScheme.DEFAULT)
+        self.assertEqual(debug_log.current_level(), "errors")
+        self.assertFalse(debug_log.include_sensitive())
+
+    def test_reload_keeps_zero_chunk_overlap_visible_without_writing(self) -> None:
+        dialog = self._dialog()
+        dialog.settings.process.long_file_chunk_overlap_seconds = 0.0
+        with mock.patch.object(dialog, "_persist") as persist:
+            dialog._reload_widgets()
+        self.assertEqual(dialog.long_chunk_overlap_row.get_value(), 0.0)
+        self.assertEqual(dialog.settings.process.long_file_chunk_overlap_seconds, 0.0)
+        persist.assert_not_called()
+
     def test_maintenance_exposes_refresh_catalogue_cache_action(self) -> None:
         dialog = self._dialog()
 
@@ -116,8 +174,10 @@ class PreferencesCatalogueRefreshTests(unittest.TestCase):
         class DeferredThread:
             instances: list["DeferredThread"] = []
 
-            def __init__(self, *, target: Callable[[], None], daemon: bool) -> None:
-                self.target = target
+            def __init__(
+                self, *, target: Callable[..., None], args: tuple[int, ...], daemon: bool
+            ) -> None:
+                self.target = lambda: target(*args)
                 self.daemon = daemon
                 self.instances.append(self)
 
@@ -185,8 +245,10 @@ class PreferencesCatalogueRefreshTests(unittest.TestCase):
         class DeferredThread:
             instances: list["DeferredThread"] = []
 
-            def __init__(self, *, target: Callable[[], None], daemon: bool) -> None:
-                self.target = target
+            def __init__(
+                self, *, target: Callable[..., None], args: tuple[int, ...], daemon: bool
+            ) -> None:
+                self.target = lambda: target(*args)
                 self.daemon = daemon
                 self.instances.append(self)
 
@@ -280,7 +342,7 @@ class PreferencesCatalogueRefreshTests(unittest.TestCase):
                         allow_cache_writes=False,
                     ),
                 ):
-                    dialog._catalogue_cache_refresh_worker()
+                    dialog._catalogue_cache_refresh_worker(dialog._catalogue_refresh_generation)
 
                 self.assertEqual(
                     dialog.catalogue_cache_refresh_row.get_subtitle(),
@@ -290,9 +352,9 @@ class PreferencesCatalogueRefreshTests(unittest.TestCase):
                     manager.catalogue_meta_by_family["mdx"][meta.label].catalogue_evidence_status,
                     CatalogueEvidenceState.UNAVAILABLE,
                 )
-                self.assertEqual(manager._catalogue_evidence_pending, set())
-                self.assertEqual(manager._catalogue_evidence_force_pending, set())
-                self.assertEqual(manager._catalogue_evidence_callbacks, [])
+                self.assertEqual(manager._evidence.pending, set())
+                self.assertEqual(manager._evidence.force_pending, set())
+                self.assertEqual(manager._evidence.callbacks, [])
                 self.assertNotIn(
                     "Catalogue refreshed; output details updating",
                     refresh_messages,
@@ -394,7 +456,7 @@ class PreferencesCatalogueRefreshTests(unittest.TestCase):
             ):
                 csc.clear_catalogue_stem_cache()
                 original_ensure_worker_started()
-                dialog._catalogue_cache_refresh_worker()
+                dialog._catalogue_cache_refresh_worker(dialog._catalogue_refresh_generation)
 
         self.assertEqual(
             messages,
@@ -407,9 +469,9 @@ class PreferencesCatalogueRefreshTests(unittest.TestCase):
             dialog.catalogue_cache_refresh_row.get_subtitle(),
             "Catalogue refreshed; output details updated",
         )
-        self.assertEqual(manager._catalogue_evidence_pending, set())
-        self.assertEqual(manager._catalogue_evidence_force_pending, set())
-        self.assertEqual(manager._catalogue_evidence_callbacks, [])
+        self.assertEqual(manager._evidence.pending, set())
+        self.assertEqual(manager._evidence.force_pending, set())
+        self.assertEqual(manager._evidence.callbacks, [])
         self.assertFalse(csc.is_pending("https://example.test/m.yaml"))
         csc._reset_worker_state_for_tests()
 
@@ -435,12 +497,57 @@ class PreferencesCatalogueRefreshTests(unittest.TestCase):
             "idle_on_main",
             side_effect=lambda callback, *args: idle_calls.append((callback, args)),
         ):
-            dialog._on_catalogue_evidence_refresh_completed(summary)
+            dialog._on_catalogue_evidence_refresh_completed(
+                summary, dialog._catalogue_refresh_generation
+            )
 
         self.assertEqual(
             idle_calls,
-            [(dialog._finish_catalogue_evidence_refresh, (summary,))],
+            [
+                (
+                    dialog._finish_catalogue_evidence_refresh,
+                    (summary, dialog._catalogue_refresh_generation),
+                )
+            ],
         )
+
+    def test_previous_evidence_completion_cannot_replace_new_refresh_feedback(self) -> None:
+        import ui.preferences as preferences
+
+        manager = mock.Mock()
+        manager.refresh.return_value = True
+        manager.last_refresh_report = SimpleNamespace(failed=(), stale=(), usable=True)
+        callbacks = []
+        manager.force_revalidate_catalogue_evidence.side_effect = lambda callback: (
+            callbacks.append(callback) or ["pending"]
+        )
+        dialog = self._dialog(manager)
+        dialog.settings.process.auto_update_model_params = False
+        with (
+            mock.patch.object(preferences, "idle_on_main", side_effect=lambda fn, *args: fn(*args)),
+            mock.patch.object(preferences.threading, "Thread") as thread,
+            mock.patch.object(dialog, "add_toast") as toast,
+        ):
+            dialog._on_catalogue_cache_refresh(dialog.catalogue_cache_refresh_button)
+            job = thread.call_args.kwargs
+            job["target"](*job.get("args", ()))
+            dialog._on_catalogue_cache_refresh(dialog.catalogue_cache_refresh_button)
+            self.assertEqual(
+                dialog.catalogue_cache_refresh_row.get_subtitle(), "Refreshing catalogue cache…"
+            )
+            toast.reset_mock()
+            callbacks[0](SimpleNamespace(unavailable=2, stale=0))
+            self.assertEqual(
+                dialog.catalogue_cache_refresh_row.get_subtitle(), "Refreshing catalogue cache…"
+            )
+            toast.assert_not_called()
+            job = thread.call_args.kwargs
+            job["target"](*job.get("args", ()))
+            callbacks[1](SimpleNamespace(unavailable=0, stale=0))
+            self.assertEqual(
+                dialog.catalogue_cache_refresh_row.get_subtitle(),
+                "Catalogue refreshed; output details updated",
+            )
 
     def test_refresh_feedback_distinguishes_partial_and_failed_results(self) -> None:
         import ui.preferences as preferences
@@ -480,6 +587,36 @@ class PreferencesCatalogueRefreshTests(unittest.TestCase):
             ),
             "Catalogue cache refreshed, but model parameters could not be updated",
         )
+
+    def test_closed_dialog_suppresses_only_late_ui_deliveries(self) -> None:
+        from ui.preferences import PreferencesDialog
+
+        dialog = self._dialog()
+        dialog._persist_timeout_id = 1
+        dialog._flush_persist = mock.Mock()
+        with mock.patch('ui.preferences.GLib.source_remove'):
+            dialog._on_dialog_closed()
+        dialog._flush_persist.assert_called_once_with()
+        with (
+            mock.patch.object(dialog, 'add_toast') as toast,
+            mock.patch('ui.widgets.rows.set_combo_values') as options,
+        ):
+            dialog._finish_catalogue_cache_refresh(
+                'late refresh', dialog._catalogue_refresh_generation
+            )
+            dialog._finish_catalogue_evidence_refresh(
+                mock.Mock(), dialog._catalogue_refresh_generation
+            )
+            dialog._apply_gpu_devices([('1', 'GPU')])
+            toast.assert_not_called()
+            options.assert_not_called()
+        # The worker still updates the shared cache before its discarded UI delivery.
+        with (
+            mock.patch('core.gpu.list_gpu_devices', return_value=[('1', 'GPU')]),
+            mock.patch('ui.preferences.idle_on_main', side_effect=lambda fn, *args: fn(*args)),
+        ):
+            PreferencesDialog._probe_gpu_devices(dialog)
+        self.assertEqual(dialog.context.gpu_devices, [('1', 'GPU')])
 
 
 if __name__ == "__main__":

@@ -19,11 +19,10 @@ The parameter dialog is synchronous (it returns the chosen parameters to the
 thread it is marshalled onto the GTK main loop and the worker blocks until the
 user responds.
 """
-import typing
 
-import json
 import os
 import threading
+import typing
 
 from gi.repository import Adw, GLib, Gtk
 
@@ -36,7 +35,6 @@ from bundled.constants import (
     IS_BV_MODEL,
     IS_BV_MODEL_REBAL,
     IS_KARAOKEE,
-    INST_STEM,
     MDX_ARCH_TYPE,
     MDX_POP_DIMF,
     MDX_POP_NFFT,
@@ -50,13 +48,12 @@ from bundled.constants import (
     VOCAL_STEM,
     VR_ARCH_TYPE,
 )
-
 from core import paths
 from core.mdx_c_registry import infer_mdx_c_architecture
 from core.model_config import ModelConfig
-from core.model_data import load_mdx_c_config
 from core.model_display import display_name_for_model
 from core.model_identity import ModelIdentityService
+
 from ..help_text import (
     MDX_DIM_F_SET_HELP,
     MDX_DIM_T_SET_HELP,
@@ -68,21 +65,26 @@ from ..help_text import (
     VR_MODEL_PARAM_HELP,
 )
 from ..hints import set_tooltip
-from ..spacing import inset_md
-from .utils import present_modal_dialog, run_blocking_dialog, set_dialog_content, set_form_dialog_content
+from ..template import load_builder, object_from_builder
 from ..widgets.rows import (
+    configure_combo_row,
+    configure_discrete_scale_row,
+    configure_switch_row,
     get_combo_value,
     get_scale_row_value,
-    make_combo_row,
-    make_discrete_scale_row,
     set_combo_value,
     set_scale_row_value,
 )
-
+from .utils import (
+    present_modal_dialog,
+    run_blocking_dialog,
+    set_dialog_content,
+)
 
 # ---------------------------------------------------------------------------
 # Thread marshalling
 # ---------------------------------------------------------------------------
+
 
 def _run_on_main(func: typing.Any):
     """Run ``func`` on the GTK main loop and return its result (blocking)."""
@@ -108,6 +110,7 @@ def _run_on_main(func: typing.Any):
 # Existing-parameter lookup (for change-defaults prefill)
 # ---------------------------------------------------------------------------
 
+
 def _hash_dir_for(process_method: typing.Any):
     if process_method == VR_ARCH_TYPE:
         return paths.VR_HASH_DIR
@@ -128,7 +131,11 @@ def _existing_params(context: typing.Any, model_data: typing.Any):
     )
     if local is not None:
         return local
-    mapper = context.repo.vr_hash_MAPPER if model_data.process_method == VR_ARCH_TYPE else context.repo.mdx_hash_MAPPER
+    mapper = (
+        context.repo.vr_hash_MAPPER
+        if model_data.process_method == VR_ARCH_TYPE
+        else context.repo.mdx_hash_MAPPER
+    )
     for stored_hash, stored in mapper.items():
         if model_data.model_hash in stored_hash:
             return stored
@@ -156,40 +163,54 @@ def _write_params(model_data: typing.Any, params: typing.Any):
 def _list_param_files(directory: typing.Any, extension: typing.Any):
     if not os.path.isdir(directory):
         return []
-    return sorted(os.path.splitext(name)[0] for name in os.listdir(directory) if name.endswith(extension))
+    return sorted(
+        os.path.splitext(name)[0] for name in os.listdir(directory) if name.endswith(extension)
+    )
 
 
 # ---------------------------------------------------------------------------
 # Parameter dialog
 # ---------------------------------------------------------------------------
 
+
 class _ParamDialog:
     """Modal parameter editor returning the chosen params dict (or ``None``)."""
 
-    def __init__(self, context: typing.Any, parent: typing.Any, model_data: typing.Any, existing: typing.Any=None):
+    def __init__(
+        self,
+        context: typing.Any,
+        parent: typing.Any,
+        model_data: typing.Any,
+        existing: typing.Any = None,
+    ):
         self.context = context
         self.parent = parent
         self.model_data = model_data
         self.existing = existing or {}
 
-        self.dialog = Adw.Dialog()
-        self.dialog.set_title("Specify Model Parameters")
-        self.dialog.set_content_width(440)
-        self.dialog.set_follows_content_size(True)
-
-        page = Adw.PreferencesPage()
-        self._build(page)
-        self._content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        inset_md(self._content)
-        self._content.append(page)
+        method = self.model_data.process_method
+        is_ckpt = getattr(self.model_data, "is_mdx_ckpt", False) or str(
+            self.model_data.model_path
+        ).endswith(CKPT)
+        layout = (
+            "model-params-vr"
+            if method == VR_ARCH_TYPE
+            else "model-params-mdxc"
+            if method == MDX_ARCH_TYPE and is_ckpt
+            else "model-params-mdx"
+        )
+        self._builder = load_builder(layout)
+        self.dialog = object_from_builder(self._builder, "dialog", Adw.Dialog)
+        self._content = object_from_builder(self._builder, "content", Gtk.Box)
+        group = object_from_builder(self._builder, "group", Adw.PreferencesGroup)
+        self._build(group)
 
     # -- Layout -------------------------------------------------------------
 
-    def _build(self, page: typing.Any):
+    def _model_title(self) -> str:
         method = self.model_data.process_method
-        is_ckpt = getattr(self.model_data, "is_mdx_ckpt", False) or str(self.model_data.model_path).endswith(CKPT)
         repo = getattr(self.model_data, "repo", None)
-        title = (
+        return str(
             str(getattr(self.model_data, "model_display_label", "") or "")
             or (
                 display_name_for_model(method, self.model_data.model_name, repo)
@@ -197,89 +218,110 @@ class _ParamDialog:
                 else self.model_data.model_name
             )
         )
-        group = Adw.PreferencesGroup(
-            title=f"{title}",
-            description="This model's parameters could not be detected automatically.",
-        )
-        page.add(group)
+
+    def _build(self, group: Adw.PreferencesGroup) -> None:
+        method = self.model_data.process_method
+        is_ckpt = getattr(self.model_data, "is_mdx_ckpt", False) or str(
+            self.model_data.model_path
+        ).endswith(CKPT)
+        group.set_title(self._model_title())
 
         if method == VR_ARCH_TYPE:
-            self._build_vr(group)
+            self._build_vr()
         elif method == MDX_ARCH_TYPE and is_ckpt:
-            self._build_mdx_c(group)
+            self._build_mdx_c()
         else:
-            self._build_mdx(group)
+            self._build_mdx()
 
-    def _add_stem_row(self, group: typing.Any):
-        self.stem_row = make_combo_row("Primary stem", list(STEM_SET_MENU))
+    def _add_stem_row(self) -> None:
+        self.stem_row = configure_combo_row(
+            object_from_builder(self._builder, "stem_row", Adw.ComboRow),
+            list(STEM_SET_MENU),
+        )
         set_combo_value(self.stem_row, self.existing.get("primary_stem", VOCAL_STEM))
         set_tooltip(self.stem_row, SET_STEM_NAME_HELP)
-        group.add(self.stem_row)
 
-    def _add_karaoke_rows(self, group: typing.Any):
-        self.kara_row = Adw.SwitchRow(title="Karaoke model")
+    def _add_karaoke_rows(self) -> None:
+        self.kara_row = configure_switch_row(
+            object_from_builder(self._builder, "kara_row", Adw.SwitchRow)
+        )
         self.kara_row.set_active(bool(self.existing.get(IS_KARAOKEE, False)))
-        group.add(self.kara_row)
-        self.bv_row = Adw.SwitchRow(title="Backing-vocal model")
+        self.bv_row = configure_switch_row(
+            object_from_builder(self._builder, "bv_row", Adw.SwitchRow)
+        )
         self.bv_row.set_active(bool(self.existing.get(IS_BV_MODEL, False)))
-        group.add(self.bv_row)
-        self.balance_row = make_discrete_scale_row("BV rebalance", [str(v) for v in BALANCE_VALUES])
+        self.balance_row = configure_discrete_scale_row(
+            object_from_builder(self._builder, "balance_row", Adw.ActionRow),
+            [str(v) for v in BALANCE_VALUES],
+        )
         set_scale_row_value(self.balance_row, str(self.existing.get(IS_BV_MODEL_REBAL, 0)))
-        group.add(self.balance_row)
 
-    def _build_vr(self, group: typing.Any):
-        self._add_stem_row(group)
+    def _build_vr(self) -> None:
+        self._add_stem_row()
         params = _list_param_files(paths.VR_PARAM_DIR, ".json") or [NONE_SELECTED]
-        self.vr_param_row = make_combo_row("Model parameters", params)
+        self.vr_param_row = configure_combo_row(
+            object_from_builder(self._builder, "vr_param_row", Adw.ComboRow), params
+        )
         set_combo_value(self.vr_param_row, self.existing.get("vr_model_param", params[0]))
         set_tooltip(self.vr_param_row, VR_MODEL_PARAM_HELP)
-        group.add(self.vr_param_row)
 
-        self.is_51_row = Adw.SwitchRow(title="VR 5.1 model")
+        self.is_51_row = configure_switch_row(
+            object_from_builder(self._builder, "is_51_row", Adw.SwitchRow)
+        )
         self.is_51_row.set_active("nout" in self.existing)
-        group.add(self.is_51_row)
-        self.nout_row = make_discrete_scale_row("Out channels", [str(v) for v in NOUT_SEL])
+        self.nout_row = configure_discrete_scale_row(
+            object_from_builder(self._builder, "nout_row", Adw.ActionRow),
+            [str(v) for v in NOUT_SEL],
+        )
         set_scale_row_value(self.nout_row, str(self.existing.get("nout", 32)))
         set_tooltip(self.nout_row, VR_MODEL_NOUT_HELP)
-        group.add(self.nout_row)
-        self.nout_lstm_row = make_discrete_scale_row("Out channels (LSTM)", [str(v) for v in NOUT_LSTM_SEL])
+        self.nout_lstm_row = configure_discrete_scale_row(
+            object_from_builder(self._builder, "nout_lstm_row", Adw.ActionRow),
+            [str(v) for v in NOUT_LSTM_SEL],
+        )
         set_scale_row_value(self.nout_lstm_row, str(self.existing.get("nout_lstm", 128)))
         set_tooltip(self.nout_lstm_row, VR_MODEL_NOUT_LSTM_HELP)
-        group.add(self.nout_lstm_row)
 
-        self._add_karaoke_rows(group)
+        self._add_karaoke_rows()
 
-    def _build_mdx(self, group: typing.Any):
-        self._add_stem_row(group)
+    def _build_mdx(self) -> None:
+        self._add_stem_row()
         detected = self._detect_mdx_shapes()
-        self.dim_f_row = self._entry_row("Dim_f", self.existing.get("mdx_dim_f_set", detected.get("dim_f", MDX_POP_DIMF[0])))
+        self.dim_f_row = self._entry_row(
+            "dim_f_row",
+            self.existing.get("mdx_dim_f_set", detected.get("dim_f", MDX_POP_DIMF[0])),
+        )
         set_tooltip(self.dim_f_row, MDX_DIM_F_SET_HELP)
-        group.add(self.dim_f_row)
-        self.dim_t_row = self._entry_row("Dim_t", self.existing.get("mdx_dim_t_set", detected.get("dim_t", "8")))
+        self.dim_t_row = self._entry_row(
+            "dim_t_row", self.existing.get("mdx_dim_t_set", detected.get("dim_t", "8"))
+        )
         set_tooltip(self.dim_t_row, MDX_DIM_T_SET_HELP)
-        group.add(self.dim_t_row)
-        self.n_fft_row = self._entry_row("N_FFT scale", self.existing.get("mdx_n_fft_scale_set", detected.get("n_fft", MDX_POP_NFFT[2])))
+        self.n_fft_row = self._entry_row(
+            "n_fft_row",
+            self.existing.get("mdx_n_fft_scale_set", detected.get("n_fft", MDX_POP_NFFT[2])),
+        )
         set_tooltip(self.n_fft_row, MDX_N_FFT_SCALE_SET_HELP)
-        group.add(self.n_fft_row)
-        self.compensate_row = self._entry_row("Volume compensation", self.existing.get("compensate", "1.035"))
+        self.compensate_row = self._entry_row(
+            "compensate_row", self.existing.get("compensate", "1.035")
+        )
         set_tooltip(self.compensate_row, POPUP_COMPENSATE_HELP)
-        group.add(self.compensate_row)
-        self._add_karaoke_rows(group)
+        self._add_karaoke_rows()
 
-    def _build_mdx_c(self, group: typing.Any):
+    def _build_mdx_c(self) -> None:
         yamls = _list_param_files(paths.MDX_C_CONFIG_PATH, ".yaml") or [NONE_SELECTED]
-        self.mdx_c_row = make_combo_row("Model configuration", yamls)
+        self.mdx_c_row = configure_combo_row(
+            object_from_builder(self._builder, "mdx_c_row", Adw.ComboRow), yamls
+        )
         existing_yaml = self.existing.get("config_yaml", "")
         if existing_yaml:
             set_combo_value(self.mdx_c_row, os.path.splitext(existing_yaml)[0])
-        group.add(self.mdx_c_row)
-        self.arch_row = Adw.ActionRow(title="Architecture")
-        self.arch_row.set_activatable(False)
-        group.add(self.arch_row)
-        self.is_roformer_row = Adw.SwitchRow(title=ROFORMER_MODEL_TEXT)
+        self.arch_row = object_from_builder(self._builder, "arch_row", Adw.ActionRow)
+        self.is_roformer_row = configure_switch_row(
+            object_from_builder(self._builder, "is_roformer_row", Adw.SwitchRow)
+        )
+        self.is_roformer_row.set_title(ROFORMER_MODEL_TEXT)
         set_tooltip(self.is_roformer_row, ROFORMER_MODEL_HELP)
         self.is_roformer_row.set_active(bool(self.existing.get("is_roformer", False)))
-        group.add(self.is_roformer_row)
         self.mdx_c_row.connect("notify::selected-item", self._on_mdx_c_yaml_changed)
         self._update_mdx_c_architecture_hint()
         self.stem_row = None  # not used for MDX-C
@@ -300,9 +342,8 @@ class _ParamDialog:
         else:
             self.arch_row.set_subtitle("Unknown (select yaml)")
 
-    @staticmethod
-    def _entry_row(title: typing.Any, value: typing.Any):
-        row = Adw.EntryRow(title=title)
+    def _entry_row(self, name: str, value: typing.Any) -> Adw.EntryRow:
+        row = object_from_builder(self._builder, name, Adw.EntryRow)
         row.set_text(str(value))
         return row
 
@@ -314,8 +355,14 @@ class _ParamDialog:
             import onnx
 
             model = onnx.load(self.model_data.model_path)
-            shapes = [[d.dim_value for d in inp.type.tensor_type.shape.dim] for inp in model.graph.input][0]
-            return {"dim_f": str(shapes[2]), "dim_t": str(int(math.log(shapes[3], 2))), "n_fft": "6144"}
+            shapes = [
+                [d.dim_value for d in inp.type.tensor_type.shape.dim] for inp in model.graph.input
+            ][0]
+            return {
+                "dim_f": str(shapes[2]),
+                "dim_t": str(int(math.log(shapes[3], 2))),
+                "n_fft": "6144",
+            }
         except Exception:
             return {}
 
@@ -323,7 +370,9 @@ class _ParamDialog:
 
     def _collect(self):
         method = self.model_data.process_method
-        is_ckpt = getattr(self.model_data, "is_mdx_ckpt", False) or str(self.model_data.model_path).endswith(CKPT)
+        is_ckpt = getattr(self.model_data, "is_mdx_ckpt", False) or str(
+            self.model_data.model_path
+        ).endswith(CKPT)
         if method == VR_ARCH_TYPE:
             return self._collect_vr()
         if method == MDX_ARCH_TYPE and is_ckpt:
@@ -413,7 +462,9 @@ class _ParamDialog:
 def _run_param_dialog(context: typing.Any, parent: typing.Any, model_data: typing.Any):
     from core.debug_log import debug, preview_text
 
-    model_name = getattr(model_data, "model_name", None) or getattr(model_data, "model_basename", "?")
+    model_name = getattr(model_data, "model_name", None) or getattr(
+        model_data, "model_basename", "?"
+    )
     debug("model", f"unrecognized model dialog model={preview_text(str(model_name))}")
     existing = _existing_params(context, model_data)
     dialog = _ParamDialog(context, parent, model_data, existing=existing)
@@ -443,6 +494,7 @@ def make_unrecognized_handler(context: typing.Any, get_parent: typing.Any):
 # Apollo (music restoration) unrecognized-model dialog
 # ---------------------------------------------------------------------------
 
+
 class _ApolloParamDialog:
     """Modal picker mapping an unrecognized Apollo model to a config yaml.
 
@@ -463,25 +515,17 @@ class _ApolloParamDialog:
         self._none = NONE_SELECTED
         self.parent = parent
 
-        self.dialog = Adw.Dialog()
+        builder = load_builder("model-params-apollo")
+        self.dialog = object_from_builder(builder, "dialog", Adw.Dialog)
         self.dialog.set_title(APOLLO_MODEL_PARAMETERS_TEXT)
-        self.dialog.set_content_width(440)
-        self.dialog.set_follows_content_size(True)
-
-        page = Adw.PreferencesPage()
-        group = Adw.PreferencesGroup(
-            title=apollo_model_data.apollo_model_name,
-            description="This model's parameters could not be detected automatically.",
-        )
-        page.add(group)
+        group = object_from_builder(builder, "group", Adw.PreferencesGroup)
+        group.set_title(apollo_model_data.apollo_model_name)
 
         configs = list_config_files() or [self._none]
-        self.config_row = make_combo_row("Model configuration", configs)
-        group.add(self.config_row)
-
-        self._content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        inset_md(self._content)
-        self._content.append(page)
+        self.config_row = configure_combo_row(
+            object_from_builder(builder, "config_row", Adw.ComboRow), configs
+        )
+        self._content = object_from_builder(builder, "content", Gtk.Box)
 
     def _collect(self):
         selected = get_combo_value(self.config_row)
@@ -520,6 +564,7 @@ def make_apollo_unrecognized_handler(get_parent: typing.Any):
 # Change-model-defaults dialog
 # ---------------------------------------------------------------------------
 
+
 def _change_defaults_model_config(
     context: typing.Any,
     canonical_id: str,
@@ -538,30 +583,21 @@ def _change_defaults_model_config(
         identity=record,
     )
 
+
 def show_change_defaults_dialog(context: typing.Any, parent: typing.Any):
     """Modal editor to change or delete a known model's stored parameters."""
     repo = context.repo
 
-    dialog = Adw.Dialog()
+    builder = load_builder("change-model-defaults")
+    dialog = object_from_builder(builder, "dialog", Adw.Dialog)
     dialog.set_title(CHANGE_MODEL_DEFAULTS_TEXT)
-    dialog.set_content_width(440)
-    dialog.set_follows_content_size(True)
-
-    toast_overlay = Adw.ToastOverlay()
-
-    description = Gtk.Label(
-        label="Select a VR or MDX-Net model to edit or delete its stored parameters.",
-        wrap=True,
-        xalign=0.0,
-    )
-    description.add_css_class("dim-label")
-
-    page = Adw.PreferencesPage()
-
-    model_group = Adw.PreferencesGroup()
+    toast_overlay = object_from_builder(builder, "toast_overlay", Adw.ToastOverlay)
     model_tags = repo.default_change_model_tags()
-    model_row = make_combo_row("Model", [NO_MODEL])
+    model_row = configure_combo_row(
+        object_from_builder(builder, "model_row", Adw.ComboRow), [NO_MODEL]
+    )
     from core.model_display import format_tag_title
+
     from ..widgets.rows import set_combo_tag_values, use_wrapping_list
 
     use_wrapping_list(model_row)
@@ -569,16 +605,11 @@ def show_change_defaults_dialog(context: typing.Any, parent: typing.Any):
         model_row,
         [NO_MODEL, *[(tag, format_tag_title(tag, repo)) for tag in model_tags]],
     )
-    model_group.add(model_row)
-    page.add(model_group)
-
-    button_group = Adw.PreferencesGroup()
-    page.add(button_group)
 
     def toast(message: str) -> None:
         toast_overlay.add_toast(Adw.Toast.new(message))
 
-    def selected_model_data(is_get_hash_dir_only: typing.Any=False):
+    def selected_model_data(is_get_hash_dir_only: typing.Any = False):
         tag = get_combo_value(model_row)
         if not tag or tag == NO_MODEL:
             return None
@@ -613,8 +644,7 @@ def show_change_defaults_dialog(context: typing.Any, parent: typing.Any):
         dialog = Adw.AlertDialog(
             heading="Delete stored parameters?",
             body=(
-                f'This permanently removes the saved recognition parameters '
-                f'for "{model_title}".'
+                f'This permanently removes the saved recognition parameters for "{model_title}".'
             ),
         )
         dialog.add_response("cancel", "Cancel")
@@ -625,9 +655,7 @@ def show_change_defaults_dialog(context: typing.Any, parent: typing.Any):
         dialog.connect("response", on_delete_confirmed, model_data)
         dialog.present(parent)
 
-    def on_delete_confirmed(
-        _dialog: typing.Any, response: typing.Any, model_data: typing.Any
-    ):
+    def on_delete_confirmed(_dialog: typing.Any, response: typing.Any, model_data: typing.Any):
         if response != "delete":
             return
         try:
@@ -644,28 +672,12 @@ def show_change_defaults_dialog(context: typing.Any, parent: typing.Any):
         else:
             toast("No defined parameters found.")
 
-    change_row = Adw.ActionRow(title="Change parameters")
-    change_button = Gtk.Button(label="Change\u2026", valign=Gtk.Align.CENTER)
-    change_button.add_css_class("suggested-action")
+    change_button = object_from_builder(builder, "change_button", Gtk.Button)
     change_button.connect("clicked", on_change)
-    change_row.add_suffix(change_button)
-    change_row.set_activatable_widget(change_button)
-    button_group.add(change_row)
-
-    delete_row = Adw.ActionRow(title=DELETE_PARAMETERS_TEXT)
-    delete_button = Gtk.Button(label="Delete", valign=Gtk.Align.CENTER)
-    delete_button.add_css_class("destructive-action")
+    delete_row = object_from_builder(builder, "delete_row", Adw.ActionRow)
+    delete_row.set_title(DELETE_PARAMETERS_TEXT)
+    delete_button = object_from_builder(builder, "delete_button", Gtk.Button)
     delete_button.connect("clicked", on_delete)
-    delete_row.add_suffix(delete_button)
-    delete_row.set_activatable_widget(delete_button)
-    button_group.add(delete_row)
-
-    content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
-    inset_md(content)
-    content.append(description)
-    content.append(page)
-
-    toast_overlay.set_child(content)
 
     set_dialog_content(dialog, toast_overlay)
     present_modal_dialog(dialog, parent)

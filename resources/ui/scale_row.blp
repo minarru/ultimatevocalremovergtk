@@ -1,0 +1,30 @@
+using Gtk 4.0;
+using Adw 1;
+
+Adw.ActionRow scale_row {
+  [suffix]
+  Gtk.Box scale_suffix {
+    orientation: horizontal;
+    spacing: 8;
+    halign: fill;
+    hexpand: true;
+    width-request: 184;
+    styles ["uvr-scale-suffix"]
+
+    Gtk.Label value_label {
+      xalign: 1.0;
+      width-chars: 7;
+      max-width-chars: 10;
+      ellipsize: end;
+      styles ["dim-label"]
+    }
+
+    Gtk.Scale scale {
+      orientation: horizontal;
+      draw-value: false;
+      hexpand: true;
+      halign: fill;
+      width-request: 120;
+    }
+  }
+}

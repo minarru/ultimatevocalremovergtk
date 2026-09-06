@@ -41,7 +41,7 @@ class SCNetMasked(nn.Module):
         sources: list[str] = ['drums', 'bass', 'other', 'vocals'],  # noqa: B006 — upstream default
         audio_channels: int = 2,
         # Main structure
-        dims: list[int] = [4, 32, 64, 128],  # dims = [4, 64, 128, 256] in SCNet-large
+        dims: list[int] | None = None,  # dims = [4, 64, 128, 256] in SCNet-large
         # STFT
         nfft: int = 4096,
         hop_size: int = 1024,
@@ -60,6 +60,8 @@ class SCNetMasked(nn.Module):
         expand: int = 1,
     ) -> None:
         super().__init__()
+        if dims is None:
+            dims = [4, 32, 64, 128]
         self.sources = sources
         self.audio_channels = audio_channels
         self.dims = dims

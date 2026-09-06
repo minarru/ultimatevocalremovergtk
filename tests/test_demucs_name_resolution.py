@@ -7,6 +7,7 @@ from unittest.mock import patch
 from core.model_config import ModelConfig
 from core.model_display import resolve_demucs_model_basename, resolve_mapper_basename
 from core.model_identity import DemucsSpec, ModelArtifacts, ModelRecord
+from tests.model_config_fixtures import model_config_shell
 
 
 def _config_with_record(
@@ -26,7 +27,7 @@ def _config_with_record(
         installed=True,
         demucs=demucs,
     )
-    cfg = ModelConfig.__new__(ModelConfig)
+    cfg = model_config_shell()
     cfg.canonical_id = record.id
     cfg.model_name = record.display
     cfg.demucs = record.demucs

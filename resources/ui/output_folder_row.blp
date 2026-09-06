@@ -1,0 +1,14 @@
+using Gtk 4.0;
+using Adw 1;
+
+template $OutputFolderRow: Adw.ActionRow {
+  title: "Output folder";
+  icon-name: "folder-symbolic";
+
+  [suffix]
+  Gtk.Button open_button {
+    icon-name: "document-open-symbolic";
+    valign: center;
+    styles ["flat"]
+  }
+}

@@ -1,9 +1,9 @@
 """Sheet applicability: banners on inactive tabs, badges on ensemble tabs."""
 
 from __future__ import annotations
-import typing
 
 import os
+import typing
 import unittest
 
 from bundled.constants import ENSEMBLE_PARTITION, MDX_ARCH_TYPE, VR_ARCH_PM, VR_ARCH_TYPE
@@ -134,9 +134,8 @@ class SheetApplicabilityTests(unittest.TestCase):
         handler, must actually flip the main window's active architecture --
         not just invoke a callback that happens to be a no-op stand-in."""
         from ui.model_options.sheet import ModelOptionsSheet
-        from ui.window import MainWindow
-
         from ui.widgets.rows import set_combo_value
+        from ui.window import MainWindow
 
         window = MainWindow()
         self.addCleanup(window.set_application, None)

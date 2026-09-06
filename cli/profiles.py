@@ -6,9 +6,9 @@ import os
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from core.paths import SETTINGS_CACHE_DIR, SETTINGS_DATA_FILE
 from core.json_store import read_json_object, safe_json_path, write_json_atomic
 from core.model_identity import parse_stored_model_id
+from core.paths import SETTINGS_CACHE_DIR, SETTINGS_DATA_FILE
 from core.settings import Settings
 from core.settings.access import set_path, validate_setting_path, validate_setting_value
 

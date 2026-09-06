@@ -4,7 +4,10 @@ import argparse
 import unittest
 
 from cli.process_flags import (
-    _BOOL_FLAG_PATHS, _VALUE_FLAG_PATHS, add_process_args, collect_overrides,
+    _BOOL_FLAG_PATHS,
+    _VALUE_FLAG_PATHS,
+    add_process_args,
+    collect_overrides,
 )
 from core.settings import Settings
 from core.settings.access import validate_setting_path

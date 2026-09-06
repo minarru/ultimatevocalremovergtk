@@ -39,6 +39,18 @@ def _record(
     )
 
 
+class _FakeWarningRow:
+    def __init__(self) -> None:
+        self.subtitle = ""
+        self.visible = False
+
+    def set_subtitle(self, value: str) -> None:
+        self.subtitle = value
+
+    def set_visible(self, value: bool) -> None:
+        self.visible = value
+
+
 class VocalSplitPickerTests(unittest.TestCase):
     def _populate(
         self,
@@ -55,6 +67,7 @@ class VocalSplitPickerTests(unittest.TestCase):
         row._stored_splitter = stored
         row._syncing = False
         row.splitter_row = object()
+        row.splitter_warning_row = _FakeWarningRow()
         values: list[object] = []
         selections: list[object] = []
         with (
@@ -136,7 +149,7 @@ class VocalSplitRefreshTests(unittest.TestCase):
             "core.model_identity.ModelIdentityService.records",
             side_effect=lambda: tuple(records),
         ):
-            row = VocalSplitRow(repo, lambda: None)
+            row = VocalSplitRow(repo, lambda _event: None)
             row.apply_from_settings(settings)
             row._populator._populate_now()
 
@@ -164,7 +177,7 @@ class VocalSplitRefreshTests(unittest.TestCase):
             "core.model_identity.ModelIdentityService.records",
             side_effect=lambda: tuple(records),
         ):
-            row = VocalSplitRow(repo, lambda: None)
+            row = VocalSplitRow(repo, lambda _event: None)
             row.apply_from_settings(settings)
             row._populator._populate_now()
             eligible.clear()
@@ -348,7 +361,7 @@ class EnsemblePickerTests(unittest.TestCase):
             mock.patch.object(ensemble_window.Adw, "ActionRow", _FakeRow),
             mock.patch.object(ensemble_window, "stash"),
         ):
-            page._rebuild_model_list([])
+            page._reconcile_member_list([])
 
         self.assertEqual(requested, ["pair.vocals_instrumental"])
 
@@ -398,7 +411,7 @@ class EnsemblePickerTests(unittest.TestCase):
                 mock.patch.object(ensemble_window.Gtk, "CheckButton", _FakeCheck),
                 mock.patch.object(ensemble_window, "stash"),
             ):
-                page._rebuild_model_list([])
+                page._reconcile_member_list([])
         finally:
             debug_log._DOMAINS = old_domains
             debug_log._GMD_NORMALIZED = old_normalized
@@ -480,7 +493,7 @@ class EnsemblePickerTests(unittest.TestCase):
                 mock.patch.object(ensemble_window.Gtk, "CheckButton", _FakeCheck),
                 mock.patch.object(ensemble_window, "stash"),
             ):
-                page._rebuild_model_list(page.settings.ensemble.selected_models)
+                page._reconcile_member_list(page.settings.ensemble.selected_models)
         except TypeError as exc:
             self.fail(f"preserved non-string ensemble member crashed the picker: {exc}")
 
@@ -515,7 +528,7 @@ class EnsemblePickerTests(unittest.TestCase):
             mock.patch.object(ensemble_window.Gtk, "CheckButton", _FakeCheck),
             mock.patch.object(ensemble_window, "stash"),
         ):
-            page._rebuild_model_list(list(stored))
+            page._reconcile_member_list(list(stored))
             page.on_activated()
             page.on_activated()
 
@@ -554,7 +567,7 @@ class EnsemblePickerTests(unittest.TestCase):
             mock.patch.object(ensemble_window, "stash"),
             mock.patch.object(ensemble_window, "present_modal_dialog"),
         ):
-            page._rebuild_model_list(list(stored))
+            page._reconcile_member_list(list(stored))
             page._open_models_dialog()
             page._open_models_dialog()
 
@@ -594,8 +607,8 @@ class EnsemblePickerTests(unittest.TestCase):
             mock.patch.object(ensemble_window.Gtk, "CheckButton", _FakeCheck),
             mock.patch.object(ensemble_window, "stash"),
         ):
-            page._rebuild_model_list(list(stored))
-            page._rebuild_model_list(list(settings.ensemble.selected_models))
+            page._reconcile_member_list(list(stored))
+            page._reconcile_member_list(list(settings.ensemble.selected_models))
 
         self.assertFalse(page._models_write_gated)
         self.assertEqual(settings.ensemble.selected_models, ["mdx:first", "mdx:second"])
@@ -631,12 +644,12 @@ class EnsemblePickerTests(unittest.TestCase):
             mock.patch.object(ensemble_window.Gtk, "CheckButton", _FakeCheck),
             mock.patch.object(ensemble_window, "stash"),
         ):
-            page._rebuild_model_list(list(settings.ensemble.selected_models))
+            page._reconcile_member_list(list(settings.ensemble.selected_models))
             self.assertTrue(page._models_write_gated)
 
             records.append(_record(missing_id, "Arrived Later"))
             eligible.append(missing_id)
-            page._rebuild_model_list(list(settings.ensemble.selected_models))
+            page._reconcile_member_list(list(settings.ensemble.selected_models))
 
         self.assertIn(missing_id, page._model_checks)
         self.assertFalse(page._model_checks[missing_id].get_active())
@@ -671,11 +684,15 @@ class VocalSplitPickerGateTests(unittest.TestCase):
         row._populator = SimpleNamespace(ready=True)
         row.split_switch = _FakeControl(active=True)
         row.splitter_row = _FakeControl()
+        row.splitter_warning_row = _FakeWarningRow()
         row.save_inst_switch = _FakeControl()
         row.deverb_switch = _FakeControl()
         row.deverb_row = _FakeControl()
         row.refresh_summary = lambda: None
-        row._on_changed = lambda: None
+        from ui.shared_settings import SharedSettingsSession, shared_settings_bindings
+        settings.process.vocal_splitter_enabled = True
+        session = SharedSettingsSession(settings, shared_settings_bindings(vocal_row=row), can_commit=lambda: True)
+        row._on_changed = session.vocal_changed
         return row, settings
 
     def test_every_non_picker_signal_flushes_each_gated_stored_value(self) -> None:
@@ -830,7 +847,7 @@ class EnsembleRefreshLifecycleTests(unittest.TestCase):
         page._models_dirty = False
         page._models_write_gated = False
         page._rebuilds = []
-        page._rebuild_model_list = lambda members: page._rebuilds.append(list(members))
+        page._reconcile_member_list = lambda members: page._rebuilds.append(list(members))
         page._model_members_for_rebuild = lambda: ["mdx:a", "mdx:b"]
         page.models_dialog = mock.MagicMock()
         page.models_dialog.get_mapped.return_value = mapped

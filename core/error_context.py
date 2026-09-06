@@ -1,10 +1,10 @@
 """Run context captured for separation / ensemble / audio-tool error logs."""
 
 from __future__ import annotations
-import typing
 
 import os
 import threading
+import typing
 from typing import Any, Dict, List, Optional, Sequence
 
 from bundled.constants import (
@@ -182,7 +182,7 @@ def probe_audio_file(path: str) -> Dict[str, Any]:
         duration = librosa.get_duration(path=path)
         info.update(valid=True, duration_sec=float(duration))
         return info
-    except Exception as exc:  # noqa: BLE001 - surfaced in the error log
+    except Exception as exc:  # surfaced in the error log
         info["error"] = f"{type(exc).__name__}: {exc}"
         return info
 

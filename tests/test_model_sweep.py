@@ -412,6 +412,7 @@ class RunChildTests(unittest.TestCase):
         import json
         import tempfile
         from unittest import mock
+
         from core.blocking_runner import RunResult
         from core.settings import Settings
 
@@ -456,6 +457,7 @@ class RunChildTests(unittest.TestCase):
         import json
         import tempfile
         from unittest import mock
+
         from core.blocking_runner import RunResult
         from core.settings import Settings
 
@@ -503,6 +505,7 @@ class RunChildTests(unittest.TestCase):
         import json
         import tempfile
         from unittest import mock
+
         from core.blocking_runner import RunResult
         from core.export_naming import OutputNamingContext
         from core.job_plan import PlannedInput
@@ -580,6 +583,7 @@ class RunChildTests(unittest.TestCase):
         import json
         import tempfile
         from unittest import mock
+
         from core.blocking_runner import RunResult
         from core.export_naming import OutputNamingContext
         from core.job_plan import PlannedInput
@@ -654,6 +658,7 @@ class RunChildTests(unittest.TestCase):
 
     def test_run_tool_uses_resolved_audio_plan_and_generic_blocker(self) -> None:
         from unittest import mock
+
         from core.blocking_runner import RunResult
         from core.settings import Settings
 
@@ -812,7 +817,13 @@ class ReportMetadataTests(unittest.TestCase):
         jobs = [self._job("mdx:a.ckpt"), self._job("mdx:b.ckpt"), self._job("mdx:c.ckpt")]
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "r.json")
-            self._sweep(jobs, [fail, ok, ok], path, fail_fast=True)
+            import io
+            from contextlib import redirect_stdout
+            output = io.StringIO()
+            with redirect_stdout(output):
+                self._sweep(jobs, [fail, ok, ok], path, fail_fast=True)
+            self.assertIn("FAIL(RuntimeError)", output.getvalue())
+            self.assertIn("boom", output.getvalue())
             payload = self._read(path)
         self.assertEqual(payload["planned"], 3)
         self.assertEqual(payload["executed"], 1)

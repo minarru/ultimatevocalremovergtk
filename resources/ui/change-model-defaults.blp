@@ -1,0 +1,58 @@
+using Gtk 4.0;
+using Adw 1;
+
+Adw.Dialog dialog {
+  content-width: 440;
+  follows-content-size: true;
+}
+
+Adw.ToastOverlay toast_overlay {
+  child: Gtk.Box {
+    orientation: vertical;
+    spacing: 12;
+    margin-top: 12;
+    margin-bottom: 12;
+    margin-start: 12;
+    margin-end: 12;
+
+    Gtk.Label {
+      label: "Select a VR or MDX-Net model to edit or delete its stored parameters.";
+      wrap: true;
+      xalign: 0.0;
+      styles ["dim-label"]
+    }
+
+    Adw.PreferencesPage {
+      Adw.PreferencesGroup {
+        Adw.ComboRow model_row {
+          title: "Model";
+        }
+      }
+
+      Adw.PreferencesGroup {
+        Adw.ActionRow change_row {
+          title: "Change parameters";
+          activatable-widget: change_button;
+
+          [suffix]
+          Gtk.Button change_button {
+            label: "Change…";
+            valign: center;
+            styles ["suggested-action"]
+          }
+        }
+
+        Adw.ActionRow delete_row {
+          activatable-widget: delete_button;
+
+          [suffix]
+          Gtk.Button delete_button {
+            label: "Delete";
+            valign: center;
+            styles ["destructive-action"]
+          }
+        }
+      }
+    }
+  };
+}

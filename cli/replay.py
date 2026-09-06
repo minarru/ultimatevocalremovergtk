@@ -19,8 +19,8 @@ from core.model_identity import (
 )
 from core.settings import Settings
 
-from .reporting import add_reporting_args, emit_document, fail
 from .profiles import IDENTITY_SETTING_PATHS, MODEL_REFERENCE_SETTING_PATHS
+from .reporting import add_reporting_args, emit_document, fail
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _MANIFEST_SCHEMA_VERSION = 3
@@ -313,7 +313,7 @@ def _validate_active_dependency_paths(
         ]
     primary_stems = {
         path: str(descriptor_by_id[record.id]["primary_stem"])
-        for path, record in zip(primary_paths, records)
+        for path, record in zip(primary_paths, records, strict=True)
         if record.id in descriptor_by_id
         and descriptor_by_id[record.id].get("primary_stem")
     }

@@ -1,0 +1,12 @@
+using Gtk 4.0;
+
+template $UVRProgressRing: Gtk.Overlay {
+  styles ["uvr-progress-ring"]
+  child: Gtk.DrawingArea draw_area {};
+  [overlay]
+  Gtk.Image icon {
+    halign: center;
+    valign: center;
+    opacity: 0;
+  }
+}

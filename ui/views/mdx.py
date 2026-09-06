@@ -9,6 +9,8 @@ time. There is therefore one MDX model dropdown here, exactly as in the Tk app.
 
 import typing
 
+from gi.repository import Adw
+
 from bundled.constants import (
     ALL_STEMS,
     BASS_STEM,
@@ -44,9 +46,9 @@ from ..help_text import MDX_INCLUDE_COMPLEMENT_HELP, MDX_OVERLAP_HINT, MDX_SEGME
 from ..settings_bind import get_flat, set_flat
 from ..widget_state import fetch
 from ..widgets.rows import (
+    configure_discrete_scale_row,
+    configure_numeric_scale_row,
     get_scale_row_value,
-    make_discrete_scale_row,
-    make_numeric_scale_row,
     reconfigure_discrete_scale,
     reconfigure_numeric_scale,
     set_scale_default_mark,
@@ -121,6 +123,7 @@ class MDXView(MethodView):
     stack_name = "mdx"
     title = "MDX-Net"
     secondary_prefix = "mdx"
+    layout_name = "mdx_method"
 
     def list_models(self):
         return self.context.repo.list_mdx_models()
@@ -136,14 +139,21 @@ class MDXView(MethodView):
         self._segment_is_mdx_c = False
         self._overlap_is_mdx_c = False
 
-        self.segment_row = make_numeric_scale_row("Segment size", 32, 4000, step=32, digits=0)
+        self.segment_row = configure_numeric_scale_row(
+            self._layout_object("segment_row", Adw.ActionRow),
+            32,
+            4000,
+            step=32,
+            digits=0,
+        )
         fetch(self.segment_row, "_uvr_scale").connect("value-changed", self._on_segment_changed)
-        group.add(self.segment_row)
         self.hints.register(self.segment_row, MDX_SEGMENT_SIZE_HINT)
 
-        self.overlap_row = make_discrete_scale_row("Overlap", [str(v) for v in MDX_OVERLAP])
+        self.overlap_row = configure_discrete_scale_row(
+            self._layout_object("overlap_row", Adw.ActionRow),
+            [str(v) for v in MDX_OVERLAP],
+        )
         fetch(self.overlap_row, "_uvr_scale").connect("value-changed", self._on_overlap_changed)
-        group.add(self.overlap_row)
         self.hints.register(self.overlap_row, MDX_OVERLAP_HINT)
 
     def _overlap_key(self):
@@ -290,36 +300,55 @@ class MDXView(MethodView):
             set_flat(self.settings, self._overlap_key(), overlap_value)
 
     def build_advanced(self, group: typing.Any):
-        self.add_advanced_scale(
-            "mdx_batch_size", "Batch size", values=BATCH_SIZE, hint=BATCH_SIZE_HELP
+        self.add_option_scale(
+            group,
+            "mdx_batch_size",
+            None,
+            values=BATCH_SIZE,
+            hint=BATCH_SIZE_HELP,
+            row=self._layout_object("mdx_batch_size_row", Adw.ActionRow),
         )
         self.add_option_combo(
-            group, "denoise_option", "Denoise", MDX_DENOISE_OPTION, hint=IS_DENOISE_HELP
+            group,
+            "denoise_option",
+            None,
+            MDX_DENOISE_OPTION,
+            hint=IS_DENOISE_HELP,
+            row=self._layout_object("denoise_option_row", Adw.ComboRow),
         )
         self.add_option_scale(
             group,
             "compensate",
-            "Volume compensation",
+            None,
             values=VOL_COMPENSATION,
             hint=COMPENSATE_HELP,
+            row=self._layout_object("compensate_row", Adw.ActionRow),
         )
         self.add_option_switch(
             group,
             "is_match_frequency_pitch",
-            "Match frequency cut-off",
+            None,
             hint=IS_FREQUENCY_MATCH_HELP,
+            row=self._layout_object("is_match_frequency_pitch_row", Adw.SwitchRow),
         )
         self.add_option_switch(
-            group, "is_invert_spec", "Spectral inversion", hint=IS_INVERT_SPEC_HELP
+            group,
+            "is_invert_spec",
+            None,
+            hint=IS_INVERT_SPEC_HELP,
+            row=self._layout_object("is_invert_spec_row", Adw.SwitchRow),
         )
         self.add_option_switch(
             group,
             "is_mdx23_combine_stems",
-            "Combine stems (MDX23C)",
+            None,
             hint=IS_DEMUCS_COMBINE_STEMS_HELP,
+            row=self._layout_object("is_mdx23_combine_stems_row", Adw.SwitchRow),
         )
-        self.add_advanced_switch(
+        self.add_option_switch(
+            group,
             "is_mdx_include_stem_complement",
-            "Include complement (No X)",
+            None,
             hint=MDX_INCLUDE_COMPLEMENT_HELP,
+            row=self._layout_object("is_mdx_include_stem_complement_row", Adw.SwitchRow),
         )

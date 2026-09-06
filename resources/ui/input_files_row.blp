@@ -1,0 +1,25 @@
+using Gtk 4.0;
+using Adw 1;
+
+template $InputFilesRow: Adw.ExpanderRow {
+  title: "Input";
+
+  [prefix]
+  Gtk.Image {
+    icon-name: "audio-x-generic-symbolic";
+  }
+
+  [suffix]
+  Gtk.Button clear_button {
+    icon-name: "user-trash-symbolic";
+    valign: center;
+    styles ["flat"]
+  }
+
+  [suffix]
+  Gtk.Button open_button {
+    icon-name: "document-open-symbolic";
+    valign: center;
+    styles ["flat"]
+  }
+}

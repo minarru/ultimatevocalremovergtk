@@ -454,6 +454,20 @@ class DroppedConfigKeyTests(unittest.TestCase):
         )
         self.assertEqual(dropped, ["skip_connection"])
 
+    def test_mixed_raw_dropped_keys_keep_probe_sort_rejection(self) -> None:
+        with self.assertRaises(TypeError):
+            model_probe.dropped_config_keys(self._Net, {"dim": 4, 1: 7, "unknown": 2})
+
+    def test_runtime_and_probe_report_identical_sorted_string_keys(self) -> None:
+        from unittest import mock
+
+        from engines.mdx_c import filter_init_kwargs
+        with mock.patch("engines.mdx_c.log_event") as event:
+            accepted = filter_init_kwargs(self._Net, {"z": 8, "dim": 4, "a": 1})
+        self.assertEqual(accepted, {"dim": 4})
+        self.assertEqual(model_probe.dropped_config_keys(self._Net, {"z": 8, "dim": 4, "a": 1}), ["a", "z"])
+        self.assertEqual(event.call_args.kwargs["dropped_keys"], ("a", "z"))
+
     def test_nothing_is_dropped_when_the_class_takes_kwargs(self) -> None:
         dropped = model_probe.dropped_config_keys(
             self._NetWithKwargs, {"dim": 4, "skip_connection": True}
@@ -677,9 +691,9 @@ class SweepCatalogueTests(unittest.TestCase):
 
     @unittest.skipUnless(os.path.isfile(_SCNET_CONFIG), "config not present")
     def test_tallies_a_buildable_result_and_a_probe_error_separately(self) -> None:
-        from unittest.mock import patch
-        import io as _io
         import contextlib
+        import io as _io
+        from unittest.mock import patch
 
         targets = [
             model_tool_support.CatalogueTarget(
@@ -704,9 +718,9 @@ class SweepCatalogueTests(unittest.TestCase):
         """A sweep builds real models back to back; keeping every one's
         weights resident until the whole sweep finishes is what runs a
         machine out of RAM (observed on a real 300-entry sweep)."""
-        from unittest.mock import patch
-        import io as _io
         import contextlib
+        import io as _io
+        from unittest.mock import patch
 
         targets = [
             model_tool_support.CatalogueTarget(
@@ -1012,8 +1026,8 @@ class CliTests(unittest.TestCase):
 
     @unittest.skipUnless(os.path.isfile(_SCNET_CONFIG), "config not present")
     def test_probing_a_local_config_succeeds(self) -> None:
-        import io as _io
         import contextlib
+        import io as _io
 
         buf = _io.StringIO()
         with contextlib.redirect_stdout(buf):
@@ -1022,8 +1036,8 @@ class CliTests(unittest.TestCase):
         self.assertIn("buildable", buf.getvalue())
 
     def test_unbuildable_config_exits_nonzero(self) -> None:
-        import io as _io
         import contextlib
+        import io as _io
         import tempfile
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -1039,8 +1053,8 @@ class CliTests(unittest.TestCase):
     @unittest.skipUnless(os.path.isfile(_SCNET_CONFIG), "config not present")
     def test_local_checkpoint_keys_are_diffed_against_the_built_module(self) -> None:
         """A checkpoint whose names disagree is the failure mode this exists for."""
-        import io as _io
         import contextlib
+        import io as _io
         import tempfile
 
         import torch
@@ -1060,8 +1074,8 @@ class CliTests(unittest.TestCase):
 
     @unittest.skipUnless(os.path.isfile(_SCNET_CONFIG), "config not present")
     def test_json_output_is_written_to_the_given_path(self) -> None:
-        import io as _io
         import contextlib
+        import io as _io
         import tempfile
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -1075,8 +1089,8 @@ class CliTests(unittest.TestCase):
 
     @unittest.skipUnless(os.path.isfile(_SCNET_CONFIG), "config not present")
     def test_sweep_probes_the_catalogue_and_writes_a_json_summary(self) -> None:
-        import io as _io
         import contextlib
+        import io as _io
         import tempfile
         from unittest.mock import patch
 
@@ -1099,8 +1113,8 @@ class CliTests(unittest.TestCase):
 
     def test_sweep_with_no_targets_is_an_error_not_an_empty_success(self) -> None:
         """A cold SWR snapshot used to write empty results and exit 0."""
-        import io as _io
         import contextlib
+        import io as _io
         import tempfile
         from unittest.mock import patch
 

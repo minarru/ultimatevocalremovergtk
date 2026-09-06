@@ -20,7 +20,7 @@ import json
 import os
 import sys
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -123,19 +123,10 @@ class BuiltModel:
 
 
 def dropped_config_keys(model_cls: Any, model_cfg: Any) -> List[str]:
-    """Config keys ``model_cls.__init__`` will not accept.
+    """Report raw sorted ignored names, preserving the probe's key contract."""
+    from core.constructor_kwargs import analyze_constructor_kwargs
 
-    Mirrors ``engines.mdx_c.filter_init_kwargs``, which drops unknown keys so a
-    model still builds. That silence is the trap: a checkpoint trained *with*
-    a feature loads into a network built *without* it.
-    """
-    import inspect
-
-    params = inspect.signature(model_cls.__init__).parameters
-    if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
-        return []
-    allowed = {name for name in params if name != "self"}
-    return sorted(key for key in model_cfg if key not in allowed)
+    return sorted(analyze_constructor_kwargs(model_cls, model_cfg).dropped)
 
 
 def _load_config(config_path: str) -> Any:
@@ -220,10 +211,11 @@ def _build_htdemucs_model(config: Any, htdemucs_section: Any) -> Tuple[Any, List
     copy doesn't implement (e.g. ``num_subbands``) shows up as a dropped key
     rather than silently vanishing.
     """
-    from engines.mdx_c import filter_init_kwargs
+    from core.constructor_kwargs import analyze_constructor_kwargs
     from vendor.demucs.htdemucs import HTDemucs
 
-    kwargs = filter_init_kwargs(HTDemucs, htdemucs_section)
+    analysis = analyze_constructor_kwargs(HTDemucs, htdemucs_section)
+    kwargs = analysis.accepted
     training = getattr(config, "training", None)
     sources = list(getattr(training, "instruments", []) or []) if training else []
     if not sources:
@@ -236,7 +228,7 @@ def _build_htdemucs_model(config: Any, htdemucs_section: Any) -> Tuple[Any, List
     if segment:
         kwargs["segment"] = segment
     module = HTDemucs(**kwargs)
-    return module, dropped_config_keys(HTDemucs, htdemucs_section)
+    return module, sorted(analysis.dropped)
 
 
 def _instantiate(
@@ -308,7 +300,7 @@ def build_from_config(
     """
     try:
         config = _load_config(config_path)
-    except Exception as exc:  # noqa: BLE001 - a bad config is a probe result
+    except Exception as exc:  # a bad config is a probe result
         return BuiltModel(config_path, "", error=f"config unreadable: {exc}")
 
     training = getattr(config, "training", None)
@@ -320,7 +312,7 @@ def build_from_config(
         module, arch, filtered, dropped_override = _instantiate(
             config, state_dict_keys, model_type_hint, checkpoint_size_bytes
         )
-    except Exception as exc:  # noqa: BLE001 - unported architecture is the answer
+    except Exception as exc:  # unported architecture is the answer
         return BuiltModel(
             config_path,
             "",
@@ -424,7 +416,7 @@ def forward_probe(
     try:
         with torch.no_grad():
             out = built.module(noise)
-    except Exception as exc:  # noqa: BLE001 - a broken forward is a probe result
+    except Exception as exc:  # a broken forward is a probe result
         return ForwardResult(
             ok=False, error=f"{type(exc).__name__}: {exc}", input_shape=tuple(noise.shape)
         )
@@ -588,7 +580,7 @@ def probe(
         try:
             checkpoint_keys = local_checkpoint_keys(checkpoint_path)
             checkpoint_size_bytes = os.path.getsize(checkpoint_path)
-        except Exception as exc:  # noqa: BLE001 - header probe is best-effort
+        except Exception as exc:  # header probe is best-effort
             print(f"  (state_dict probe unavailable: {exc})")
     elif checkpoint_url:
         try:
@@ -597,11 +589,11 @@ def probe(
                 if checkpoint_keys_cache_dir is not None
                 else remote_checkpoint_keys(checkpoint_url)
             )
-        except Exception as exc:  # noqa: BLE001 - header probe is best-effort
+        except Exception as exc:  # header probe is best-effort
             print(f"  (state_dict probe unavailable: {exc})")
         try:
             checkpoint_size_bytes = remote_size(checkpoint_url)
-        except Exception as exc:  # noqa: BLE001 - size probe is best-effort
+        except Exception as exc:  # size probe is best-effort
             print(f"  (checkpoint size unavailable: {exc})")
 
     build = build_from_config(
@@ -659,7 +651,7 @@ def sweep_catalogue(
                 model_type_hint=target.model_type,
                 checkpoint_keys_cache_dir=checkpoint_keys_cache_dir,
             )
-        except Exception as exc:  # noqa: BLE001 - one bad entry must not abort the sweep
+        except Exception as exc:  # one bad entry must not abort the sweep
             result = ProbeResult(
                 entry_id=target.entry_id,
                 label=target.label,

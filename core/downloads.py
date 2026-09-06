@@ -12,18 +12,15 @@ never touches any UI toolkit and reports progress through plain callbacks.
 """
 
 import dataclasses
-import errno
 import json
 import os
-import ssl
 import tempfile
 import threading
-import time
 import typing
 import urllib.request
 import warnings
 from contextlib import ExitStack
-from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Mapping, Optional, Tuple
 
 from bundled.constants import (
     ADDITIONAL_MODEL_REPO,
@@ -48,18 +45,23 @@ from bundled.constants import (
 
 from . import paths
 from .catalog_dedupe import normalize_catalogue_label
-from .debug_log import debug, log_event
+from .catalogue_evidence import CatalogueEvidenceService
+from .catalogue_evidence import (
+    CatalogueEvidenceSummary as CatalogueEvidenceSummary,
+)
+from .catalogue_size_evidence import CatalogueSizeEvidenceService
+from .catalogue_source_loader import ssl_context as _ssl_context
+from .debug_log import debug
 from .download_sizes import (
     content_ids_from_cache,
     describe_download_size,
     estimate_jobs_size,
-    format_download_size,
     prefetch_remote_sizes,
     prefetch_same_size_identity,
 )
+from .download_transfer import DownloadTransferService
 from .json_store import locked_json_path
 from .mdx_config_fetch import ensure_mdx_c_config
-from .model_identity import FAMILY_BY_ARCH
 from .mvsepless_catalog import (
     unsupported_mvsepless_downloads,
     unsupported_reason_for_label,
@@ -76,21 +78,12 @@ from .politrees_catalog import (
 )
 from .version_info import release_update_status
 
+if TYPE_CHECKING:
+    from .catalogue_coordinator import CatalogueSnapshot
+
 DOWNLOAD_MODEL_CACHE = paths.DOWNLOAD_MODEL_CACHE_PATH
 # Minimum interval between byte-count status strings shown in the queue UI.
 _INFO_UPDATE_INTERVAL_S = 0.25
-
-
-@dataclasses.dataclass(frozen=True)
-class CatalogueEvidenceSummary:
-    """Aggregate semantic-review and exact-evidence availability counts."""
-
-    reviewed: int = 0
-    raw: int = 0
-    waived: int = 0
-    pending: int = 0
-    unavailable: int = 0
-    stale: int = 0
 
 
 # Mapper JSON download links paired with their on-disk destinations (the exact
@@ -173,13 +166,6 @@ def _latest_version_key() -> str:
 
 
 _DOWNLOAD_TIMEOUT_SECONDS = 30
-
-
-def _ssl_context() -> ssl.SSLContext:
-    """Return a TLS context; set ``UVR_INSECURE_DOWNLOADS=1`` to disable verification."""
-    if os.environ.get("UVR_INSECURE_DOWNLOADS") == "1":
-        return ssl._create_unverified_context()
-    return ssl.create_default_context()
 
 
 def _urlopen(url: str | urllib.request.Request):
@@ -330,21 +316,41 @@ class DownloadManager:
         # identity/display projection. The flat map remains presentation-only
         # compatibility state for older consumers.
         self.catalogue_meta_by_family: Dict[str, Dict[str, Any]] = {}
-        self._size_warmup_lock = threading.Lock()
-        self._size_warmup_done_for: Optional[frozenset[str]] = None
         self._catalogue_changed_subscribers: List[Callable[[], None]] = []
         self._catalogue_changed_lock = threading.Lock()
-        self._catalogue_evidence_lock = threading.Lock()
-        self._catalogue_evidence_pending: set[str] = set()
-        self._catalogue_evidence_force_pending: set[str] = set()
-        self._catalogue_evidence_callbacks: list[Callable[[CatalogueEvidenceSummary], None]] = []
-        self._catalogue_evidence_url_entries: Dict[str, list[tuple[str, str]]] = {}
-        self._catalogue_evidence_subscribed = False
         self._coordinator = None
         self._repo = repo
         self._last_refresh_report: Any = None
+        self._evidence = CatalogueEvidenceService(
+            flat_metadata=lambda: self.catalogue_meta,
+            family_metadata=lambda: self.catalogue_meta_by_family,
+            catalogues=lambda: {
+                "vr": self.vr_download_list,
+                "mdx": self.mdx_download_list,
+                "demucs": self.demucs_download_list,
+                "apollo": self.apollo_download_list,
+            },
+            notify_metadata=self._notify_evidence_metadata,
+        )
+        self._size_evidence = CatalogueSizeEvidenceService(
+            prefetch_sizes=lambda urls: prefetch_remote_sizes(urls),
+            prefetch_identity=lambda urls: prefetch_same_size_identity(urls),
+            apply_identities=self._apply_size_identities,
+        )
+        self._transfer = DownloadTransferService(
+            open_url=lambda url: _urlopen(url),
+            estimate_jobs_size=lambda jobs: estimate_jobs_size(jobs),
+            fallback_url=lambda url: hf_fallback_url(url),
+            info_update_interval_s=_INFO_UPDATE_INTERVAL_S,
+        )
         if coordinator is not None:
             self._bind_coordinator(coordinator)
+
+    @property
+    def latest_snapshot(self) -> "CatalogueSnapshot | None":
+        """Expose the coordinator's publication without creating or refreshing it."""
+        coordinator = self._coordinator
+        return coordinator.latest_snapshot if coordinator is not None else None
 
     def _bind_coordinator(self, coordinator: Any) -> None:
         self._coordinator = coordinator
@@ -359,7 +365,7 @@ class DownloadManager:
         coordinator = getattr(self, "_coordinator", None)
         if coordinator is None:
             return
-        snapshot = getattr(coordinator, "_latest", None)
+        snapshot = getattr(coordinator, "latest_snapshot", None)
         if snapshot is not None:
             self._apply_snapshot(snapshot)
 
@@ -558,57 +564,24 @@ class DownloadManager:
             debug("download", "size_cache_warmup skip no catalogues")
             return {"total": 0, "fresh": 0, "fetched": 0, "failed": 0}
 
-        urls = self.catalogue_checkpoint_urls()
-        signature = frozenset(urls)
-        if self._size_warmup_done_for == signature:
-            debug("download", "size_cache_warmup skip already warm")
-            return {"total": len(urls), "fresh": len(urls), "fetched": 0, "failed": 0}
+        return self._size_evidence.warm(self.catalogue_checkpoint_urls())
 
-        if not self._size_warmup_lock.acquire(blocking=False):
-            debug("download", "size_cache_warmup skip already running")
-            return {"total": 0, "fresh": 0, "fetched": 0, "failed": 0}
+    def _apply_size_identities(self, urls: List[str]) -> None:
+        coordinator = getattr(self, "_coordinator", None)
+        if coordinator is not None:
+            from .download_sizes import trusted_content_ids_from_cache
 
-        from .debug_log import debug_elapsed
+            coordinator.apply_trusted_identities(trusted_content_ids_from_cache(urls))
+            from .access_policy import current_access_policy
+            from .catalogue_types import RefreshMode
 
-        try:
-            debug("download", f"size_cache_warmup start urls={len(urls)}")
-            started = time.perf_counter()
-            stats = prefetch_remote_sizes(urls)
-            identity = prefetch_same_size_identity(urls)
-            coordinator = getattr(self, "_coordinator", None)
-            if coordinator is not None:
-                from .download_sizes import trusted_content_ids_from_cache
-
-                coordinator.apply_trusted_identities(trusted_content_ids_from_cache(urls))
-                from .access_policy import current_access_policy
-                from .catalogue_types import RefreshMode
-
-                snapshot = coordinator.snapshot(
-                    mode=RefreshMode.OFFLINE,
-                    policy=current_access_policy(),
-                )
-                self._apply_snapshot(snapshot)
-            else:
-                self._reapply_content_dedupe()
-            # Only mark the URL set warm once the identity pass has nothing
-            # left; it HEADs at most _IDENTITY_HEAD_CAP per call, and latching
-            # here would strand the remainder for the rest of the session.
-            # Re-running is cheap — the size pass skips every fresh entry.
-            if identity.get("capped"):
-                self._size_warmup_done_for = None
-            else:
-                self._size_warmup_done_for = signature
-            debug_elapsed(
-                "download",
-                "size_cache_warmup done "
-                f"total={stats['total']} fresh={stats['fresh']} "
-                f"fetched={stats['fetched']} failed={stats['failed']} "
-                f"identity_fetched={identity.get('fetched', 0)}",
-                started,
+            snapshot = coordinator.snapshot(
+                mode=RefreshMode.OFFLINE,
+                policy=current_access_policy(),
             )
-            return stats
-        finally:
-            self._size_warmup_lock.release()
+            self._apply_snapshot(snapshot)
+        else:
+            self._reapply_content_dedupe()
 
     def schedule_size_cache_warmup(self) -> None:
         """Kick off a background size-cache refresh (idempotent per URL set)."""
@@ -710,185 +683,11 @@ class DownloadManager:
         urls: typing.Iterable[str] | None = None,
     ) -> set[str]:
         """Patch family-scoped metadata from completed exact config evidence."""
-        from .catalog_sources import (
-            _needs_catalogue_config_evidence,
-            _yaml_config_url,
-            reconcile_catalogue_evidence,
-        )
-        from .catalogue_stem_cache import lookup_stems
-
-        allowed_urls = set(urls or ())
-        scoped = self._family_catalogue_meta()
-        targets = [
-            (family, label, meta)
-            for family, metadata in scoped.items()
-            for label, meta in list(metadata.items())
-        ]
-        if not targets:
-            targets = [
-                (FAMILY_BY_ARCH.get(meta.arch, ""), label, meta)
-                for label, meta in list(self.catalogue_meta.items())
-            ]
-        updated: set[str] = set()
-        updated_by_family: Dict[str, list[str]] = {}
-        for family, label, meta in targets:
-            url = _yaml_config_url(meta.files)
-            if not url:
-                continue
-            if url not in allowed_urls and not _needs_catalogue_config_evidence(meta):
-                continue
-            hit = lookup_stems(url)
-            if hit is None:
-                continue
-            # Legacy successes without a digest are not exact byte evidence.
-            if hit.usable and not hit.content_sha256:
-                continue
-            reconciled = reconcile_catalogue_evidence(
-                meta,
-                live_stems=list(hit.stems),
-                live_target_instrument=hit.target_instrument,
-                live_config_sha256=hit.content_sha256,
-                live_usable=hit.usable,
-                live_stale=hit.stale,
-                live_failed=hit.last_error is not None and not hit.usable,
-                live_warning=hit.warning,
-            )
-            if reconciled != meta:
-                flat = getattr(self, "catalogue_meta", {})
-                if flat.get(label) is meta or label not in flat:
-                    flat[label] = reconciled
-                family_meta = scoped.get(family)
-                if family_meta is not None and label in family_meta:
-                    family_meta[label] = reconciled
-                updated.add(label)
-                updated_by_family.setdefault(family, []).append(label)
-        if updated:
-            coordinator = getattr(self, "_coordinator", None)
-            notify = getattr(coordinator, "notify_metadata", None)
-            if callable(notify):
-                notify(
-                    {family: tuple(sorted(labels)) for family, labels in updated_by_family.items()}
-                )
-        return updated
-
-    def _ensure_catalogue_evidence_listener(self) -> None:
-        """Subscribe once to incremental config-validation cache changes."""
-        if getattr(self, "_catalogue_evidence_subscribed", False):
-            return
-        from .catalogue_stem_cache import subscribe
-
-        subscribe(self._on_catalogue_evidence_cache_update)
-        self._catalogue_evidence_subscribed = True
-
-    def _on_catalogue_evidence_cache_update(self) -> None:
-        """Apply completed config evidence while leaving queued work pending."""
-        from .catalogue_stem_cache import pending_urls
-
-        lock = getattr(self, "_catalogue_evidence_lock", None)
-        if lock is None:
-            return
-        with lock:
-            tracked = set(self._catalogue_evidence_pending)
-        self.apply_catalogue_stem_cache(tracked)
-        active = pending_urls()
-        callbacks: list[Callable[[CatalogueEvidenceSummary], None]] = []
-        completed_force: set[str] = set()
-        with lock:
-            self._catalogue_evidence_pending.intersection_update(active)
-            before_force = set(self._catalogue_evidence_force_pending)
-            self._catalogue_evidence_force_pending.intersection_update(active)
-            if before_force and not self._catalogue_evidence_force_pending:
-                completed_force = before_force
-                callbacks = list(self._catalogue_evidence_callbacks)
-                self._catalogue_evidence_callbacks.clear()
-        if not completed_force:
-            return
-        summary = self.catalogue_evidence_summary()
-        self._log_catalogue_evidence_failures(completed_force)
-        log_event(
-            "download",
-            "catalogue_evidence_batch_completed",
-            level="debug",
-            **dataclasses.asdict(summary),
-        )
-        for callback in callbacks:
-            try:
-                callback(summary)
-            except Exception as exc:
-                log_event(
-                    "download",
-                    "catalogue_evidence_subscriber_failed",
-                    level="warning",
-                    subscriber_type=type(callback).__name__,
-                    error_type=type(exc).__name__,
-                    message=str(exc),
-                )
-
-    def _family_catalogue_meta(self) -> Dict[str, Dict[str, Any]]:
-        """Return the authoritative family-scoped catalogue metadata."""
-        scoped = getattr(self, "catalogue_meta_by_family", None)
-        return scoped if isinstance(scoped, dict) else {}
-
-    def _public_family_catalogue_meta(self) -> Dict[str, Dict[str, Any]]:
-        """Resolve post-deduplication public rows through exact family metadata."""
-        scoped = self._family_catalogue_meta()
-        catalogues = {
-            "vr": getattr(self, "vr_download_list", {}),
-            "mdx": getattr(self, "mdx_download_list", {}),
-            "demucs": getattr(self, "demucs_download_list", {}),
-            "apollo": getattr(self, "apollo_download_list", {}),
-        }
-        return {
-            family: {
-                str(label): metadata[str(label)] for label in catalogue if str(label) in metadata
-            }
-            for family, catalogue in catalogues.items()
-            if isinstance(catalogue, dict)
-            for metadata in (scoped.get(family, {}),)
-        }
+        return self._evidence.apply_catalogue_stem_cache(urls)
 
     def catalogue_evidence_summary(self) -> CatalogueEvidenceSummary:
-        """Count semantic review and evidence availability without flattening IDs."""
-        semantic = {"reviewed": 0, "raw": 0, "waived": 0}
-        evidence = {"pending": 0, "unavailable": 0, "stale": 0}
-        for metadata in self._public_family_catalogue_meta().values():
-            for meta in metadata.values():
-                projection = getattr(meta, "stem_semantics", None)
-                review = str(getattr(projection, "status", "raw") or "raw")
-                if review in semantic:
-                    semantic[review] += 1
-                state = getattr(meta, "catalogue_evidence_status", "unavailable")
-                state_value = str(getattr(state, "value", state) or "")
-                if state_value in evidence:
-                    evidence[state_value] += 1
-        return CatalogueEvidenceSummary(**semantic, **evidence)
-
-    def _log_catalogue_evidence_failures(self, urls: typing.Iterable[str]) -> None:
-        """Log batch failures with exact identities and bounded cache diagnostics."""
-        from .catalogue_identity import catalogue_model_id
-        from .catalogue_stem_cache import lookup_stems
-
-        scoped = self._family_catalogue_meta()
-        url_entries = getattr(self, "_catalogue_evidence_url_entries", {})
-        for url in urls:
-            hit = lookup_stems(url)
-            error = getattr(hit, "last_error", None) if hit is not None else None
-            if error is None:
-                continue
-            for family, label in url_entries.get(url, ()):
-                meta = scoped.get(family, {}).get(label)
-                catalogue = getattr(self, f"{family}_download_list", {})
-                raw = catalogue.get(label) if isinstance(catalogue, dict) else None
-                model_id = catalogue_model_id(family, label, raw, meta) or f"{family}:{label}"
-                log_event(
-                    "download",
-                    "catalogue_evidence_validation_failed",
-                    level="warning",
-                    model_id=model_id,
-                    url=url,
-                    error_type=getattr(error, "kind", type(error).__name__),
-                    message=getattr(error, "message", str(error)),
-                )
+        """Count semantic review and exact evidence for current public rows."""
+        return self._evidence.catalogue_evidence_summary()
 
     def queue_catalogue_evidence(
         self,
@@ -898,127 +697,23 @@ class DownloadManager:
         force: bool = False,
         on_complete: Callable[[CatalogueEvidenceSummary], None] | None = None,
     ) -> tuple[str, ...]:
-        """Queue exact config evidence and expose pending state immediately.
-
-        ``entries`` contains canonical ``(family, catalogue selection)`` pairs.
-        Omitting it selects every current family-scoped entry. Force bypasses
-        both success and failure TTLs without deleting last-known-good cache
-        evidence.
-        """
-        from .catalog_sources import _needs_catalogue_config_evidence, _yaml_config_url
-        from .catalogue_stem_cache import (
-            enqueue_missing,
-            ensure_worker_started,
-            lookup_stems,
+        """Queue exact config evidence for canonical family/selection pairs."""
+        return self._evidence.queue_catalogue_evidence(
+            entries, priority=priority, force=force, on_complete=on_complete,
         )
-        from .catalogue_types import CatalogueEvidenceState
-
-        scoped = self._family_catalogue_meta()
-        public_scoped = self._public_family_catalogue_meta()
-        requested = (
-            tuple(entries)
-            if entries is not None
-            else tuple(
-                (family, label) for family, metadata in public_scoped.items() for label in metadata
-            )
-        )
-        selected: list[tuple[str, str, Any, str]] = []
-        seen_entries: set[tuple[str, str, str]] = set()
-        for family, label in requested:
-            metadata = scoped.get(str(family), {})
-            meta = metadata.get(str(label))
-            if meta is None or str(family) != "mdx":
-                continue
-            url = _yaml_config_url(meta.files)
-            if not url:
-                continue
-            entry_key = (str(family), str(label), url)
-            if entry_key in seen_entries:
-                continue
-            if not force:
-                hit = lookup_stems(url)
-                if hit is not None:
-                    if not (hit.ok and not hit.content_sha256) and not hit.revalidation_due:
-                        continue
-                elif not _needs_catalogue_config_evidence(meta) and not meta.config_sha256:
-                    continue
-            seen_entries.add(entry_key)
-            selected.append((str(family), str(label), meta, url))
-
-        urls = tuple(sorted({item[3] for item in selected}))
-        if not urls:
-            return ()
-        published_urls: tuple[str, ...] = ()
-
-        def publish_reserved(accepted: tuple[str, ...]) -> None:
-            nonlocal published_urls
-            accepted_set = set(accepted)
-            published_urls = tuple(url for url in urls if url in accepted_set)
-            accepted_entries = [item for item in selected if item[3] in accepted_set]
-            changed: Dict[str, list[str]] = {}
-            for family, label, meta, _url in accepted_entries:
-                status = getattr(meta, "catalogue_evidence_status", None)
-                if status is not CatalogueEvidenceState.UNAVAILABLE:
-                    continue
-                pending_meta = dataclasses.replace(
-                    meta,
-                    catalogue_evidence_status=CatalogueEvidenceState.PENDING,
-                    catalogue_evidence_warning="",
-                )
-                scoped[family][label] = pending_meta
-                flat = getattr(self, "catalogue_meta", {})
-                if flat.get(label) is meta:
-                    flat[label] = pending_meta
-                changed.setdefault(family, []).append(label)
-
-            lock = getattr(self, "_catalogue_evidence_lock", None)
-            if lock is None:
-                self._catalogue_evidence_lock = threading.Lock()
-                lock = self._catalogue_evidence_lock
-                self._catalogue_evidence_pending = set()
-            with lock:
-                self._catalogue_evidence_pending.update(published_urls)
-                if force:
-                    self._catalogue_evidence_force_pending.update(published_urls)
-                    if on_complete is not None:
-                        self._catalogue_evidence_callbacks.append(on_complete)
-                for family, label, _meta, url in accepted_entries:
-                    associations = self._catalogue_evidence_url_entries.setdefault(url, [])
-                    association = (family, label)
-                    if association not in associations:
-                        associations.append(association)
-            if force:
-                summary = self.catalogue_evidence_summary()
-                log_event(
-                    "download",
-                    "catalogue_evidence_batch_started",
-                    urls=len(published_urls),
-                    force=True,
-                    **dataclasses.asdict(summary),
-                )
-            coordinator = getattr(self, "_coordinator", None)
-            notify = getattr(coordinator, "notify_metadata", None)
-            if changed and callable(notify):
-                notify({family: tuple(labels) for family, labels in changed.items()})
-            self._ensure_catalogue_evidence_listener()
-
-        accepted = enqueue_missing(
-            urls,
-            priority=priority,
-            force=force,
-            on_reserved=publish_reserved,
-        )
-        if not accepted:
-            return ()
-        ensure_worker_started()
-        return published_urls
 
     def force_revalidate_catalogue_evidence(
         self,
         on_complete: Callable[[CatalogueEvidenceSummary], None] | None = None,
     ) -> tuple[str, ...]:
         """Conditionally revalidate every current config without clearing LKG."""
-        return self.queue_catalogue_evidence(force=True, on_complete=on_complete)
+        return self._evidence.force_revalidate_catalogue_evidence(on_complete)
+
+    def _notify_evidence_metadata(self, labels: Mapping[str, tuple[str, ...]]) -> None:
+        coordinator = self._coordinator
+        notify = getattr(coordinator, "notify_metadata", None)
+        if callable(notify):
+            notify(labels)
 
     # -- Download lists ---------------------------------------------------------
 
@@ -1199,104 +894,11 @@ class DownloadManager:
         on_info: Optional[Callable[[str], None]] = None,
         stop_event: typing.Any = None,
     ) -> str:
-        """Download every ``(url, save_path)`` job sequentially.
+        """Transfer sequentially; return complete/stopped/exists or raise on failure.
 
-        Transfer only. Registration, usability verification and repository
-        publication belong to ``core.model_install.finalize_downloaded_model``,
-        which both frontends call once per logical model -- doing any of it here
-        published models before all of their artifacts had landed.
-
-        Reports overall progress in ``[0, 1]`` via ``on_progress`` and a short
-        status string via ``on_info``. Honours a ``threading.Event``-style
-        ``stop_event`` for cooperative cancellation (checked between chunks).
-        Returns one of ``"complete"`` / ``"stopped"`` / ``"exists"``; raises on
-        network/IO error so the caller can surface it through the error log.
+        Registration and usability checks remain the caller's responsibility.
         """
-        from .debug_log import debug, debug_elapsed
-
-        if not jobs:
-            if on_info:
-                on_info(NO_MODEL)
-            return "exists"
-
-        started = time.perf_counter()
-        debug("download", f"download start jobs={len(jobs)}")
-        pending_jobs = [(url, path) for url, path in jobs if not os.path.isfile(path)]
-        total_bytes, file_count, known = estimate_jobs_size(pending_jobs)
-
-        # Weight the bar by bytes, not by file count. A model is typically a
-        # ~400 MB checkpoint plus a ~4 KB config; splitting the bar evenly
-        # between them pins it at 50% for the whole transfer. Sizes have to be
-        # known for *every* pending file or the denominator is short and the
-        # fraction runs past 1.0, so fall back to counting pending files —
-        # already-present ones never report and must stay out of both halves.
-        byte_weighted = bool(total_bytes) and known == file_count and file_count > 0
-        pending_total = max(1, file_count)
-        bytes_done = 0
-        pending_index = 0
-
-        def report(downloaded: int, file_total: int) -> None:
-            if on_progress is None:
-                return
-            if byte_weighted and total_bytes:
-                overall = (bytes_done + downloaded) / total_bytes
-            elif file_total:
-                overall = (pending_index + downloaded / file_total) / pending_total
-            else:
-                return
-            on_progress(max(0.0, min(1.0, overall)))
-
-        any_downloaded = False
-        for _index, (url, save_path) in enumerate(jobs):
-            if stop_event is not None and stop_event.is_set():
-                debug("download", "download stopped by user")
-                return "stopped"
-            if os.path.isfile(save_path):
-                continue
-            any_downloaded = True
-            if on_info:
-                if total_bytes is not None:
-                    on_info(f"Downloading ({format_download_size(total_bytes)})")
-                else:
-                    on_info("Downloading…")
-            self._download_file(url, save_path, report, stop_event, on_info)
-            if stop_event is not None and stop_event.is_set():
-                # Remove the partial file so a retry restarts cleanly.
-                if os.path.isfile(save_path):
-                    try:
-                        os.remove(save_path)
-                    except OSError:
-                        pass
-                return "stopped"
-            # Advance the baseline by what actually landed on disk, so a
-            # short read or an HF-fallback retry cannot double-count.
-            try:
-                bytes_done += os.path.getsize(save_path)
-            except OSError:
-                pass
-            pending_index += 1
-
-        if on_progress:
-            on_progress(1.0)
-        result = "complete" if any_downloaded else "exists"
-        debug_elapsed("download", f"download done status={result}", started)
-        return result
-
-    @staticmethod
-    def _download_stopped(stop_event: typing.Any) -> bool:
-        return stop_event is not None and stop_event.is_set()
-
-    def _finalize_part_file(self, tmp_path: str, save_path: str, stop_event: typing.Any) -> None:
-        """Rename a completed ``.part`` file unless the download was cancelled."""
-        if self._download_stopped(stop_event):
-            return
-        if not os.path.isfile(tmp_path):
-            raise FileNotFoundError(
-                errno.ENOENT,
-                os.strerror(errno.ENOENT),
-                tmp_path,
-            )
-        os.replace(tmp_path, save_path)
+        return self._transfer.download(jobs, on_progress, on_info, stop_event)
 
     def _download_file(
         self,
@@ -1306,35 +908,7 @@ class DownloadManager:
         stop_event: typing.Any,
         on_info: typing.Any = None,
     ) -> None:
-        os.makedirs(os.path.dirname(save_path), exist_ok=True)
-        tmp_path = f"{save_path}.part"
-        try:
-            self._download_file_url(url, tmp_path, report, stop_event, on_info)
-            if self._download_stopped(stop_event):
-                return
-            self._finalize_part_file(tmp_path, save_path, stop_event)
-        except Exception:
-            if self._download_stopped(stop_event):
-                return
-            fallback = hf_fallback_url(url)
-            if fallback and fallback != url:
-                debug("download", f"hf fallback {os.path.basename(save_path)}")
-                try:
-                    if os.path.isfile(tmp_path):
-                        os.remove(tmp_path)
-                except OSError:
-                    pass
-                self._download_file_url(fallback, tmp_path, report, stop_event, on_info)
-                if self._download_stopped(stop_event):
-                    return
-                self._finalize_part_file(tmp_path, save_path, stop_event)
-                return
-            if os.path.isfile(tmp_path):
-                try:
-                    os.remove(tmp_path)
-                except OSError:
-                    pass
-            raise
+        self._transfer._download_file(url, save_path, report, stop_event, on_info)
 
     def _download_file_url(
         self,
@@ -1344,58 +918,7 @@ class DownloadManager:
         stop_event: typing.Any,
         on_info: typing.Any = None,
     ) -> None:
-        try:
-            with _urlopen(url) as response:
-                length_header = response.getheader("Content-Length")
-                file_total = (
-                    int(length_header)
-                    if isinstance(length_header, str) and length_header.isdigit()
-                    else 0
-                )
-                downloaded = 0
-                last_info_at = 0.0
-                last_info_text = ""
-                with open(tmp_path, "wb") as out_file:
-                    while True:
-                        if stop_event is not None and stop_event.is_set():
-                            out_file.close()
-                            if os.path.isfile(tmp_path):
-                                try:
-                                    os.remove(tmp_path)
-                                except OSError:
-                                    pass
-                            return
-                        chunk = response.read(64 * 1024)
-                        if not chunk:
-                            break
-                        out_file.write(chunk)
-                        downloaded += len(chunk)
-                        if report is not None:
-                            report(downloaded, file_total)
-                        if on_info and file_total:
-                            info_text = (
-                                f"{format_download_size(downloaded)} / "
-                                f"{format_download_size(file_total)}"
-                            )
-                            now = time.monotonic()
-                            if info_text != last_info_text and (
-                                now - last_info_at >= _INFO_UPDATE_INTERVAL_S
-                                or downloaded >= file_total
-                            ):
-                                last_info_at = now
-                                last_info_text = info_text
-                                on_info(info_text)
-                if file_total and downloaded != file_total:
-                    raise OSError(
-                        f"Incomplete download: received {downloaded} bytes, expected {file_total}"
-                    )
-        except Exception:
-            if os.path.isfile(tmp_path):
-                try:
-                    os.remove(tmp_path)
-                except OSError:
-                    pass
-            raise
+        self._transfer._download_file_url(url, tmp_path, report, stop_event, on_info)
 
     # -- Model-data mapper refresh ----------------------------------------------
 
@@ -1480,7 +1003,7 @@ class DownloadManager:
             elif name_changed:
                 repo.invalidate_model_presentation(reload_mappers=True)
             coordinator = getattr(repo, "catalogue", None)
-            snapshot = getattr(coordinator, "_latest", None)
+            snapshot = getattr(coordinator, "latest_snapshot", None)
             _attempt_presentation_backfill(repo, snapshot, operation="online model-metadata update")
         debug(
             "download",
@@ -1587,11 +1110,9 @@ class DownloadManager:
 
     @staticmethod
     def _load_cache() -> Dict:
-        try:
-            with open(DOWNLOAD_MODEL_CACHE, "r") as cache_file:
-                return json.load(cache_file)
-        except (OSError, ValueError):
-            return {}
+        from .catalogue_source_loader import load_bundled_upstream
+
+        return load_bundled_upstream(DOWNLOAD_MODEL_CACHE)
 
     @staticmethod
     def manual_links(

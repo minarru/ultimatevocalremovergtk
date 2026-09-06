@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import tempfile
 import threading
 import time
@@ -398,6 +399,119 @@ class CatalogueCoordinatorTests(unittest.TestCase):
         if delta is not None:
             self.assertEqual(delta.kind, DeltaKind.IDENTITY_REFINED)
         coordinator.close()
+
+    def test_identity_removal_publishes_once_and_unchanged_update_is_silent(self) -> None:
+        coordinator = self._coordinator(
+            {
+                "mdx_download_list": {
+                    "First": {"first.ckpt": "https://u/first.ckpt"},
+                    "Second": {"second.ckpt": "https://u/second.ckpt"},
+                },
+            }
+        )
+        self.addCleanup(coordinator.close)
+        identities = {
+            "https://u/first.ckpt": "sha256:same",
+            "https://u/second.ckpt": "sha256:same",
+        }
+        with mock.patch("core.download_sizes.trusted_content_ids_from_cache", return_value={}):
+            initial = coordinator.ensure(allow_network=False)
+        self.assertEqual(len(initial.mdx), 2)
+        seen: list[CatalogueDelta] = []
+        removals: list[bool] = []
+        coordinator.subscribe_delta(seen.append)
+        coordinator.subscribe_identity_removal(lambda: removals.append(True))
+        with mock.patch(
+            "core.download_sizes.trusted_content_ids_from_cache", return_value=identities
+        ):
+            delta = coordinator.apply_trusted_identities(identities)
+            self.assertEqual(len(seen), 1)
+            self.assertEqual(seen[0], delta)
+            self.assertEqual(seen[0].kind, DeltaKind.IDENTITY_REFINED)
+            self.assertEqual(sum(map(len, seen[0].removed.values())), 1)
+            self.assertEqual(removals, [True])
+            self.assertIsNone(coordinator.apply_trusted_identities(identities))
+            self.assertEqual(len(seen), 1)
+            self.assertEqual(removals, [True])
+
+    def test_latest_snapshot_is_shared_without_loading_or_refreshing(self) -> None:
+        from core.downloads import DownloadManager
+
+        coordinator = self._coordinator()
+        self.addCleanup(coordinator.close)
+        manager = DownloadManager(coordinator)
+        self.assertIsNone(getattr(coordinator, "latest_snapshot", "missing"))
+        self.assertIsNone(manager.latest_snapshot)
+        snapshot = coordinator.ensure(allow_network=False)
+        with mock.patch.object(coordinator, "snapshot", side_effect=AssertionError("refresh")):
+            self.assertIs(coordinator.latest_snapshot, snapshot)
+            self.assertIs(manager.latest_snapshot, snapshot)
+        self.assertEqual(coordinator.builds, 1)
+        with self.assertRaises(AttributeError):
+            manager.latest_snapshot = None  # type: ignore[misc]
+        with self.assertRaises(AttributeError):
+            coordinator.latest_snapshot = None  # type: ignore[misc]
+
+    def test_catalogue_and_identity_consumers_share_published_snapshot(self) -> None:
+        from core.downloads import DownloadManager
+        from core.model_catalogue import ModelCatalogueService, catalogue_entry_meta
+        from core.model_identity import ModelIdentityService
+        from core.model_repository import ModelRepository
+
+        coordinator = self._coordinator()
+        self.addCleanup(coordinator.close)
+        snapshot = coordinator.ensure(allow_network=False)
+        manager = DownloadManager(coordinator)
+        manager.ensure_catalogues(allow_network=False)
+        with mock.patch.object(ModelRepository, "reload_mappers"):
+            repo = ModelRepository(catalogue=coordinator)
+        with (
+            mock.patch.object(coordinator, "ensure", side_effect=AssertionError("refreshed snapshot")),
+            mock.patch.object(repo, "_model_artifact_files", return_value=[]),
+            mock.patch("core.model_scores.load_model_scores", return_value={}),
+        ):
+            self.assertEqual(repo.catalogue_revision, snapshot.revision.digest())
+            self.assertIs(catalogue_entry_meta(manager, "mdx", "Kept"), snapshot.meta_by_family["mdx"]["Kept"])
+            catalogue = ModelCatalogueService(manager)
+            self.assertEqual([row.selection for row in catalogue.records() if row.family == "mdx"], ["Kept"])
+            self.assertIs(catalogue.records(), catalogue.records())
+            self.assertEqual([record.id for record in ModelIdentityService(repo).records() if record.family == "mdx"], ["mdx:kept"])
+        self.assertEqual(coordinator.builds, 1)
+
+    def test_default_upstream_loads_bundled_data_offline_without_download_manager(self) -> None:
+        from core import catalogue_source_loader as loader
+
+        with tempfile.TemporaryDirectory() as tmp:
+            bundled = os.path.join(tmp, "bundled.json")
+            payload = {"mdx_download_list": {"Bundled": {"b.ckpt": "https://u/b.ckpt"}}}
+            with open(bundled, "w", encoding="utf-8") as handle:
+                json.dump(payload, handle)
+            with (
+                mock.patch.object(loader.paths, "DOWNLOAD_MODEL_CACHE_PATH", bundled),
+                mock.patch.object(
+                    loader.paths, "UPSTREAM_CATALOGUE_CACHE_FILE", os.path.join(tmp, "cache.json")
+                ),
+                mock.patch.object(
+                    loader, "open_upstream", side_effect=AssertionError("network")
+                ) as opener,
+                mock.patch.dict(sys.modules, {"core.downloads": None}),
+            ):
+                sources = loader.default_sources()
+                for source_id in (SourceId.POLITREES, SourceId.EXTRAS, SourceId.MVSEPLESS):
+                    sources[source_id] = _disabled(source_id)
+                coordinator = CatalogueCoordinator(sources=sources)
+                self.addCleanup(coordinator.close)
+                snapshot = coordinator.ensure(
+                    allow_network=False,
+                    policy=AccessPolicy(
+                        allow_network=False,
+                        allow_metadata_writes=False,
+                        allow_cache_writes=False,
+                    ),
+                )
+                self.assertEqual(dict(snapshot.mdx), payload["mdx_download_list"])
+                opener.assert_not_called()
+            self.assertEqual(os.listdir(tmp), ["bundled.json"])
 
     def test_force_coalesces_concurrent_callers(self) -> None:
         calls = {"n": 0}

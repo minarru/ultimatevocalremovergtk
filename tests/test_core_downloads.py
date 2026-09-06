@@ -265,9 +265,7 @@ class WarmSizeCacheTests(unittest.TestCase):
 
         from core.downloads import DownloadManager
 
-        manager = DownloadManager.__new__(DownloadManager)
-        manager._size_warmup_lock = threading.Lock()
-        manager._size_warmup_done_for = None
+        manager = DownloadManager()
         manager.ensure_catalogues = mock.MagicMock(return_value=True)
         manager.catalogue_checkpoint_urls = mock.MagicMock(
             return_value=["https://example.test/a.ckpt"]
@@ -292,7 +290,7 @@ class WarmSizeCacheTests(unittest.TestCase):
         ):
             manager.warm_size_cache()
         self.assertIsNone(
-            manager._size_warmup_done_for,
+            manager._size_evidence.done_for,
             "latched while identity candidates remained, stranding them for the session",
         )
 
@@ -313,7 +311,7 @@ class WarmSizeCacheTests(unittest.TestCase):
         ):
             manager.warm_size_cache()
         self.assertEqual(
-            manager._size_warmup_done_for, frozenset({"https://example.test/a.ckpt"})
+            manager._size_evidence.done_for, frozenset({"https://example.test/a.ckpt"})
         )
 
 
@@ -600,7 +598,7 @@ class UpdateModelSettingsTests(unittest.TestCase):
             side = [_FileResp(payload) for payload in remote]
             repo = mock.Mock()
             repo.catalogue = SimpleNamespace(
-                _latest=SimpleNamespace(
+                latest_snapshot=SimpleNamespace(
                     vr={},
                     mdx={},
                     demucs={},
@@ -940,8 +938,8 @@ class DownloadManagerSwrFreshnessTests(unittest.TestCase):
         release.set()
         self.assertTrue(
             _wait_until(
-                lambda: coordinator._latest is not None
-                and "New" in coordinator._latest.mdx
+                lambda: coordinator.latest_snapshot is not None
+                and "New" in coordinator.latest_snapshot.mdx
             )
         )
         self.assertTrue(

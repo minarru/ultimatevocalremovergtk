@@ -1,14 +1,14 @@
 """Floating model-options sheet (``Adw.Dialog``) with per-architecture tabs."""
 
 from __future__ import annotations
-import typing
 
+import typing
 from typing import Any, Callable, Dict, Mapping, Optional, Sequence
 
 from gi.repository import Adw, Gtk
 
 from ..dialogs.utils import present_modal_dialog
-from ..spacing import inset_md
+from ..template import load_builder, object_from_builder
 from .applicability import (
     OPEN_CONTEXT_AUDIO_TOOLS,
     OPEN_CONTEXT_ENSEMBLE,
@@ -30,10 +30,6 @@ _SHEET_FALLBACK_HEIGHT = 560
 _SHEET_MAX_HEIGHT_FRACTION = 0.9
 #: Below this content width the two columns stack into one.
 _STACK_BREAKPOINT = 700
-#: Floor below which the dialog must not be allocated. Without it libadwaita
-#: warns and can size the dialog under its content's minimum, clipping rows.
-_SHEET_MIN_WIDTH = 360
-_SHEET_MIN_HEIGHT = 294
 
 
 def _disable_banner_animation(banner: Adw.Banner) -> bool:
@@ -82,7 +78,7 @@ def _uncollapse_top_bar_spacing(toolbar: Adw.ToolbarView) -> bool:
     return False
 
 
-def _build_sheet_columns():
+def _build_sheet_page():
     """Two content-sized columns for one tab page.
 
     Unlike ``ui.widgets.columns.build_columns_box`` these are **not**
@@ -90,31 +86,17 @@ def _build_sheet_columns():
     stack have genuinely different natural widths, and forcing them equal is
     what left the MDX-Net tab showing two rows beside a column of expanders.
     """
-    col_start = Gtk.Box(
-        orientation=Gtk.Orientation.VERTICAL,
-        spacing=18,
-        hexpand=True,
-        valign=Gtk.Align.START,
-    )
-    col_end = Gtk.Box(
-        orientation=Gtk.Orientation.VERTICAL,
-        spacing=18,
-        hexpand=True,
-        valign=Gtk.Align.START,
-    )
-    columns_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=18)
-    columns_box.set_homogeneous(False)
-    columns_box.set_hexpand(True)
-    columns_box.append(col_start)
-    columns_box.append(col_end)
-    return columns_box, col_start, col_end
+    builder = load_builder("model_options_page")
+    page_box = object_from_builder(builder, "page_box", Gtk.Box)
+    columns_box = object_from_builder(builder, "columns_box", Gtk.Box)
+    col_start = object_from_builder(builder, "col_start", Gtk.Box)
+    col_end = object_from_builder(builder, "col_end", Gtk.Box)
+    return page_box, columns_box, col_start, col_end
 
 
 def _set_sheet_columns_stacked(columns_box: typing.Any, stacked: bool) -> None:
     """Flip a sheet columns box between stacked (narrow) and side-by-side."""
-    columns_box.set_orientation(
-        Gtk.Orientation.VERTICAL if stacked else Gtk.Orientation.HORIZONTAL
-    )
+    columns_box.set_orientation(Gtk.Orientation.VERTICAL if stacked else Gtk.Orientation.HORIZONTAL)
 
 
 class ModelOptionsSheet:
@@ -145,22 +127,13 @@ class ModelOptionsSheet:
         # the libadwaita placement for ``Adw.Banner`` -- it renders flush with
         # the dialog edges and attached to the header, instead of floating
         # inside the page's inset margins.
-        self._banner = Adw.Banner()
-        self._banner.set_revealed(False)
+        builder = load_builder("model_options_sheet")
+        self._banner = object_from_builder(builder, "banner", Adw.Banner)
         _disable_banner_animation(self._banner)
         self._banner.connect("button-clicked", self._on_banner_switch)
 
-        self.dialog = Adw.Dialog()
-        self.dialog.set_title("Model options")
-        self.dialog.set_content_width(_SHEET_WIDTH)
+        self.dialog = object_from_builder(builder, "dialog", Adw.Dialog)
         self.dialog.set_content_height(self._sheet_height())
-        self.dialog.set_follows_content_size(False)
-        # libadwaita warns ("AdwDialog does not have a minimum size") and will
-        # happily allocate the dialog below its content's minimum, which clips
-        # the children. Content width/height are only *preferred* sizes; these
-        # are the floor. Kept small enough that the stacked single-column layout
-        # below the breakpoint still fits.
-        self.dialog.set_size_request(_SHEET_MIN_WIDTH, _SHEET_MIN_HEIGHT)
 
         # ``notify::content-width`` only fires when code calls
         # ``set_content_width`` -- it is the *requested* size, which after the
@@ -176,7 +149,7 @@ class ModelOptionsSheet:
         self._narrow_breakpoint.connect("unapply", self._on_narrow_breakpoint_unapply)
         self.dialog.add_breakpoint(self._narrow_breakpoint)
 
-        self._stack = Adw.ViewStack()
+        self._stack = object_from_builder(builder, "stack", Adw.ViewStack)
         if hasattr(Adw, "InlineViewSwitcher"):
             self._switcher = Adw.InlineViewSwitcher()
             self._switcher.set_stack(self._stack)
@@ -194,30 +167,19 @@ class ModelOptionsSheet:
             self._tab_stack_pages[view.stack_name] = stack_page
 
         # Header: left-aligned title + centered tab switcher (like Download Center).
-        toolbar = Adw.ToolbarView()
-        header = Adw.HeaderBar()
+        toolbar = object_from_builder(builder, "toolbar", Adw.ToolbarView)
+        header = object_from_builder(builder, "header", Adw.HeaderBar)
         header.set_title_widget(self._switcher)
-        toolbar.add_top_bar(header)
-        toolbar.add_top_bar(self._banner)
         _uncollapse_top_bar_spacing(toolbar)
 
-        # No ``spacing`` -- ``body`` has a single child, so it would do nothing.
-        body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        inset_md(body)
-        body.append(self._stack)
-        toolbar.set_content(body)
-        self.dialog.set_child(toolbar)
-
     def _build_tab_page(self, view: typing.Any) -> Gtk.Widget:
-        columns_box, col_start, col_end = _build_sheet_columns()
+        page_box, columns_box, col_start, col_end = _build_sheet_page()
         self._tab_columns[view.stack_name] = columns_box
 
         if view.advanced_group.get_parent() is not None:
             view.advanced_group.get_parent().remove(view.advanced_group)
         view.advanced_group.set_title("Inference")
-        view.advanced_group.set_description(
-            "Advanced processing options for this architecture"
-        )
+        view.advanced_group.set_description("Advanced processing options for this architecture")
         col_start.append(view.advanced_group)
 
         for group in (view.secondary_group, view.maintenance_group):
@@ -225,15 +187,6 @@ class ModelOptionsSheet:
                 group.get_parent().remove(group)
             col_end.append(group)
 
-        scroller = Gtk.ScrolledWindow()
-        scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        scroller.set_vexpand(True)
-        scroller.set_hexpand(True)
-        scroller.set_child(columns_box)
-
-        page_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        page_box.set_vexpand(True)
-        page_box.append(scroller)
         self._tab_pages[view.stack_name] = page_box
         return page_box
 
@@ -390,9 +343,7 @@ class ModelOptionsSheet:
         text, button_label = result
         banner.set_title(text)
         # Offering a switch we cannot perform would be a dead button.
-        banner.set_button_label(
-            button_label if button_label and self._on_switch_method else ""
-        )
+        banner.set_button_label(button_label if button_label and self._on_switch_method else "")
         banner.set_revealed(True)
 
     def present(

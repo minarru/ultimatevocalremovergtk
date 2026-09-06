@@ -41,7 +41,8 @@ class DownloadCenterPublicUiTests(unittest.TestCase):
 
         context = SimpleNamespace(settings=Settings.defaults())
         center = DownloadCenterWindow(None, context, DownloadManager(), mock.MagicMock())
-        self.addCleanup(center.window.destroy)
+        self.addCleanup(center.dispose)
+        self.addCleanup(center.window.set_visible, False)
 
         icon_names: list[str] = []
         stack: list[Gtk.Widget] = [center.window]
@@ -73,7 +74,8 @@ class DownloadCenterPublicUiTests(unittest.TestCase):
 
         context = SimpleNamespace(settings=Settings.defaults())
         center = DownloadCenterWindow(None, context, DownloadManager(), mock.MagicMock())
-        self.addCleanup(center.window.destroy)
+        self.addCleanup(center.dispose)
+        self.addCleanup(center.window.set_visible, False)
 
         self.assertEqual(center.stack.get_visible_child_name(), PURPOSE_VOCALS)
         # libadwaita 1.7+ uses InlineViewSwitcher + ViewStack; CI's Ubuntu
@@ -111,7 +113,8 @@ class DownloadCenterPublicUiTests(unittest.TestCase):
         context = SimpleNamespace(settings=Settings.defaults())
         with mock.patch("ui.download_center.hasattr", _hasattr):
             center = DownloadCenterWindow(None, context, DownloadManager(), mock.MagicMock())
-        self.addCleanup(center.window.destroy)
+        self.addCleanup(center.dispose)
+        self.addCleanup(center.window.set_visible, False)
 
         self.assertIsInstance(center.stack, Gtk.Stack)
         self.assertIsInstance(center.switcher, Gtk.StackSwitcher)
@@ -147,7 +150,8 @@ class DownloadCenterPublicUiTests(unittest.TestCase):
 
         context = SimpleNamespace(settings=Settings.defaults())
         center = DownloadCenterWindow(None, context, DownloadManager(), mock.MagicMock())
-        self.addCleanup(center.window.destroy)
+        self.addCleanup(center.dispose)
+        self.addCleanup(center.window.set_visible, False)
 
         center.select_catalogue(purpose=PURPOSE_RESTORE, arch=APOLLO_ARCH_TYPE)
 
@@ -166,7 +170,8 @@ class DownloadCenterPublicUiTests(unittest.TestCase):
 
         context = SimpleNamespace(settings=Settings.defaults())
         center = DownloadCenterWindow(None, context, DownloadManager(), mock.MagicMock())
-        self.addCleanup(center.window.destroy)
+        self.addCleanup(center.dispose)
+        self.addCleanup(center.window.set_visible, False)
 
         center.select_catalogue(purpose=PURPOSE_VOCALS, arch=VR_ARCH_TYPE)
 
@@ -182,10 +187,15 @@ class DownloadCenterOpenTests(unittest.TestCase):
         from ui.download import open_download_center
 
         existing = mock.MagicMock()
-        context = SimpleNamespace(_download_center_window=existing)
+        context = SimpleNamespace()
+        from ui.download import DownloadQueueUiBinding
+
+        binding = DownloadQueueUiBinding.__new__(DownloadQueueUiBinding)
+        binding.center = existing
+        parent = SimpleNamespace(_download_ui=binding)
         with mock.patch("ui.download.start_download_size_cache_warmup"):
             open_download_center(
-                mock.MagicMock(),
+                parent,
                 context,
                 purpose=PURPOSE_STEMS,
                 arch=DEMUCS_ARCH_TYPE,
@@ -200,9 +210,14 @@ class DownloadCenterOpenTests(unittest.TestCase):
         from ui.download import open_download_center
 
         existing = mock.MagicMock()
-        context = SimpleNamespace(_download_center_window=existing)
+        context = SimpleNamespace()
+        from ui.download import DownloadQueueUiBinding
+
+        binding = DownloadQueueUiBinding.__new__(DownloadQueueUiBinding)
+        binding.center = existing
+        parent = SimpleNamespace(_download_ui=binding)
         with mock.patch("ui.download.start_download_size_cache_warmup"):
-            open_download_center(mock.MagicMock(), context)
+            open_download_center(parent, context)
 
         existing.present.assert_called_once()
         existing.select_catalogue.assert_not_called()

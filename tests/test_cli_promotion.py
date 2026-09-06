@@ -1,15 +1,24 @@
 from __future__ import annotations
 
+import multiprocessing
 import os
-from pathlib import Path
 import tempfile
 import threading
 import time
 import unittest
+from collections.abc import Callable
+from contextlib import nullcontext
+from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 from unittest import mock
 
-from cli.execution import PromotionSkipped, _promote, preflight_collisions
+from cli.execution import (
+    PromotionSkipped,
+    _promote,
+    preflight_collisions,
+)
+from cli.promotion import _move_no_replace, _unique_target
 from core.export_naming import OutputNamingContext, format_stem_basename
 from core.job_plan import PlannedInput, PlannedOutput
 
@@ -26,7 +35,180 @@ def _planned(path: str, output: str, track_base: str, stems: tuple[str, ...] = (
     return PlannedInput(path, naming, outputs)
 
 
+def _competing_promotion(stage: str, output: str, barrier: Any, results: Any) -> None:
+    """Make independent processes both observe absence before publication."""
+    target = os.path.join(output, "song (Vocals).wav")
+    real_exists = os.path.lexists
+    checks = 0
+
+    def synchronized_exists(path: str) -> bool:
+        nonlocal checks
+        exists = real_exists(path)
+        if path == target:
+            checks += 1
+            if checks == 2:
+                barrier.wait(timeout=10)
+        return exists
+
+    try:
+        with mock.patch("cli.promotion.os.path.lexists", synchronized_exists):
+            _promote(stage, output, "fail")
+    except FileExistsError:
+        results.put((stage, "collision"))
+    except Exception as exc:
+        results.put((stage, repr(exc)))
+    else:
+        results.put((stage, "success"))
+
+
 class PromotionTests(unittest.TestCase):
+    def test_independent_processes_cannot_both_publish_the_same_destination(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            output = Path(root, "out")
+            output.mkdir()
+            context = multiprocessing.get_context("spawn")
+            barrier, results = context.Barrier(2), context.Queue()
+            processes = []
+            stages = []
+            try:
+                for index in range(2):
+                    stage = Path(root, f"stage{index}")
+                    stage.mkdir()
+                    (stage / "song (Vocals).wav").write_text(stage.name)
+                    stages.append(stage)
+                    process = context.Process(
+                        target=_competing_promotion,
+                        args=(str(stage), str(output), barrier, results),
+                    )
+                    process.start()
+                    processes.append(process)
+                for process in processes:
+                    process.join(timeout=15)
+                    self.assertEqual(process.exitcode, 0)
+                outcomes = dict(results.get(timeout=2) for _ in processes)
+                self.assertEqual(sorted(outcomes.values()), ["collision", "success"])
+                for stage in stages:
+                    if outcomes[str(stage)] == "success":
+                        self.assertEqual((output / "song (Vocals).wav").read_text(), stage.name)
+                    else:
+                        self.assertEqual((stage / "song (Vocals).wav").read_text(), stage.name)
+            finally:
+                for process in processes:
+                    if process.is_alive():
+                        process.terminate()
+                    process.join(timeout=5)
+                results.close()
+                results.join_thread()
+
+    def test_atomic_move_preserves_existing_destination_with_native_and_fallback(self) -> None:
+        for fallback in (False, True):
+            with self.subTest(fallback=fallback), tempfile.TemporaryDirectory() as root:
+                source, target = Path(root, "source"), Path(root, "target")
+                source.write_bytes(b"new")
+                target.write_bytes(b"old")
+                with mock.patch("cli.promotion.sys.platform", "other") if fallback else nullcontext():
+                    with self.assertRaises(FileExistsError):
+                        _move_no_replace(str(source), str(target))
+                    self.assertEqual(source.read_bytes(), b"new")
+                    self.assertEqual(target.read_bytes(), b"old")
+                    target.unlink()
+                    _move_no_replace(str(source), str(target))
+                self.assertFalse(source.exists())
+                self.assertEqual(target.read_bytes(), b"new")
+
+    def test_fallback_move_removes_claim_when_source_unlink_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            source, target = Path(root, "source"), Path(root, "target")
+            source.write_bytes(b"new")
+            real_unlink = os.unlink
+
+            def failing_unlink(path: str) -> None:
+                if path == str(source):
+                    raise PermissionError("source removal denied")
+                real_unlink(path)
+
+            with (
+                mock.patch("cli.promotion.sys.platform", "other"),
+                mock.patch("cli.promotion.os.unlink", failing_unlink),
+                self.assertRaises(PermissionError),
+            ):
+                _move_no_replace(str(source), str(target))
+            self.assertEqual(source.read_bytes(), b"new")
+            self.assertFalse(target.exists())
+
+    def test_unique_target_treats_dangling_symlink_as_occupied(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            target = Path(root, "song.wav")
+            target.symlink_to(Path(root, "missing.wav"))
+            self.assertEqual(_unique_target(str(target)), str(Path(root, "song_2.wav")))
+
+    def test_collision_after_last_check_preserves_other_writer_and_rolls_back(self) -> None:
+        for policy in ("fail", "skip", "rename"):
+            with self.subTest(policy=policy), tempfile.TemporaryDirectory() as root:
+                stage, output = Path(root, "stage"), Path(root, "out")
+                stage.mkdir()
+                output.mkdir()
+                names = ("song (Instrumental).wav", "song (Vocals).wav")
+                for name in names:
+                    (stage / name).write_bytes(b"new")
+                raced = output / names[1]
+                real_exists = os.path.lexists
+                checks = 0
+
+                def racing_exists(
+                    path: str,
+                    real_exists: Callable[[str], bool] = real_exists,
+                    raced: Path = raced,
+                ) -> bool:
+                    nonlocal checks
+                    exists = real_exists(path)
+                    if path == str(raced):
+                        checks += 1
+                        if checks == 2:
+                            # The last absence check is already stale when it
+                            # returns: another process has published its file.
+                            raced.write_bytes(b"other writer")
+                    return exists
+
+                with mock.patch("cli.promotion.os.path.lexists", racing_exists):
+                    if policy == "rename":
+                        promoted = _promote(
+                            str(stage), str(output), policy, expected_track_base="song"
+                        )
+                        self.assertEqual(
+                            sorted(Path(path).name for path in promoted),
+                            ["song_2 (Instrumental).wav", "song_2 (Vocals).wav"],
+                        )
+                    else:
+                        exception = FileExistsError if policy == "fail" else PromotionSkipped
+                        with self.assertRaises(exception):
+                            _promote(str(stage), str(output), policy)
+                        for name in names:
+                            self.assertEqual((stage / name).read_bytes(), b"new")
+                self.assertEqual(raced.read_bytes(), b"other writer")
+                self.assertFalse((output / names[0]).exists())
+
+    def test_per_file_rename_retries_a_collision_after_last_check(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            stage, output = Path(root, "stage"), Path(root, "out")
+            stage.mkdir()
+            output.mkdir()
+            (stage / "audio.wav").write_bytes(b"new")
+            target = output / "audio.wav"
+            real_exists = os.path.lexists
+
+            def racing_exists(path: str) -> bool:
+                exists = real_exists(path)
+                if path == str(target) and not exists:
+                    target.write_bytes(b"other writer")
+                return exists
+
+            with mock.patch("cli.promotion.os.path.lexists", racing_exists):
+                promoted = _promote(str(stage), str(output), "rename")
+            self.assertEqual(promoted, [str(output / "audio_2.wav")])
+            self.assertEqual(target.read_bytes(), b"other writer")
+            self.assertEqual(Path(promoted[0]).read_bytes(), b"new")
+
     def test_add_model_name_does_not_double_suffix(self) -> None:
         with tempfile.TemporaryDirectory() as root:
             stage = os.path.join(root, "stage")
@@ -108,7 +290,7 @@ class PromotionTests(unittest.TestCase):
                         raise OSError("simulated promote failure")
                 real_replace(src, dst, *args, **kwargs)
 
-            with mock.patch("cli.execution.os.replace", flaky_replace):
+            with mock.patch("cli.promotion.os.replace", flaky_replace):
                 with self.assertRaises(OSError):
                     _promote(stage, output, "overwrite", destinations=destinations)
 
@@ -143,7 +325,7 @@ class PromotionTests(unittest.TestCase):
                         raise OSError("simulated backup failure")
                 real_replace(src, dst, *args, **kwargs)
 
-            with mock.patch("cli.execution.os.replace", flaky_replace):
+            with mock.patch("cli.promotion.os.replace", flaky_replace):
                 with self.assertRaises(OSError):
                     _promote(stage, output, "overwrite", destinations=destinations)
 
@@ -204,7 +386,7 @@ class PromotionTests(unittest.TestCase):
                         raise KeyboardInterrupt
                 real_replace(src, dst, *args, **kwargs)
 
-            with mock.patch("cli.execution.os.replace", interrupting_replace):
+            with mock.patch("cli.promotion.os.replace", interrupting_replace):
                 with self.assertRaises(KeyboardInterrupt):
                     _promote(stage, output, "overwrite", destinations=destinations)
 
@@ -269,7 +451,7 @@ class PromotionTests(unittest.TestCase):
                     raced["done"] = True
                     Path(song_2).write_bytes(b"raced")
 
-            with mock.patch("cli.execution.os.makedirs", racing_makedirs):
+            with mock.patch("cli.promotion.os.makedirs", racing_makedirs):
                 promoted = _promote(
                     stage, output, "rename", destinations=destinations,
                 )
@@ -302,16 +484,16 @@ class PromotionTests(unittest.TestCase):
                 os.path.join(output, "song (Vocals).wav"),
             ]
             song_2_vocals = os.path.join(output, "song_2 (Vocals).wav")
-            real_replace = os.replace
+            real_move = _move_no_replace
             raced = {"done": False}
 
-            def racing_replace(src: str, dst: str, *args: object, **kwargs: object) -> None:
-                real_replace(src, dst, *args, **kwargs)
+            def racing_move(src: str, dst: str) -> None:
+                real_move(src, dst)
                 if not raced["done"] and os.path.dirname(src) == stage:
                     raced["done"] = True
                     Path(song_2_vocals).write_bytes(b"raced")
 
-            with mock.patch("cli.execution.os.replace", racing_replace):
+            with mock.patch("cli.promotion._move_no_replace", racing_move):
                 promoted = _promote(
                     stage, output, "rename", destinations=destinations,
                 )
@@ -345,14 +527,14 @@ class PromotionTests(unittest.TestCase):
 
             guard = threading.Lock()
             live = {"now": 0, "peak": 0}
-            real_replace = os.replace
+            real_move = _move_no_replace
 
-            def slow_replace(src: str, dst: str, *args: object, **kwargs: object) -> None:
+            def slow_move(src: str, dst: str) -> None:
                 with guard:
                     live["now"] += 1
                     live["peak"] = max(live["peak"], live["now"])
                 time.sleep(0.05)
-                real_replace(src, dst, *args, **kwargs)
+                real_move(src, dst)
                 with guard:
                     live["now"] -= 1
 
@@ -363,10 +545,10 @@ class PromotionTests(unittest.TestCase):
             def promote(index: int) -> None:
                 try:
                     _promote(stages[index], targets[index], "fail")
-                except BaseException as exc:  # noqa: BLE001 - reported below
+                except BaseException as exc:  # reported below
                     errors.append(exc)
 
-            with mock.patch("cli.execution.os.replace", slow_replace):
+            with mock.patch("cli.promotion._move_no_replace", slow_move):
                 threads = [
                     threading.Thread(target=promote, args=(index,))
                     for index in (0, 1)

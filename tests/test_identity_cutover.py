@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import unittest
 from typing import Any
+from unittest.mock import Mock
 
-from core.job_plan import JobResolver, JobSpec, ValidationLevel
+from core.job_plan import JobSpec, ValidationLevel
 from core.model_identity import IdentityIndex, ModelArtifacts, ModelRecord
 from core.settings import Settings
 from core.settings.defaults import default_settings_dict
 from core.types import ProcessMethod
+from tests.diagnostic_fixtures import expected_event
+from tests.planning_fixtures import resolver_with_ports
 
 
 class KeepTextCutoverTests(unittest.TestCase):
@@ -22,7 +25,8 @@ class KeepTextCutoverTests(unittest.TestCase):
         import json
         import tempfile
         from unittest.mock import patch
-        from cli.profiles import load_profile, PROFILE_SCHEMA_VERSION
+
+        from cli.profiles import PROFILE_SCHEMA_VERSION, load_profile
         from core.settings import Settings
 
         payload = {
@@ -52,6 +56,7 @@ class KeepTextCutoverTests(unittest.TestCase):
     def test_sparse_cli_profile_keeps_illegal_text_with_transient_warnings(self) -> None:
         import json
         import tempfile
+
         from cli.profiles import PROFILE_SCHEMA_VERSION, load_profile
 
         payload = {
@@ -76,6 +81,7 @@ class KeepTextCutoverTests(unittest.TestCase):
     def test_sparse_cli_profile_keeps_illegal_primary_text(self) -> None:
         import json
         import tempfile
+
         from cli.profiles import PROFILE_SCHEMA_VERSION, load_profile
 
         payload = {
@@ -98,6 +104,7 @@ class KeepTextCutoverTests(unittest.TestCase):
         import json
         import tempfile
         from unittest.mock import patch
+
         from cli.profiles import PROFILE_SCHEMA_VERSION, load_profile
 
         payload = {
@@ -244,8 +251,8 @@ class KeepTextCutoverTests(unittest.TestCase):
         settings = Settings.defaults()
         settings.process.method = ProcessMethod.MDX
         settings.mdx.model = record.id
-        resolver = JobResolver(object())
-        resolver.identities = IdentityIndex({record.id: record})  # type: ignore[assignment]
+        resolver = resolver_with_ports(object())
+        resolver.identities.lookup = Mock(side_effect=IdentityIndex({record.id: record}).lookup)
         with tempfile.TemporaryDirectory() as root:
             source = os.path.join(root, "song.wav")
             open(source, "wb").close()
@@ -259,6 +266,7 @@ class KeepTextCutoverTests(unittest.TestCase):
         import os
         import tempfile
         from unittest.mock import patch
+
         from core import ensemble_service, paths
 
         with tempfile.TemporaryDirectory() as root, patch.object(
@@ -287,6 +295,7 @@ class KeepTextCutoverTests(unittest.TestCase):
         import os
         import tempfile
         from unittest.mock import patch
+
         from core import ensemble_service, paths
 
         member = {"legacy": ["model", 17]}
@@ -422,14 +431,14 @@ class ReplayManifestContractTests(unittest.TestCase):
             "command": "ensemble",
             "model_dependencies": {
                 f"ensemble.selected_models[{index}]": model_id
-                for index, model_id in zip(indices, members)
+                for index, model_id in zip(indices, members, strict=True)
             },
             "model_identity_digest": cls._RECORDED_DIGEST,
             "settings": settings.to_json_dict(),
             "plan": {
                 "models": [
                     {"id": model_id, "checkpoint_hash": f"hash-{index}"}
-                    for index, model_id in zip(indices, members)
+                    for index, model_id in zip(indices, members, strict=True)
                 ],
             },
             "job_spec": {
@@ -486,11 +495,12 @@ class ReplayManifestContractTests(unittest.TestCase):
             with patch(
                 "cli.replay._run",
                 side_effect=AssertionError("replay child must not run"),
-            ), redirect_stdout(stdout), redirect_stderr(io.StringIO()):
+            ), redirect_stdout(stdout), redirect_stderr(io.StringIO()), expected_event(self, "command_failed"):
                 code = cmd_run(
                     self._args(handle.name, allow_model_change=allow_model_change)
                 )
-        return code, json.loads(stdout.getvalue())
+        payload = json.loads(stdout.getvalue())
+        return code, payload
 
     def _invoke_with_successful_child(
         self,
@@ -886,7 +896,7 @@ class ReplayManifestContractTests(unittest.TestCase):
             installed=True,
         )
         resolver = AudioJobResolver(Mock())
-        resolver.identities = Mock()
+        resolver.identities.lookup = Mock()
         resolver.identities.lookup.return_value = record
         settings = Settings.defaults()
         settings.audio_tools.apollo_model = record.id
@@ -1021,7 +1031,7 @@ class ReplayManifestContractTests(unittest.TestCase):
             stdout = io.StringIO()
             with patch(
                 "cli.replay._run", return_value=(0, {"plan": {}}, "")
-            ), redirect_stdout(stdout), redirect_stderr(io.StringIO()):
+            ), redirect_stdout(stdout), redirect_stderr(io.StringIO()), expected_event(self, "command_failed"):
                 code = cmd_run(self._args(handle.name))
 
         payload = json.loads(stdout.getvalue())

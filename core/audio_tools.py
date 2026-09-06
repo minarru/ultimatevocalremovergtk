@@ -15,10 +15,9 @@ so this module - and any view that imports it - stays importable on a bare
 Python (no torch / ML stack) install. Options are read from a
 :class:`~core.settings.Settings` through its flat compatibility accessors.
 """
-import typing
-
 import os
 import time
+import typing
 from pathlib import Path
 from typing import Callable, List, Optional, Sequence, Tuple
 
@@ -41,9 +40,9 @@ from bundled.constants import (
 from .audio_io import resolve_wav_type_set, save_format
 from .error_context import snapshot_worker_file
 from .export_naming import sanitize_filename_component
+from .inference_cleanup import release_inference_memory as _release_inference_resources
 from .job_callbacks import JobCallbacks
 from .run_control import ProcessStopped, check_stopped, pausable_callback
-from .inference_cleanup import release_inference_memory as _release_inference_resources
 from .settings import Settings
 from .settings.coerce import enum_value
 
@@ -286,10 +285,11 @@ class AudioTools:
             )
         import soundfile as sf
 
-        # ``apollo_inference`` pulls in torch; import it lazily so ``core``
-        # (and any view importing it) stays torch-free at import time.
-        from ml import apollo_inference
         from core.gpu_backend import clear_torch_cache, resolve_inference_backend
+
+        # ``engines.apollo`` pulls in torch; import it lazily so ``core``
+        # (and any view importing it) stays torch-free at import time.
+        from engines import apollo
 
         track = sanitize_filename_component(audio_file_base) or "audio"
         save_path = os.path.join(
@@ -303,7 +303,7 @@ class AudioTools:
             is_macos=self.is_macos,
         )
 
-        restored_audio = apollo_inference.restore_process(
+        restored_audio = apollo.restore_process(
             audio_file,
             self.apollo_model_location,
             self.apollo_overlap_val,
@@ -427,7 +427,7 @@ class AudioToolRunner:
                 try:
                     thread.terminate()
                     thread.join(timeout=0.25)
-                except Exception:  # noqa: BLE001 - best-effort, like UVR's stop
+                except Exception:  # best-effort, like UVR's stop
                     pass
 
     def release_inference_memory(
@@ -461,7 +461,8 @@ class AudioToolRunner:
         set_operation_id(operation_id)
         log_event("audio", "audio_worker_entered", tool=tool)
         stime = time.perf_counter()
-        time_elapsed = lambda: f'Time Elapsed: {time.strftime("%H:%M:%S", time.gmtime(int(time.perf_counter() - stime)))}'
+        def time_elapsed() -> str:
+            return f'Time Elapsed: {time.strftime("%H:%M:%S", time.gmtime(int(time.perf_counter() - stime)))}'
 
         try:
             export_path = self.settings.process.export_path
@@ -494,7 +495,7 @@ class AudioToolRunner:
             self._finish_active_unit(callbacks, ProcessStopped())
             callbacks.stopped()
             _release_inference_resources(self)
-        except Exception as exc:  # noqa: BLE001 - surfaced through the callback
+        except Exception as exc:  # surfaced through the callback
             if self._is_stopped:
                 log_event("audio", "audio_worker_stopped", tool=tool, stage="error")
                 callbacks.console(PROCESS_STOPPED_BY_USER)

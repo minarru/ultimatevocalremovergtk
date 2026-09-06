@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 import torch
 import torch.nn as nn
-from core.torch_checkpoint import load_torch_checkpoint
-from .modules import NormFactory, TFC_TDF
 from pytorch_lightning import LightningModule
+
+from .modules import TFC_TDF, NormFactory
 
 if TYPE_CHECKING:
     from torch.optim import Optimizer
@@ -59,7 +60,7 @@ class ConvTDFNet(AbstractMDXNet):
         n_fft: int,
         hop_length: int,
         num_blocks: int,
-        l: int,
+        num_layers: int,
         g: int,
         k: int,
         bn: int | None,
@@ -72,7 +73,7 @@ class ConvTDFNet(AbstractMDXNet):
         #self.save_hyperparameters()
 
         self.num_blocks = num_blocks
-        self.l = l
+        self.l = num_layers
         self.g = g
         self.k = k
         self.bn = bn
@@ -82,7 +83,10 @@ class ConvTDFNet(AbstractMDXNet):
             norm: NormFactory = nn.BatchNorm2d
 
         elif optimizer == 'adamw':
-            norm = lambda input: nn.GroupNorm(2, input)
+            def group_norm(input: int) -> nn.GroupNorm:
+                return nn.GroupNorm(2, input)
+
+            norm = group_norm
 
         else:
             # Previously fell through to a NameError on ``norm``.
@@ -105,7 +109,7 @@ class ConvTDFNet(AbstractMDXNet):
         self.encoding_blocks = nn.ModuleList()
         self.ds = nn.ModuleList()
         for _i in range(self.n):
-            self.encoding_blocks.append(TFC_TDF(c, l, f, k, bn, bias=bias, norm=norm))
+            self.encoding_blocks.append(TFC_TDF(c, num_layers, f, k, bn, bias=bias, norm=norm))
             self.ds.append(
                 nn.Sequential(
                     nn.Conv2d(in_channels=c, out_channels=c + g, kernel_size=scale, stride=scale),
@@ -116,7 +120,7 @@ class ConvTDFNet(AbstractMDXNet):
             f = f // 2
             c += g
 
-        self.bottleneck_block = TFC_TDF(c, l, f, k, bn, bias=bias, norm=norm)
+        self.bottleneck_block = TFC_TDF(c, num_layers, f, k, bn, bias=bias, norm=norm)
 
         self.decoding_blocks = nn.ModuleList()
         self.us = nn.ModuleList()
@@ -131,7 +135,7 @@ class ConvTDFNet(AbstractMDXNet):
             f = f * 2
             c -= g
 
-            self.decoding_blocks.append(TFC_TDF(c, l, f, k, bn, bias=bias, norm=norm))
+            self.decoding_blocks.append(TFC_TDF(c, num_layers, f, k, bn, bias=bias, norm=norm))
 
         self.final_conv = nn.Sequential(
             nn.Conv2d(in_channels=c, out_channels=self.dim_c, kernel_size=(1, 1)),
@@ -163,14 +167,19 @@ class ConvTDFNet(AbstractMDXNet):
         return x
     
 class Mixer(nn.Module):
-    def __init__(self, device: torch.device | str, mixer_path: str) -> None:
+    def __init__(self, device: torch.device | str, mixer_path: str, *,
+                 checkpoint_loader: Callable[..., Any] | None = None) -> None:
         
         super(Mixer, self).__init__()
         
         self.linear = nn.Linear((dim_s+1)*2, dim_s*2, bias=False)
         
+        if checkpoint_loader is None:
+            from core.torch_checkpoint import load_torch_checkpoint
+
+            checkpoint_loader = load_torch_checkpoint
         self.load_state_dict(
-            load_torch_checkpoint(mixer_path, map_location=device)
+            checkpoint_loader(mixer_path, map_location=device)
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:

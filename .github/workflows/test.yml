@@ -16,7 +16,7 @@ on:
 
 jobs:
   unittest:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -41,9 +41,13 @@ jobs:
             | sudo tee /etc/apt/apt.conf.d/99ci-timeouts >/dev/null
           printf '%s\n' 'http://archive.ubuntu.com/ubuntu/' \
             | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
+          if [ ! -f /etc/apt/sources.list.d/ubuntu.sources ]; then
+            echo 'Expected distro apt source definition is missing' >&2
+            exit 1
+          fi
           sudo sed -i 's|mirror+file:/etc/apt/apt-mirrors.txt|http://archive.ubuntu.com/ubuntu/|' \
             /etc/apt/sources.list.d/ubuntu.sources
-          pkgs=(python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 ffmpeg rubberband-cli xvfb)
+          pkgs=(python3-venv python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 ffmpeg rubberband-cli xvfb xauth dbus-daemon libglib2.0-dev-bin blueprint-compiler)
           if ! sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${pkgs[@]}"; then
             sudo apt-get update \
               -o Dir::Etc::sourcelist="sources.list.d/ubuntu.sources" \
@@ -52,27 +56,151 @@ jobs:
             sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${pkgs[@]}"
           fi
 
+      - name: Compile application resources
+        run: ./resources/compile_resources.sh
+
       - name: Create virtual environment
         run: |
           # Match install_packages.sh: system GTK/gi via python3-gi.
-          python3 -m venv --system-site-packages .venv
+          /usr/bin/python3 -m venv --system-site-packages .venv
           .venv/bin/pip install --upgrade pip
           .venv/bin/pip install -r requirements.txt
 
-      - name: Run unit tests
-        env:
-          # Software GL path avoids flaky GPU/Vulkan init on hosted runners.
-          GSK_RENDERER: cairo
-        run: xvfb-run -a .venv/bin/python -m unittest discover -s tests -t . -v
+      - name: Verify distro Python and GI
+        run: |
+          .venv/bin/python - <<'PYTHON'
+          import sys
+          import gi
+          gi.require_version("Gtk", "4.0")
+          gi.require_version("Adw", "1")
+          from gi.repository import Adw, Gtk
+          print(sys.version, sys.executable, gi.__file__, sep="\n")
+          print("GTK", Gtk.get_major_version(), Gtk.get_minor_version(), Gtk.get_micro_version())
+          print("Adw", Adw.get_major_version(), Adw.get_minor_version(), Adw.get_micro_version())
+          assert sys.version_info[:2] == (3, 12)
+          assert sys.base_prefix == "/usr"
+          assert gi.__file__.startswith("/usr/lib/python3/dist-packages/")
+          PYTHON
+
+      - name: Run isolated X11 display smoke and unit tests
+        run: |
+          env -u DISPLAY -u WAYLAND_DISPLAY -u DBUS_SESSION_BUS_ADDRESS \
+            -u DBUS_SYSTEM_BUS_ADDRESS -u XDG_RUNTIME_DIR -u XAUTHORITY \
+            -u SESSION_MANAGER -u UVR_REQUIRE_PRIVATE_GTK \
+            GDK_BACKEND=x11 GSK_RENDERER=cairo \
+            xvfb-run -a dbus-run-session -- bash -eu -c '
+              export DBUS_SYSTEM_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS"
+              .venv/bin/python - <<"PYTHON"
+          import gi
+          gi.require_version("Gtk", "4.0")
+          from gi.repository import Gtk, Gdk
+          Gtk.init()
+          display = Gdk.Display.get_default()
+          assert display is not None
+          print("CI display:", type(display).__name__, display.get_name())
+          assert display.__gtype__.name == "GdkX11Display"
+          PYTHON
+              .venv/bin/python -m unittest discover -s tests -t . -v
+            '
+
+  unittest-preview:
+    # Public-preview image; report compatibility without replacing the stable gate.
+    continue-on-error: true
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Enforce main dev-doc boundary
+        if: github.ref == 'refs/heads/main' || github.base_ref == 'main'
+        run: python3 scripts/dev_docs_policy.py check
+
+      - name: Install system dependencies
+        timeout-minutes: 4
+        run: |
+          # Azure is often black-holed (Ign after connect timeout). The
+          # mirrorlist then fails over to https://archive.ubuntu.com, which
+          # connects but stalls mid-InRelease — apt's Timeout only covers
+          # connect, so the previous step sat until the 5m cap.
+          # Pin HTTP Canonical. Prefer the image's pre-populated lists so a
+          # healthy run never fetches InRelease. python3/pip/venv are already
+          # on the image.
+          printf '%s\n' \
+            'APT::Acquire::Retries "1";' \
+            'Acquire::http::Timeout "15";' \
+            'Acquire::ForceIPv4 "true";' \
+            | sudo tee /etc/apt/apt.conf.d/99ci-timeouts >/dev/null
+          printf '%s\n' 'http://archive.ubuntu.com/ubuntu/' \
+            | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
+          if [ ! -f /etc/apt/sources.list.d/ubuntu.sources ]; then
+            echo 'Expected distro apt source definition is missing' >&2
+            exit 1
+          fi
+          sudo sed -i 's|mirror+file:/etc/apt/apt-mirrors.txt|http://archive.ubuntu.com/ubuntu/|' \
+            /etc/apt/sources.list.d/ubuntu.sources
+          pkgs=(python3-venv python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 ffmpeg rubberband-cli xvfb xauth dbus-daemon libglib2.0-dev-bin blueprint-compiler)
+          if ! sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${pkgs[@]}"; then
+            sudo apt-get update \
+              -o Dir::Etc::sourcelist="sources.list.d/ubuntu.sources" \
+              -o Dir::Etc::sourceparts="-" \
+              -o APT::Get::List-Cleanup="0"
+            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${pkgs[@]}"
+          fi
+
+      - name: Compile application resources
+        run: ./resources/compile_resources.sh
+
+      - name: Create virtual environment
+        run: |
+          # Match install_packages.sh: system GTK/gi via python3-gi.
+          /usr/bin/python3 -m venv --system-site-packages .venv
+          .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install -r requirements.txt
+
+      - name: Verify distro Python and GI
+        run: |
+          .venv/bin/python - <<'PYTHON'
+          import sys
+          import gi
+          gi.require_version("Gtk", "4.0")
+          gi.require_version("Adw", "1")
+          from gi.repository import Adw, Gtk
+          print(sys.version, sys.executable, gi.__file__, sep="\n")
+          print("GTK", Gtk.get_major_version(), Gtk.get_minor_version(), Gtk.get_micro_version())
+          print("Adw", Adw.get_major_version(), Adw.get_minor_version(), Adw.get_micro_version())
+          assert sys.version_info[:2] == (3, 14)
+          assert sys.base_prefix == "/usr"
+          assert gi.__file__.startswith("/usr/lib/python3/dist-packages/")
+          PYTHON
+
+      - name: Run isolated X11 display smoke and unit tests
+        run: |
+          env -u DISPLAY -u WAYLAND_DISPLAY -u DBUS_SESSION_BUS_ADDRESS \
+            -u DBUS_SYSTEM_BUS_ADDRESS -u XDG_RUNTIME_DIR -u XAUTHORITY \
+            -u SESSION_MANAGER -u UVR_REQUIRE_PRIVATE_GTK \
+            GDK_BACKEND=x11 GSK_RENDERER=cairo \
+            xvfb-run -a dbus-run-session -- bash -eu -c '
+              export DBUS_SYSTEM_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS"
+              .venv/bin/python - <<"PYTHON"
+          import gi
+          gi.require_version("Gtk", "4.0")
+          from gi.repository import Gtk, Gdk
+          Gtk.init()
+          display = Gdk.Display.get_default()
+          assert display is not None
+          print("CI display:", type(display).__name__, display.get_name())
+          assert display.__gtype__.name == "GdkX11Display"
+          PYTHON
+              .venv/bin/python -m unittest discover -s tests -t . -v
+            '
 
   typecheck:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
       - name: Create virtual environment
         run: |
-          python3 -m venv --system-site-packages .venv
+          /usr/bin/python3 -m venv --system-site-packages .venv
           .venv/bin/pip install --upgrade pip
           .venv/bin/pip install -r requirements.txt -r requirements-dev.txt
           # Separate, --no-deps: see requirements-stubs.txt.

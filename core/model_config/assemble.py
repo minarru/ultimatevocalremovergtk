@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import List, Mapping, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Mapping, Optional
 
 from bundled.constants import (
     DEMUCS_ARCH_TYPE,
@@ -28,8 +28,8 @@ def assemble_model(
     model_dependencies: Mapping[str, "ModelRecord"] | None = None,
 ) -> List["ModelConfig"]:
     """Build the model configurations for one separation run."""
-    from .config import ModelConfig
     from ..model_identity import ModelIdentityService
+    from .config import ModelConfig
 
     identities = ModelIdentityService(repo)
 

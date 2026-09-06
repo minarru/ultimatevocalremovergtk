@@ -1,0 +1,106 @@
+using Gtk 4.0;
+using Adw 1;
+
+menu download_center_menu {
+  item {
+    label: "Open models folder";
+    action: "dc.open-models";
+  }
+  item {
+    label: "Manual downloads";
+    action: "dc.manual";
+  }
+}
+
+Adw.Window window {
+  title: "Download Center";
+  default-width: 760;
+  default-height: 620;
+
+  content: Adw.ToastOverlay toast_overlay {
+    child: Adw.ToolbarView toolbar {
+      [top]
+      Adw.HeaderBar header {
+        [end]
+        Gtk.MenuButton menu_button {
+          icon-name: "open-menu-symbolic";
+          menu-model: download_center_menu;
+        }
+      }
+
+      content: Gtk.Box body {
+        orientation: vertical;
+        spacing: 0;
+        vexpand: true;
+
+        Gtk.Box purpose_stack_holder {
+          orientation: vertical;
+        }
+
+        Adw.PreferencesGroup filter_group {
+          margin-top: 6;
+          margin-start: 12;
+          margin-end: 12;
+
+          Adw.ComboRow arch_row {
+            title: "Network";
+          }
+
+          Adw.ComboRow sort_row {
+            title: "Sort";
+          }
+
+          Adw.SwitchRow hide_unsupported_row {
+            title: "Hide unsupported";
+            subtitle: "Hide catalogue models this build cannot run yet";
+          }
+        }
+
+        Gtk.Box catalogue_holder {
+          orientation: vertical;
+          vexpand: true;
+        }
+
+        Gtk.Box action_dock {
+          orientation: vertical;
+          spacing: 8;
+          styles ["uvr-run-controls"]
+
+          Gtk.Box status_row {
+            orientation: horizontal;
+            spacing: 8;
+
+            Gtk.Spinner refresh_spinner {
+              visible: false;
+            }
+
+            Gtk.Label status_label {
+              label: "Loading catalogue…";
+              xalign: 0;
+              wrap: true;
+              styles ["dim-label"]
+            }
+          }
+
+          Gtk.Box action_row {
+            orientation: horizontal;
+            spacing: 8;
+            styles ["uvr-run-actions"]
+
+            Gtk.Button refresh_button {
+              icon-name: "view-refresh-symbolic";
+              styles ["flat"]
+            }
+
+            Gtk.Button download_button {
+              label: "_Download";
+              use-underline: true;
+              hexpand: true;
+              styles ["suggested-action"]
+            }
+          }
+        }
+      };
+    };
+  };
+}

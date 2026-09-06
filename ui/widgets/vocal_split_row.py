@@ -9,8 +9,9 @@ pages that actually run separations (Separation and Ensemble), which both
 consume the same globals, exactly as ``OutputFormatRow`` already does for
 ``save_format``.
 
-The row owns its own settings binding rather than reusing ``MethodView``'s row
-helpers: those register each row into per-view registries (``_option_rows``,
+The page owns shared edit persistence; the row emits typed field events. It
+does not reuse ``MethodView``'s row helpers: those register each row into
+per-view registries (``_option_rows``,
 ``_switch_rows``, ``_model_combos``) that ``MethodView.load`` / ``.save``
 iterate, so they only work inside a view.
 """
@@ -20,7 +21,7 @@ from __future__ import annotations
 import typing
 from typing import Callable
 
-from gi.repository import Adw
+from gi.repository import Adw, Gtk
 
 from bundled.constants import DEVERB_MAPPER, NO_MODEL
 
@@ -32,34 +33,52 @@ from ..help_text import (
     VOC_SPLIT_MODEL_SELECT_HELP,
 )
 from ..option_summaries import OFF, vocal_split_summary
+from ..protocols import VocalSplitEdit
+from ..resources import RESOURCE_PREFIX, require_resource_bundle
 from .lazy_populate import LazyPopulator
 from .rows import (
     get_combo_value,
-    make_combo_row,
-    make_switch_row,
     set_combo_tag_values,
     set_combo_value,
+    set_combo_values,
     use_wrapping_list,
 )
 
 _DEFAULT_DEVERB = "Main Vocals Only"
 _SPLITTER_REPICK_REASON = "Choose a vocal splitter model again after the model refresh"
+_TEMPLATE_RESOURCE = f"{RESOURCE_PREFIX}/ui/vocal_split_row.ui"
+require_resource_bundle(_TEMPLATE_RESOURCE)
 
 
+@Gtk.Template(resource_path=_TEMPLATE_RESOURCE)
 class VocalSplitRow(Adw.ExpanderRow):
     """The five global vocal-split/deverb settings in one collapsible row."""
+
+    __gtype_name__ = "VocalSplitRow"
+
+    split_switch: Adw.SwitchRow = Gtk.Template.Child("split_switch")
+    splitter_row: Adw.ComboRow = Gtk.Template.Child("splitter_row")
+    splitter_warning_row: Adw.ActionRow = Gtk.Template.Child("splitter_warning_row")
+    save_inst_switch: Adw.SwitchRow = Gtk.Template.Child("save_inst_switch")
+    deverb_switch: Adw.SwitchRow = Gtk.Template.Child("deverb_switch")
+    deverb_row: Adw.ComboRow = Gtk.Template.Child("deverb_row")
 
     def __init__(
         self,
         repo: typing.Any,
-        on_changed: Callable[[], None],
+        on_changed: Callable[[VocalSplitEdit], None],
         hints: typing.Any = None,
     ):
-        super().__init__(title="Vocal splitter and deverb")
+        # Importing Adw exposes the Python types but does not register every
+        # libadwaita class with GtkBuilder. Direct construction can happen
+        # before an Adw.Application exists, so initialize it before GTK expands
+        # the template's Adw.SwitchRow and Adw.ComboRow children.
+        Adw.init()
+        super().__init__()
         self._repo = repo
         self._on_changed = on_changed
-        #: Cached from the last ``apply_from_settings`` so interactive edits can
-        #: write straight through and keep the subtitle in step. ``None`` until
+        #: Cached from the last ``apply_from_settings`` so the subtitle follows
+        #: the page session's committed edits. ``None`` until
         #: the row has been applied at least once.
         self._settings = None
         self._syncing = False
@@ -77,24 +96,9 @@ class VocalSplitRow(Adw.ExpanderRow):
             populate=self._populate_models_now,
         )
 
-        self.split_switch = make_switch_row("Enable vocal split mode")
-        self.splitter_row = make_combo_row("Vocal splitter model", [NO_MODEL])
+        set_combo_values(self.splitter_row, [NO_MODEL])
         use_wrapping_list(self.splitter_row)
-        self.splitter_warning_row = Adw.ActionRow(title="Saved model unavailable", visible=False)
-        self.splitter_warning_row.set_subtitle_lines(0)
-        self.save_inst_switch = make_switch_row("Save split vocal instrumentals")
-        self.deverb_switch = make_switch_row("Deverb vocals")
-        self.deverb_row = make_combo_row("Deverb vocal type", list(DEVERB_MAPPER.keys()))
-
-        for row in (
-            self.split_switch,
-            self.splitter_row,
-            self.splitter_warning_row,
-            self.save_inst_switch,
-            self.deverb_switch,
-            self.deverb_row,
-        ):
-            self.add_row(row)
+        set_combo_values(self.deverb_row, DEVERB_MAPPER.keys())
 
         if hints is not None:
             hints.register(self.split_switch, IS_VOC_SPLIT_MODEL_SELECT_HELP)
@@ -183,7 +187,7 @@ class VocalSplitRow(Adw.ExpanderRow):
                 self.set_expanded(True)
 
     def persist_to_settings(self, settings: typing.Any) -> None:
-        """Write every global vocal-split key back to ``settings``."""
+        """Legacy explicit persistence; run pages use SharedSettingsSession."""
         process = settings.process
         process.vocal_splitter_enabled = self.split_switch.get_active()
         process.save_inst_vocal_splitter = self.save_inst_switch.get_active()
@@ -320,17 +324,49 @@ class VocalSplitRow(Adw.ExpanderRow):
         ):
             self._populator._populate_now()
 
-    def _on_row_changed(self, *_args: typing.Any) -> None:
+    @property
+    def enabled(self) -> bool:
+        return self.split_switch.get_active()
+
+    @property
+    def model_value(self) -> str:
+        return get_combo_value(self.splitter_row) or NO_MODEL
+
+    @property
+    def model_write_allowed(self) -> bool:
+        return self._populator.ready and not self._splitter_write_gated
+
+    @property
+    def save_instrumentals(self) -> bool:
+        return self.save_inst_switch.get_active()
+
+    @property
+    def deverb(self) -> bool:
+        return self.deverb_switch.get_active()
+
+    @property
+    def deverb_option(self) -> str:
+        return get_combo_value(self.deverb_row) or _DEFAULT_DEVERB
+
+    def _on_row_changed(self, source: object, *_args: typing.Any) -> None:
         if self._syncing:
             return
         self._sync_dependents()
-        if self._settings is not None:
-            source = _args[0] if _args else None
-            if self._populator.ready and source is self.splitter_row:
-                self._stored_splitter = get_combo_value(self.splitter_row) or NO_MODEL
+        if source is self.splitter_row:
+            if self._populator.ready:
+                self._stored_splitter = self.model_value
                 self._splitter_write_gated = False
                 self._splitter_gated_value = None
                 self._hide_splitter_warning()
-            self.persist_to_settings(self._settings)
-            self.refresh_summary()
-        self._on_changed()
+            event = VocalSplitEdit.MODEL
+        elif source is self.split_switch:
+            event = VocalSplitEdit.ENABLED
+        elif source is self.save_inst_switch:
+            event = VocalSplitEdit.SAVE_INSTRUMENTALS
+        elif source is self.deverb_switch:
+            event = VocalSplitEdit.DEVERB
+        else:
+            event = VocalSplitEdit.DEVERB_OPTION
+        # The page owns persistence. Its session commits only the actual edit.
+        self._on_changed(event)
+        self.refresh_summary()

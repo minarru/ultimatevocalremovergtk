@@ -727,7 +727,7 @@ training:
                     csc.remember_stems(
                         f"https://example.test/t{n}-{i}.yaml", ["Vocals"], None, ok=True
                     )
-            except BaseException as exc:  # noqa: BLE001 - recorded for assertion
+            except BaseException as exc:  # recorded for assertion
                 errors.append(exc)
 
         threads = [threading.Thread(target=writer, args=(n,)) for n in range(threads_count)]

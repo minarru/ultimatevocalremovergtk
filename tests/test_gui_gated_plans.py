@@ -10,7 +10,6 @@ from unittest.mock import Mock
 
 from bundled.constants import NO_MODEL
 from core.job_plan import (
-    JobResolver,
     JobSpec,
     ValidationLevel,
     active_model_paths,
@@ -18,6 +17,7 @@ from core.job_plan import (
 from core.model_identity import ModelArtifacts, ModelRecord
 from core.settings import Settings
 from core.types import ProcessMethod
+from tests.planning_fixtures import resolver_with_ports
 
 
 def _record(model_id: str) -> ModelRecord:
@@ -50,13 +50,13 @@ def _resolve_spec(
 ):
     repo = Mock(inventory_generation=0)
     repo.karaoke_model_list.return_value = ["vr:gated-splitter"]
-    resolver = JobResolver(repo)
+    resolver = resolver_with_ports(repo)
     resolver.identities.lookup = Mock(side_effect=records.__getitem__)
     if any(
         section.is_secondary_model_activate
         for section in (spec.settings.vr, spec.settings.mdx, spec.settings.demucs)
     ):
-        resolver._assemble = Mock(
+        resolver.materializer.assemble = Mock(
             return_value=[
                 SimpleNamespace(
                     model_status=True,
@@ -195,6 +195,11 @@ class GatedSeparationPlanTests(unittest.TestCase):
             page.input_row = SimpleNamespace(paths=[source.name])
             page.output_row = SimpleNamespace(path="/tmp/out")
 
+            from ui.shared_settings import SharedSettingsSession, shared_settings_bindings
+            page._shared_session = SharedSettingsSession(
+                settings, shared_settings_bindings(vocal_row=row), can_commit=lambda: True,
+            )
+            page._shared_session.refresh(lambda: None)
             spec = EnsemblePage.build_job_spec(page)
             plan = _resolve_spec(
                 spec,
@@ -228,6 +233,8 @@ class GatedEnsemblePlanTests(unittest.TestCase):
         page.vocal_split_row = SimpleNamespace(persist_to_settings=lambda _settings: None)
         page.save_stems = SimpleNamespace(persist_to_settings=lambda: None)
 
+        from ui.shared_settings import SharedSettingsSession, shared_settings_bindings
+        page._shared_session = SharedSettingsSession(settings, shared_settings_bindings(), can_commit=lambda: True)
         EnsemblePage._flush_run_settings(page)
         plan = _resolve(
             settings,

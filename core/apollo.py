@@ -161,7 +161,7 @@ class ApolloModelData:
                 "feature_dim": model_params.get("feature_dim"),
                 "layer": model_params.get("layer"),
             }
-        except Exception as exc:  # noqa: BLE001 - mirrors UVR's print-and-continue
+        except Exception as exc:  # mirrors UVR's print-and-continue
             print(exc)
 
         return extracted_params, config

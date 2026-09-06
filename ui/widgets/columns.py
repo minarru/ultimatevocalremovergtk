@@ -8,13 +8,13 @@ layout (margins, spacing, clamp width, scroller minimum width and the
 wide/narrow flip) identical, and lets :class:`ui.window.MainWindow` drive
 every page's ``columns_box`` from one breakpoint handler.
 """
-import typing
 
+import typing
 from typing import Optional
 
 from gi.repository import Adw, Gtk
 
-from ..spacing import set_inset
+from ..template import load_builder, object_from_builder
 from .log_panel import LogPanel
 
 #: Clamp width shared by every two-column options surface.
@@ -30,15 +30,11 @@ def set_options_bottom_clearance(columns_box: Gtk.Widget, clearance_px: int) -> 
 
 def make_column() -> Gtk.Box:
     """Build one vertical options column (top-aligned, expanding)."""
-    return Gtk.Box(
-        orientation=Gtk.Orientation.VERTICAL,
-        spacing=18,
-        hexpand=True,
-        valign=Gtk.Align.START,
-    )
+    builder = load_builder("column")
+    return object_from_builder(builder, "column", Gtk.Box)
 
 
-def build_columns_box(left_groups: typing.Any=(), right_groups: typing.Any=()):
+def build_columns_box(left_groups: typing.Any = (), right_groups: typing.Any = ()):
     """Build the horizontal ``columns_box`` and its two child columns.
 
     ``left_groups`` / ``right_groups`` are appended to the start/end columns in
@@ -46,27 +42,15 @@ def build_columns_box(left_groups: typing.Any=(), right_groups: typing.Any=()):
     column references when they need to repopulate dynamically (separation), and
     register ``columns_box`` so the breakpoint can flip its orientation.
     """
-    col_start = make_column()
-    col_end = make_column()
+    builder = load_builder("columns")
+    columns_box = object_from_builder(builder, "columns_box", Gtk.Box)
+    col_start = object_from_builder(builder, "col_start", Gtk.Box)
+    col_end = object_from_builder(builder, "col_end", Gtk.Box)
     for group in left_groups:
         col_start.append(group)
     for group in right_groups:
         col_end.append(group)
 
-    columns_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=24)
-    # Homogeneous keeps both columns the same width regardless of content, so
-    # the split point doesn't jump when the active panel changes height.
-    columns_box.set_homogeneous(True)
-    # Expand horizontally so the enclosing Adw.Clamp stretches the box to its
-    # clamp width instead of allocating the (content-driven) natural width and
-    # centring it. Without this, each page's column width tracks the longest
-    # row it contains (long file paths / model names), so the split point and
-    # card widths differ from view to view. Expanding pins every page to the
-    # same clamp-bounded width for a consistent layout.
-    columns_box.set_hexpand(True)
-    set_inset(columns_box, top=18, bottom=18, start=12, end=12)
-    columns_box.append(col_start)
-    columns_box.append(col_end)
     return columns_box, col_start, col_end
 
 
@@ -96,7 +80,11 @@ def wrap_options_scroller(
         bottom_inset = LogPanel.default_bottom_inset()
     if bottom_inset:
         set_options_bottom_clearance(columns_box, bottom_inset)
-    clamp = Adw.Clamp(child=columns_box, maximum_size=maximum_size)
+    builder = load_builder("options_scroller")
+    page = object_from_builder(builder, "options_page", Gtk.Box)
+    clamp = object_from_builder(builder, "options_clamp", Adw.Clamp)
+    clamp.set_child(columns_box)
+    clamp.set_maximum_size(maximum_size)
     # Pin the tightening threshold to the maximum size. With the default (lower)
     # threshold, any window between the threshold and ``maximum_size`` lands in
     # Adw.Clamp's easing region, where the child is allocated less than the
@@ -107,19 +95,6 @@ def wrap_options_scroller(
     # available width (consistent across every page), and it is still clamped
     # and centred once the window grows past ``maximum_size``.
     clamp.set_tightening_threshold(maximum_size)
-    clamp.set_vexpand(True)
-    scroller = Gtk.ScrolledWindow()
-    scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-    scroller.set_propagate_natural_height(False)
-    scroller.set_vexpand(True)
-    scroller.set_hexpand(True)
-    scroller.set_min_content_width(360)
-    scroller.set_child(clamp)
-
-    page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-    page.set_vexpand(True)
-    page.set_hexpand(True)
-    page.append(scroller)
     return page
 
 
