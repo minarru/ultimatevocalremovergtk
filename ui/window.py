@@ -299,7 +299,8 @@ class MainWindow(Adw.ApplicationWindow):
             "notify::reveal-child", lambda *_: self._sync_options_bottom_clearance()
         )
 
-        root = Gtk.Overlay()
+        shell = load_builder("main-window")
+        root = object_from_builder(shell, "root", Gtk.Overlay)
         root.set_child(page)
         root.add_overlay(self.log_panel)
         window_drop = Gtk.DropTarget.new(Gdk.FileList, Gdk.DragAction.COPY)
@@ -313,21 +314,14 @@ class MainWindow(Adw.ApplicationWindow):
         self._download_ui: DownloadQueueUiBinding | None = None
         self._download_queue_indicator = DownloadQueueIndicator()
 
-        toolbar_view = Adw.ToolbarView()
+        toolbar_view = object_from_builder(shell, "toolbar_view", Adw.ToolbarView)
         toolbar_view.add_top_bar(self._build_header())
         # Narrow widths reveal a bottom ViewSwitcherBar; the header switcher is
         # swapped for a plain window title (Adwaita adaptive navigation).
         toolbar_view.add_bottom_bar(self._view_switcher_bar)
-        toolbar_view.set_content(root)
-        toolbar_view.set_vexpand(True)
-
-        self._data_banner = Adw.Banner(button_label="Show Folder", revealed=False)
+        self._data_banner = object_from_builder(shell, "data_banner", Adw.Banner)
         self._data_banner.connect("button-clicked", self._on_data_banner_clicked)
-        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        outer.append(self._data_banner)
-        outer.append(toolbar_view)
-        self.toast_overlay = Adw.ToastOverlay()
-        self.toast_overlay.set_child(outer)
+        self.toast_overlay = object_from_builder(shell, "toast_overlay", Adw.ToastOverlay)
         self.set_content(self.toast_overlay)
         self._reveal_data_dir_banner_if_needed()
 
@@ -410,15 +404,10 @@ class MainWindow(Adw.ApplicationWindow):
         # shown only when the active method has no installed models. It opens the
         # in-app Download Center and auto-hides once models appear (see
         # ``_update_sep_banner``, driven from method switch / load / refresh).
-        self._sep_banner = Adw.Banner(
-            title="No models installed for this method. Open the Download Center to get models.",
-            button_label="Download Models",
-            revealed=False,
-        )
+        page_builder = load_builder("separation-page")
+        self._sep_banner = object_from_builder(page_builder, "sep_banner", Adw.Banner)
         self._sep_banner.connect("button-clicked", self._on_sep_banner_clicked)
-        separation_page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        separation_page.set_vexpand(True)
-        separation_page.append(self._sep_banner)
+        separation_page = object_from_builder(page_builder, "separation_page", Gtk.Box)
         self._options_page = wrap_options_scroller(self._columns_box)
         separation_page.append(self._options_page)
 
@@ -429,7 +418,7 @@ class MainWindow(Adw.ApplicationWindow):
 
         # Runnable mode pages only; the shared console lives in the collapsible
         # log panel and auto-expands when a run starts.
-        self.content_stack = Adw.ViewStack()
+        self.content_stack = object_from_builder(page_builder, "content_stack", Adw.ViewStack)
         self.content_stack.add_titled_with_icon(
             separation_page, "separation", "Separation", "audio-x-generic-symbolic"
         )

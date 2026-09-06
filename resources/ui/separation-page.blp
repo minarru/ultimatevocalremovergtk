@@ -1,0 +1,13 @@
+using Gtk 4.0;
+using Adw 1;
+
+Adw.ViewStack content_stack {}
+Gtk.Box separation_page {
+  orientation: vertical;
+  vexpand: true;
+  Adw.Banner sep_banner {
+    title: "No models installed for this method. Open the Download Center to get models.";
+    button-label: "Download Models";
+    revealed: false;
+  }
+}

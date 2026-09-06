@@ -38,7 +38,7 @@ if TYPE_CHECKING:
 import typing
 from typing import Dict, List, Optional
 
-from gi.repository import Adw, Gtk
+from gi.repository import Adw, GObject, Gtk
 
 from bundled.constants import (
     CHOOSE_ENSEMBLE_OPTION,
@@ -103,7 +103,7 @@ from core.stem_pairs import (
 from core.stems import StemRoute
 from core.types import ProcessMethod
 
-from ..dialogs.utils import present_modal_dialog, set_dialog_content
+from ..dialogs.utils import present_modal_dialog
 from ..help_text import (
     DERIVE_COMPLEMENT_FROM_MIX_HELP,
     ENSEMBLE_DELETE_BUTTON_HINT,
@@ -125,16 +125,15 @@ from ..shared_settings import (
     sample_mode_subtitle,
     shared_settings_bindings,
 )
-from ..spacing import inset_md
+from ..template import load_builder, object_from_builder
 from ..widget_state import fetch, stash
 from ..widgets.columns import build_columns_box, wrap_options_scroller
 from ..widgets.file_chooser import InputFilesRow, OutputFolderRow
 from ..widgets.format_row import OutputFormatRow
 from ..widgets.rows import (
+    configure_combo_row,
     get_combo_value,
     log_model_picker_items,
-    make_combo_row,
-    make_switch_row,
     set_combo_tag_values,
     set_combo_value,
     set_combo_values,
@@ -144,6 +143,7 @@ from ..widgets.vocal_split_row import VocalSplitRow
 
 _PRIMARY_STEM_ONLY_KEY = "is_primary_stem_only"
 _SECONDARY_STEM_ONLY_KEY = "is_secondary_stem_only"
+LayoutObjectT = typing.TypeVar("LayoutObjectT", bound=GObject.Object)
 
 #: Blocking-reason strings surfaced as the shared Start button tooltip (and
 #: reused as the safety-net toasts in :meth:`EnsemblePage.start`).
@@ -218,6 +218,7 @@ class EnsemblePage:
         self._ensemble_member_warnings: tuple[str, ...] = ()
         self._pair_ids: set[str] = set()
         self._pair_repick_warning = ""
+        self._layout_builder = load_builder("ensemble-page")
 
         # Distribute the groups across the shared two-column layout. The member
         # model checklist now lives in a modal dialog opened from a compact
@@ -239,23 +240,21 @@ class EnsemblePage:
         # banner above the columns that surfaces the ensemble-configuration
         # blocker (stem pair / member models) and auto-hides once the run is
         # ready. Refreshed from ``_update_ensemble_banner`` on stem/model change.
-        self._ensemble_banner = Adw.Banner(revealed=False)
+        self._ensemble_banner = self._layout_object("ensemble_banner", Adw.Banner)
         self.options_page = wrap_options_scroller(self.columns_box)
-        page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        page.set_vexpand(True)
-        page.append(self._ensemble_banner)
+        page = self._layout_object("page", Gtk.Box)
         page.append(self.options_page)
         self.widget = page
 
     # -- Construction -----------------------------------------------------------
 
+    def _layout_object(self, name: str, kind: type[LayoutObjectT]) -> LayoutObjectT:
+        return object_from_builder(self._layout_builder, name, kind)
+
     def _build_files_group(self) -> Adw.PreferencesGroup:
-        group = Adw.PreferencesGroup(title="Files")
-        view_inputs_button = Gtk.Button(icon_name="view-list-symbolic", valign=Gtk.Align.CENTER)
-        view_inputs_button.add_css_class("flat")
+        group = self._layout_object("files_group", Adw.PreferencesGroup)
+        view_inputs_button = self._layout_object("view_inputs_button", Gtk.Button)
         set_icon_button_a11y(view_inputs_button, VIEW_INPUTS_BUTTON_HINT)
-        view_inputs_button.set_action_name("win.view_inputs")
-        group.set_header_suffix(view_inputs_button)
         self.input_row = InputFilesRow(
             self._on_inputs_changed,
             on_toast=self.window.toast,
@@ -269,159 +268,97 @@ class EnsemblePage:
         return group
 
     def _build_ensemble_group(self) -> Adw.PreferencesGroup:
-        group = Adw.PreferencesGroup(title="Ensemble options")
+        group = self._layout_object("ensemble_group", Adw.PreferencesGroup)
         self.ensemble_group = group
 
-        self.saved_row = make_combo_row("Saved ensemble", [CHOOSE_ENSEMBLE_OPTION])
+        self.saved_row = configure_combo_row(
+            self._layout_object("saved_row", Adw.ComboRow), [CHOOSE_ENSEMBLE_OPTION]
+        )
         set_tooltip(self.saved_row, ENSEMBLE_SAVED_PRESET_HINT)
         self.saved_row.connect("notify::selected", self._on_saved_selected)
-        save_button = Gtk.Button(icon_name="document-save-symbolic", valign=Gtk.Align.CENTER)
+        save_button = self._layout_object("save_button", Gtk.Button)
         set_icon_button_a11y(save_button, ENSEMBLE_SAVE_BUTTON_HINT)
-        save_button.add_css_class("flat")
         save_button.connect("clicked", self._on_save_clicked)
-        delete_button = Gtk.Button(icon_name="user-trash-symbolic", valign=Gtk.Align.CENTER)
+        delete_button = self._layout_object("delete_button", Gtk.Button)
         set_icon_button_a11y(delete_button, ENSEMBLE_DELETE_BUTTON_HINT)
-        delete_button.add_css_class("flat")
         delete_button.connect("clicked", self._on_delete_clicked)
-        self.saved_row.add_suffix(save_button)
-        self.saved_row.add_suffix(delete_button)
-        group.add(self.saved_row)
 
-        self.main_stem_row = make_combo_row("Main stem pair", [], icon_name="view-list-symbolic")
+        self.main_stem_row = configure_combo_row(
+            self._layout_object("main_stem_row", Adw.ComboRow), []
+        )
         set_combo_tag_values(self.main_stem_row, [("", "Choose Stem Pair")])
         set_tooltip(self.main_stem_row, ENSEMBLE_MAIN_STEM_HELP)
         self.main_stem_row.connect("notify::selected", self._on_main_stem_changed)
-        group.add(self.main_stem_row)
 
         # Checklist: models before algorithms.
         self._build_models_dialog()
-        self.models_trigger_row = Adw.ActionRow(
-            title="Member models",
-            subtitle=self._models_summary(),
-            activatable=True,
-        )
+        self.models_trigger_row = self._layout_object("models_trigger_row", Adw.ActionRow)
+        self.models_trigger_row.set_subtitle(self._models_summary())
         set_tooltip(self.models_trigger_row, ENSEMBLE_LISTBOX_HELP)
-        self.models_trigger_row.add_suffix(Gtk.Image(icon_name="go-next-symbolic"))
         self.models_trigger_row.connect("activated", self._open_models_dialog)
-        group.add(self.models_trigger_row)
 
-        self.member_options_row = Adw.ActionRow(
-            title="Member model options",
-            subtitle="Batch size, secondary models, and more",
-            activatable=True,
-        )
+        self.member_options_row = self._layout_object("member_options_row", Adw.ActionRow)
         set_tooltip(self.member_options_row, ENSEMBLE_MEMBER_MODEL_OPTIONS_HINT)
-        self.member_options_row.add_suffix(Gtk.Image(icon_name="go-next-symbolic"))
         self.member_options_row.connect("activated", self._open_member_model_options)
-        group.add(self.member_options_row)
 
-        self.preset_row = make_combo_row(
-            "Algorithm preset",
+        self.preset_row = configure_combo_row(
+            self._layout_object("preset_row", Adw.ComboRow),
             list(ensemble_preset_options(include_pair_consistent=False)),
-            icon_name="emblem-favorite-symbolic",
         )
         set_tooltip(
             self.preset_row,
             "Choose a preset algorithm pair, or Custom to set Primary and Secondary separately",
         )
         self.preset_row.connect("notify::selected", self._on_preset_changed)
-        group.add(self.preset_row)
 
-        self.derive_complement_row = make_switch_row("Derive complement from mix")
+        self.derive_complement_row = self._layout_object("derive_complement_row", Adw.SwitchRow)
         set_tooltip(self.derive_complement_row, DERIVE_COMPLEMENT_FROM_MIX_HELP)
         self.derive_complement_row.connect("notify::active", self._on_derive_complement_changed)
-        self.derive_complement_row.set_visible(False)
-        group.add(self.derive_complement_row)
 
-        self.primary_algo_row = make_combo_row(
-            "Primary algorithm",
+        self.primary_algo_row = configure_combo_row(
+            self._layout_object("primary_algo_row", Adw.ComboRow),
             list(ENSEMBLE_ALGORITHMS),
-            icon_name="media-playlist-shuffle-symbolic",
         )
         set_tooltip(self.primary_algo_row, ENSEMBLE_TYPE_HELP)
         self.primary_algo_row.connect("notify::selected", self._on_ensemble_type_changed)
-        group.add(self.primary_algo_row)
 
-        self.secondary_algo_row = make_combo_row(
-            "Secondary algorithm",
+        self.secondary_algo_row = configure_combo_row(
+            self._layout_object("secondary_algo_row", Adw.ComboRow),
             list(ENSEMBLE_ALGORITHMS),
-            icon_name="media-playlist-shuffle-symbolic",
         )
         set_tooltip(self.secondary_algo_row, ENSEMBLE_TYPE_HELP)
         self.secondary_algo_row.connect("notify::selected", self._on_ensemble_type_changed)
-        group.add(self.secondary_algo_row)
 
         return group
 
     def _build_models_dialog(self) -> None:
         """Build the modal member-model checklist (the inline boxed list lives
         here now, opened from the compact trigger row in "Ensemble options")."""
-        self.models_listbox = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
-        self.models_listbox.add_css_class("boxed-list")
+        builder = load_builder("ensemble-member-picker")
+        self.models_listbox = object_from_builder(builder, "models_listbox", Gtk.ListBox)
         set_tooltip(self.models_listbox, ENSEMBLE_LISTBOX_HELP)
         self.models_listbox.set_filter_func(self._models_row_visible)
         self.models_listbox.append(Adw.ActionRow(title="Choose a stem pair to list models"))
 
-        self.models_listbox.set_valign(Gtk.Align.START)
-        scroller = Gtk.ScrolledWindow()
-        scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        scroller.set_min_content_height(320)
-        scroller.set_vexpand(True)
-        scroller.set_child(self.models_listbox)
+        scroller = object_from_builder(builder, "scroller", Gtk.ScrolledWindow)
         set_tooltip(scroller, ENSEMBLE_LISTBOX_HELP)
 
-        description = Gtk.Label(
-            label="Select two or more models compatible with the chosen stem pair.",
-            wrap=True,
-            xalign=0.0,
-        )
-        description.add_css_class("dim-label")
+        self.models_status_label = object_from_builder(builder, "models_status_label", Gtk.Label)
+        self.models_status_label.set_label(models_selection_status(0))
 
-        self.models_status_label = Gtk.Label(
-            label=models_selection_status(0),
-            wrap=True,
-            xalign=0.0,
-        )
-        self.models_status_label.add_css_class("dim-label")
-
-        self.models_search = Gtk.SearchEntry()
-        self.models_search.set_placeholder_text("Search models")
-        self.models_search.set_hexpand(True)
+        self.models_search = object_from_builder(builder, "models_search", Gtk.SearchEntry)
         self.models_search.connect("search-changed", self._on_models_search_changed)
 
-        select_all_btn = Gtk.Button(label="Select all")
-        select_all_btn.add_css_class("flat")
+        select_all_btn = object_from_builder(builder, "select_all_button", Gtk.Button)
         select_all_btn.connect("clicked", self._on_models_select_all)
-        clear_btn = Gtk.Button(label="Clear")
-        clear_btn.add_css_class("flat")
+        clear_btn = object_from_builder(builder, "clear_button", Gtk.Button)
         clear_btn.connect("clicked", self._on_models_clear)
 
-        actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        actions.append(select_all_btn)
-        actions.append(clear_btn)
-        actions.set_halign(Gtk.Align.END)
-
-        toolbar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        toolbar.append(self.models_search)
-        toolbar.append(actions)
-
-        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
-        inset_md(content)
-        content.append(description)
-        content.append(self.models_status_label)
-        content.append(toolbar)
-        content.append(scroller)
-
-        self.models_dialog = Adw.Dialog()
-        self.models_dialog.set_title("Member models")
-        self.models_dialog.set_content_width(440)
-        self.models_dialog.set_content_height(560)
-        self.models_dialog.set_follows_content_size(True)
-        set_dialog_content(self.models_dialog, content)
+        self.models_dialog = object_from_builder(builder, "dialog", Adw.Dialog)
         self.models_dialog.connect("closed", self._on_models_dialog_closed)
 
     def _build_stems_group(self) -> Adw.PreferencesGroup:
-        group = Adw.PreferencesGroup(title="Save stems")
+        group = self._layout_object("stems_group", Adw.PreferencesGroup)
         self.save_stems = SaveStemsSection(
             settings=self.settings,
             on_changed=self._on_save_stems_changed,
@@ -429,45 +366,38 @@ class EnsemblePage:
         self.save_stems.attach_to(group)
         set_tooltip(group, SAVE_STEM_ONLY_HELP)
         # Revealed in _rebuild_stem_only_toggles once a stem pair is chosen.
-        group.set_visible(False)
         self.stems_group = group
         return group
 
     def _build_output_group(self) -> Adw.PreferencesGroup:
-        group = Adw.PreferencesGroup(title="Processing")
+        group = self._layout_object("processing_group", Adw.PreferencesGroup)
 
         self.format_row = OutputFormatRow(self._on_format_changed)
         group.add(self.format_row)
 
-        self.gpu_row = make_switch_row("GPU conversion", icon_name="pci-card-symbolic")
+        self.gpu_row = self._layout_object("gpu_row", Adw.SwitchRow)
         set_tooltip(self.gpu_row, IS_GPU_CONVERSION_HELP)
         self.gpu_row.connect("notify::active", self._on_gpu_changed)
         group.add(self.gpu_row)
 
-        self.autocast_row = make_switch_row(
-            "FP16 autocast",
-            subtitle="Faster VR/MDX/Roformer on modern NVIDIA GPUs",
-            icon_name="emblem-system-symbolic",
-        )
+        self.autocast_row = self._layout_object("autocast_row", Adw.SwitchRow)
         set_tooltip(self.autocast_row, IS_AUTOCAST_HELP)
         self.autocast_row.connect("notify::active", self._on_autocast_changed)
         group.add(self.autocast_row)
 
         duration = self.settings.process.sample_mode_duration
-        self.sample_row = make_switch_row(
-            SAMPLE_MODE_TITLE,
-            sample_mode_subtitle(duration),
-            icon_name="preferences-system-time-symbolic",
-        )
+        self.sample_row = self._layout_object("sample_row", Adw.SwitchRow)
+        self.sample_row.set_title(SAMPLE_MODE_TITLE)
+        self.sample_row.set_subtitle(sample_mode_subtitle(duration))
         set_tooltip(self.sample_row, MODEL_SAMPLE_MODE_HELP)
         self.sample_row.connect("notify::active", self._on_sample_changed)
         group.add(self.sample_row)
 
         # Advanced toggles live in Processing (titled group) instead of a
         # title-less PreferencesGroup wrapping a lone expander.
-        expander = Adw.ExpanderRow(title="Advanced ensemble options")
+        expander = self._layout_object("advanced_row", Adw.ExpanderRow)
 
-        self.save_all_row = make_switch_row("Save all outputs")
+        self.save_all_row = self._layout_object("save_all_row", Adw.SwitchRow)
         set_tooltip(self.save_all_row, IS_SAVE_ALL_OUTPUTS_ENSEMBLE_HELP)
         self.save_all_row.connect(
             "notify::active",
@@ -477,9 +407,7 @@ class EnsemblePage:
                 refresh_stems=True,
             ),
         )
-        expander.add_row(self.save_all_row)
-
-        self.append_name_row = make_switch_row("Append ensemble name to output")
+        self.append_name_row = self._layout_object("append_name_row", Adw.SwitchRow)
         set_tooltip(self.append_name_row, IS_APPEND_ENSEMBLE_NAME_HELP)
         self.append_name_row.connect(
             "notify::active",
@@ -487,19 +415,13 @@ class EnsemblePage:
                 "is_append_ensemble_name", self.append_name_row.get_active()
             ),
         )
-        expander.add_row(self.append_name_row)
-
-        self.wav_ensemble_row = make_switch_row(
-            "Ensemble waveforms",
-            wav_ensemble_subtitle(uses_chunk_min=False),
-        )
+        self.wav_ensemble_row = self._layout_object("wav_ensemble_row", Adw.SwitchRow)
+        self.wav_ensemble_row.set_subtitle(wav_ensemble_subtitle(uses_chunk_min=False))
         set_tooltip(self.wav_ensemble_row, IS_WAV_ENSEMBLE_HELP)
         self.wav_ensemble_row.connect(
             "notify::active",
             lambda *_a: self._set_bool("is_wav_ensemble", self.wav_ensemble_row.get_active()),
         )
-        expander.add_row(self.wav_ensemble_row)
-
         group.add(expander)
 
         self.vocal_split_row = VocalSplitRow(
@@ -547,9 +469,12 @@ class EnsemblePage:
         self._shared_session = SharedSettingsSession(
             self.settings,
             shared_settings_bindings(
-                input_row=self.input_row, output_row=self.output_row,
-                format_row=self.format_row, gpu_row=self.gpu_row,
-                autocast_row=self.autocast_row, sample_row=self.sample_row,
+                input_row=self.input_row,
+                output_row=self.output_row,
+                format_row=self.format_row,
+                gpu_row=self.gpu_row,
+                autocast_row=self.autocast_row,
+                sample_row=self.sample_row,
                 vocal_row=self.vocal_split_row,
             ),
             can_commit=lambda: self.window.content_stack.get_visible_child_name() == "ensemble",
@@ -558,9 +483,12 @@ class EnsemblePage:
     def _apply_shared_widgets(self) -> None:
         apply_shared_file_options(
             self.settings,
-            input_row=self.input_row, output_row=self.output_row,
-            format_row=self.format_row, gpu_row=self.gpu_row,
-            autocast_row=self.autocast_row, sample_row=self.sample_row,
+            input_row=self.input_row,
+            output_row=self.output_row,
+            format_row=self.format_row,
+            gpu_row=self.gpu_row,
+            autocast_row=self.autocast_row,
+            sample_row=self.sample_row,
         )
         self.vocal_split_row.apply_from_settings(self.settings)
 
@@ -1681,7 +1609,9 @@ class EnsemblePage:
         banner.set_revealed(reason is not None)
         self.window._refresh_start_readiness()
 
-    def start(self, callbacks: JobCallbacks, plan: ResolvedJob | ResolvedAudioJob | None = None) -> None:
+    def start(
+        self, callbacks: JobCallbacks, plan: ResolvedJob | ResolvedAudioJob | None = None
+    ) -> None:
         # Readiness is validated by ``MainWindow._on_start`` before dispatch.
         from core.job_plan import ResolvedJob
 

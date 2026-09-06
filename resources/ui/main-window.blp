@@ -1,0 +1,16 @@
+using Gtk 4.0;
+using Adw 1;
+
+Adw.ToastOverlay toast_overlay {
+  child: Gtk.Box {
+    orientation: vertical;
+    Adw.Banner data_banner {
+      button-label: "Show Folder";
+      revealed: false;
+    }
+    Adw.ToolbarView toolbar_view {
+      vexpand: true;
+      content: Gtk.Overlay root {};
+    }
+  };
+}

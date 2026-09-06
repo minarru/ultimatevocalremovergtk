@@ -1,0 +1,242 @@
+using Gtk 4.0;
+using Adw 1;
+
+Gtk.Adjustment time_rate_adjustment {
+  lower: 0.1;
+  upper: 10.0;
+  step-increment: 0.1;
+}
+
+Gtk.Adjustment pitch_rate_adjustment {
+  lower: -10.0;
+  upper: 10.0;
+  step-increment: 0.5;
+}
+
+Gtk.Adjustment apollo_overlap_adjustment {
+  lower: 0.0;
+  upper: 50.0;
+  step-increment: 1.0;
+}
+
+Gtk.Adjustment apollo_chunk_adjustment {
+  lower: 1.0;
+  upper: 50.0;
+  step-increment: 1.0;
+}
+
+Gtk.Adjustment amplification_adjustment {
+  lower: 0.0;
+  upper: 1.0;
+  step-increment: 0.05;
+}
+
+Gtk.Box page {
+  orientation: vertical;
+  vexpand: true;
+
+  Adw.Banner audio_banner {
+    revealed: false;
+  }
+}
+
+Adw.PreferencesGroup files_group {
+  title: "Files";
+
+  [header-suffix]
+  Gtk.Button view_inputs_button {
+    icon-name: "view-list-symbolic";
+    valign: center;
+    styles ["flat"]
+  }
+}
+
+Adw.PreferencesGroup select_group {
+  Adw.ComboRow tool_row {
+    title: "Audio tool";
+
+    [prefix]
+    Gtk.Image {
+      icon-name: "applications-utilities-symbolic";
+    }
+  }
+}
+
+Gtk.Stack tool_stack {
+  vhomogeneous: false;
+
+  Gtk.StackPage {
+    name: "Manual Ensemble";
+    child: Gtk.Box manual_ensemble_page {
+      orientation: vertical;
+      spacing: 18;
+
+      Adw.PreferencesGroup {
+        description: "Combine two or more audio files";
+
+        Adw.ComboRow algorithm_row {
+          title: "Algorithm";
+        }
+
+        Adw.SwitchRow wav_ensemble_row {
+          title: "Ensemble waveforms";
+          subtitle: "Combine in the time domain instead of spectrograms";
+        }
+      }
+    };
+  }
+
+  Gtk.StackPage {
+    name: "Time Stretch";
+    child: Gtk.Box time_stretch_page {
+      orientation: vertical;
+      spacing: 18;
+
+      Adw.PreferencesGroup {
+        description: "Change playback rate (requires pyrubberband)";
+
+        Adw.SpinRow time_rate_row {
+          title: "Rate";
+          adjustment: time_rate_adjustment;
+          digits: 2;
+        }
+      }
+    };
+  }
+
+  Gtk.StackPage {
+    name: "Change Pitch";
+    child: Gtk.Box pitch_page {
+      orientation: vertical;
+      spacing: 18;
+
+      Adw.PreferencesGroup {
+        description: "Pitch shift in semitones (requires pyrubberband)";
+
+        Adw.SpinRow pitch_rate_row {
+          title: "Semitones";
+          adjustment: pitch_rate_adjustment;
+          digits: 2;
+        }
+
+        Adw.SwitchRow time_correction_row {
+          title: "Time correction";
+          subtitle: "Preserve length while shifting pitch";
+        }
+      }
+    };
+  }
+
+  Gtk.StackPage {
+    name: "Align Inputs";
+    child: Gtk.Box align_page {
+      orientation: vertical;
+      spacing: 18;
+
+      Adw.PreferencesGroup {
+        title: "Alignment settings";
+
+        Adw.ComboRow time_window_row {
+          title: "Time window";
+        }
+
+        Adw.ComboRow intro_row {
+          title: "Intro analysis";
+        }
+
+        Adw.ComboRow db_row {
+          title: "Volume adjustment";
+        }
+
+        Adw.ExpanderRow align_advanced_row {
+          title: "Advanced align options";
+
+          Adw.ComboRow phase_option_row {
+            title: "Secondary phase";
+          }
+
+          Adw.ComboRow phase_shifts_row {
+            title: "Phase shifts";
+          }
+
+          Adw.SwitchRow save_align_row {
+            title: "Save aligned track";
+          }
+
+          Adw.SwitchRow match_silence_row {
+            title: "Silence matching";
+          }
+
+          Adw.SwitchRow spec_match_row {
+            title: "Spectral matching";
+          }
+        }
+      }
+    };
+  }
+
+  Gtk.StackPage {
+    name: "Apollo Restore";
+    child: Gtk.Box apollo_page {
+      orientation: vertical;
+      spacing: 18;
+
+      Adw.PreferencesGroup apollo_group {
+        description: "Restore codec-distorted audio (e.g. low-bitrate MP3s)";
+
+        [header-suffix]
+        Gtk.Button apollo_folder_button {
+          icon-name: "folder-symbolic";
+          styles ["flat"]
+        }
+
+        Adw.ComboRow apollo_model_row {
+          title: "Apollo model";
+        }
+
+        Adw.SpinRow apollo_overlap_row {
+          title: "Overlap";
+          adjustment: apollo_overlap_adjustment;
+          digits: 0;
+        }
+
+        Adw.SpinRow apollo_chunk_row {
+          title: "Chunk size";
+          adjustment: apollo_chunk_adjustment;
+          digits: 0;
+        }
+      }
+    };
+  }
+}
+
+Adw.PreferencesGroup processing_group {
+  title: "Processing";
+}
+
+Adw.SwitchRow apollo_gpu_row {
+  title: "GPU conversion";
+  subtitle: "Use CUDA when available";
+
+  [prefix]
+  Gtk.Image {
+    icon-name: "pci-card-symbolic";
+  }
+}
+
+Adw.SwitchRow normalize_row {
+  title: "Normalize output";
+  subtitle: "Limit peaks to prevent clipping";
+}
+
+Adw.SpinRow amplification_row {
+  title: "Amplification threshold";
+  subtitle: "Raise quiet outputs to this peak level (0 = off)";
+  adjustment: amplification_adjustment;
+  digits: 2;
+}
+
+Adw.SwitchRow testing_row {
+  title: "Settings test";
+  subtitle: "Append a timestamp to output names to avoid overwrites";
+}
