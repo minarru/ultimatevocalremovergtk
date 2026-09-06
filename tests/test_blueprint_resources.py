@@ -15,6 +15,7 @@ try:
     import gi
 
     gi.require_version("Gtk", "4.0")
+    gi.require_version("Adw", "1")
     from gi.repository import Gtk as _Gtk
 
     GTK_AVAILABLE = _Gtk is not None

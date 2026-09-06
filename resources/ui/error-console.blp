@@ -1,0 +1,36 @@
+using Gtk 4.0;
+using Adw 1;
+
+Gtk.TextBuffer buffer {}
+Adw.Window window {
+  title: "Error Console";
+  default-width: 700;
+  default-height: 520;
+  content: Adw.ToolbarView {
+    [top]
+    Adw.HeaderBar {
+      [start]
+      Gtk.Button copy_button { label: "Copy All Text"; }
+      [start]
+      Gtk.Button clear_button { label: "Clear"; }
+      [start]
+      Gtk.Button report_button { label: "Report Issue"; }
+    }
+    content: Gtk.ScrolledWindow {
+      vexpand: true;
+      hexpand: true;
+      child: Gtk.TextView {
+        buffer: buffer;
+        editable: false;
+        cursor-visible: false;
+        monospace: true;
+        wrap-mode: word_char;
+        left-margin: 10;
+        right-margin: 10;
+        top-margin: 10;
+        bottom-margin: 10;
+        styles ["card"]
+      };
+    };
+  };
+}

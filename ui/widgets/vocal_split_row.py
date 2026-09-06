@@ -69,6 +69,11 @@ class VocalSplitRow(Adw.ExpanderRow):
         on_changed: Callable[[VocalSplitEdit], None],
         hints: typing.Any = None,
     ):
+        # Importing Adw exposes the Python types but does not register every
+        # libadwaita class with GtkBuilder. Direct construction can happen
+        # before an Adw.Application exists, so initialize it before GTK expands
+        # the template's Adw.SwitchRow and Adw.ComboRow children.
+        Adw.init()
         super().__init__()
         self._repo = repo
         self._on_changed = on_changed

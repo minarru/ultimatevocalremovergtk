@@ -32,9 +32,7 @@ if typing.TYPE_CHECKING:
 
 from .dialogs.utils import (
     configure_dialog_width,
-    fill_dialog_width,
     present_modal_dialog,
-    set_dialog_content,
 )
 from .dispatch import idle_on_main, latest_main_thread
 from .download_center import DownloadCenterWindow
@@ -46,14 +44,13 @@ from .notifications import (
     NOTIFY_DOWNLOAD_FAILED,
     send_desktop_notification,
 )
+from .template import load_builder, object_from_builder
 from .widgets.download_queue_indicator import DownloadQueueIndicator
 
 
 def download_batch_message(items: typing.Any) -> tuple[str, bool]:
     """Summarize terminal download outcomes for an honest in-app toast."""
-    ready = sum(
-        1 for item in items if item.status in (STATUS_COMPLETE, STATUS_EXISTS)
-    )
+    ready = sum(1 for item in items if item.status in (STATUS_COMPLETE, STATUS_EXISTS))
     failed = sum(1 for item in items if item.status == STATUS_FAILED)
     cancelled = sum(1 for item in items if item.status == STATUS_CANCELLED)
     if failed:
@@ -81,7 +78,7 @@ def _send_download_notifications(
     settings: typing.Any,
     queue: DownloadQueue,
     *,
-    items: typing.Any=None,
+    items: typing.Any = None,
 ) -> None:
     items = queue.items() if items is None else list(items)
     complete = sum(1 for item in items if item.status == "complete")
@@ -89,8 +86,7 @@ def _send_download_notifications(
     failed = sum(1 for item in items if item.status == "failed")
     debug(
         "download",
-        "download notification "
-        f"complete={complete} exists={existed} failed={failed}",
+        f"download notification complete={complete} exists={existed} failed={failed}",
     )
     if failed:
         if failed == 1:
@@ -245,9 +241,7 @@ def _auto_open_popover(main_window: typing.Any, indicator: DownloadQueueIndicato
             handler_id[0] = None
 
     handler_id = [None]
-    handler_id[0] = main_window.connect(
-        "map", lambda *_a: idle_on_main(open_once)
-    )
+    handler_id[0] = main_window.connect("map", lambda *_a: idle_on_main(open_once))
 
 
 def _seed_debug_queue(queue: DownloadQueue) -> None:
@@ -434,16 +428,15 @@ def open_download_center(
 # Manual downloads dialog
 # ---------------------------------------------------------------------------
 
+
 def open_manual_downloads(parent: typing.Any, app_context: typing.Any):
     manager = app_context.download_manager
     data = manager.manual_download_rows()
 
-    dialog = Adw.Dialog()
-    dialog.set_title("Manual downloads")
+    builder = load_builder("manual-downloads")
+    dialog = object_from_builder(builder, "dialog", Adw.Dialog)
     configure_dialog_width(dialog, parent, fallback=520)
-    dialog.set_content_height(560)
-
-    page = Adw.PreferencesPage()
+    page = object_from_builder(builder, "page", Adw.PreferencesPage)
 
     catalogue = [
         ("VR models", VR_ARCH_TYPE, data["vr"]),
@@ -462,41 +455,30 @@ def open_manual_downloads(parent: typing.Any, app_context: typing.Any):
             row.set_title(manual_row.display)
             links = manual_row.resolve_links()
             for label, url in links:
-                link_row = Adw.ActionRow()
-                link_row.set_use_markup(False)
+                link_builder = load_builder("manual-download-link")
+                link_row = object_from_builder(link_builder, "row", Adw.ActionRow)
                 link_row.set_title(label)
                 link_row.set_subtitle(url)
-                open_button = Gtk.Button(icon_name="adw-external-link-symbolic", valign=Gtk.Align.CENTER)
+                open_button = object_from_builder(link_builder, "open_button", Gtk.Button)
                 set_icon_button_a11y(open_button, f"Open {label} in default browser")
                 open_button.connect(
                     "clicked",
                     lambda _b, u=url: open_uri_in_browser(parent, u),
                 )
-                link_row.add_suffix(open_button)
-                link_row.set_activatable_widget(open_button)
                 row.add_row(link_row)
-            dir_row = Adw.ActionRow()
-            dir_row.set_use_markup(False)
-            dir_row.set_title("Install folder")
+            folder_builder = load_builder("manual-download-folder")
+            dir_row = object_from_builder(folder_builder, "row", Adw.ActionRow)
             install_folder = DownloadManager.model_directory(arch, selectable)
             dir_row.set_subtitle(install_folder)
-            dir_button = Gtk.Button(label="Open", valign=Gtk.Align.CENTER)
+            dir_button = object_from_builder(folder_builder, "open_button", Gtk.Button)
             set_icon_button_a11y(dir_button, OPEN_INSTALL_FOLDER_HINT)
             dir_button.connect(
                 "clicked",
-                lambda _b, d=install_folder: open_folder_in_file_manager(
-                    parent, d
-                ),
+                lambda _b, d=install_folder: open_folder_in_file_manager(parent, d),
             )
-            dir_row.add_suffix(dir_button)
             row.add_row(dir_row)
             group.add(row)
         page.add(group)
 
-    scroller = Gtk.ScrolledWindow(propagate_natural_height=False, vexpand=True)
-    fill_dialog_width(scroller)
-    fill_dialog_width(page)
-    scroller.set_child(page)
-    set_dialog_content(dialog, scroller)
     present_modal_dialog(dialog, parent)
     return dialog

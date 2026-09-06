@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import subprocess
+import sys
 import typing
 import unittest
 from types import SimpleNamespace
@@ -117,6 +119,24 @@ class VocalSplitRowTests(unittest.TestCase):
             session.refresh(lambda: apply(settings))
         row.apply_from_settings = load
         return row
+
+    def test_direct_construction_initializes_adwaita_in_fresh_process(self) -> None:
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import gi; gi.require_version('Gtk', '4.0'); "
+                "gi.require_version('Adw', '1'); from gi.repository import Gtk; "
+                "Gtk.init(); from ui.widgets.vocal_split_row import VocalSplitRow; "
+                "row = VocalSplitRow(None, lambda *_: None); "
+                "assert row.splitter_row is not None; "
+                "assert row.split_switch is not None",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_deverb_option_edit_commits_typed_value_only(self):
         from core.types.settings_enums import DeverbVocalOpt

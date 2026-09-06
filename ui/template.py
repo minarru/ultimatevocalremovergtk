@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TypeVar
 
-from gi.repository import GObject, Gtk
+from gi.repository import Adw, GObject, Gtk
 
 from .resources import RESOURCE_PREFIX, require_resource_bundle
 
@@ -15,6 +15,9 @@ def load_builder(name: str) -> Gtk.Builder:
     """Load ``resources/ui/<name>.blp`` through its compiled resource alias."""
     resource_path = f"{RESOURCE_PREFIX}/ui/{name}.ui"
     require_resource_bundle(resource_path)
+    # GtkBuilder resolves type names without touching Python's lazy GI classes.
+    # Direct dialog entry points may run before an Adw.Application registers them.
+    Adw.init()
     return Gtk.Builder.new_from_resource(resource_path)
 
 

@@ -39,6 +39,18 @@ def _record(
     )
 
 
+class _FakeWarningRow:
+    def __init__(self) -> None:
+        self.subtitle = ""
+        self.visible = False
+
+    def set_subtitle(self, value: str) -> None:
+        self.subtitle = value
+
+    def set_visible(self, value: bool) -> None:
+        self.visible = value
+
+
 class VocalSplitPickerTests(unittest.TestCase):
     def _populate(
         self,
@@ -55,6 +67,7 @@ class VocalSplitPickerTests(unittest.TestCase):
         row._stored_splitter = stored
         row._syncing = False
         row.splitter_row = object()
+        row.splitter_warning_row = _FakeWarningRow()
         values: list[object] = []
         selections: list[object] = []
         with (
@@ -671,6 +684,7 @@ class VocalSplitPickerGateTests(unittest.TestCase):
         row._populator = SimpleNamespace(ready=True)
         row.split_switch = _FakeControl(active=True)
         row.splitter_row = _FakeControl()
+        row.splitter_warning_row = _FakeWarningRow()
         row.save_inst_switch = _FakeControl()
         row.deverb_switch = _FakeControl()
         row.deverb_row = _FakeControl()

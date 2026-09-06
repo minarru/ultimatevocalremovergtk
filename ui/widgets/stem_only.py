@@ -34,7 +34,6 @@ from ..help_text import (
     MDX_STEMS_HINT,
 )
 from ..markup import set_row_subtitle
-from ..spacing import inset_md
 from ..stem_labels import (
     _CHOOSE_STEM as _CHOOSE_STEM,
 )
@@ -105,7 +104,8 @@ from ..stem_labels import (
     stem_only_tooltip as stem_only_tooltip,
 )
 from ..stem_presentation import StemPresentation, project_stems
-from .rows import get_combo_value, make_combo_row, set_combo_tag_values, set_combo_value
+from ..template import load_builder, object_from_builder
+from .rows import configure_combo_row, get_combo_value, set_combo_tag_values, set_combo_value
 
 
 def _fill_export_combo(
@@ -139,30 +139,33 @@ class SaveStemsSection:
         self._repick_required = False
         self._repick_restore_token: Optional[object] = None
 
-        self._exclusive_row = make_combo_row("Export", [])
+        builder = load_builder("stem_only")
+        self._holder = object_from_builder(builder, "stem_holder", Gtk.Box)
+        self._exclusive_row = configure_combo_row(
+            object_from_builder(builder, "exclusive_row", Adw.ComboRow), []
+        )
         self._exclusive_row.connect("notify::selected", self._on_exclusive_changed)
 
-        self._quick_row = make_combo_row("Quick export", [])
+        self._quick_row = configure_combo_row(
+            object_from_builder(builder, "quick_row", Adw.ComboRow), []
+        )
         self._quick_row.connect("notify::selected", self._on_quick_export_changed)
 
-        self._custom_row = Adw.ActionRow(
-            title="Custom stems",
-            subtitle="Open to choose specific stems",
-            activatable=True,
-        )
-        self._custom_row.add_suffix(Gtk.Image(icon_name="go-next-symbolic"))
+        self._custom_row = object_from_builder(builder, "custom_row", Adw.ActionRow)
         self._custom_row.connect("activated", self._open_custom_stems_dialog)
 
-        self._demucs_focus_row = make_combo_row("Stem focus", [])
+        self._demucs_focus_row = configure_combo_row(
+            object_from_builder(builder, "demucs_focus_row", Adw.ComboRow), []
+        )
         self._demucs_focus_row.connect("notify::selected", self._on_demucs_focus_changed)
 
-        self._demucs_export_row = make_combo_row("Export", [])
+        self._demucs_export_row = configure_combo_row(
+            object_from_builder(builder, "demucs_export_row", Adw.ComboRow), []
+        )
         self._demucs_export_row.connect("notify::selected", self._on_demucs_export_changed)
 
-        self.selection_warning_row = Adw.ActionRow(
-            title="Stem selection needs review",
-            subtitle=("Available stem roles changed. Choose a stem again before starting."),
-            visible=False,
+        self.selection_warning_row = object_from_builder(
+            builder, "selection_warning_row", Adw.ActionRow
         )
 
         self._rows = (
@@ -173,14 +176,9 @@ class SaveStemsSection:
             self._demucs_export_row,
             self.selection_warning_row,
         )
-        # Holder until attach_to() reparents rows into the outer Save stems group.
-        self._holder = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        for row in self._rows:
-            self._holder.append(row)
-
         # Compatibility aliases used by tests / metadata helpers.
 
-        self._build_custom_stems_dialog()
+        self._build_custom_stems_dialog(builder)
         self._hide_all_rows()
 
     @property
@@ -344,33 +342,10 @@ class SaveStemsSection:
                 group.add(row)
         self._host = group
 
-    def _build_custom_stems_dialog(self) -> None:
-        self._custom_listbox = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
-        self._custom_listbox.add_css_class("boxed-list")
-
-        scroller = Gtk.ScrolledWindow()
-        scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        scroller.set_min_content_height(280)
-        scroller.set_vexpand(True)
-        scroller.set_child(self._custom_listbox)
-
-        description = Gtk.Label(
-            label="Choose which stems to export. Selecting All stems clears individual picks.",
-            wrap=True,
-            xalign=0.0,
-        )
-        description.add_css_class("dim-label")
-
-        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
-        inset_md(content)
-        content.append(description)
-        content.append(scroller)
-
-        self._custom_dialog = Adw.Dialog()
-        self._custom_dialog.set_title("Custom stems")
-        self._custom_dialog.set_content_width(400)
-        self._custom_dialog.set_content_height(480)
-        self._custom_dialog.set_follows_content_size(True)
+    def _build_custom_stems_dialog(self, builder: Gtk.Builder) -> None:
+        self._custom_listbox = object_from_builder(builder, "custom_listbox", Gtk.ListBox)
+        content = object_from_builder(builder, "custom_content", Gtk.Box)
+        self._custom_dialog = object_from_builder(builder, "custom_dialog", Adw.Dialog)
         set_form_dialog_content(
             self._custom_dialog,
             content,

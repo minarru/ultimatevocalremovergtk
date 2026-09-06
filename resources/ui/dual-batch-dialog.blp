@@ -1,0 +1,47 @@
+using Gtk 4.0;
+using Adw 1;
+
+Adw.Dialog dialog {
+  title: "Dual / Batch Inputs";
+  content-width: 640;
+  content-height: 520;
+  child: Adw.ToolbarView {
+    [top]
+    Adw.HeaderBar {
+      [end]
+      Gtk.Button save_button {
+        label: "Save";
+        styles ["suggested-action"]
+      }
+    }
+    content: Gtk.Box {
+      orientation: vertical;
+      spacing: 6;
+      vexpand: true;
+      margin-top: 12;
+      Gtk.Label {
+        label: "Files are paired top-to-bottom. Add the same number of files to each side, then reorder rows so each pair lines up.";
+        wrap: true;
+        xalign: 0;
+        margin-start: 12;
+        margin-end: 12;
+        margin-bottom: 6;
+        styles ["dim-label"]
+      }
+      Gtk.Label pair_status {
+        wrap: true;
+        xalign: 0;
+        margin-start: 12;
+        margin-end: 12;
+        styles ["dim-label"]
+      }
+      Gtk.Box columns {
+        orientation: horizontal;
+        spacing: 12;
+        margin-start: 12;
+        margin-end: 12;
+        margin-bottom: 12;
+      }
+    };
+  };
+}

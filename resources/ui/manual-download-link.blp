@@ -1,0 +1,12 @@
+using Gtk 4.0;
+using Adw 1;
+
+Adw.ActionRow row {
+  use-markup: false;
+  activatable-widget: open_button;
+  [suffix]
+  Gtk.Button open_button {
+    icon-name: "adw-external-link-symbolic";
+    valign: center;
+  }
+}

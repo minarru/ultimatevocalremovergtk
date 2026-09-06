@@ -112,12 +112,40 @@ class ErrorLogViewLifetimeTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         import gi
+
         gi.require_version('Gtk', '4.0')
         gi.require_version('Adw', '1')
         from gi.repository import Gtk
+
         Gtk.init()
         from tests.private_gtk import require_private_gtk
+
         require_private_gtk()
+
+    def test_direct_console_entry_initializes_adwaita_in_fresh_process(self) -> None:
+        import subprocess
+        import sys
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import gi; gi.require_version('Gtk', '4.0'); "
+                "gi.require_version('Adw', '1'); from gi.repository import Gtk; "
+                "Gtk.init(); from ui import errorlog; "
+                "errorlog.set_error_log('fresh process report'); "
+                "window = errorlog.open_error_log(None); "
+                "buffer = errorlog._ERROR_LOG_BUFFER; "
+                "assert buffer is not None; "
+                "assert buffer.get_text(buffer.get_start_iter(), "
+                "buffer.get_end_iter(), True) == 'fresh process report'; "
+                "window.close()",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_worker_update_close_and_reopen_dispose_queued_sink(self) -> None:
         import gc
@@ -136,8 +164,10 @@ class ErrorLogViewLifetimeTests(unittest.TestCase):
         set_error_log('seed')
         parent = Gtk.Window()
         window = errorlog.open_error_log(parent)
-        self.addCleanup(parent.destroy)
-        self.addCleanup(lambda: errorlog._ERROR_LOG_WINDOW.close() if errorlog._ERROR_LOG_WINDOW else None)
+        self.addCleanup(parent.close)
+        self.addCleanup(
+            lambda: errorlog._ERROR_LOG_WINDOW.close() if errorlog._ERROR_LOG_WINDOW else None
+        )
         old_buffer = errorlog._ERROR_LOG_BUFFER
         assert old_buffer is not None
         old_buffer_ref = weakref.ref(old_buffer)
@@ -167,7 +197,6 @@ class ErrorLogViewLifetimeTests(unittest.TestCase):
         self.assertNotIn('queued', buffer_text(old_buffer))
         self.assertIn('queued', buffer_text(new_buffer))
         reopened.close()
-        window.destroy()
         del old_buffer, window
         gc.collect()
         self.assertIsNone(old_buffer_ref())

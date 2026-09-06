@@ -1,0 +1,142 @@
+using Gtk 4.0;
+using Adw 1;
+
+Adw.PreferencesGroup primary_group {
+  Adw.ComboRow model_row {
+    title: "Model";
+
+    [prefix]
+    Gtk.Image {
+      icon-name: "applications-science-symbolic";
+    }
+  }
+
+  Adw.Banner stored_model_banner {
+    revealed: false;
+  }
+
+  Adw.ActionRow segment_row {
+    title: "Segment size";
+  }
+
+  Adw.ActionRow overlap_row {
+    title: "Overlap";
+  }
+}
+
+Adw.PreferencesGroup advanced_group {
+  Adw.ActionRow mdx_batch_size_row {
+    title: "Batch size";
+  }
+
+  Adw.ComboRow denoise_option_row {
+    title: "Denoise";
+  }
+
+  Adw.ActionRow compensate_row {
+    title: "Volume compensation";
+  }
+
+  Adw.SwitchRow is_match_frequency_pitch_row {
+    title: "Match frequency cut-off";
+  }
+
+  Adw.SwitchRow is_invert_spec_row {
+    title: "Spectral inversion";
+  }
+
+  Adw.SwitchRow is_mdx23_combine_stems_row {
+    title: "Combine stems (MDX23C)";
+  }
+
+  Adw.SwitchRow is_mdx_include_stem_complement_row {
+    title: "Include complement (No X)";
+  }
+}
+
+Adw.PreferencesGroup secondary_group {
+  title: "Extra models";
+
+  Adw.ExpanderRow secondary_expander {
+    title: "Secondary models";
+
+    Adw.SwitchRow secondary_activate_row {
+      title: "Activate secondary model";
+    }
+
+    Adw.ComboRow secondary_voc_inst_model_row {
+      title: "Vocals/Instrumental";
+    }
+
+    Adw.ActionRow secondary_voc_inst_warning_row {
+      title: "Saved model unavailable";
+      visible: false;
+      subtitle-lines: 0;
+    }
+
+    Adw.ActionRow secondary_voc_inst_scale_row {
+      title: "Vocals/Instrumental influence";
+    }
+
+    Adw.ComboRow secondary_other_model_row {
+      title: "Residual/Residual Removed";
+    }
+
+    Adw.ActionRow secondary_other_warning_row {
+      title: "Saved model unavailable";
+      visible: false;
+      subtitle-lines: 0;
+    }
+
+    Adw.ActionRow secondary_other_scale_row {
+      title: "Residual/Residual Removed influence";
+    }
+
+    Adw.ComboRow secondary_bass_model_row {
+      title: "Bass/Bass Removed";
+    }
+
+    Adw.ActionRow secondary_bass_warning_row {
+      title: "Saved model unavailable";
+      visible: false;
+      subtitle-lines: 0;
+    }
+
+    Adw.ActionRow secondary_bass_scale_row {
+      title: "Bass/Bass Removed influence";
+    }
+
+    Adw.ComboRow secondary_drums_model_row {
+      title: "Drums/Drums Removed";
+    }
+
+    Adw.ActionRow secondary_drums_warning_row {
+      title: "Saved model unavailable";
+      visible: false;
+      subtitle-lines: 0;
+    }
+
+    Adw.ActionRow secondary_drums_scale_row {
+      title: "Drums/Drums Removed influence";
+    }
+  }
+}
+
+Adw.PreferencesGroup maintenance_group {
+  title: "Model maintenance";
+
+  Adw.ActionRow change_row {
+    title: "Change model defaults";
+    subtitle: "Edit or delete a model's stored parameters";
+
+    [suffix]
+    Gtk.Button change_button {
+      label: "Edit…";
+      valign: center;
+    }
+  }
+}
+
+Adw.PreferencesGroup stem_group {
+  title: "Save stems";
+}

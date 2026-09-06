@@ -1,0 +1,78 @@
+using Gtk 4.0;
+using Adw 1;
+
+Gtk.Box stem_holder {
+  orientation: vertical;
+
+  Adw.ComboRow exclusive_row {
+    title: "Export";
+  }
+
+  Adw.ComboRow quick_row {
+    title: "Quick export";
+  }
+
+  Adw.ActionRow custom_row {
+    title: "Custom stems";
+    subtitle: "Open to choose specific stems";
+    activatable: true;
+
+    [suffix]
+    Gtk.Image {
+      icon-name: "go-next-symbolic";
+    }
+  }
+
+  Adw.ComboRow demucs_focus_row {
+    title: "Stem focus";
+  }
+
+  Adw.ComboRow demucs_export_row {
+    title: "Export";
+  }
+
+  Adw.ActionRow selection_warning_row {
+    title: "Stem selection needs review";
+    subtitle: "Available stem roles changed. Choose a stem again before starting.";
+    visible: false;
+  }
+}
+
+Gtk.Box custom_content {
+  orientation: vertical;
+  spacing: 12;
+  margin-top: 12;
+  margin-bottom: 12;
+  margin-start: 12;
+  margin-end: 12;
+
+  Gtk.Label {
+    label: "Choose which stems to export. Selecting All stems clears individual picks.";
+    wrap: true;
+    xalign: 0.0;
+    styles [
+      "dim-label",
+    ]
+  }
+
+  Gtk.ScrolledWindow {
+    hscrollbar-policy: never;
+    vscrollbar-policy: automatic;
+    min-content-height: 280;
+    vexpand: true;
+
+    Gtk.ListBox custom_listbox {
+      selection-mode: none;
+      styles [
+        "boxed-list",
+      ]
+    }
+  }
+}
+
+Adw.Dialog custom_dialog {
+  title: "Custom stems";
+  content-width: 400;
+  content-height: 480;
+  follows-content-size: true;
+}

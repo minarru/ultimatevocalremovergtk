@@ -1,0 +1,12 @@
+using Gtk 4.0;
+using Adw 1;
+
+Adw.ActionRow row {
+  use-markup: false;
+  title: "Install folder";
+  [suffix]
+  Gtk.Button open_button {
+    label: "Open";
+    valign: center;
+  }
+}

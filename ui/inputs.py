@@ -11,6 +11,7 @@ so constructing the dialog stays ``torch``-free.
 
 Entry point: :func:`open_view_inputs` (wire to ``win.view_inputs``).
 """
+
 import os
 import threading
 import typing
@@ -35,11 +36,11 @@ from .shared_settings import (
     remove_unreadable_from_paths,
     sanitize_input_paths,
 )
+from .template import load_builder, object_from_builder
 from .widgets.file_chooser import merge_input_paths
 from .widgets.file_dialogs import audio_open_dialog, is_dialog_dismissed
 from .widgets.rows import set_row_icon
 
-_REMOVE_UNREADABLE_TEXT = "Remove unreadable"
 _STATUS_OK = "success-small-symbolic"
 _STATUS_BAD = "error-small-symbolic"
 
@@ -60,10 +61,11 @@ def inspect_audio(path: str):
     result = probe_audio(path)
     if not result.readable:
         if result.error and result.error != "file_not_found":
-            log_error(
-                "Verify Inputs", RuntimeError(result.error), context=f"path={path!r}"
-            )
-        return False, "file not found" if result.error == "file_not_found" else "Could not read this file"
+            log_error("Verify Inputs", RuntimeError(result.error), context=f"path={path!r}")
+        return (
+            False,
+            "file not found" if result.error == "file_not_found" else "Could not read this file",
+        )
     if result.format and result.duration_seconds is not None:
         return True, (
             f"{_fmt_duration(result.duration_seconds)} \u2022 {result.format} \u2022 "
@@ -73,7 +75,9 @@ def inspect_audio(path: str):
 
 
 class ViewInputs:
-    def __init__(self, parent: typing.Any, app_context: typing.Any, on_inputs_changed: typing.Any=None):
+    def __init__(
+        self, parent: typing.Any, app_context: typing.Any, on_inputs_changed: typing.Any = None
+    ):
         self.parent = parent
         self.context = app_context
         self.settings = app_context.settings
@@ -85,46 +89,31 @@ class ViewInputs:
         self._verify_total = 0
         self._verify_stop = threading.Event()
 
-        self.window = Adw.Window(title=VERIFY_INPUTS_TEXT)
-        self.window.set_default_size(620, 560)
+        builder = load_builder("verify-inputs")
+        self.window = object_from_builder(builder, "window", Adw.Window)
+        self.window.set_title(VERIFY_INPUTS_TEXT)
         if parent is not None:
             self.window.set_transient_for(parent)
         close_on_escape(self.window)
         self.window.connect("close-request", self._on_close_request)
 
-        toolbar = Adw.ToolbarView()
-        header = Adw.HeaderBar()
-
-        self.add_button = Gtk.Button(icon_name="list-add-symbolic")
+        self.add_button = object_from_builder(builder, "add_button", Gtk.Button)
         set_icon_button_a11y(self.add_button, ADD_INPUT_FILES_HINT)
         self.add_button.connect("clicked", self._on_add)
-        header.pack_start(self.add_button)
-
-        self.clear_button = Gtk.Button(icon_name="edit-clear-all-symbolic")
+        self.clear_button = object_from_builder(builder, "clear_button", Gtk.Button)
         set_icon_button_a11y(self.clear_button, CLEAR_ALL_INPUTS_HINT)
         self.clear_button.connect("clicked", self._on_clear)
-        header.pack_start(self.clear_button)
-
-        self.remove_unreadable_button = Gtk.Button(label=_REMOVE_UNREADABLE_TEXT)
-        self.remove_unreadable_button.add_css_class("destructive-action")
+        self.remove_unreadable_button = object_from_builder(
+            builder, "remove_unreadable_button", Gtk.Button
+        )
         self.remove_unreadable_button.connect("clicked", self._on_remove_unreadable)
-        header.pack_end(self.remove_unreadable_button)
-
-        self.verify_button = Gtk.Button(label=f"_{VERIFY_INPUTS_TEXT}", use_underline=True)
-        self.verify_button.add_css_class("suggested-action")
+        self.verify_button = object_from_builder(builder, "verify_button", Gtk.Button)
+        self.verify_button.set_label(f"_{VERIFY_INPUTS_TEXT}")
         self.verify_button.connect("clicked", self._on_verify)
-        header.pack_end(self.verify_button)
-        toolbar.add_top_bar(header)
-
-        self.toast_overlay = Adw.ToastOverlay()
-        self.page = Adw.PreferencesPage()
-        self._files_group = Adw.PreferencesGroup(title=self._total_text())
-        self.page.add(self._files_group)
-        scroller = Gtk.ScrolledWindow(vexpand=True)
-        scroller.set_child(self.page)
-        self.toast_overlay.set_child(scroller)
-        toolbar.set_content(self.toast_overlay)
-        self.window.set_content(toolbar)
+        self.toast_overlay = object_from_builder(builder, "toast_overlay", Adw.ToastOverlay)
+        self.page = object_from_builder(builder, "page", Adw.PreferencesPage)
+        self._files_group = object_from_builder(builder, "files_group", Adw.PreferencesGroup)
+        self._files_group.set_title(self._total_text())
 
         # Seed status from any prior verify still tracked on the context.
         for path in self.context.unreadable_input_paths:
@@ -159,20 +148,17 @@ class ViewInputs:
         self._files_group.set_title(self._total_text())
 
         if not self.paths:
-            placeholder = Adw.ActionRow(
-                title="No files selected",
-                subtitle="Add audio files to verify them before starting a run",
-            )
-            add_suffix = Gtk.Button(label="Add files", valign=Gtk.Align.CENTER)
-            add_suffix.add_css_class("suggested-action")
+            builder = load_builder("verify-inputs-empty")
+            placeholder = object_from_builder(builder, "row", Adw.ActionRow)
+            add_suffix = object_from_builder(builder, "add_button", Gtk.Button)
             add_suffix.connect("clicked", self._on_add)
-            placeholder.add_suffix(add_suffix)
             self._rows["__placeholder__"] = placeholder
             self._files_group.add(placeholder)
             return
 
         for path in self.paths:
-            row = Adw.ActionRow()
+            builder = load_builder("verify-inputs-row")
+            row = object_from_builder(builder, "row", Adw.ActionRow)
             set_row_title(row, os.path.basename(path))
             status = self._status.get(path)
             if status is None:
@@ -182,11 +168,9 @@ class ViewInputs:
                 is_valid, info = status
                 set_row_icon(row, _STATUS_OK if is_valid else _STATUS_BAD)
                 set_row_subtitle(row, f"{path}\n{info}")
-            remove_button = Gtk.Button(icon_name="user-trash-symbolic", valign=Gtk.Align.CENTER)
-            remove_button.add_css_class("flat")
+            remove_button = object_from_builder(builder, "remove_button", Gtk.Button)
             set_icon_button_a11y(remove_button, REMOVE_INPUT_HINT)
             remove_button.connect("clicked", lambda _b, p=path: self._remove_path(p))
-            row.add_suffix(remove_button)
             self._files_group.add(row)
             self._rows[path] = row
 
@@ -316,9 +300,7 @@ class ViewInputs:
             daemon=True,
         ).start()
 
-    def _verify_worker(
-        self, paths: typing.Any, prior_unreadable: typing.Any = ()
-    ) -> None:
+    def _verify_worker(self, paths: typing.Any, prior_unreadable: typing.Any = ()) -> None:
         broken = []
         verified_paths = []
         cancelled = False
@@ -339,7 +321,9 @@ class ViewInputs:
             prior_unreadable,
         )
 
-    def _apply_result(self, path: typing.Any, is_valid: typing.Any, info: typing.Any, index: int) -> None:
+    def _apply_result(
+        self, path: typing.Any, is_valid: typing.Any, info: typing.Any, index: int
+    ) -> None:
         self._status[path] = (is_valid, info)
         self.verify_button.set_label(f"Verifying… {index}/{self._verify_total}")
         row = self._rows.get(path)
@@ -361,9 +345,7 @@ class ViewInputs:
         failed_paths = [p for p, _info in broken]
         current_paths = set(self.paths)
         if cancelled:
-            preserved = (
-                (set(prior_unreadable) & current_paths) - set(verified_paths)
-            )
+            preserved = (set(prior_unreadable) & current_paths) - set(verified_paths)
             failed_paths = sorted(preserved | (set(failed_paths) & current_paths))
         else:
             failed_paths = sorted(set(failed_paths) & current_paths)
@@ -392,7 +374,9 @@ class ViewInputs:
         self.toast_overlay.add_toast(Adw.Toast.new(message))
 
 
-def open_view_inputs(parent_window: typing.Any, app_context: typing.Any, on_inputs_changed: typing.Any=None):
+def open_view_inputs(
+    parent_window: typing.Any, app_context: typing.Any, on_inputs_changed: typing.Any = None
+):
     """Open the Verify Inputs dialog. Wire to ``win.view_inputs``."""
     view = ViewInputs(parent_window, app_context, on_inputs_changed=on_inputs_changed)
     view.present()

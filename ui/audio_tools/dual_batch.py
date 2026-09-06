@@ -7,6 +7,7 @@ confirm the editor reports the resulting list of ``(file_a, file_b)`` pairs back
 to the caller, which persists them to ``DualBatch_inputPaths`` and the
 ``fileOneEntry`` / ``fileTwoEntry`` settings keys.
 """
+
 import os
 import typing
 from typing import Callable, List, Sequence, Tuple
@@ -15,7 +16,7 @@ from gi.repository import Adw, Gdk, GLib, Gtk
 
 from core.audio_formats import expand_audio_paths
 
-from ..dialogs.utils import present_modal_dialog, set_form_dialog_content
+from ..dialogs.utils import present_modal_dialog
 from ..gtk_narrow import file_paths, root_window
 from ..help_text import (
     DUAL_BATCH_CLEAR_HINT,
@@ -25,7 +26,8 @@ from ..help_text import (
 )
 from ..hints import set_icon_button_a11y
 from ..markup import set_row_subtitle, set_row_title
-from ..spacing import set_inset
+from ..resources import RESOURCE_PREFIX, require_resource_bundle
+from ..template import load_builder, object_from_builder
 from ..widgets.file_dialogs import audio_open_dialog, is_dialog_dismissed
 
 
@@ -40,51 +42,40 @@ def pair_count_state(left_count: int, right_count: int) -> tuple[bool, str]:
     return False, f"Counts must match — {difference} unmatched {noun} on the {side}"
 
 
+_COLUMN_RESOURCE = f"{RESOURCE_PREFIX}/ui/dual-batch-column.ui"
+require_resource_bundle(_COLUMN_RESOURCE)
+
+
+@Gtk.Template(resource_path=_COLUMN_RESOURCE)
 class _FileColumn(Gtk.Box):
     """One side of the dual editor: a titled, drop-enabled file list."""
 
+    __gtype_name__ = "UVRDualBatchFileColumn"
+
+    header: Gtk.Label = Gtk.Template.Child("header")
+    listbox: Gtk.ListBox = Gtk.Template.Child("listbox")
+    up_button: Gtk.Button = Gtk.Template.Child("up_button")
+    down_button: Gtk.Button = Gtk.Template.Child("down_button")
+    remove_button: Gtk.Button = Gtk.Template.Child("remove_button")
+    _add_button: Gtk.Button = Gtk.Template.Child("add_button")
+    _clear_button: Gtk.Button = Gtk.Template.Child("clear_button")
+
     def __init__(self, title: str, on_changed: Callable[[], None]):
-        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        self.set_hexpand(True)
+        super().__init__()
         self._title = title
         self._on_changed = on_changed
         self.paths: List[str] = []
-
-        self.header = Gtk.Label(label=title, xalign=0.0)
-        self.header.add_css_class("heading")
-        self.append(self.header)
-
-        self.listbox = Gtk.ListBox(selection_mode=Gtk.SelectionMode.SINGLE)
-        self.listbox.add_css_class("boxed-list")
+        self.header.set_label(title)
         self.listbox.connect("selected-rows-changed", self._on_selection_changed)
-        scroller = Gtk.ScrolledWindow(vexpand=True)
-        scroller.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
-        scroller.set_min_content_height(300)
-        scroller.set_min_content_width(240)
-        scroller.set_child(self.listbox)
-        self.append(scroller)
-
-        button_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        add_button = Gtk.Button(label="Add files", hexpand=True)
-        add_button.connect("clicked", self._on_add_clicked)
-        self.up_button = Gtk.Button(icon_name="go-up-symbolic")
+        self._add_button.connect("clicked", self._on_add_clicked)
         set_icon_button_a11y(self.up_button, DUAL_BATCH_MOVE_UP_HINT)
         self.up_button.connect("clicked", lambda *_a: self._move_selected(-1))
-        self.down_button = Gtk.Button(icon_name="go-down-symbolic")
         set_icon_button_a11y(self.down_button, DUAL_BATCH_MOVE_DOWN_HINT)
         self.down_button.connect("clicked", lambda *_a: self._move_selected(1))
-        self.remove_button = Gtk.Button(icon_name="list-remove-symbolic")
         set_icon_button_a11y(self.remove_button, DUAL_BATCH_REMOVE_HINT)
         self.remove_button.connect("clicked", self._on_remove_clicked)
-        clear_button = Gtk.Button(icon_name="edit-clear-all-symbolic")
-        set_icon_button_a11y(clear_button, DUAL_BATCH_CLEAR_HINT)
-        clear_button.connect("clicked", lambda *_a: self.clear())
-        button_box.append(add_button)
-        button_box.append(self.up_button)
-        button_box.append(self.down_button)
-        button_box.append(self.remove_button)
-        button_box.append(clear_button)
-        self.append(button_box)
+        set_icon_button_a11y(self._clear_button, DUAL_BATCH_CLEAR_HINT)
+        self._clear_button.connect("clicked", lambda *_a: self.clear())
 
         drop = Gtk.DropTarget.new(Gdk.FileList, Gdk.DragAction.COPY)
         drop.connect("drop", self._on_drop)
@@ -210,44 +201,20 @@ class DualBatchDialog:
         self._left.set_paths([p[0] for p in initial_pairs])
         self._right.set_paths([p[1] for p in initial_pairs])
 
-        hint = Gtk.Label(
-            label="Files are paired top-to-bottom. Add the same number of files to each side, then reorder rows so each pair lines up.",
-            wrap=True,
-            xalign=0.0,
-        )
-        hint.add_css_class("dim-label")
-        set_inset(hint, start=12, end=12, bottom=6)
-
-        self._pair_status = Gtk.Label(wrap=True, xalign=0.0)
-        self._pair_status.add_css_class("dim-label")
-        set_inset(self._pair_status, start=12, end=12)
-
-        columns = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
-        set_inset(columns, start=12, end=12, bottom=12)
+        builder = load_builder("dual-batch-dialog")
+        self.dialog = object_from_builder(builder, "dialog", Adw.Dialog)
+        self._pair_status = object_from_builder(builder, "pair_status", Gtk.Label)
+        columns = object_from_builder(builder, "columns", Gtk.Box)
         columns.append(self._left)
         columns.append(self._right)
-
-        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, vexpand=True)
-        set_inset(content, top=12)
-        content.append(hint)
-        content.append(self._pair_status)
-        content.append(columns)
-
-        self.dialog = Adw.Dialog()
-        self.dialog.set_title("Dual / Batch Inputs")
-        self.dialog.set_content_width(640)
-        self.dialog.set_content_height(520)
-        self._save_button = set_form_dialog_content(
-            self.dialog, content, on_save=self._on_save
-        )
+        self._save_button = object_from_builder(builder, "save_button", Gtk.Button)
+        self._save_button.connect("clicked", lambda *_: self._on_save())
         self._sync_pair_state()
 
     def _sync_pair_state(self) -> None:
         if not hasattr(self, "_pair_status") or not hasattr(self, "_save_button"):
             return
-        valid, message = pair_count_state(
-            len(self._left.paths), len(self._right.paths)
-        )
+        valid, message = pair_count_state(len(self._left.paths), len(self._right.paths))
         self._pair_status.set_label(message)
         self._pair_status.remove_css_class("error")
         if not valid:
