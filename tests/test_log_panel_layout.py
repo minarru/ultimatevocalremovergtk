@@ -71,3 +71,61 @@ class LogPanelLayoutTests(unittest.TestCase):
             self.assertEqual(panel.options_overlay_clearance(), base)
         finally:
             window.set_visible(False)
+
+    def test_revealer_transitions_update_window_clearance_once(self):
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+
+        from gi.repository import Adw
+
+        from core.access_policy import access_policy
+        from core.settings import Settings
+        from ui.window import MainWindow
+
+        app = Adw.Application(application_id="org.uvr.test.log-clearance")
+        app.register()
+        scratch = self.enterContext(tempfile.TemporaryDirectory())
+        settings = Settings.defaults()
+        settings.path = str(Path(scratch) / "settings.json")
+        with (
+            access_policy(allow_network=False, allow_metadata_writes=False),
+            patch("ui.context.Settings.load", return_value=settings),
+        ):
+            window = MainWindow(application=app)
+        panel = window.log_panel
+        self.addCleanup(window.set_application, None)
+        self.addCleanup(window._unsubscribe_model_events)
+        self.addCleanup(panel.set_start_blocked_reason, None)
+        self.addCleanup(window.set_visible, False)
+        panel.set_start_blocked_reason(None)
+        window.present()
+        self.settle(window.get_mapped)
+        for expanded in (True, False):
+            with (
+                self.subTest(log_expanded=expanded),
+                patch.object(
+                    window,
+                    "_sync_options_bottom_clearance",
+                    wraps=window._sync_options_bottom_clearance,
+                ) as sync,
+            ):
+                panel.set_expanded(expanded)
+                self.settle(
+                    lambda expanded=expanded: panel._log_revealer.get_child_revealed() == expanded
+                )
+                sync.assert_called_once_with()
+        for visible in (True, False):
+            with (
+                self.subTest(progress_visible=visible),
+                patch.object(
+                    window,
+                    "_sync_options_bottom_clearance",
+                    wraps=window._sync_options_bottom_clearance,
+                ) as sync,
+            ):
+                panel.set_progress_text("Working" if visible else "")
+                self.settle(
+                    lambda visible=visible: panel._progress_revealer.get_child_revealed() == visible
+                )
+                sync.assert_called_once_with()

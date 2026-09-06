@@ -293,7 +293,10 @@ class LogPanel(Gtk.Box):
         self._notify_expanded_changed(expanded)
 
     def _on_log_revealed(self, revealer: Gtk.Revealer, _pspec: typing.Any) -> None:
-        if not revealer.get_child_revealed():
+        if (
+            not revealer.get_child_revealed()
+            or self._log_stack.get_visible_child_name() != "console"
+        ):
             return
         debug("ui", "log_panel child revealed resume_scroll")
         self.console.resume_scroll()

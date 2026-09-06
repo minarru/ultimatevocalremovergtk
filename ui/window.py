@@ -276,7 +276,6 @@ class MainWindow(Adw.ApplicationWindow):
 
         page = self._build_content()
         self.log_panel = LogPanel(
-            on_expanded_changed=lambda *_: self._sync_options_bottom_clearance(),
             on_clearance_changed=self._sync_options_bottom_clearance,
         )
         self.console = self.log_panel.console
@@ -289,14 +288,10 @@ class MainWindow(Adw.ApplicationWindow):
         self.stop_button.connect("clicked", self._on_stop)
         self.log_copy_button.connect("clicked", self._on_log_copy)
         self.log_clear_button.connect("clicked", self._on_log_clear)
-        self.log_panel._progress_revealer.connect(
-            "notify::child-revealed", lambda *_: self._sync_options_bottom_clearance()
-        )
+        # Clearance uses the requested reveal state, so update it once when
+        # that state changes, not again when the animation finishes.
         self.log_panel._progress_revealer.connect(
             "notify::reveal-child", lambda *_: self._sync_options_bottom_clearance()
-        )
-        self.log_panel._log_revealer.connect(
-            "notify::child-revealed", lambda *_: self._sync_options_bottom_clearance()
         )
         self.log_panel._log_revealer.connect(
             "notify::reveal-child", lambda *_: self._sync_options_bottom_clearance()
