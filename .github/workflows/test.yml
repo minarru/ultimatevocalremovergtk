@@ -98,7 +98,7 @@ jobs:
           display = Gdk.Display.get_default()
           assert display is not None
           print("CI display:", type(display).__name__, display.get_name())
-          assert type(display).__name__ == "GdkX11Display"
+          assert display.__gtype__.name == "GdkX11Display"
           PYTHON
               .venv/bin/python -m unittest discover -s tests -t . -v
             '
@@ -188,7 +188,7 @@ jobs:
           display = Gdk.Display.get_default()
           assert display is not None
           print("CI display:", type(display).__name__, display.get_name())
-          assert type(display).__name__ == "GdkX11Display"
+          assert display.__gtype__.name == "GdkX11Display"
           PYTHON
               .venv/bin/python -m unittest discover -s tests -t . -v
             '
