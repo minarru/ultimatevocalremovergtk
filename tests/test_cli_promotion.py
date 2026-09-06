@@ -15,11 +15,10 @@ from unittest import mock
 
 from cli.execution import (
     PromotionSkipped,
-    _move_no_replace,
     _promote,
-    _unique_target,
     preflight_collisions,
 )
+from cli.promotion import _move_no_replace, _unique_target
 from core.export_naming import OutputNamingContext, format_stem_basename
 from core.job_plan import PlannedInput, PlannedOutput
 
@@ -52,7 +51,7 @@ def _competing_promotion(stage: str, output: str, barrier: Any, results: Any) ->
         return exists
 
     try:
-        with mock.patch("cli.execution.os.path.lexists", synchronized_exists):
+        with mock.patch("cli.promotion.os.path.lexists", synchronized_exists):
             _promote(stage, output, "fail")
     except FileExistsError:
         results.put((stage, "collision"))
@@ -107,7 +106,7 @@ class PromotionTests(unittest.TestCase):
                 source, target = Path(root, "source"), Path(root, "target")
                 source.write_bytes(b"new")
                 target.write_bytes(b"old")
-                with mock.patch("cli.execution.sys.platform", "other") if fallback else nullcontext():
+                with mock.patch("cli.promotion.sys.platform", "other") if fallback else nullcontext():
                     with self.assertRaises(FileExistsError):
                         _move_no_replace(str(source), str(target))
                     self.assertEqual(source.read_bytes(), b"new")
@@ -129,8 +128,8 @@ class PromotionTests(unittest.TestCase):
                 real_unlink(path)
 
             with (
-                mock.patch("cli.execution.sys.platform", "other"),
-                mock.patch("cli.execution.os.unlink", failing_unlink),
+                mock.patch("cli.promotion.sys.platform", "other"),
+                mock.patch("cli.promotion.os.unlink", failing_unlink),
                 self.assertRaises(PermissionError),
             ):
                 _move_no_replace(str(source), str(target))
@@ -171,7 +170,7 @@ class PromotionTests(unittest.TestCase):
                             raced.write_bytes(b"other writer")
                     return exists
 
-                with mock.patch("cli.execution.os.path.lexists", racing_exists):
+                with mock.patch("cli.promotion.os.path.lexists", racing_exists):
                     if policy == "rename":
                         promoted = _promote(
                             str(stage), str(output), policy, expected_track_base="song"
@@ -204,7 +203,7 @@ class PromotionTests(unittest.TestCase):
                     target.write_bytes(b"other writer")
                 return exists
 
-            with mock.patch("cli.execution.os.path.lexists", racing_exists):
+            with mock.patch("cli.promotion.os.path.lexists", racing_exists):
                 promoted = _promote(str(stage), str(output), "rename")
             self.assertEqual(promoted, [str(output / "audio_2.wav")])
             self.assertEqual(target.read_bytes(), b"other writer")
@@ -291,7 +290,7 @@ class PromotionTests(unittest.TestCase):
                         raise OSError("simulated promote failure")
                 real_replace(src, dst, *args, **kwargs)
 
-            with mock.patch("cli.execution.os.replace", flaky_replace):
+            with mock.patch("cli.promotion.os.replace", flaky_replace):
                 with self.assertRaises(OSError):
                     _promote(stage, output, "overwrite", destinations=destinations)
 
@@ -326,7 +325,7 @@ class PromotionTests(unittest.TestCase):
                         raise OSError("simulated backup failure")
                 real_replace(src, dst, *args, **kwargs)
 
-            with mock.patch("cli.execution.os.replace", flaky_replace):
+            with mock.patch("cli.promotion.os.replace", flaky_replace):
                 with self.assertRaises(OSError):
                     _promote(stage, output, "overwrite", destinations=destinations)
 
@@ -387,7 +386,7 @@ class PromotionTests(unittest.TestCase):
                         raise KeyboardInterrupt
                 real_replace(src, dst, *args, **kwargs)
 
-            with mock.patch("cli.execution.os.replace", interrupting_replace):
+            with mock.patch("cli.promotion.os.replace", interrupting_replace):
                 with self.assertRaises(KeyboardInterrupt):
                     _promote(stage, output, "overwrite", destinations=destinations)
 
@@ -452,7 +451,7 @@ class PromotionTests(unittest.TestCase):
                     raced["done"] = True
                     Path(song_2).write_bytes(b"raced")
 
-            with mock.patch("cli.execution.os.makedirs", racing_makedirs):
+            with mock.patch("cli.promotion.os.makedirs", racing_makedirs):
                 promoted = _promote(
                     stage, output, "rename", destinations=destinations,
                 )
@@ -494,7 +493,7 @@ class PromotionTests(unittest.TestCase):
                     raced["done"] = True
                     Path(song_2_vocals).write_bytes(b"raced")
 
-            with mock.patch("cli.execution._move_no_replace", racing_move):
+            with mock.patch("cli.promotion._move_no_replace", racing_move):
                 promoted = _promote(
                     stage, output, "rename", destinations=destinations,
                 )
@@ -549,7 +548,7 @@ class PromotionTests(unittest.TestCase):
                 except BaseException as exc:  # reported below
                     errors.append(exc)
 
-            with mock.patch("cli.execution._move_no_replace", slow_move):
+            with mock.patch("cli.promotion._move_no_replace", slow_move):
                 threads = [
                     threading.Thread(target=promote, args=(index,))
                     for index in (0, 1)

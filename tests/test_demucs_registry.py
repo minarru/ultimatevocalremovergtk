@@ -761,7 +761,7 @@ class DemucsRegistrationTests(unittest.TestCase):
     def test_projection_failure_cannot_report_failure_after_durable_commit(
         self,
     ) -> None:
-        from cli.discovery import cmd_models_register
+        from cli.commands.model_registration import cmd_models_register
 
         with tempfile.TemporaryDirectory() as tmp:
             source = os.path.join(tmp, "custom.th")
@@ -787,7 +787,7 @@ class DemucsRegistrationTests(unittest.TestCase):
             with (
                 patch("core.paths.DEMUCS_MODELS_DIR", models_dir),
                 patch(
-                    "cli.discovery._registered_demucs_info",
+                    "cli.commands.model_registration._registered_demucs_info",
                     side_effect=ValueError("simulated projection failure"),
                 ),
                 redirect_stdout(output),

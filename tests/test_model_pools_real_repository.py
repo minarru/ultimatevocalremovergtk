@@ -301,7 +301,8 @@ class RealModelPoolTests(unittest.TestCase):
         import io
         from contextlib import redirect_stdout
 
-        from cli.discovery import _model_info, cmd_models_list
+        from cli.commands.model_metadata import _model_info
+        from cli.commands.models import cmd_models_list
         from core.access_policy import current_access_policy
 
         _config_name, persisted_hashes = self._install_configured_mdx_c(
@@ -326,8 +327,8 @@ class RealModelPoolTests(unittest.TestCase):
             return real_model_info(record, repo)
 
         with (
-            mock.patch("cli.discovery.Settings.load", return_value=settings),
-            mock.patch("cli.discovery._model_info", side_effect=inspect_under_policy),
+            mock.patch("cli.commands.models.Settings.load", return_value=settings),
+            mock.patch("cli.commands.models._model_info", side_effect=inspect_under_policy),
             mock.patch(
                 "core.mdx_config_fetch._fetch_url_to_file",
                 side_effect=AssertionError("models list fetched YAML"),
