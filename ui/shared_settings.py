@@ -67,6 +67,13 @@ def gpu_dependent_enabled(is_gpu_conversion: bool) -> bool:
     return bool(is_gpu_conversion)
 
 
+def gpu_autocast_subtitle(is_gpu_conversion: bool) -> str:
+    """Explain either FP16's dependency or its benefit without changing its value."""
+    if not gpu_dependent_enabled(is_gpu_conversion):
+        return "Enable GPU conversion to use FP16 autocast."
+    return "Faster VR/MDX/Roformer on modern NVIDIA GPUs"
+
+
 def apply_sample_mode_label(sample_row: typing.Any, duration: int) -> None:
     """Set the stable title + duration subtitle on a sample-mode switch row."""
     sample_row.set_title(SAMPLE_MODE_TITLE)

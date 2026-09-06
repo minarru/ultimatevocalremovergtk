@@ -46,9 +46,7 @@ class AudioToolsPreferencesResyncTests(unittest.TestCase):
         gi.require_version("Adw", "1")
         from gi.repository import Adw
 
-        cls._app = Adw.Application(
-            application_id="org.uvr.test.audio-tools-preferences-resync"
-        )
+        cls._app = Adw.Application(application_id="org.uvr.test.audio-tools-preferences-resync")
         cls._app.register()
 
     def _page(self):
@@ -90,6 +88,16 @@ class AudioToolsPreferencesResyncTests(unittest.TestCase):
         page.on_activated()
 
         self.assertAlmostEqual(page.amplification_row.get_value(), 0.75)
+
+    def test_load_preserves_zero_pitch_and_apollo_overlap(self):
+        page = self._page()
+        page.settings.audio_tools.pitch_rate = 0.0
+        page.settings.audio_tools.apollo_overlap = 0
+        page.load()
+        self.assertEqual(page.pitch_rate_row.get_value(), 0.0)
+        self.assertEqual(page.apollo_overlap_row.get_value(), 0.0)
+        self.assertEqual(page.settings.audio_tools.pitch_rate, 0.0)
+        self.assertEqual(page.settings.audio_tools.apollo_overlap, 0)
 
 
 if __name__ == "__main__":

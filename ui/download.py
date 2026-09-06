@@ -133,8 +133,12 @@ class DownloadQueueUiBinding:
         self.center: DownloadCenterWindow | None = None
         self._lifetime = UiLifetime()
         self.indicator.bind(self.queue, owner=self)
-        self.reported_terminal_ids = {
-            item.item_id for item in self.queue.items() if item.status in self.terminal_statuses
+        # retry() retains the item ID but replaces its stop event for each
+        # attempt. Keep that object as a durable attempt token: intermediate
+        # queued/downloading UI deliveries can be coalesced away.
+        self.reported_terminal_attempts = {
+            item.item_id: item.stop_event
+            for item in self.queue.items() if item.status in self.terminal_statuses
         }
         self._changed_callback = latest_main_thread(self.refresh)
         self._batch_callback = lambda: idle_on_main(self.after_batch)
@@ -151,16 +155,19 @@ class DownloadQueueUiBinding:
             return
         queue = self.queue
         indicator = self.indicator
-        reported_terminal_ids = self.reported_terminal_ids
+        reported_terminal_attempts = self.reported_terminal_attempts
         terminal_statuses = self.terminal_statuses
         main_window = self.window
         app_context = self.context
         batch_items = [
             item
             for item in queue.items()
-            if item.status in terminal_statuses and item.item_id not in reported_terminal_ids
+            if item.status in terminal_statuses
+            and reported_terminal_attempts.get(item.item_id) is not item.stop_event
         ]
-        reported_terminal_ids.update(item.item_id for item in batch_items)
+        if not batch_items:
+            return
+        reported_terminal_attempts.update((item.item_id, item.stop_event) for item in batch_items)
         indicator.on_batch_complete()
         center = self.center
         if center is not None:

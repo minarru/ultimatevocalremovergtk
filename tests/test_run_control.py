@@ -116,9 +116,8 @@ class SetRunningUnlockTests(unittest.TestCase):
     def test_unlock_keeps_model_options_enabled(self) -> None:
         """Regression: unlock must clear Stop before syncing Model options.
 
-        ``is_running()`` is ``_running_target and stop_button.sensitive``. If
-        sync runs while Stop is still sensitive, Model options is disabled
-        again after a completed separation.
+        Action synchronization must observe idle lifecycle state, otherwise
+        Model options remains disabled after a completed separation.
         """
         stop_sensitive = {"value": True}
         stop_button = mock.Mock()

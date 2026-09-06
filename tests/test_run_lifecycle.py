@@ -35,7 +35,74 @@ class LifecycleTests(unittest.TestCase):
             self.assertTrue(life.poll_inference_cleanup())
         release.assert_not_called()
         self.assertFalse(life.poll_inference_cleanup())
-        release.assert_called_once_with(force_if_alive=True)
+        release.assert_called_once()
+        self.assertTrue(release.call_args.kwargs['force_if_alive'])
+        self.assertTrue(callable(release.call_args.kwargs['on_done']))
+
+    def test_forced_stop_waits_for_worker_exit_then_finishes_once(self):
+        scheduler = Scheduler()
+        release = Mock()
+        stopped = Mock()
+        life = RunShutdownCoordinator(Mock(), scheduler, release, Mock(), stopped)
+        target = Mock()
+        target.worker_is_running.return_value = True
+        life.schedule_inference_cleanup(target)
+        life.cleanup_attempts = 79
+        self.assertFalse(life.poll_inference_cleanup())
+        release.call_args.kwargs['on_done']()
+        stopped.assert_not_called()
+        self.assertEqual(scheduler.calls, [50, 50])
+        self.assertTrue(life.poll_inference_cleanup())
+        release.assert_called_once()
+        target.worker_is_running.return_value = False
+        self.assertFalse(life.poll_inference_cleanup())
+        stopped.assert_called_once_with(target)
+        self.assertIsNone(life.cleanup_target)
+        self.assertFalse(life.poll_inference_cleanup())
+        release.call_args.kwargs['on_done']()
+        stopped.assert_called_once()
+
+    def test_stop_without_terminal_callback_finishes_after_memory_cleanup(self):
+        release = Mock()
+        stopped = Mock()
+        life = RunShutdownCoordinator(Mock(), Scheduler(), release, Mock(), stopped)
+        target = Mock()
+        target.worker_is_running.return_value = False
+        life.schedule_inference_cleanup(target)
+        self.assertFalse(life.poll_inference_cleanup())
+        self.assertFalse(release.call_args.kwargs['force_if_alive'])
+        stopped.assert_not_called()
+        release.call_args.kwargs['on_done']()
+        stopped.assert_called_once_with(target)
+
+    def test_cancelled_cleanup_does_not_deliver_terminal_callback(self):
+        release = Mock()
+        stopped = Mock()
+        life = RunShutdownCoordinator(Mock(), Scheduler(), release, Mock(), stopped)
+        target = Mock()
+        target.worker_is_running.return_value = False
+        life.schedule_inference_cleanup(target)
+        life.poll_inference_cleanup()
+        life.cleanup_target = None
+        release.call_args.kwargs['on_done']()
+        stopped.assert_not_called()
+
+    def test_old_cleanup_cannot_finish_later_run_on_same_target(self):
+        release = Mock()
+        stopped = Mock()
+        life = RunShutdownCoordinator(Mock(), Scheduler(), release, Mock(), stopped)
+        target = Mock()
+        target.worker_is_running.return_value = False
+        life.schedule_inference_cleanup(target)
+        life.poll_inference_cleanup()
+        old_done = release.call_args.kwargs['on_done']
+        life.schedule_inference_cleanup(target)
+        old_done()
+        stopped.assert_not_called()
+        self.assertIs(life.cleanup_target, target)
+        life.poll_inference_cleanup()
+        release.call_args.kwargs['on_done']()
+        stopped.assert_called_once_with(target)
 
     def test_quit_waits_for_downloads_then_finishes(self):
         scheduler = Scheduler()

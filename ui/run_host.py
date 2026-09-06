@@ -113,6 +113,9 @@ class GtkRunHost:
             [Gtk.AccessibleProperty.DESCRIPTION], [description]
         )
 
+    def set_start_blocked_reason(self, reason: str | None) -> None:
+        self.window.log_panel.set_start_blocked_reason(reason)
+
     def refresh_readiness(self) -> None:
         self.window._refresh_start_readiness()
 

@@ -85,6 +85,7 @@ from .shared_settings import (
     SharedSettingsSession,
     apply_shared_file_options,
     format_input_sanitize_toasts,
+    gpu_autocast_subtitle,
     gpu_dependent_enabled,
     sample_mode_subtitle,
     sanitize_input_paths,
@@ -239,6 +240,7 @@ class MainWindow(Adw.ApplicationWindow):
         self.context = AppContext()
         self.settings = self.context.settings
         self._shared_session: SharedSettingsSession | None = None
+        self._deferred_model_refresh: str | None = None
 
         self.set_title(APP_TITLE)
         # Restore the persisted geometry (falling back to the default size), and
@@ -274,7 +276,8 @@ class MainWindow(Adw.ApplicationWindow):
 
         page = self._build_content()
         self.log_panel = LogPanel(
-            on_expanded_changed=lambda *_: self._sync_options_bottom_clearance()
+            on_expanded_changed=lambda *_: self._sync_options_bottom_clearance(),
+            on_clearance_changed=self._sync_options_bottom_clearance,
         )
         self.console = self.log_panel.console
         self.start_button = self.log_panel.start_button
@@ -965,7 +968,9 @@ class MainWindow(Adw.ApplicationWindow):
 
     def _sync_gpu_dependent_rows(self) -> None:
         """Dim GPU-only options while GPU conversion is off."""
-        self.autocast_row.set_sensitive(gpu_dependent_enabled(self.gpu_row.get_active()))
+        gpu_enabled = self.gpu_row.get_active()
+        self.autocast_row.set_sensitive(gpu_dependent_enabled(gpu_enabled))
+        self.autocast_row.set_subtitle(gpu_autocast_subtitle(gpu_enabled))
 
     def _on_close_request(self, *_args: typing.Any) -> bool:
         return self._run_controller.handle_close_request(self._finalize_close)

@@ -121,6 +121,7 @@ from ..shared_settings import (
     SAMPLE_MODE_TITLE,
     SharedSettingsSession,
     apply_shared_file_options,
+    gpu_autocast_subtitle,
     gpu_dependent_enabled,
     sample_mode_subtitle,
     shared_settings_bindings,
@@ -1189,7 +1190,9 @@ class EnsemblePage:
 
     def _sync_gpu_dependent_rows(self) -> None:
         """Dim GPU-only options while GPU conversion is off."""
-        self.autocast_row.set_sensitive(gpu_dependent_enabled(self.gpu_row.get_active()))
+        gpu_enabled = self.gpu_row.get_active()
+        self.autocast_row.set_sensitive(gpu_dependent_enabled(gpu_enabled))
+        self.autocast_row.set_subtitle(gpu_autocast_subtitle(gpu_enabled))
 
     def _update_wav_ensemble_subtitle(self) -> None:
         row = getattr(self, "wav_ensemble_row", None)

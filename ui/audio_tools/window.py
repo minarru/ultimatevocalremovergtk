@@ -563,10 +563,10 @@ class AudioToolsPage:
             )
             self.wav_ensemble_row.set_active(bool(s.get("is_wav_ensemble")))
             self.time_rate_row.set_value(float(s.get("time_stretch_rate") or 2.0))
-            self.pitch_rate_row.set_value(float(s.get("pitch_rate") or 2.0))
+            self.pitch_rate_row.set_value(float(s.get("pitch_rate", 2.0)))
             self.time_correction_row.set_active(bool(s.get("is_time_correction")))
 
-            self.apollo_overlap_row.set_value(int(float(s.get("apollo_overlap") or 5)))
+            self.apollo_overlap_row.set_value(int(float(s.get("apollo_overlap", 5))))
             self.apollo_chunk_row.set_value(int(float(s.get("apollo_chunk_size") or 10)))
 
             set_combo_value(

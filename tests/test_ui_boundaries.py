@@ -97,7 +97,9 @@ class DownloadBindingTests(unittest.TestCase):
             init_download_queue_ui(cast(Any, window), cast(Any, context))
         second = window._download_ui
         self.assertIs(second.center, center)
-        self.assertEqual(second.reported_terminal_ids, {"done"})
+        with mock.patch("ui.download._send_download_notifications") as notify:
+            second.after_batch()
+            notify.assert_not_called()
         center.dispose.assert_not_called()
         second.dispose()
         center.dispose.assert_called_once_with()
@@ -173,7 +175,8 @@ class RunDialogOrderingTests(unittest.TestCase):
             deferred.pop()()
             self.assertEqual(order.count('stop'), 2)
             self.assertLess(order.index('unpause'), order.index(('stop_enabled', False)))
-            self.assertLess(order.index(('stop_enabled', False)), order.index(('options', True)))
+            self.assertNotIn(('options', True), order)
+            self.assertTrue(controller.is_running())
             self.assertEqual(order[-1], 'stop')
             timeout.assert_called_once_with(50, controller.shutdown.poll_inference_cleanup)
 

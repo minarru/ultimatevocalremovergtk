@@ -32,13 +32,18 @@ class RunShutdownCoordinator:
         scheduler: TimerScheduler,
         release: ReleaseMemory,
         on_shutdown: Callable[[], None],
+        on_stop_cleanup: Callable[[RunTarget], None] | None = None,
     ):
         self.host = host
         self.scheduler = scheduler
         self.release = release
         self.on_shutdown = on_shutdown
+        self.on_stop_cleanup = on_stop_cleanup
         self.cleanup_target: RunTarget | None = None
         self.cleanup_attempts = 0
+        self._cleanup_generation = 0
+        self._cleanup_release_started = False
+        self._cleanup_release_finished = False
         self.shutdown_target: RunTarget | None = None
         self.shutdown_attempts = 0
         self.exit_pending = False
@@ -49,6 +54,9 @@ class RunShutdownCoordinator:
         debug('cleanup', f'cleanup poll scheduled target={type(target).__name__}')
         self.cleanup_target = target
         self.cleanup_attempts = 0
+        self._cleanup_generation += 1
+        self._cleanup_release_started = False
+        self._cleanup_release_finished = False
         self.scheduler.timeout_add(50, self.poll_inference_cleanup)
 
     def poll_inference_cleanup(self) -> bool:
@@ -57,10 +65,30 @@ class RunShutdownCoordinator:
             return False
         self.cleanup_attempts += 1
         alive = target.worker_is_running()
+        if self._cleanup_release_started:
+            if not self._cleanup_release_finished:
+                return False
+            if alive:
+                return True
+            self.cleanup_target = None
+            if self.on_stop_cleanup is not None:
+                self.on_stop_cleanup(target)
+            return False
         if not alive or self.cleanup_attempts >= 80:
             debug('cleanup', f'poll attempt={self.cleanup_attempts} worker_alive={alive} releasing')
-            self.cleanup_target = None
-            self.release(force_if_alive=alive)
+            self._cleanup_release_started = True
+            generation = self._cleanup_generation
+
+            def released() -> None:
+                # A cooperative terminal callback may already have cancelled
+                # this cleanup, or the same page may have started a later run.
+                if self.cleanup_target is not target or self._cleanup_generation != generation:
+                    return
+                self._cleanup_release_finished = True
+                if self.poll_inference_cleanup():
+                    self.scheduler.timeout_add(50, self.poll_inference_cleanup)
+
+            self.release(force_if_alive=alive, on_done=released)
             return False
         if verbose():
             debug('cleanup', f'poll attempt={self.cleanup_attempts} worker_alive=True')

@@ -14,6 +14,8 @@ from ui.widgets.log_panel import (
 
 def _panel_with_revealers(*, progress: bool = False, log: bool = False) -> LogPanel:
     panel = LogPanel.__new__(LogPanel)
+    panel._start_blocked_reason = MagicMock()
+    panel._start_blocked_reason.get_visible.return_value = False
     panel._progress_revealer = MagicMock()
     panel._progress_revealer.get_reveal_child.return_value = progress
     panel._log_revealer = MagicMock()

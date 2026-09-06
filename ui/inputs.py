@@ -30,6 +30,7 @@ from .help_text import (
     REMOVE_INPUT_HINT,
 )
 from .hints import set_icon_button_a11y
+from .lifetime import UiLifetime
 from .markup import set_row_subtitle, set_row_title
 from .shared_settings import (
     format_input_sanitize_toasts,
@@ -88,6 +89,7 @@ class ViewInputs:
         self._verifying = False
         self._verify_total = 0
         self._verify_stop = threading.Event()
+        self._lifetime = UiLifetime()
 
         builder = load_builder("verify-inputs")
         self.window = object_from_builder(builder, "window", Adw.Window)
@@ -249,8 +251,10 @@ class ViewInputs:
         try:
             files = dialog.open_multiple_finish(result)
         except GLib.Error as exc:
-            if not is_dialog_dismissed(exc):
+            if not self._lifetime.disposed and not is_dialog_dismissed(exc):
                 self._toast(f"Couldn't open files: {exc.message}")
+            return
+        if self._lifetime.disposed:
             return
         added = [files.get_item(i).get_path() for i in range(files.get_n_items())]
         added = [p for p in added if p]
@@ -273,6 +277,7 @@ class ViewInputs:
     # -- Verification -----------------------------------------------------------
 
     def _on_close_request(self, *_args: typing.Any) -> bool:
+        self._lifetime.dispose()
         if self._verifying:
             self._verify_stop.set()
         return False
@@ -324,6 +329,8 @@ class ViewInputs:
     def _apply_result(
         self, path: typing.Any, is_valid: typing.Any, info: typing.Any, index: int
     ) -> None:
+        if self._lifetime.disposed:
+            return
         self._status[path] = (is_valid, info)
         self.verify_button.set_label(f"Verifying… {index}/{self._verify_total}")
         row = self._rows.get(path)
@@ -340,6 +347,8 @@ class ViewInputs:
         verified_paths: typing.Any = (),
         prior_unreadable: typing.Any = (),
     ) -> None:
+        if self._lifetime.disposed:
+            return
         self._verifying = False
         self._verify_stop.clear()
         failed_paths = [p for p, _info in broken]

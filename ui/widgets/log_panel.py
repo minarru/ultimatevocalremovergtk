@@ -57,6 +57,7 @@ class LogPanel(Gtk.Box):
     _log_revealer: Gtk.Revealer = Gtk.Template.Child("log_revealer")
     _log_stack: Gtk.Stack = Gtk.Template.Child("log_stack")
     expand_button: Gtk.ToggleButton = Gtk.Template.Child("expand_button")
+    _start_blocked_reason: Gtk.Label = Gtk.Template.Child("start_blocked_reason")
     _start_button: Gtk.Button = Gtk.Template.Child("start_button")
     _stop_button: Gtk.Button = Gtk.Template.Child("stop_button")
 
@@ -67,11 +68,15 @@ class LogPanel(Gtk.Box):
         self,
         on_console_changed: Optional[Callable[[bool], None]] = None,
         on_expanded_changed: Optional[Callable[[bool], None]] = None,
+        on_clearance_changed: Optional[Callable[[], None]] = None,
     ):
         super().__init__()
 
         self._on_console_changed = on_console_changed
         self._on_expanded_changed = on_expanded_changed
+        self._on_clearance_changed = on_clearance_changed
+        self._hint_tick_id: int | None = None
+        self._hint_height = 0
         self._syncing_expand = False
         self._pulse_source_id: Optional[int] = None
         self._done_collapse_id: Optional[int] = None
@@ -122,7 +127,33 @@ class LogPanel(Gtk.Box):
             height += _PROGRESS_SECTION_RESERVE
         if self._log_revealer.get_reveal_child():
             height += _LOG_META_ROW_RESERVE + _LOG_BODY_HEIGHT + _LOG_BODY_WRAP_RESERVE
-        return height + OVERLAY_MARGIN_BOTTOM
+        return height + self._blocked_reason_height() + OVERLAY_MARGIN_BOTTOM
+
+    def _blocked_reason_height(self) -> int:
+        label = self._start_blocked_reason
+        if not label.get_visible():
+            return 0
+        width = label.get_width() or max(1, (self.get_width() or 360) - 24)
+        return label.measure(Gtk.Orientation.VERTICAL, width)[1]
+
+    def set_start_blocked_reason(self, reason: str | None) -> None:
+        self._start_blocked_reason.set_label(reason or "")
+        self._start_blocked_reason.set_visible(bool(reason))
+        if reason and self._hint_tick_id is None:
+            self._hint_tick_id = self.add_tick_callback(self._check_hint_clearance)
+        elif not reason and self._hint_tick_id is not None:
+            self.remove_tick_callback(self._hint_tick_id)
+            self._hint_tick_id = None
+        self._check_hint_clearance()
+
+    def _check_hint_clearance(self, *_args: object) -> bool:
+        # Wrapping can change after allocation without a property notification.
+        height = self._blocked_reason_height()
+        if height != self._hint_height:
+            self._hint_height = height
+            if self._on_clearance_changed is not None:
+                self._on_clearance_changed()
+        return GLib.SOURCE_CONTINUE
 
     def collapsed_overlay_height(self) -> int:
         """Alias for :meth:`options_overlay_clearance`."""

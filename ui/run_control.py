@@ -99,11 +99,13 @@ class RunController:
         self._oom_dialog: Optional[Adw.AlertDialog] = None
         self._on_close_complete: Optional[Callable[[bool], None]] = None
         self._close_deferred = False
+        self._closing = False
         self.shutdown = RunShutdownCoordinator(
             host,
             GLib,
             self._schedule_release_inference_memory,
             lambda: self._complete_shutdown(deferred=self._close_deferred),
+            self._on_stop_cleanup,
         )
         self._run_ui_suspended = False
         self._preflight_in_progress = False
@@ -115,7 +117,7 @@ class RunController:
         return self._running_target
 
     def is_running(self) -> bool:
-        return self._running_target is not None and self._host.stop_enabled()
+        return self._running_target is not None
 
     def handle_close_request(self, on_complete: Callable[[bool], None]) -> bool:
         """Handle the main window close gesture.
@@ -143,6 +145,7 @@ class RunController:
             self._close_deferred = True
             self._present_shutdown_confirm()
             return True
+        self._closing = True
         on_complete = self._on_close_complete
         self._on_close_complete = None
         if on_complete is not None:
@@ -160,19 +163,45 @@ class RunController:
             return
 
         assert target is not None  # None is rejected by the readiness reason above.
-        if self._preflight_in_progress or self._plan_dialog is not None:
+        if self._closing or self.is_running() or self._preflight_in_progress or self._plan_dialog is not None:
             return
         self._ensure_operation()
         self._begin_preflight(target)
 
+    def _operation_is_current(self, operation_id: str | None) -> bool:
+        return not self._closing and self._operation_id == operation_id
+
+    def _deliver_operation(
+        self, operation_id: str | None, callback: Callable[..., None], *args: Any
+    ) -> None:
+        if self._operation_is_current(operation_id):
+            callback(*args)
+
     def _callbacks(self) -> JobCallbacks:
+        operation_id = self._operation_id
+
+        def current_run(callback: Callable[..., None]) -> Callable[..., None]:
+            def invoke(*args: Any, **kwargs: Any) -> None:
+                if self._operation_is_current(operation_id):
+                    callback(*args, **kwargs)
+
+            return invoke
+
+        def oom_choice(request: Any) -> None:
+            if self._operation_is_current(operation_id):
+                self._on_oom_choice(request)
+            else:
+                from core.oom_choice import OOM_CHOICE_STOP
+
+                request.respond(OOM_CHOICE_STOP)
+
         return gtk_job_callbacks(
-            on_progress=self._on_progress,
-            on_console=self._append_console,
-            on_complete=self._on_complete,
-            on_stopped=self._on_stopped,
-            on_error=self._on_error,
-            on_oom_choice=self._on_oom_choice,
+            on_progress=current_run(self._on_progress),
+            on_console=current_run(self._append_console),
+            on_complete=current_run(self._on_complete),
+            on_stopped=current_run(self._on_stopped),
+            on_error=current_run(self._on_error),
+            on_oom_choice=oom_choice,
         )
 
     def _start_target(self, target: RunTarget, plan: typing.Any=None) -> None:
@@ -221,6 +250,7 @@ class RunController:
             self._preflight_start_label = self._host.start_label()
             self._host.set_start_label("Preparing…")
             self._host.enable_start(False)
+            self._host.set_start_blocked_reason(None)
         else:
             self._host.set_start_label(self._preflight_start_label or "Start")
             self._preflight_start_label = None
@@ -267,6 +297,7 @@ class RunController:
                 except Exception as exc:  # marshalled to GTK
                     plan, error = None, exc
             idle_on_main(
+                self._deliver_operation, operation_id,
                 self._finish_preflight, target, fingerprint, plan, error
             )
 
@@ -321,12 +352,16 @@ class RunController:
         dialog.set_default_response("cancel")
         dialog.set_close_response("cancel")
 
+        operation_id = self._operation_id
+
         def response(_dialog: typing.Any, choice: str) -> None:
+            if self._plan_dialog is not dialog or not self._operation_is_current(operation_id):
+                return
             self._plan_dialog = None
+            self._host.refresh_readiness()
             if choice == "start":
                 self._accept_plan(target, fingerprint, plan)
             else:
-                self._host.refresh_readiness()
                 self._finish_operation(
                     "run_cancelled",
                     reason="plan_confirmation",
@@ -334,6 +369,7 @@ class RunController:
 
         dialog.connect("response", response)
         self._plan_dialog = dialog
+        self.refresh_start_readiness()
         dialog.present(self._host.dialog_parent)
 
     def _accept_plan(
@@ -381,7 +417,7 @@ class RunController:
                 except Exception as exc:  # marshalled to GTK
                     is_current, error = False, exc
             idle_on_main(
-                self._finish_plan_recheck,
+                self._deliver_operation, operation_id, self._finish_plan_recheck,
                 target, fingerprint, plan, is_current, error,
             )
 
@@ -485,11 +521,10 @@ class RunController:
         )
         clear_run_start()
         self._host.set_pulse(False)
-        self._set_running(False)
+        self._restore_idle_controls()
+        self._host.set_progress_text("Failed")
         self._host.append_console(f"\n{message}\n")
         self._report_error(message, exc)
-        self._running_target = None
-        self._restore_runner_settings()
 
     def _finish_operation(
         self,
@@ -546,6 +581,7 @@ class RunController:
         dialog.set_close_response("cancel")
 
         target = self._running_target
+        operation_id = self._operation_id
         self._suspend_run_ui_for_dialog()
 
         pending: dict[str, Any] = {"run": None}
@@ -557,10 +593,18 @@ class RunController:
                 self._defer_dialog_action(run, label="stop-closed")
 
         def on_response(_dlg: typing.Any, response: str) -> None:
+            if self._stop_confirm_dialog is not dialog:
+                return
             self._stop_confirm_dialog = None
+            if not self._operation_is_current(operation_id):
+                return
             if response == "stop":
                 captured = self._running_target or target
-                pending["run"] = lambda: self._confirm_stop(captured)
+                def stop_current() -> None:
+                    if self._operation_is_current(operation_id):
+                        self._confirm_stop(captured)
+
+                pending["run"] = stop_current
                 if captured is not None:
                     captured.stop()
                 self._defer_dialog_action(pending["run"], label="stop")
@@ -568,9 +612,12 @@ class RunController:
             else:
                 if target is not None:
                     def resume() -> None:
-                        return self._resume_after_dialog_cancel(target)
+                        self._deliver_operation(
+                            operation_id, self._resume_after_dialog_cancel, target
+                        )
                 else:
-                    resume = self._resume_run_ui_after_dialog
+                    def resume() -> None:
+                        self._deliver_operation(operation_id, self._resume_run_ui_after_dialog)
                 pending["run"] = resume
                 self._defer_dialog_action(resume, label="stop-cancel")
                 pending["run"] = None
@@ -606,6 +653,7 @@ class RunController:
         dialog.set_close_response("cancel")
 
         target = self._running_target
+        operation_id = self._operation_id
         self._suspend_run_ui_for_dialog()
 
         pending: dict[str, Any] = {"run": None}
@@ -617,6 +665,8 @@ class RunController:
                 self._defer_dialog_action(run, label="shutdown-closed")
 
         def on_response(_dlg: typing.Any, response: str) -> None:
+            if self._shutdown_dialog is not dialog:
+                return
             self._shutdown_dialog = None
             if response == "quit":
                 captured = self._running_target or target
@@ -631,9 +681,12 @@ class RunController:
                 self._on_close_complete = None
                 if target is not None:
                     def resume() -> None:
-                        return self._resume_after_dialog_cancel(target)
+                        self._deliver_operation(
+                            operation_id, self._resume_after_dialog_cancel, target
+                        )
                 else:
-                    resume = self._resume_run_ui_after_dialog
+                    def resume() -> None:
+                        self._deliver_operation(operation_id, self._resume_run_ui_after_dialog)
                 pending["run"] = resume
                 self._defer_dialog_action(resume, label="shutdown-cancel")
                 pending["run"] = None
@@ -682,6 +735,7 @@ class RunController:
         self._host.append_console(text)
 
     def _confirm_shutdown_stop(self, target: RunTarget | None) -> None:
+        self._closing = True
         debug("ui", f"shutdown stop confirmed target={type(target).__name__ if target else None}")
         self._run_ui_suspended = False
         self._host.set_pulse(False)
@@ -712,12 +766,16 @@ class RunController:
             self._host.destroy()
 
     def _confirm_stop(self, target: RunTarget | None) -> None:
-        if target is None:
+        if target is None or self._running_target is not target:
             return
         debug("ui", f"stop confirmed target={type(target).__name__}")
         self._run_ui_suspended = False
         target.unpause()
-        self._finish_run_ui(stopped=True, defer_cleanup=True)
+        self._host.enable_stop(False)
+        self._host.enable_start(False)
+        self._host.set_pulse(False)
+        self._host.set_progress_text("Stopping…")
+        self._run_ui_suspended = True
         self._host.append_console(f"\n{STOP_PROCESSING}\n")
         target.stop()
         self.shutdown.schedule_inference_cleanup(target)
@@ -727,8 +785,7 @@ class RunController:
         if stopped and not defer_cleanup:
             self._schedule_release_inference_memory(wait_for_stop=0.5)
         self._host.set_pulse(False)
-        self._set_running(False)
-        self._running_target = None
+        self._restore_idle_controls()
         self._host.clear_progress()
         clear_run_start()
         if stopped:
@@ -755,7 +812,12 @@ class RunController:
         self._run_ui_suspended = True
         self._host.set_pulse(False)
 
+        operation_id = self._operation_id
+
         def on_choice(choice: str) -> None:
+            if not self._operation_is_current(operation_id) or self._running_target is None:
+                request.respond(OOM_CHOICE_STOP)
+                return
             self._oom_dialog = None
             self._run_ui_suspended = False
             if self.is_running():
@@ -774,6 +836,10 @@ class RunController:
             on_choice=on_choice,
         )
 
+    def _on_stop_cleanup(self, target: RunTarget) -> None:
+        if self._running_target is target:
+            self._on_stopped()
+
     def _on_stopped(self) -> None:
         from core.error_context import clear_run_error_context
 
@@ -782,7 +848,6 @@ class RunController:
         self.shutdown.cleanup_target = None
         exported = self._host.exported_after_oom()
         self._finish_run_ui(stopped=True)
-        self._restore_runner_settings()
         if exported:
             toast = Adw.Toast.new("Exported completed ensemble outputs.")
             output_dir = self._run_output_dir
@@ -796,13 +861,11 @@ class RunController:
 
         clear_run_error_context()
         self._host.set_pulse(False)
-        self._set_running(False)
+        self._restore_idle_controls()
         self._host.set_progress_fraction(1.0)
         self._host.set_progress_text(_PROGRESS_DONE)
         self._host.mark_run_complete()
-        self._running_target = None
         clear_run_start()
-        self._restore_runner_settings()
         output_dir = self._run_output_dir
         self._show_complete_toast(output_dir)
         self._send_completion_notification(output_dir)
@@ -817,15 +880,13 @@ class RunController:
             error=str(exc),
         )
         self._host.set_pulse(False)
-        self._set_running(False)
+        self._restore_idle_controls()
         self._host.set_progress_text("Failed")
         message = f"Process failed: {exc}"
         self._host.append_console(f"\n{message}\n")
         self._report_error(message, exc)
         self._send_failure_notification()
-        self._running_target = None
         clear_run_start()
-        self._restore_runner_settings()
         # Worker already parks on failure; park again here in case UI cleanup
         # races ahead of the worker finally/except path.
         self._schedule_release_inference_memory(park_weights=True)
@@ -921,15 +982,29 @@ class RunController:
         # Preserve capture from the visible page/shared settings at begin_run.
         return self._host.context_target.snapshot_error_context()
 
+    def _restore_idle_controls(self) -> None:
+        self.shutdown.cleanup_target = None
+        self._running_target = None
+        for name in ("_stop_confirm_dialog", "_oom_dialog"):
+            dialog = getattr(self, name)
+            setattr(self, name, None)
+            if dialog is not None:
+                dialog.force_close()
+        self._run_ui_suspended = False
+        self._restore_runner_settings()
+        self._set_running(False)
+
     def _set_running(self, running: bool) -> None:
-        # Update Stop first: ``is_running()`` is ``_running_target and stop
-        # sensitive``. On unlock, ``_sync_model_options_action`` must see
-        # ``is_running() is False`` or Model options stays disabled.
+        # Clear the run before action/model refresh; Stop sensitivity alone is
+        # not lifecycle state (it is also disabled while stopping).
+        if not running:
+            self._running_target = None
         self._host.enable_stop(running)
         self._set_options_sensitive(not running)
         self._set_edit_actions_sensitive(not running)
         if running:
             self._host.enable_start(False)
+            self._host.set_start_blocked_reason(None)
         else:
             self.refresh_start_readiness()
 
@@ -944,13 +1019,20 @@ class RunController:
 
     def refresh_start_readiness(self) -> Optional[str]:
         """Synchronize Start sensitivity, tooltip and accessibility description."""
-        if self._running_target is not None and self._host.stop_enabled():
+        if (
+            self._running_target is not None
+            or self._preflight_in_progress
+            or self._plan_dialog is not None
+        ):
+            self._host.enable_start(False)
+            self._host.set_start_blocked_reason(None)
             return None
         target = self._host.target
         reason = target_blocked_reason(target)
         self._host.enable_start(reason is None)
         description = reason or "Start processing"
         self._host.describe_start(description)
+        self._host.set_start_blocked_reason(reason)
         return reason
 
     def _stop_all_workers(self, *, force: bool = False) -> None:

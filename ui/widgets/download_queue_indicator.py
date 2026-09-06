@@ -327,7 +327,9 @@ class DownloadQueueIndicator:
             self._unschedule_remove_finished()
             self._defer_remove_on_close = False
             return
-        if self._defer_remove_on_close and self._queue is not None:
+        # Opening an already-finished queue cancels its timer without a new
+        # queue refresh. Reconsider current items on every close, too.
+        if self._queue is not None:
             summary = summarize_queue(self._queue.items())
             if should_schedule_remove_finished(
                 summary,

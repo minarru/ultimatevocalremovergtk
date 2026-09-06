@@ -65,6 +65,7 @@ from .help_text import (
 )
 from .hints import set_icon_button_a11y, set_tooltip
 from .settings_bind import enum_value, get_flat, set_flat
+from .shared_settings import gpu_dependent_enabled
 from .template import load_builder, object_from_builder
 from .widgets.rows import (
     configure_combo_row,
@@ -244,6 +245,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
         # Guards programmatic widget updates from being treated as user edits.
         self._loading = False
         self._persist_timeout_id = 0
+        self._catalogue_refresh_generation = 0
 
         self.set_title("Settings")
 
@@ -363,7 +365,8 @@ class PreferencesDialog(Adw.PreferencesDialog):
             object_from_builder(builder, "device_row", Adw.ComboRow),
             device_opts,
         )
-        self.device_row.set_subtitle(device_subtitle)
+        self._device_detection_subtitle = device_subtitle
+        self._sync_gpu_device_row()
         set_tooltip(self.device_row, IS_CUDA_SELECT_HELP)
         self.device_row.connect("notify::selected", self._on_combo_changed, "device_set")
         if cached is None:
@@ -423,6 +426,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
     def _on_catalogue_cache_refresh(self, _button: Gtk.Button) -> None:
         if getattr(self, "_catalogue_cache_refreshing", False):
             return
+        self._catalogue_refresh_generation += 1
         self._catalogue_cache_refreshing = True
         self.catalogue_cache_refresh_button.set_sensitive(False)
         self.catalogue_cache_refresh_spinner.set_visible(True)
@@ -430,10 +434,11 @@ class PreferencesDialog(Adw.PreferencesDialog):
         self.catalogue_cache_refresh_row.set_subtitle("Refreshing catalogue cache…")
         threading.Thread(
             target=self._catalogue_cache_refresh_worker,
+            args=(self._catalogue_refresh_generation,),
             daemon=True,
         ).start()
 
-    def _catalogue_cache_refresh_worker(self) -> None:
+    def _catalogue_cache_refresh_worker(self, generation: int) -> None:
         from core.debug_log import debug
 
         try:
@@ -459,19 +464,20 @@ class PreferencesDialog(Adw.PreferencesDialog):
                         if not completion_published:
                             early_completion = summary
                             return
-                    self._on_catalogue_evidence_refresh_completed(summary)
+                    self._on_catalogue_evidence_refresh_completed(summary, generation)
 
                 queued = manager.force_revalidate_catalogue_evidence(evidence_completed)
                 if queued:
                     idle_on_main(
                         self._finish_catalogue_cache_refresh,
                         "Catalogue refreshed; output details updating",
+                        generation,
                     )
                     with completion_lock:
                         completion_published = True
                         completed = early_completion
                     if completed is not None:
-                        self._on_catalogue_evidence_refresh_completed(completed)
+                        self._on_catalogue_evidence_refresh_completed(completed, generation)
                     debug(
                         "download",
                         f"preferences catalogue evidence queued={len(queued)}",
@@ -489,21 +495,23 @@ class PreferencesDialog(Adw.PreferencesDialog):
                 error=str(exc).strip() or type(exc).__name__,
             )
         debug("download", f"preferences catalogue refresh result={message!r}")
-        idle_on_main(self._finish_catalogue_cache_refresh, message)
+        idle_on_main(self._finish_catalogue_cache_refresh, message, generation)
 
-    def _on_catalogue_evidence_refresh_completed(self, summary: typing.Any) -> None:
+    def _on_catalogue_evidence_refresh_completed(
+        self, summary: typing.Any, generation: int
+    ) -> None:
         """Marshal a cache-worker aggregate result onto the GTK main thread."""
-        idle_on_main(self._finish_catalogue_evidence_refresh, summary)
+        idle_on_main(self._finish_catalogue_evidence_refresh, summary, generation)
 
-    def _finish_catalogue_evidence_refresh(self, summary: typing.Any) -> None:
-        if self._lifetime.disposed:
+    def _finish_catalogue_evidence_refresh(self, summary: typing.Any, generation: int) -> None:
+        if self._lifetime.disposed or generation != self._catalogue_refresh_generation:
             return
         message = catalogue_evidence_refresh_feedback(summary)
         self.catalogue_cache_refresh_row.set_subtitle(message)
         self.add_toast(Adw.Toast.new(message))
 
-    def _finish_catalogue_cache_refresh(self, message: str) -> None:
-        if self._lifetime.disposed:
+    def _finish_catalogue_cache_refresh(self, message: str, generation: int) -> None:
+        if self._lifetime.disposed or generation != self._catalogue_refresh_generation:
             return
         self._catalogue_cache_refreshing = False
         self.catalogue_cache_refresh_button.set_sensitive(True)
@@ -563,9 +571,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
             if not set_combo_value(self.device_row, self.settings.process.device or DEFAULT):
                 set_combo_value(self.device_row, DEFAULT)
 
-            from ui.shared_settings import gpu_dependent_enabled
-
-            self.device_row.set_sensitive(gpu_dependent_enabled(self.settings.process.use_gpu))
+            self._sync_gpu_device_row()
 
             self.sample_mode_row.set_active(bool(self.settings.process.sample_mode))
             self.cleanup_ensemble_temps_row.set_active(bool(self.settings.ensemble.cleanup_temps))
@@ -586,7 +592,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
                 long_chunk = 0.0
             self.long_chunk_row.set_value(max(0.0, min(3600.0, long_chunk)))
             try:
-                long_overlap = float(self.settings.process.long_file_chunk_overlap_seconds or 2.0)
+                long_overlap = float(self.settings.process.long_file_chunk_overlap_seconds)
             except (TypeError, ValueError):
                 long_overlap = 2.0
             self.long_chunk_overlap_row.set_value(max(0.0, min(30.0, long_overlap)))
@@ -679,6 +685,11 @@ class PreferencesDialog(Adw.PreferencesDialog):
         self._apply_diagnostic_policy()
         self._persist()
 
+    def _apply_runtime_settings(self) -> None:
+        """Apply profile/reset values whose widget handlers are suppressed on reload."""
+        apply_color_scheme(enum_value(self.settings.ui.color_scheme) or "auto")
+        self._apply_diagnostic_policy()
+
     def _apply_diagnostic_policy(self) -> None:
         from core.debug_log import update_policy
 
@@ -746,6 +757,16 @@ class PreferencesDialog(Adw.PreferencesDialog):
             subtitle = "No GPU detected"
         return opts, subtitle
 
+    def _sync_gpu_device_row(self) -> None:
+        enabled = gpu_dependent_enabled(self.settings.process.use_gpu)
+        self.device_row.set_sensitive(enabled)
+        subtitle = self._device_detection_subtitle
+        if not enabled:
+            subtitle = (
+                "Enable GPU conversion on Separation or Ensemble to choose a device.\n" + subtitle
+            )
+        self.device_row.set_subtitle(subtitle)
+
     def _probe_gpu_devices(self) -> None:
         from core.gpu import list_gpu_devices
 
@@ -765,7 +786,8 @@ class PreferencesDialog(Adw.PreferencesDialog):
             from .widgets.rows import set_combo_values
 
             set_combo_values(self.device_row, opts)
-            self.device_row.set_subtitle(subtitle)
+            self._device_detection_subtitle = subtitle
+            self._sync_gpu_device_row()
             if current in opts:
                 set_combo_value(self.device_row, current)
         finally:
@@ -852,6 +874,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
             self.settings.update(loaded.to_dict())
         else:
             self.settings.update({k: v for k, v in data.items() if k in FLAT_TO_PATH})
+        self._apply_runtime_settings()
         error = self.context.try_save_settings(trigger="profile-load")
         from core.debug_log import debug
 
@@ -917,7 +940,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
         from core.debug_log import debug
 
         self.settings.reset_to_default()
-        self._apply_diagnostic_policy()
+        self._apply_runtime_settings()
         error = self.context.try_save_settings(trigger="reset")
         debug("settings", "profile reset confirmed")
         self._reload_widgets()
