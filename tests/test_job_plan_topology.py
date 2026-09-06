@@ -13,6 +13,7 @@ from bundled.constants import (
 from core.export_naming import OutputNamingContext
 from core.job_plan import JobSpec, ModelDescriptor, planned_output_stems
 from core.job_projection import project_input, select_output_routes
+from core.job_route_observations import collect_output_route_evidence
 from core.model_identity import ModelArtifacts
 from core.settings import Settings
 from core.stem_roles import StemId, StemRoleId
@@ -488,7 +489,7 @@ class PlannedOutputStemTests(unittest.TestCase):
         )
 
     def test_multi_stem_explicit_single_contributor_is_an_error(self) -> None:
-        from core.job_diagnostics import assess_stem_focus as _stem_focus_diagnostics
+        from core.job_diagnostics import stem_focus_diagnostics as _stem_focus_diagnostics
 
         settings = Settings.defaults()
         settings.ensemble.main_stem = "mode.multi_stem"
@@ -608,7 +609,7 @@ class PlannedOutputStemTests(unittest.TestCase):
             stem_count=4,
             routes=routes,
         )
-        selected = select_output_routes(settings, (desc,), command="separate")
+        selected = select_output_routes(settings, (desc,), command='separate', evidence=collect_output_route_evidence(settings, (desc,), command='separate'))
         planned = project_input("/tmp/song.wav", OutputNamingContext(
             "/tmp/song.wav", "song", "song", "/tmp/out", "wav"), selected.routes, command="separate")
         self.assertEqual(
@@ -621,7 +622,7 @@ class PlannedOutputStemTests(unittest.TestCase):
         settings.process.method = ProcessMethod.ENSEMBLE
         settings.ensemble.main_stem = "pair.vocals_instrumental"
         settings.ensemble.selected_models = ["mdx:a", "mdx:b"]
-        selected = select_output_routes(settings, (_desc("Drums", "Bass"), _desc("Vocals")), command="ensemble")
+        selected = select_output_routes(settings, (_desc('Drums', 'Bass'), _desc('Vocals')), command='ensemble', evidence=collect_output_route_evidence(settings, (_desc('Drums', 'Bass'), _desc('Vocals')), command='ensemble'))
         planned = project_input("/tmp/song.wav", OutputNamingContext(
             "/tmp/song.wav", "song", "song", "/tmp/out", "wav"), selected.routes, command="ensemble")
         self.assertEqual(
@@ -633,7 +634,7 @@ class PlannedOutputStemTests(unittest.TestCase):
         settings = Settings.defaults()
         settings.process.method = ProcessMethod.ENSEMBLE
         settings.ensemble.main_stem = "pair.karaoke"
-        selected = select_output_routes(settings, (_desc("Vocals"), _desc("Vocals")), command="ensemble")
+        selected = select_output_routes(settings, (_desc('Vocals'), _desc('Vocals')), command='ensemble', evidence=collect_output_route_evidence(settings, (_desc('Vocals'), _desc('Vocals')), command='ensemble'))
         planned = project_input("/tmp/song.wav", OutputNamingContext(
             "/tmp/song.wav", "song", "song", "/tmp/out", "wav"), selected.routes, command="ensemble")
         self.assertEqual(

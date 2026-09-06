@@ -21,6 +21,7 @@ from core.job_plan import (
     planned_output_routes,
 )
 from core.job_projection import project_descriptor, project_input, select_output_routes
+from core.job_route_observations import collect_output_route_evidence
 from core.model_identity import MdxSpec, ModelArtifacts, ModelRecord
 from core.model_stem_semantics import resolve_catalogue_stem_semantics
 from core.settings import Settings
@@ -441,7 +442,7 @@ class ProjectionBoundaryTests(unittest.TestCase):
         descriptor = ModelDescriptor(
             "mdx:x", "mdx", "x", "X", primary_stem="Vocals", secondary_stem="Instrumental"
         )
-        selected = select_output_routes(settings, (descriptor,), command="separate")
+        selected = select_output_routes(settings, (descriptor,), command='separate', evidence=collect_output_route_evidence(settings, (descriptor,), command='separate'))
         naming = OutputNamingContext("/song.wav", "song", "song", "/out", "wav", 1, 1)
         planned = project_input("/song.wav", naming, selected.routes, command="separate")
         self.assertEqual(

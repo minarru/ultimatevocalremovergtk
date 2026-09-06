@@ -7,12 +7,14 @@ from typing import Any, Mapping, Sequence
 
 from .job_materialization import PlanningProbes
 from .job_plan_types import Diagnostic, ModelDescriptor, Provenance
-from .job_projection import _ensemble_output_routes
-from .model_stem_semantics import stem_semantics_projection
+from .job_route_observations import collect_ensemble_routes
+from .model_stem_manifest import StemPairDefinition
+from .model_stem_semantics import StemSemanticProjection, stem_semantics_projection
 from .settings import Settings
 from .stem_pairs import normalize_stem_pair_id, stem_pair_definition
 from .stem_roles import StemRoleId
 from .stems import (
+    StemSelection,
     StemSelectionStatus,
     model_stem_routes,
     positional_stem_focus,
@@ -35,17 +37,15 @@ class DiagnosticAssessment:
     events: tuple[DiagnosticEvent, ...]
 
 
-def assess_stem_semantics(descriptor: ModelDescriptor) -> DiagnosticAssessment:
+def assess_stem_semantics(
+    descriptor: ModelDescriptor, projection: StemSemanticProjection | None
+) -> DiagnosticAssessment:
     diagnostics: list[Diagnostic] = []
     events: list[DiagnosticEvent] = []
     semantics = descriptor.stem_semantics
     if semantics is None:
         return DiagnosticAssessment((), ())
-    projection = stem_semantics_projection(
-        semantics,
-        backend_primary=(descriptor.backend_primary_stem or descriptor.primary_stem),
-        backend_target=descriptor.backend_target_stem,
-    )
+    assert projection is not None
     primary_route = next(
         (route for route in projection.routes if route.logical_primary),
         None,
@@ -79,15 +79,26 @@ def assess_stem_semantics(descriptor: ModelDescriptor) -> DiagnosticAssessment:
     return DiagnosticAssessment(tuple(diagnostics), tuple(events))
 
 
+@dataclass(frozen=True)
+class PairEvidence:
+    pair_id: str
+    definition: StemPairDefinition | None
+
+
 def assess_ensemble_pair(
-    settings: Settings, descriptors: Sequence[ModelDescriptor], *, command: str
+    settings: Settings,
+    descriptors: Sequence[ModelDescriptor],
+    *,
+    command: str,
+    evidence: PairEvidence | None,
 ) -> DiagnosticAssessment:
     """Require an explicit, viable reviewed pair before an ensemble can run."""
     events: list[DiagnosticEvent] = []
     if command != 'ensemble':
         return DiagnosticAssessment((), tuple(events))
-    pair_id = normalize_stem_pair_id(settings.ensemble.main_stem)
-    pair = stem_pair_definition(pair_id)
+    assert evidence is not None
+    pair_id = evidence.pair_id
+    pair = evidence.definition
     if not pair_id:
         events.append(
             DiagnosticEvent(
@@ -162,7 +173,49 @@ def assess_ensemble_pair(
     )
 
 
-def assess_stem_focus(
+@dataclass(frozen=True)
+class FocusEvidence:
+    focus: str
+    selection: StemSelection
+    label: str = ""
+    severity: str = "warning"
+    ensemble: bool = False
+    available_labels: tuple[str, ...] = ()
+
+
+def assess_stem_focus(evidence: FocusEvidence) -> list[Diagnostic]:
+    """Assess immutable route-selection evidence without accessing model state."""
+    focus, selection = evidence.focus, evidence.selection
+    if selection.status is StemSelectionStatus.MATCHED:
+        return []
+    if evidence.ensemble:
+        insufficient = selection.status is StemSelectionStatus.INSUFFICIENT_MEMBERS
+        # Ensemble diagnostics display route labels, supplied by the observer.
+        available = evidence.label or "none"
+        return [
+            Diagnostic(
+                "stems.focus_insufficient_members" if insufficient else "stems.focus_unmatched",
+                (
+                    f"stem focus {focus!r} has fewer than two ensemble contributors"
+                    if insufficient
+                    else f"stem focus {focus!r} matches no ensemble output"
+                )
+                + f" (available: {available}); exporting all stems",
+                evidence.severity,
+            )
+        ]
+    stems = ", ".join(evidence.available_labels)
+    return [
+        Diagnostic(
+            "stems.focus_unmatched",
+            f"stem focus {focus!r} matches no stem of {evidence.label}"
+            + (f" (has {stems}); exporting all stems" if stems else "; exporting all stems"),
+            evidence.severity,
+        )
+    ]
+
+
+def stem_focus_diagnostics(
     settings: Settings,
     models: Sequence[Any],
     descriptors: Sequence[ModelDescriptor],
@@ -170,38 +223,26 @@ def assess_stem_focus(
     *,
     command: str = "separate",
 ) -> list[Diagnostic]:
-    """Report a ``process.stem_focus`` that names none of a model's stems.
-
-    Such a focus cannot be honored, and the run silently falls back to
-    exporting every stem — worth saying out loud before a long job rather
-    than leaving the user to notice the extra files afterwards.
-    """
+    """Observe fallback routes and assess each member before observing the next."""
     focus = str(settings.process.stem_focus or "")
     if not focus or positional_stem_focus(focus):
         return []
-    source = (provenance or {}).get("process.stem_focus", "")
-    severity = "error" if source == Provenance.CLI.value else "warning"
+    severity = (
+        "error"
+        if (provenance or {}).get("process.stem_focus", "") == Provenance.CLI.value
+        else "warning"
+    )
     if command == "ensemble":
-        routes, union = _ensemble_output_routes(settings, descriptors)
+        routes, union = collect_ensemble_routes(settings, descriptors)
         selection = select_ensemble_stem_routes(routes, union, focus)
         if selection.status is StemSelectionStatus.MATCHED:
             return []
-        insufficient = selection.status is StemSelectionStatus.INSUFFICIENT_MEMBERS
-        available = ", ".join(route.label for route in routes) or "none"
-        return [
-            Diagnostic(
-                ("stems.focus_insufficient_members" if insufficient else "stems.focus_unmatched"),
-                (
-                    f"stem focus {focus!r} has fewer than two ensemble contributors"
-                    if insufficient
-                    else f"stem focus {focus!r} matches no ensemble output"
-                )
-                + f" (available: {available}); exporting all stems",
-                severity,
+        return assess_stem_focus(
+            FocusEvidence(
+                focus, selection, ", ".join(route.label for route in routes), severity, True
             )
-        ]
-
-    result: list[Diagnostic] = []
+        )
+    diagnostics = []
     for index, model in enumerate(models):
         if getattr(model, "is_vocal_split_model", False):
             continue
@@ -218,16 +259,16 @@ def assess_stem_focus(
             if index < len(descriptors)
             else getattr(model, "model_basename", "") or "model"
         )
-        stems = ", ".join(route.label for route in routes)
-        result.append(
-            Diagnostic(
-                "stems.focus_unmatched",
-                f"stem focus {focus!r} matches no stem of {label}"
-                + (f" (has {stems}); exporting all stems" if stems else "; exporting all stems"),
-                severity,
-            )
+        # Keep display labels separate from concept availability used by selection.
+        evidence = FocusEvidence(
+            focus,
+            selection,
+            label,
+            severity,
+            available_labels=tuple(route.label for route in routes),
         )
-    return result
+        diagnostics.extend(assess_stem_focus(evidence))
+    return diagnostics
 
 
 def emit_assessment(assessment: DiagnosticAssessment) -> tuple[Diagnostic, ...]:
@@ -242,14 +283,29 @@ def stem_semantics_diagnostics(descriptors: Sequence[ModelDescriptor]) -> list[D
     diagnostics = []
     for descriptor in descriptors:
         # Deliver each event before assessing the next descriptor, including on failure.
-        diagnostics.extend(emit_assessment(assess_stem_semantics(descriptor)))
+        projection = (
+            stem_semantics_projection(
+                descriptor.stem_semantics,
+                backend_primary=(descriptor.backend_primary_stem or descriptor.primary_stem),
+                backend_target=descriptor.backend_target_stem,
+            )
+            if descriptor.stem_semantics is not None
+            else None
+        )
+        diagnostics.extend(emit_assessment(assess_stem_semantics(descriptor, projection)))
     return diagnostics
 
 
 def ensemble_pair_diagnostics(
     settings: Settings, descriptors: Sequence[ModelDescriptor], *, command: str
 ) -> tuple[Diagnostic, ...]:
-    return emit_assessment(assess_ensemble_pair(settings, descriptors, command=command))
+    evidence = None
+    if command == "ensemble":
+        pair_id = normalize_stem_pair_id(settings.ensemble.main_stem)
+        evidence = PairEvidence(pair_id, stem_pair_definition(pair_id))
+    return emit_assessment(
+        assess_ensemble_pair(settings, descriptors, command=command, evidence=evidence)
+    )
 
 
 def assess_inputs(

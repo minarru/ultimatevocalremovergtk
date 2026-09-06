@@ -25,9 +25,9 @@ from .job_dependencies import (
 from .job_dependencies import active_model_paths as active_model_paths
 from .job_diagnostics import (
     assess_inputs,
-    assess_stem_focus,
     ensemble_pair_diagnostics,
     runtime_diagnostics,
+    stem_focus_diagnostics,
     stem_semantics_diagnostics,
 )
 from .job_materialization import (
@@ -54,6 +54,7 @@ from .job_plan_types import ValidationLevel as ValidationLevel
 from .job_plan_types import compute_model_identity_digest as compute_model_identity_digest
 from .job_plan_types import settings_fingerprint as settings_fingerprint
 from .job_projection import select_output_routes
+from .job_route_observations import collect_output_route_evidence
 from .model_identity import ModelRecord
 from .settings import Settings
 from .stems import StemRoute
@@ -97,7 +98,8 @@ def planned_output_routes(
     settings: Settings, descriptors: Sequence[ModelDescriptor], *, command: str
 ) -> tuple[StemRoute, ...]:
     """Select routes and emit the existing best-effort output trace."""
-    result = select_output_routes(settings, descriptors, command=command)
+    evidence = collect_output_route_evidence(settings, descriptors, command=command)
+    result = select_output_routes(settings, descriptors, command=command, evidence=evidence)
     _debug_planned_output_routes(
         focus=result.focus, positional=result.positional, reason=result.reason, routes=result.routes
     )
@@ -246,7 +248,7 @@ class JobResolver:
         diagnostics.extend(stem_semantics_diagnostics(descriptors))
         diagnostics.extend(ensemble_pair_diagnostics(settings, descriptors, command=spec.command))
         diagnostics.extend(
-            assess_stem_focus(settings, models, descriptors, provenance, command=spec.command)
+            stem_focus_diagnostics(settings, models, descriptors, provenance, command=spec.command)
         )
         if level in {ValidationLevel.RUNTIME, ValidationLevel.LOAD}:
             diagnostics.extend(runtime_diagnostics(settings, self.probes))
@@ -364,7 +366,7 @@ class JobResolver:
         diagnostics = tuple(
             (
                 *ensemble_pair_diagnostics(settings, descriptors, command=spec.command),
-                *assess_stem_focus(
+                *stem_focus_diagnostics(
                     settings,
                     models,
                     descriptors,
@@ -423,3 +425,24 @@ def format_effective_plan(plan: ResolvedJob) -> str:
     for diagnostic in plan.diagnostics:
         lines.append(f"  {diagnostic.severity}: {diagnostic.message}")
     return "\n".join(lines)
+
+
+__all__ = [
+    "Diagnostic",
+    "JobResolver",
+    "JobSpec",
+    "MODEL_SENTINELS",
+    "ModelDescriptor",
+    "PlannedInput",
+    "PlannedOutput",
+    "Provenance",
+    "ResolvedJob",
+    "ValidationLevel",
+    "active_model_paths",
+    "compute_model_identity_digest",
+    "device_runtime_diagnostics",
+    "format_effective_plan",
+    "planned_output_stems",
+    "planned_output_routes",
+    "settings_fingerprint",
+]

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import copy
-import dataclasses
 import os
 from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
@@ -11,31 +10,16 @@ from typing import Any, Mapping, Sequence
 from .export_naming import OutputNamingContext, format_stem_basename
 from .job_plan_types import ModelDescriptor, PlannedInput, PlannedOutput
 from .model_identity import ModelRecord
-from .model_stem_manifest import load_bundled_stem_semantics
 from .settings import Settings
-from .stem_pairs import is_stem_mode, normalize_stem_pair_id, stem_pair_definition
 from .stem_roles import ModelStemSemantics, StemRoleId
 from .stems import (
     FOCUS_PRIMARY,
     FOCUS_SECONDARY,
-    StemLiteral,
     StemRoute,
-    StemRouteKind,
+    StemSelection,
     StemSelectionStatus,
-    derived_stem_route,
     logical_primary_route,
     logical_secondary_route,
-    model_stem_routes,
-    positional_stem_focus,
-    select_ensemble_stem_routes,
-    select_stem_routes,
-)
-
-_FOUR_STEM_ROLES = (
-    StemRoleId("instrument.bass"),
-    StemRoleId("instrument.drums"),
-    StemRoleId("residual.other"),
-    StemRoleId("vocal.vocals"),
 )
 
 
@@ -59,6 +43,15 @@ class DescriptorEvidence:
 class NativeSettingsProjection:
     settings: Settings
     provenance: Mapping[str, str]
+
+
+@dataclass(frozen=True)
+class OutputRouteEvidence:
+    focus: str
+    positional: str
+    routes: tuple[StemRoute, ...]
+    selection: StemSelection | None
+    ensemble_multi: bool = False
 
 
 @dataclass(frozen=True)
@@ -110,19 +103,6 @@ def project_record_descriptors(records: Sequence[ModelRecord]) -> tuple[ModelDes
     )
 
 
-def _reviewed_route(role: StemRoleId, *, selected_by_default: bool = True) -> StemRoute:
-    """Construct a final ensemble route from registry-owned presentation data."""
-    definition = load_bundled_stem_semantics().roles[role]
-    return StemRoute(
-        native=None,
-        role=role,
-        label=definition.display,
-        filename_tag=definition.filename_tag,
-        kind=StemRouteKind.DERIVED,
-        selected_by_default=selected_by_default,
-    )
-
-
 def _ensemble_group_key(route: StemRoute, member_id: str) -> tuple[object, ...]:
     """Combine reviewed roles only; raw literals stay scoped to one member."""
     if isinstance(route.role, StemRoleId):
@@ -130,101 +110,24 @@ def _ensemble_group_key(route: StemRoute, member_id: str) -> tuple[object, ...]:
     return ("raw", member_id, route.selection_scope, route.role)
 
 
-def _fallback_descriptor_routes(descriptor: ModelDescriptor) -> tuple[StemRoute, ...]:
-    """Route inventory for older callers constructing descriptors directly."""
-    if descriptor.routes:
-        return descriptor.routes
-
-    class _DescriptorModel:
-        primary_stem = descriptor.primary_stem
-        secondary_stem = descriptor.secondary_stem
-        mdx_model_stems = tuple(
-            stem for stem in (descriptor.primary_stem, descriptor.secondary_stem) if stem
-        )
-        demucs_source_list: tuple[str, ...] = ()
-        mdx_stem_count = descriptor.stem_count
-        demucs_stem_count = 0
-        is_karaoke = descriptor.is_karaoke
-        is_bv_model = descriptor.is_bv
-        is_vocal_split_model = False
-
-    routes = model_stem_routes(_DescriptorModel())
-    if routes:
-        return routes
-    return (
-        derived_stem_route(StemLiteral("Primary"), label="Primary", selected_by_default=True),
-        derived_stem_route(StemLiteral("Secondary"), label="Secondary", selected_by_default=True),
-    )
-
-
-def _ensemble_output_routes(
-    settings: Settings, descriptors: Sequence[ModelDescriptor]
-) -> tuple[tuple[StemRoute, ...], tuple[StemRoute, ...]]:
-    """Return viable final routes and the union before contributor filtering."""
-    pair_id = normalize_stem_pair_id(settings.ensemble.main_stem)
-    pair = stem_pair_definition(pair_id)
-    if pair is not None:
-        routes = tuple(_reviewed_route(role) for role in pair.roles)
-        return routes, routes
-
-    if pair_id == "mode.four_stem":
-        standard = tuple(_reviewed_route(role) for role in _FOUR_STEM_ROLES)
-        counts = {route.role: 0 for route in standard}
-        for _index, descriptor in enumerate(descriptors):
-            member_roles = {
-                route.role
-                for route in _fallback_descriptor_routes(descriptor)
-                if route.selected_by_default and isinstance(route.role, StemRoleId)
-            }
-            for role in counts:
-                counts[role] += int(role in member_roles)
-        union = tuple(route for route in standard if counts[route.role] >= 1)
-        viable = tuple(route for route in standard if counts[route.role] >= 2)
-        return viable, union
-
-    contributors: dict[tuple[object, ...], list[StemRoute]] = {}
-    contributor_members: dict[tuple[object, ...], set[str]] = {}
-    order: list[tuple[object, ...]] = []
-    for index, descriptor in enumerate(descriptors):
-        member_id = descriptor.id or f"member-{index}"
-        seen_member: set[tuple[object, ...]] = set()
-        for route in _fallback_descriptor_routes(descriptor):
-            key = _ensemble_group_key(route, member_id)
-            if key in seen_member or not route.selected_by_default:
-                continue
-            seen_member.add(key)
-            if key not in contributors:
-                contributors[key] = []
-                contributor_members[key] = set()
-                order.append(key)
-            contributors[key].append(route)
-            contributor_members[key].add(member_id)
-    union = tuple(contributors[key][0] for key in order)
-    viable = tuple(
-        dataclasses.replace(contributors[key][0], selected_by_default=True)
-        for key in order
-        if len(contributor_members[key]) >= 2
-    )
-    return viable, union
-
-
 def select_output_routes(
     settings: Settings,
     descriptors: Sequence[ModelDescriptor],
     *,
     command: str,
+    evidence: OutputRouteEvidence,
 ) -> OutputRouteProjection:
     """Canonical routes that this resolved job intends to write."""
-    focus = str(settings.process.stem_focus or "")
-    positional = positional_stem_focus(focus)
+    focus = evidence.focus
+    positional = evidence.positional
     reason = "unknown"
     selected: tuple[StemRoute, ...] = ()
 
     if command == "ensemble":
-        routes, _union = _ensemble_output_routes(settings, descriptors)
+        routes = evidence.routes
         if positional:
             selected = tuple(routes)
-            if not is_stem_mode(normalize_stem_pair_id(settings.ensemble.main_stem)):
+            if not evidence.ensemble_multi:
                 if positional == FOCUS_PRIMARY:
                     selected = selected[:1]
                     reason = "ensemble-positional-primary"
@@ -236,12 +139,13 @@ def select_output_routes(
             else:
                 reason = "ensemble-positional-multi"
         else:
-            selection = select_ensemble_stem_routes(routes, _union, focus)
+            selection = evidence.selection
+            assert selection is not None
             selected = tuple(selection.routes if selection.routes else routes)
             reason = "ensemble-focus-matched" if selection.routes else "ensemble-focus-fallback-all"
         return OutputRouteProjection(selected, focus, positional, reason)
 
-    routes = _fallback_descriptor_routes(descriptors[0]) if descriptors else ()
+    routes = evidence.routes
     if positional:
         if positional == FOCUS_PRIMARY:
             primary = descriptors[0].primary_stem if descriptors else None
@@ -287,7 +191,8 @@ def select_output_routes(
                 )
                 reason = f"positional-secondary-fallback-defaults secondary_stem={secondary!r}"
     else:
-        selection = select_stem_routes(routes, focus)
+        selection = evidence.selection
+        assert selection is not None
         if selection.status is StemSelectionStatus.MATCHED and selection.routes:
             selected = tuple(selection.routes)
             reason = "focus-matched"
