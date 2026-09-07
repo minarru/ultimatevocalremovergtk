@@ -17,7 +17,9 @@ class RunCallbackGuardsTests(unittest.TestCase):
     def test_old_stop_dialog_cannot_stop_a_new_run_on_same_page(self):
         dialog = Mock()
         handlers = {}
-        dialog.connect.side_effect = lambda signal, cb: handlers.update({signal: cb})
+        dialog.connect.side_effect = lambda signal, cb, handlers=handlers: handlers.update(
+            {signal: cb}
+        )
         with patch('ui.run_control.Adw.AlertDialog', return_value=dialog):
             self.controller._present_stop_confirm()
         self.controller._operation_id = 'new'
@@ -27,7 +29,9 @@ class RunCallbackGuardsTests(unittest.TestCase):
     def test_deferred_cancel_cannot_resume_another_run(self):
         dialog = Mock()
         handlers = {}
-        dialog.connect.side_effect = lambda signal, cb: handlers.update({signal: cb})
+        dialog.connect.side_effect = lambda signal, cb, handlers=handlers: handlers.update(
+            {signal: cb}
+        )
         deliveries = []
         with (
             patch('ui.run_control.Adw.AlertDialog', return_value=dialog),
@@ -100,3 +104,56 @@ class RunCallbackGuardsTests(unittest.TestCase):
         dialog.force_close.assert_called_once_with()
         self.assertIsNone(self.controller._stop_confirm_dialog)
         self.target.unpause.assert_not_called()
+
+
+class ErrorAttributionTests(unittest.TestCase):
+    def test_terminal_errors_keep_originating_page_after_tab_switch(self):
+        for method in ('_on_error', 'fail_to_start'):
+            with self.subTest(method=method):
+                host = Mock()
+                host.target.error_key = 'Separation'
+                host.target.run_label = 'Separation'
+                controller = RunController(host)
+                target = Mock(error_key='Ensemble', run_label='Ensemble')
+                controller._running_target = target
+                with (
+                    patch('ui.errorlog.log_error', return_value='report') as log,
+                    patch('ui.errorlog.present_error_dialog') as dialog,
+                    patch.object(controller, '_schedule_release_inference_memory'),
+                    patch.object(controller, '_send_failure_notification'),
+                ):
+                    if method == '_on_error':
+                        controller._on_error(ValueError('failed'))
+                    else:
+                        controller.fail_to_start('failed', ValueError('failed'))
+                self.assertIsNone(controller.running_target)
+                self.assertEqual(log.call_args.args[0], 'Ensemble')
+                self.assertEqual(dialog.call_args.kwargs['heading'], 'Ensemble failed')
+
+
+class StopTimeoutUiTests(unittest.TestCase):
+    def test_timeout_offers_wait_or_quit_without_unlocking_live_worker(self):
+        for response in ('wait', 'quit', 'stale'):
+            with self.subTest(response=response):
+                host, target, dialog = Mock(), Mock(), Mock()
+                controller = RunController(host)
+                controller._running_target = target
+                controller._operation_id = 'run'
+                handlers = {}
+                dialog.connect.side_effect = lambda signal, cb, handlers=handlers: handlers.update(
+                    {signal: cb}
+                )
+                with patch('ui.run_control.Adw.AlertDialog', return_value=dialog):
+                    controller._on_stop_timeout(target)
+                self.assertIs(controller.running_target, target)
+                host.enable_start.assert_called_with(False)
+                host.set_options_sensitive.assert_not_called()
+                with (
+                    patch.object(controller.shutdown, 'resume_inference_cleanup') as resume,
+                    patch.object(controller, '_complete_shutdown') as quit_app,
+                ):
+                    if response == 'stale':
+                        controller._running_target = None
+                    handlers['response'](dialog, response)
+                    self.assertEqual(resume.call_count, int(response == 'wait'))
+                    self.assertEqual(quit_app.call_count, int(response == 'quit'))

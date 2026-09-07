@@ -36,7 +36,7 @@ class LogPanelLayoutTests(unittest.TestCase):
             time.sleep(0.01)
         self.fail('Layout did not settle')
 
-    def test_empty_state_centered_and_wrapped_hint_clearance(self):
+    def test_empty_state_centered(self):
         from gi.repository import Gtk
 
         from ui.widgets.log_panel import LogPanel
@@ -60,15 +60,6 @@ class LogPanelLayoutTests(unittest.TestCase):
             self.assertAlmostEqual(
                 bounds.get_y() + bounds.get_height() / 2, outer.get_height() / 2, delta=1
             )
-            base = panel.options_overlay_clearance()
-            reason = 'Choose an installed model before starting processing. ' * 3
-            panel.set_start_blocked_reason(reason)
-            self.settle(lambda: panel._start_blocked_reason.get_height() > 0)
-            self.assertGreater(panel.options_overlay_clearance(), base)
-            self.assertGreater(panel._start_blocked_reason.get_height(), 20)
-            panel.set_start_blocked_reason(None)
-            self.assertFalse(panel._start_blocked_reason.get_visible())
-            self.assertEqual(panel.options_overlay_clearance(), base)
         finally:
             window.set_visible(False)
 
@@ -96,9 +87,7 @@ class LogPanelLayoutTests(unittest.TestCase):
         panel = window.log_panel
         self.addCleanup(window.set_application, None)
         self.addCleanup(window._unsubscribe_model_events)
-        self.addCleanup(panel.set_start_blocked_reason, None)
         self.addCleanup(window.set_visible, False)
-        panel.set_start_blocked_reason(None)
         window.present()
         self.settle(window.get_mapped)
         for expanded in (True, False):

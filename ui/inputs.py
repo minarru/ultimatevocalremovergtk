@@ -77,12 +77,18 @@ def inspect_audio(path: str):
 
 class ViewInputs:
     def __init__(
-        self, parent: typing.Any, app_context: typing.Any, on_inputs_changed: typing.Any = None
+        self,
+        parent: typing.Any,
+        app_context: typing.Any,
+        on_inputs_changed: typing.Any = None,
+        on_verification_changed: typing.Callable[[], None] | None = None,
     ):
         self.parent = parent
         self.context = app_context
         self.settings = app_context.settings
         self._on_inputs_changed = on_inputs_changed
+        self._on_verification_changed = on_verification_changed
+        self._verification_generation: int | None = None
         self.paths = list(self.settings.process.input_paths or [])
         self._rows = {}
         self._status = {}  # path -> (is_valid, info) after verify
@@ -292,20 +298,20 @@ class ViewInputs:
             self._toast("No files to verify.")
             return
         self._verifying = True
+        self._verification_generation = self.context.begin_input_verification()
         self._verify_stop.clear()
         self._verify_total = len(self.paths)
-        prior_unreadable = set(self.context.unreadable_input_paths) & set(self.paths)
         self._status.clear()
         self.verify_button.set_label(f"Verifying… 0/{self._verify_total}")
         self._sync_actions()
         snapshot = list(self.paths)
         threading.Thread(
             target=self._verify_worker,
-            args=(snapshot, prior_unreadable),
+            args=(snapshot,),
             daemon=True,
         ).start()
 
-    def _verify_worker(self, paths: typing.Any, prior_unreadable: typing.Any = ()) -> None:
+    def _verify_worker(self, paths: typing.Any) -> None:
         broken = []
         verified_paths = []
         cancelled = False
@@ -323,7 +329,6 @@ class ViewInputs:
             broken,
             cancelled,
             verified_paths,
-            prior_unreadable,
         )
 
     def _apply_result(
@@ -345,20 +350,18 @@ class ViewInputs:
         broken: typing.Any,
         cancelled: bool = False,
         verified_paths: typing.Any = (),
-        prior_unreadable: typing.Any = (),
     ) -> None:
+        failed_paths = [p for p, _info in broken]
+        if self._verification_generation is not None:
+            changed = self.context.apply_input_verification(
+                self._verification_generation, verified_paths, failed_paths
+            )
+            if changed and self._on_verification_changed is not None:
+                self._on_verification_changed()
         if self._lifetime.disposed:
             return
         self._verifying = False
         self._verify_stop.clear()
-        failed_paths = [p for p, _info in broken]
-        current_paths = set(self.paths)
-        if cancelled:
-            preserved = (set(prior_unreadable) & current_paths) - set(verified_paths)
-            failed_paths = sorted(preserved | (set(failed_paths) & current_paths))
-        else:
-            failed_paths = sorted(set(failed_paths) & current_paths)
-        self.context.set_unreadable_input_paths(failed_paths)
         self._rebuild_list()
         self._sync_actions()
         from core.debug_log import debug
@@ -375,18 +378,23 @@ class ViewInputs:
             self._toast(f"{len(broken)} file(s) could not be read.")
         else:
             self._toast("No errors found!")
-        if self._on_inputs_changed is not None:
-            # Refresh Start readiness without changing the path list.
-            self._on_inputs_changed(list(self.paths))
 
     def _toast(self, message: str) -> None:
         self.toast_overlay.add_toast(Adw.Toast.new(message))
 
 
 def open_view_inputs(
-    parent_window: typing.Any, app_context: typing.Any, on_inputs_changed: typing.Any = None
+    parent_window: typing.Any,
+    app_context: typing.Any,
+    on_inputs_changed: typing.Any = None,
+    on_verification_changed: typing.Callable[[], None] | None = None,
 ):
     """Open the Verify Inputs dialog. Wire to ``win.view_inputs``."""
-    view = ViewInputs(parent_window, app_context, on_inputs_changed=on_inputs_changed)
+    view = ViewInputs(
+        parent_window,
+        app_context,
+        on_inputs_changed=on_inputs_changed,
+        on_verification_changed=on_verification_changed,
+    )
     view.present()
     return view

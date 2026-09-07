@@ -33,15 +33,20 @@ class RunShutdownCoordinator:
         release: ReleaseMemory,
         on_shutdown: Callable[[], None],
         on_stop_cleanup: Callable[[RunTarget], None] | None = None,
+        on_stop_timeout: Callable[[RunTarget], None] | None = None,
     ):
         self.host = host
         self.scheduler = scheduler
         self.release = release
         self.on_shutdown = on_shutdown
         self.on_stop_cleanup = on_stop_cleanup
+        self.on_stop_timeout = on_stop_timeout
+        self._cleanup_timeout_id: int | None = None
+        self._cleanup_timed_out = False
         self.cleanup_target: RunTarget | None = None
         self.cleanup_attempts = 0
         self._cleanup_generation = 0
+        self._cleanup_poll_generation = 0
         self._cleanup_release_started = False
         self._cleanup_release_finished = False
         self.shutdown_target: RunTarget | None = None
@@ -51,17 +56,58 @@ class RunShutdownCoordinator:
         self.exit_app: Gtk.Application | None = None
 
     def schedule_inference_cleanup(self, target: RunTarget) -> None:
+        self.cancel_inference_cleanup()
         debug('cleanup', f'cleanup poll scheduled target={type(target).__name__}')
         self.cleanup_target = target
         self.cleanup_attempts = 0
         self._cleanup_generation += 1
         self._cleanup_release_started = False
         self._cleanup_release_finished = False
-        self.scheduler.timeout_add(50, self.poll_inference_cleanup)
+        self.resume_inference_cleanup(target)
+
+    def cancel_inference_cleanup(self) -> None:
+        self.cleanup_target = None
+        self._cleanup_generation += 1
+        self._cleanup_poll_generation += 1
+        if self._cleanup_timeout_id is not None:
+            self.scheduler.source_remove(self._cleanup_timeout_id)
+            self._cleanup_timeout_id = None
+
+    def resume_inference_cleanup(self, target: RunTarget) -> None:
+        if self.cleanup_target is not target:
+            return
+        self._cleanup_timed_out = False
+        if self._cleanup_timeout_id is not None:
+            self.scheduler.source_remove(self._cleanup_timeout_id)
+        generation = self._cleanup_generation
+
+        def expired() -> bool:
+            if generation != self._cleanup_generation or self.cleanup_target is not target:
+                return False
+            self._cleanup_timeout_id = None
+            self._cleanup_timed_out = True
+            self._cleanup_poll_generation += 1
+            if self.on_stop_timeout is not None:
+                self.on_stop_timeout(target)
+            return False
+
+        self._cleanup_timeout_id = self.scheduler.timeout_add(10000, expired)
+        self._queue_cleanup_poll()
+
+    def _queue_cleanup_poll(self) -> None:
+        self._cleanup_poll_generation += 1
+        generation = self._cleanup_poll_generation
+
+        def poll() -> bool:
+            if generation != self._cleanup_poll_generation:
+                return False
+            return self.poll_inference_cleanup()
+
+        self.scheduler.timeout_add(50, poll)
 
     def poll_inference_cleanup(self) -> bool:
         target = self.cleanup_target
-        if target is None:
+        if target is None or self._cleanup_timed_out:
             return False
         self.cleanup_attempts += 1
         alive = target.worker_is_running()
@@ -70,7 +116,7 @@ class RunShutdownCoordinator:
                 return False
             if alive:
                 return True
-            self.cleanup_target = None
+            self.cancel_inference_cleanup()
             if self.on_stop_cleanup is not None:
                 self.on_stop_cleanup(target)
             return False
@@ -86,7 +132,7 @@ class RunShutdownCoordinator:
                     return
                 self._cleanup_release_finished = True
                 if self.poll_inference_cleanup():
-                    self.scheduler.timeout_add(50, self.poll_inference_cleanup)
+                    self._queue_cleanup_poll()
 
             self.release(force_if_alive=alive, on_done=released)
             return False

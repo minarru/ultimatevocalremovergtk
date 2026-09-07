@@ -188,7 +188,7 @@ class DownloadQueueCompletionUiTests(unittest.TestCase):
                         lambda: (
                             queue.active_count() == 0
                             and "Downloaded 1 model" in labels(indicator.widget)
-                            and "0 vocals models" in labels(center.window)
+                            and "0 models shown" in labels(center.window)
                         )
                     )
                     self.assertEqual(queue.items()[0].status, STATUS_COMPLETE)

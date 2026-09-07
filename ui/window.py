@@ -275,9 +275,7 @@ class MainWindow(Adw.ApplicationWindow):
         self._hint_manager = HelpHintManager()
 
         page = self._build_content()
-        self.log_panel = LogPanel(
-            on_clearance_changed=self._sync_options_bottom_clearance,
-        )
+        self.log_panel = LogPanel()
         self.console = self.log_panel.console
         self.start_button = self.log_panel.start_button
         self.stop_button = self.log_panel.stop_button
@@ -1300,9 +1298,21 @@ class MainWindow(Adw.ApplicationWindow):
             if page._current_tool() in DUAL_INPUT_TOOLS:
                 page._on_open_dual_editor()
                 return
+        import weakref
+
         from .inputs import open_view_inputs
 
-        open_view_inputs(self, self.context, on_inputs_changed=self._on_external_inputs_changed)
+        window_ref = weakref.ref(self)
+
+        def verification_changed() -> None:
+            window = window_ref()
+            if window is not None and not window._run_controller._closing:
+                window._refresh_start_readiness()
+
+        open_view_inputs(
+            self, self.context, on_inputs_changed=self._on_external_inputs_changed,
+            on_verification_changed=verification_changed,
+        )
 
     def _on_model_options(self, _action: Gio.SimpleAction, _param: typing.Any) -> None:
         self._open_model_options()

@@ -114,7 +114,13 @@ class GtkRunHost:
         )
 
     def set_start_blocked_reason(self, reason: str | None) -> None:
-        self.window.log_panel.set_start_blocked_reason(reason)
+        button = self.window.start_button
+        if reason:
+            button.remove_css_class("suggested-action")
+            button.add_css_class("dim-label")
+        else:
+            button.remove_css_class("dim-label")
+            button.add_css_class("suggested-action")
 
     def refresh_readiness(self) -> None:
         self.window._refresh_start_readiness()

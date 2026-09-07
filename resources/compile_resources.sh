@@ -2,6 +2,14 @@
 # Compile Blueprint layouts and bundle all application resources.
 set -euo pipefail
 
+CHECK_ONLY=false
+if [[ "${1:-}" == "--check" && $# == 1 ]]; then
+    CHECK_ONLY=true
+elif [[ $# != 0 ]]; then
+    echo "Usage: $0 [--check]" >&2
+    exit 2
+fi
+
 HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "${HERE}/.." && pwd)"
 ICONS_DIR="${HERE}/icons"
@@ -39,19 +47,22 @@ if [[ ! -f "${STYLE_CSS}" ]]; then
     exit 1
 fi
 
-APP_ICON_SRC="${REPO_ROOT}/packaging/org.uvr.UltimateVocalRemover.png"
-APP_ICON_DEST="${ICONS_DIR}/hicolor/256x256/apps/org.uvr.UltimateVocalRemover.png"
-if [[ -f "${APP_ICON_SRC}" ]]; then
-    mkdir -p "$(dirname "${APP_ICON_DEST}")"
-    cp -f "${APP_ICON_SRC}" "${APP_ICON_DEST}"
-fi
-
 mkdir -p "${OUT_DIR}"
 STAGING_DIR="$(mktemp -d "${OUT_DIR}/.uvr-resources.XXXXXX")"
 cleanup() {
     rm -rf -- "${STAGING_DIR}"
 }
 trap cleanup EXIT
+
+APP_ICON_SRC="${REPO_ROOT}/packaging/org.uvr.UltimateVocalRemover.png"
+APP_ICON_DEST="${ICONS_DIR}/hicolor/256x256/apps/org.uvr.UltimateVocalRemover.png"
+if [[ -f "${APP_ICON_SRC}" ]]; then
+    if ${CHECK_ONLY}; then
+        APP_ICON_DEST="${STAGING_DIR}/icons/hicolor/256x256/apps/org.uvr.UltimateVocalRemover.png"
+    fi
+    mkdir -p "$(dirname "${APP_ICON_DEST}")"
+    cp -f "${APP_ICON_SRC}" "${APP_ICON_DEST}"
+fi
 
 compiler_version="$("${BLUEPRINT_COMPILER}" --version 2>/dev/null || true)"
 echo "Using Blueprint compiler: ${BLUEPRINT_COMPILER}${compiler_version:+ (${compiler_version})}"
@@ -102,6 +113,11 @@ glib-compile-resources \
     --sourcedir="${HERE}" \
     --target="${STAGING_DIR}/uvr.gresource" \
     "${STAGING_DIR}/uvr.gresource.xml"
+
+if ${CHECK_ONLY}; then
+    python3 "${REPO_ROOT}/scripts/check_resource_bundle.py" "${OUT_BIN}" "${STAGING_DIR}/uvr.gresource"
+    exit $?
+fi
 
 # Publish generated XML only after every Blueprint and the completed bundle
 # have compiled. The final rename keeps a previously working bundle intact on

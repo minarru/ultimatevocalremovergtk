@@ -48,7 +48,6 @@ class RunTerminalUiTests(unittest.TestCase):
         self.addCleanup(self.window._unsubscribe_model_events)
         self.addCleanup(self.window.log_panel.stop_progress_pulse)
         self.addCleanup(self.window.log_panel._cancel_done_collapse)
-        self.addCleanup(self.window.log_panel.set_start_blocked_reason, None)
         self.addCleanup(self.window.set_visible, False)
         self.window.present()
         from gi.repository import GLib
@@ -129,7 +128,8 @@ class RunTerminalUiTests(unittest.TestCase):
         self.assertIsNone(self.controller._running_target)
         self.assertFalse(self.controller.is_running())
         self.assertFalse(self.window.stop_button.get_sensitive())
-        self.assertEqual(self.window.start_button.get_sensitive(), reason is None)
+        self.assertTrue(self.window.start_button.get_sensitive())
+        self.assertEqual(self.window.start_button.has_css_class("dim-label"), reason is not None)
         self.assertTrue(all(p.get_sensitive() for p in self.window._options_pages))
         for name in ("settings", "view_inputs", "download"):
             self.assertTrue(self.window.lookup_action(name).get_enabled())
@@ -211,3 +211,54 @@ class RunTerminalUiTests(unittest.TestCase):
         self.assertIs(self.window.context.runner.settings, self.window.settings)
         self.assertEqual(self.window.log_panel._progress_status, "")
         self.complete_toast.assert_not_called()
+
+    def test_stop_timeout_keeps_real_controls_locked_then_recovers_on_terminal(self):
+        from tests.test_run_lifecycle import Scheduler
+
+        self._begin()
+        scheduler = Scheduler()
+        self.controller.shutdown.scheduler = scheduler
+        self.controller._confirm_stop(self.target)
+        deadline = scheduler.callbacks[scheduler.calls.index(10000)]
+        dialog = mock.Mock()
+        with mock.patch('ui.run_control.Adw.AlertDialog', return_value=dialog):
+            deadline()
+        self.assertFalse(self.window.start_button.get_sensitive())
+        self.assertFalse(self.window.stop_button.get_sensitive())
+        self.assertTrue(all(not p.get_sensitive() for p in self.window._options_pages))
+        self.assertIs(self.controller.running_target, self.target)
+        self.controller._on_stopped()
+        dialog.force_close.assert_called_once_with()
+        self.assertIsNone(self.controller.running_target)
+        self.assertTrue(self.window.start_button.get_sensitive())
+        self.assertFalse(self.window.stop_button.get_sensitive())
+        self.assertTrue(all(p.get_sensitive() for p in self.window._options_pages))
+
+    def test_blocked_start_is_muted_and_clickable_without_inline_hint(self):
+        panel = self.window.log_panel
+        self.controller.refresh_start_readiness()
+        base = panel.options_overlay_clearance()
+        self.target.start_blocked_reason.return_value = 'Choose an input file'
+        self.controller.refresh_start_readiness()
+        self.assertTrue(self.window.start_button.get_sensitive())
+        self.assertTrue(self.window.start_button.has_css_class('dim-label'))
+        self.assertFalse(self.window.start_button.has_css_class('suggested-action'))
+        self.assertEqual(panel.options_overlay_clearance(), base)
+        with (
+            mock.patch.object(
+                self.window.toast_overlay, 'add_toast', wraps=self.window.toast_overlay.add_toast
+            ) as toast,
+            mock.patch.object(self.controller, '_begin_preflight') as begin,
+        ):
+            self.window.start_button.emit('clicked')
+            toast.assert_called_once()
+            notification = toast.call_args.args[0]
+            self.assertEqual(notification.get_title(), 'Choose an input file')
+            self.addCleanup(notification.dismiss)
+            begin.assert_not_called()
+            self.target.start_blocked_reason.return_value = None
+            self.controller.refresh_start_readiness()
+            self.assertFalse(self.window.start_button.has_css_class('dim-label'))
+            self.assertTrue(self.window.start_button.has_css_class('suggested-action'))
+            self.window.start_button.emit('clicked')
+            begin.assert_called_once_with(self.target)

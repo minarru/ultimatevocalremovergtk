@@ -7,7 +7,7 @@ import threading
 import typing
 from dataclasses import replace
 
-from gi.repository import Adw, Gio, Gtk
+from gi.repository import Adw, Gio, GObject, Gtk
 
 from bundled.constants import (
     APOLLO_ARCH_TYPE,
@@ -21,24 +21,22 @@ from core import paths
 from core.debug_log import debug
 from core.download_queue import DownloadQueue
 from core.downloads import DownloadManager
+from core.model_catalogue import catalogue_label_matches
 from core.model_identity import FAMILY_BY_ARCH
 from core.model_scores import (
     ARCH_FILTER_ALL,
     MDX_NETWORK_SUBTYPES,
-    NETWORK_FILTER_OPTIONS,
-    PURPOSE_ALL,
-    PURPOSE_FILTER_OPTIONS,
+    PURPOSE_INSTRUMENTAL,
     PURPOSE_PAGE_OPTIONS,
     PURPOSE_VOCALS,
     SORT_NAME,
-    SORT_OPTIONS,
+    SORT_SDR,
     catalogue_network_id,
     family_arch_for_network_filter,
     format_sdr_subtitle,
-    network_filter_hides_headers,
+    load_model_scores,
     network_filter_matches,
     parse_sdr_score,
-    primary_sdr,
     purpose_roles_from_meta,
     sdr_for_files,
 )
@@ -50,20 +48,26 @@ from .catalogue_browser import (
     LiveCatalogueEntry,
     catalogue_evidence_detail,
     catalogue_matches,
-    catalogue_semantics_subtitle,
-    project_browser,
     project_live_counts,
     project_row,
 )
 from .dialogs.utils import close_on_escape
 from .dispatch import idle_on_main
+from .download_presentation import (
+    ARCHITECTURE_LABELS,
+    ARCHITECTURES,
+    PURPOSE_DESCRIPTIONS,
+    SEARCH_LABELS,
+    architecture_for,
+    compare_models,
+    output_summary,
+    purpose_score,
+)
 from .hints import set_icon_button_a11y, set_tooltip
 from .lifetime import UiLifetime
 from .markup import set_row_subtitle, set_row_title
-from .spacing import set_inset
 from .template import load_builder, object_from_builder
 from .widget_state import drop, fetch, stash
-from .widgets.rows import configure_combo_row, get_combo_value, set_combo_value
 
 _NETWORKS = [
     ("VR Arch", VR_ARCH_TYPE),
@@ -74,13 +78,7 @@ _NETWORKS = [
     ("Apollo", APOLLO_ARCH_TYPE),
 ]
 
-_ARCH_FILTER_OPTIONS = NETWORK_FILTER_OPTIONS
-
-_ARCH_ORDER = {
-    value: index
-    for index, (value, _label) in enumerate(NETWORK_FILTER_OPTIONS)
-    if value != ARCH_FILTER_ALL
-}
+_ARCH_FILTER_OPTIONS = ARCHITECTURES
 
 
 def resolve_catalogue_action_row(row: Gtk.ListBoxRow) -> Adw.ActionRow | None:
@@ -124,6 +122,9 @@ class DownloadCenterWindow:
         self._list_boxes: dict[str, Gtk.ListBox] = {}
         self._empty_pages: dict[str, Adw.StatusPage] = {}
         self._stack_pages: dict[str, Adw.ViewStackPage] = {}
+        self._descending = False
+        self._compact_rows = False
+        self._syncing_purpose = False
         self._purpose = PURPOSE_VOCALS
         self._arch_filter = ARCH_FILTER_ALL
         self._sort_mode = SORT_NAME
@@ -207,106 +208,142 @@ class DownloadCenterWindow:
         self._lifetime.dispose()
 
     def _build_content(self) -> None:
-        header = object_from_builder(self._layout_builder, "header", Adw.HeaderBar)
+        def get[T: GObject.Object](name: str, cls: type[T]) -> T:
+            return object_from_builder(self._layout_builder, name, cls)
 
-        if hasattr(Adw, "InlineViewSwitcher"):
-            self.stack = Adw.ViewStack()
-            if hasattr(self.stack, "set_enable_transitions"):
-                self.stack.set_enable_transitions(False)
-            self.switcher = Adw.InlineViewSwitcher()
-            self.switcher.set_stack(self.stack)
-            self.switcher.set_display_mode(Adw.InlineViewSwitcherDisplayMode.LABELS)
-            self.switcher.set_homogeneous(False)
-        else:
-            self.stack = Gtk.Stack()
-            self.stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
-            self.switcher = Gtk.StackSwitcher()
-            self.switcher.set_stack(self.stack)
-        header.set_title_widget(self.switcher)
-
-        menu_button = object_from_builder(self._layout_builder, "menu_button", Gtk.MenuButton)
-        set_icon_button_a11y(menu_button, "Models and manual downloads")
-
-        for value, label in PURPOSE_PAGE_OPTIONS:
-            placeholder = Gtk.Box()
-            self.stack.add_titled(placeholder, value, label)
-            if isinstance(self.stack, Adw.ViewStack):
-                self._stack_pages[value] = self.stack.get_page(placeholder)
-        self.stack.set_visible_child_name(PURPOSE_VOCALS)
-        self._purpose = PURPOSE_VOCALS
-
-        arch_labels = [label for _value, label in _ARCH_FILTER_OPTIONS]
-        self.arch_row = configure_combo_row(
-            object_from_builder(self._layout_builder, "arch_row", Adw.ComboRow),
-            arch_labels,
+        self.switcher = get("purposes", Gtk.Box)
+        self.compact_purpose = get("compact_purpose", Gtk.DropDown)
+        self._purpose_buttons: dict[str, Gtk.ToggleButton] = {}
+        self._purpose_badges: dict[str, Gtk.Label] = {}
+        # The hidden stack preserves the existing navigation entry point.
+        self.stack = Gtk.Stack()
+        for (value, _label), widget_id in zip(
+            PURPOSE_PAGE_OPTIONS,
+            ("vocals", "instrumental", "karaoke", "stems", "fx", "removal", "restore"),
+            strict=True,
+        ):
+            self.stack.add_titled(Gtk.Box(), value, _label)
+            button = get(widget_id, Gtk.ToggleButton)
+            self._purpose_buttons[value] = button
+            self._purpose_badges[value] = get(widget_id + "_badge", Gtk.Label)
+            button.connect("toggled", self._on_purpose_button, value)
+        self.stack.set_visible_child_name(self._purpose)
+        self.stack.connect("notify::visible-child-name", self._on_catalogue_tab_changed)
+        self.compact_purpose.set_model(
+            Gtk.StringList.new([label for _, label in PURPOSE_PAGE_OPTIONS])
         )
+        self.compact_purpose.connect("notify::selected", self._on_compact_purpose)
+        self.arch_row = get("network", Gtk.DropDown)
+        self.arch_row.set_model(Gtk.StringList.new([label for _, label in _ARCH_FILTER_OPTIONS]))
         self.arch_row.connect("notify::selected", self._on_arch_filter_changed)
-        set_combo_value(self.arch_row, _ARCH_FILTER_OPTIONS[0][1])
-        sort_labels = [label for _value, label in SORT_OPTIONS]
-        self.sort_row = configure_combo_row(
-            object_from_builder(self._layout_builder, "sort_row", Adw.ComboRow),
-            sort_labels,
-        )
+        self.sort_row = get("sort", Gtk.DropDown)
+        self.sort_row.set_model(Gtk.StringList.new(["Name", "SDR"]))
         self.sort_row.connect("notify::selected", self._on_sort_changed)
-        set_combo_value(self.sort_row, SORT_OPTIONS[0][1])
-
-        self.hide_unsupported_row = object_from_builder(
-            self._layout_builder, "hide_unsupported_row", Adw.SwitchRow
-        )
-        self.hide_unsupported_row.set_active(False)
-        self.hide_unsupported_row.connect("notify::active", self._on_hide_unsupported_changed)
-
-        self.refresh_button = object_from_builder(
-            self._layout_builder, "refresh_button", Gtk.Button
-        )
+        self.direction_button = get("direction", Gtk.Button)
+        self.direction_icon = get("direction_icon", Gtk.Image)
+        self.direction_label = get("direction_label", Gtk.Label)
+        self.direction_button.connect("clicked", self._toggle_direction)
+        self.hide_unsupported_row = get("supported", Gtk.CheckButton)
+        self.hide_unsupported_row.connect("toggled", self._on_hide_unsupported_changed)
+        get("reset_filters", Gtk.Button).connect("clicked", self._reset_filters)
+        get("empty_reset", Gtk.Button).connect("clicked", self._reset_or_retry)
+        self.refresh_button = get("refresh_button", Gtk.Button)
         self.refresh_button.connect("clicked", lambda *_: self.start_refresh())
         set_icon_button_a11y(self.refresh_button, "Refresh catalogue")
-
-        self.download_button = object_from_builder(
-            self._layout_builder, "download_button", Gtk.Button
-        )
+        self.download_button = get("download_button", Gtk.Button)
         self.download_button.connect("clicked", lambda *_: self._enqueue_selected())
+        self.clear_button = get("clear", Gtk.Button)
+        self.clear_button.connect("clicked", self._clear_selection)
+        self.selection_summary = get("selection_summary", Gtk.Stack)
+        self.selection_label = get("selection", Gtk.Label)
+        self.sizes_label = get("sizes", Gtk.Label)
+        self.status_label = get("status_label", Gtk.Label)
+        self.filter_summary = get("filter_summary", Gtk.Label)
+        self._refresh_spinner = get("refresh_spinner", Gtk.Spinner)
+        self._search_entry = get("search", Gtk.SearchEntry)
+        self._search_entry.connect("search-changed", self._on_search_changed)
+        self._list_box = get("models", Gtk.ListBox)
+        self._list_box.set_filter_func(self._row_matches_filter)
+        self._list_box.set_sort_func(self._compare_rows)
+        self._empty_page = get("empty_page", Adw.StatusPage)
+        self.results = get("results", Gtk.Stack)
+        for _, arch in _NETWORKS:
+            self._search_entries[arch] = self._search_entry
+            self._list_boxes[arch] = self._list_box
+            self._empty_pages[arch] = self._empty_page
+        self.window.set_size_request(360, 440)
+        for width, narrow_filters in ((780, False), (512, True)):
+            bp = Adw.Breakpoint.new(Adw.BreakpointCondition.parse(f"max-width: {width}sp"))
+            bp.add_setter(self.switcher, "visible", False)
+            bp.add_setter(self.compact_purpose, "visible", True)
+            if narrow_filters:
+                bp.add_setter(get("filter_bar", Gtk.Box), "orientation", Gtk.Orientation.VERTICAL)
+                bp.add_setter(get("sort_controls", Gtk.Box), "halign", Gtk.Align.START)
+            self.window.add_breakpoint(bp)
+        self.window.connect("notify::current-breakpoint", self._on_breakpoint_changed)
+        self._update_tab_counts()
+        self._update_download_button()
 
-        self.status_label = object_from_builder(self._layout_builder, "status_label", Gtk.Label)
-        self._refresh_spinner = object_from_builder(
-            self._layout_builder, "refresh_spinner", Gtk.Spinner
+    def _on_purpose_button(self, button: Gtk.ToggleButton, purpose: str) -> None:
+        if button.get_active() and not self._syncing_purpose:
+            self.stack.set_visible_child_name(purpose)
+
+    def _on_compact_purpose(self, *_args: object) -> None:
+        index = self.compact_purpose.get_selected()
+        if not self._syncing_purpose and index < len(PURPOSE_PAGE_OPTIONS):
+            self.stack.set_visible_child_name(PURPOSE_PAGE_OPTIONS[index][0])
+
+    def _reset_filters(self, *_args: object) -> None:
+        self.arch_row.set_selected(0)
+        self.hide_unsupported_row.set_active(False)
+
+    def _reset_or_retry(self, *_args: object) -> None:
+        if self._empty_page.get_icon_name() == "network-offline-symbolic":
+            self.start_refresh()
+        else:
+            self._search_entry.set_text("")
+            self._reset_filters()
+
+    def _clear_selection(self, *_args: object) -> None:
+        for check in self._row_checks.values():
+            check.set_active(False)
+
+    def _toggle_direction(self, *_args: object) -> None:
+        self._descending = not self._descending
+        self._update_direction()
+        self._invalidate_all_sorts()
+
+    def _update_direction(self) -> None:
+        by_score = self._sort_mode == SORT_SDR
+        label = (
+            ("High first" if self._descending else "Low first")
+            if by_score
+            else ("Z–A" if self._descending else "A–Z")
+        )
+        opposite = (
+            ("Low first" if self._descending else "High first")
+            if by_score
+            else ("A–Z" if self._descending else "Z–A")
+        )
+        self.direction_label.set_label(label)
+        self.direction_button.set_tooltip_text(f"{label} — switch to {opposite}")
+        # The supplied 'down' asset emphasizes the upward arrow.
+        self.direction_icon.set_from_icon_name(
+            "vertical-arrows-down-symbolic" if self._descending else "vertical-arrows-up-symbolic"
         )
 
-        self.stack.set_visible(False)
-        object_from_builder(self._layout_builder, "purpose_stack_holder", Gtk.Box).append(
-            self.stack
-        )
-        object_from_builder(self._layout_builder, "catalogue_holder", Gtk.Box).append(
-            self._build_catalogue_page()
-        )
+    def _on_breakpoint_changed(self, *_args: object) -> None:
+        # Observe the final breakpoint, not its individual apply/unapply signals:
+        # both compact layouts place row status text in the subtitle.
+        self._adapt_rows(self.window.get_current_breakpoint() is not None)
 
-        self.stack.connect("notify::visible-child-name", self._on_catalogue_tab_changed)
-
-    def _build_catalogue_page(self) -> Gtk.Widget:
-        builder = load_builder("download-family-page")
-        page = object_from_builder(builder, "page", Gtk.Box)
-        search = object_from_builder(builder, "search_entry", Gtk.SearchEntry)
-        search.connect("search-changed", self._on_search_changed)
-        self._search_entry = search
-        for _label, arch in _NETWORKS:
-            self._search_entries[arch] = search
-
-        empty_page = object_from_builder(builder, "empty_page", Adw.StatusPage)
-        retry = object_from_builder(builder, "retry_button", Gtk.Button)
-        retry.connect("clicked", lambda *_: self.start_refresh())
-        self._empty_page = empty_page
-        for _label, arch in _NETWORKS:
-            self._empty_pages[arch] = empty_page
-
-        list_box = object_from_builder(builder, "list_box", Gtk.ListBox)
-        list_box.set_filter_func(self._row_matches_filter)
-        list_box.set_sort_func(lambda r1, r2: self._compare_rows(r1, r2))
-        list_box.set_header_func(self._list_header)
-        self._list_box = list_box
-        for _label, arch in _NETWORKS:
-            self._list_boxes[arch] = list_box
-
-        return page
+    def _adapt_rows(self, compact: bool) -> None:
+        if self._compact_rows == compact:
+            return
+        self._compact_rows = compact
+        for key, action in self._row_actions.items():
+            if fetch(action, "_uvr_size", ""):
+                self._render_row_status(key)
 
     def _catalogue_row_action(self, row: Gtk.ListBoxRow) -> Adw.ActionRow | None:
         return resolve_catalogue_action_row(row)
@@ -335,7 +372,11 @@ class DownloadCenterWindow:
             reason=reason,
             display_meta=display_meta,
         )
-        return row
+        meta = self._catalogue_row_metadata(arch, name)
+        network, _ = architecture_for(
+            family, tuple(getattr(meta, "files", {}) or {}), name, row.display
+        )
+        return replace(row, network=network, semantics=output_summary(meta))
 
     def _count_roles(self, arch: str, name: str) -> tuple[str | None, tuple[str, ...]]:
         family = FAMILY_BY_ARCH.get(arch)
@@ -400,7 +441,19 @@ class DownloadCenterWindow:
             output_roles=tuple(output_roles or ()),
         )
         self.browser.rows[key] = data
-        return self.browser.matches(data, self._browser_filters(self._search_query(key[0])))
+        return self._matches(data, self._search_query(key[0]))
+
+    def _matches(self, data: typing.Any, query: str | None = None) -> bool:
+        if self._arch_filter not in ("", ARCH_FILTER_ALL, data.network, data.key[0]):
+            return False
+        if not self.browser.matches(
+            data, replace(self._browser_filters(""), network=ARCH_FILTER_ALL)
+        ):
+            return False
+        text = f"{data.key[1]} {data.display} {data.semantics} {ARCHITECTURE_LABELS.get(data.network, '')} {data.reason or ''}"
+        return catalogue_label_matches(
+            data.key[1], self._search_query() if query is None else query, extra=text
+        )
 
     def _search_query(self, arch: str = "") -> str:
         entry = getattr(self, "_search_entry", None)
@@ -413,47 +466,25 @@ class DownloadCenterWindow:
             return ""
         return str(entry.get_text() or "").strip()
 
-    def _list_header(self, row: Gtk.ListBoxRow, before: Gtk.ListBoxRow | None) -> None:
-        if network_filter_hides_headers(getattr(self, "_arch_filter", ARCH_FILTER_ALL)):
-            row.set_header(None)
-            return
-        action = self._catalogue_row_action(row)
-        network = ""
-        if action is not None:
-            network = str(fetch(action, "_uvr_network", "") or fetch(action, "_uvr_arch", "") or "")
-        if before is not None:
-            previous = self._catalogue_row_action(before)
-            if previous is not None:
-                previous_network = str(
-                    fetch(previous, "_uvr_network", "") or fetch(previous, "_uvr_arch", "") or ""
-                )
-                if previous_network == network:
-                    row.set_header(None)
-                    return
-        heading = next(
-            (label for value, label in NETWORK_FILTER_OPTIONS if value == network),
-            next((label for label, value in _NETWORKS if value == network), ""),
-        )
-        if not heading:
-            row.set_header(None)
-            return
-        header = Gtk.Label(label=heading, xalign=0.0)
-        header.add_css_class("heading")
-        header.add_css_class("dim-label")
-        set_inset(header, start=12, top=8, bottom=4)
-        row.set_header(header)
-
-    def _row_sort_key(self, row: typing.Any) -> tuple[int, int, int, float, str]:
-        key = (fetch(row, "_uvr_arch", ""), fetch(row, "_uvr_model_name", ""))
-        data = self.browser.rows.get(key)
-        return data.sort_key(self._sort_mode) if data else (99, 0, 0, 0.0, "")
-
     def _compare_rows(self, row1: typing.Any, row2: typing.Any) -> int:
-        left = self._row_sort_key(row1)
-        right = self._row_sort_key(row2)
-        if left < right:
-            return -1
-        return 1 if left > right else 0
+        left = self.browser.rows.get(
+            (fetch(row1, "_uvr_arch", ""), fetch(row1, "_uvr_model_name", ""))
+        )
+        right = self.browser.rows.get(
+            (fetch(row2, "_uvr_arch", ""), fetch(row2, "_uvr_model_name", ""))
+        )
+        if left is None or right is None:
+            return 0
+        return compare_models(
+            left.display,
+            left.sdr,
+            left.reason is not None,
+            right.display,
+            right.sdr,
+            right.reason is not None,
+            self._sort_mode == SORT_SDR,
+            getattr(self, "_descending", False),
+        )
 
     def _invalidate_all_sorts(self) -> None:
         for list_box in self._unique_list_boxes():
@@ -464,6 +495,7 @@ class DownloadCenterWindow:
 
     def _on_hide_unsupported_changed(self, *_args: typing.Any) -> None:
         self._hide_unsupported = bool(self.hide_unsupported_row.get_active())
+        self.filter_summary.set_label("Unsupported hidden" if self._hide_unsupported else "")
         self._invalidate_all_filters()
         self._update_tab_counts()
         self._update_status_from_catalogue()
@@ -476,22 +508,17 @@ class DownloadCenterWindow:
         self._schedule_stem_yaml_fetches()
 
     def _on_arch_filter_changed(self, *_args: typing.Any) -> None:
-        label = get_combo_value(self.arch_row) or _ARCH_FILTER_OPTIONS[0][1]
-        self._arch_filter = next(
-            (value for value, text in _ARCH_FILTER_OPTIONS if text == label),
-            ARCH_FILTER_ALL,
+        index = self.arch_row.get_selected()
+        self._arch_filter = (
+            _ARCH_FILTER_OPTIONS[index][0] if index < len(_ARCH_FILTER_OPTIONS) else ARCH_FILTER_ALL
         )
         self._invalidate_all_filters()
         self._schedule_stem_yaml_fetches()
 
     def _on_sort_changed(self, *_args: typing.Any) -> None:
-        label = get_combo_value(self.sort_row) or SORT_OPTIONS[0][1]
-        self._sort_mode = next(
-            (value for value, text in SORT_OPTIONS if text == label),
-            SORT_NAME,
-        )
-        # Re-sorting in place keeps every checked row, the way Purpose
-        # filtering always has. Rebuilding dropped the selection.
+        self._sort_mode = SORT_SDR if self.sort_row.get_selected() == 1 else SORT_NAME
+        self._descending = self._sort_mode == SORT_SDR
+        self._update_direction()
         self._invalidate_all_sorts()
 
     def _unique_list_boxes(self) -> list[Gtk.ListBox]:
@@ -514,10 +541,32 @@ class DownloadCenterWindow:
 
     def _on_catalogue_tab_changed(self, *_args: typing.Any) -> None:
         name = self.stack.get_visible_child_name()
-        known = {value for value, _label in PURPOSE_PAGE_OPTIONS}
-        if name in known:
-            self._purpose = str(name)
+        known = {value for value, _ in PURPOSE_PAGE_OPTIONS}
+        if name not in known:
+            return
+        previous = self._purpose
+        self._purpose = str(name)
+        score_pages = (PURPOSE_VOCALS, PURPOSE_INSTRUMENTAL)
+        if self._purpose not in score_pages or previous not in score_pages:
+            self.sort_row.set_selected(0)
+            self._sort_mode = SORT_NAME
+            self._descending = False
+        self.sort_row.set_visible(self._purpose in score_pages)
+        self._update_direction()
+        self._syncing_purpose = True
+        try:
+            self._purpose_buttons[self._purpose].set_active(True)
+            self.compact_purpose.set_selected(
+                next(
+                    i for i, (value, _) in enumerate(PURPOSE_PAGE_OPTIONS) if value == self._purpose
+                )
+            )
+        finally:
+            self._syncing_purpose = False
+        for key in self._row_actions:
+            self._render_row(key)
         self._invalidate_all_filters()
+        self._invalidate_all_sorts()
         self._update_tab_counts()
         self._schedule_stem_yaml_fetches()
 
@@ -531,16 +580,17 @@ class DownloadCenterWindow:
         known_pages = {value for value, _label in PURPOSE_PAGE_OPTIONS}
         page = purpose or ""
         if page in known_pages:
-            self._purpose = page
             if self.stack.get_visible_child_name() != page:
                 self.stack.set_visible_child_name(page)
         if arch is not None:
-            label = next(
-                (text for value, text in _ARCH_FILTER_OPTIONS if value == arch),
-                None,
+            target = FAMILY_BY_ARCH.get(arch, arch)
+            # A request for the whole MDX backend does not imply Classic MDX.
+            if target == "mdx":
+                target = ARCH_FILTER_ALL
+            index = next(
+                (i for i, (value, _) in enumerate(_ARCH_FILTER_OPTIONS) if value == target), 0
             )
-            if label is not None:
-                set_combo_value(self.arch_row, label)
+            self.arch_row.set_selected(index)
         self._invalidate_all_filters()
         self._update_tab_counts()
 
@@ -580,24 +630,98 @@ class DownloadCenterWindow:
         ]
 
     def _row_score(self, arch: str, name: str) -> tuple[str | None, float | None, str]:
-        """Return ``(stem, sdr, stems_text)`` for a catalogue label.
-
-        Falls back to the filename regex when the benchmark table has no entry,
-        which covers the handful of models whose SDR lives only in their name.
-        """
         meta = self._catalogue_row_metadata(arch, name)
-        stems_text = catalogue_semantics_subtitle(meta) if meta is not None else ""
-        if meta is not None:
-            # stem_count disambiguates a 2-stem 'other' (meaning instrumental)
-            # from a 4-stem model's real 'other' residual.
-            scored = primary_sdr(
-                sdr_for_files(meta.files),
-                meta.target_instrument,
-                stem_count=len(meta.stems) or 2,
+        score = purpose_score(
+            sdr_for_files(getattr(meta, "files", {}) or {}, load_model_scores(allow_network=False)),
+            self._purpose,
+            len(getattr(meta, "stems", ()) or ()) or 2,
+        )
+        stem = (
+            ("Vocal" if self._purpose == PURPOSE_VOCALS else "Instrumental")
+            if score is not None
+            else None
+        )
+        return stem, score, output_summary(meta)
+
+    def _render_row(self, key: tuple[str, str]) -> None:
+        action = self._row_actions.get(key)
+        data = self.browser.rows.get(key)
+        if action is None or data is None:
+            return
+        stem, score, outputs = self._row_score(*key)
+        self.browser.rows[key] = replace(data, sdr=score, sdr_stem=stem, semantics=outputs)
+        stash(action, "_uvr_stems_text", outputs)
+        parts = ["Unsupported in this build" if data.reason is not None else outputs]
+        if score is not None and data.reason is None:
+            parts.append(f"{stem} SDR {score:.2f} dB")
+        stash(action, "_uvr_base_subtitle", " · ".join(parts))
+        self._render_row_status(key)
+        set_tooltip(action, catalogue_evidence_detail(self._catalogue_row_metadata(*key)))
+
+    def _render_row_status(self, key: tuple[str, str]) -> None:
+        """Place size text using cached presentation; resizing never reacquires metadata."""
+        action = self._row_actions.get(key)
+        if action is None:
+            return
+        subtitle = str(fetch(action, "_uvr_base_subtitle", "") or "")
+        status = str(fetch(action, "_uvr_size", "") or "")
+        suffix = fetch(action, "_uvr_status_label", None)
+        compact = getattr(self, "_compact_rows", False)
+        if isinstance(suffix, Gtk.Label):
+            suffix.set_label(status)
+            suffix.set_visible(bool(status) and not compact)
+        if status and (compact or not isinstance(suffix, Gtk.Label)):
+            subtitle += f" · {status}"
+        if action.get_subtitle() != subtitle:
+            set_row_subtitle(action, subtitle)
+
+    def _add_details(self, action: Adw.ActionRow, key: tuple[str, str]) -> None:
+        status = Gtk.Label(valign=Gtk.Align.CENTER)
+        status.add_css_class("dim-label")
+        action.add_suffix(status)
+        stash(action, "_uvr_status_label", status)
+        button = Gtk.MenuButton(icon_name="info-outline-symbolic", valign=Gtk.Align.CENTER)
+        button.add_css_class("flat")
+        button.set_tooltip_text("Model details")
+        button.set_create_popup_func(lambda *_: self._create_details_popup(button, key))
+        action.add_suffix(button)
+
+    def _create_details_popup(self, button: Gtk.MenuButton, key: tuple[str, str]) -> None:
+        builder = load_builder("download-model-details")
+        popover = object_from_builder(builder, "details", Gtk.Popover)
+        label = object_from_builder(builder, "details_text", Gtk.Label)
+        label.set_label(self._details_text(key))
+        popover.connect("show", lambda *_: label.set_label(self._details_text(key)))
+        button.set_popover(popover)
+
+    def _details_text(self, key: tuple[str, str]) -> str:
+        data = self.browser.rows.get(key)
+        if data is None:
+            return ""
+        meta = self._catalogue_row_metadata(*key)
+        files = tuple(getattr(meta, "files", {}) or {})
+        architecture, source = architecture_for(
+            FAMILY_BY_ARCH.get(key[0]), files, key[1], data.display
+        )
+        sections = [
+            data.display,
+            output_summary(meta),
+            "Architecture: " + ARCHITECTURE_LABELS.get(architecture, "Unknown"),
+        ]
+        if source == "Catalogue name":
+            sections.append("Architecture identified from the catalogue name.")
+        for text in (data.reason, catalogue_evidence_detail(meta)):
+            if text and text not in sections:
+                sections.append(text)
+        scores = sdr_for_files(files, load_model_scores(allow_network=False))
+        if scores:
+            sections.append(
+                "Reported SDR\n"
+                + "\n".join(f"{name}: {value:.2f} dB" for name, value in scores.items())
             )
-            if scored is not None:
-                return (scored[0], scored[1], stems_text)
-        return (None, parse_sdr_score(name), stems_text)
+        if files:
+            sections.append("Files\n" + "\n".join(files))
+        return "\n\n".join(sections)
 
     def _add_model_row(self, arch: str, name: str) -> None:
         if name in (NO_NEW_MODELS, NO_CONNECTION):
@@ -614,7 +738,7 @@ class DownloadCenterWindow:
         self.browser.rows[key] = data
         stem, sdr, stems_text = data.sdr_stem, data.sdr, data.semantics
         display = data.display
-        action = Adw.ActionRow()
+        action = Adw.ActionRow(title_lines=1, subtitle_lines=1)
         set_row_title(action, display)
         action.add_prefix(check)
         action.set_activatable_widget(check)
@@ -635,6 +759,8 @@ class DownloadCenterWindow:
 
         self._row_checks[key] = check
         self._row_actions[key] = action
+        self._add_details(action, key)
+        self._render_row(key)
         self._list_boxes[arch].append(action)
 
     def _add_unsupported_row(self, arch: str, name: str, reason: str) -> None:
@@ -645,11 +771,12 @@ class DownloadCenterWindow:
         data = self._project_browser_row(arch, name, reason)
         self.browser.rows[key] = data
         display = data.display
-        action = Adw.ActionRow()
+        action = Adw.ActionRow(title_lines=1, subtitle_lines=1)
         set_row_title(action, display)
         set_row_subtitle(action, f"Unsupported — {reason}")
         action.add_css_class("dim-label")
-        action.set_sensitive(False)
+        check = Gtk.CheckButton(sensitive=False, valign=Gtk.Align.CENTER)
+        action.add_prefix(check)
         stash(action, "_uvr_model_name", name)
         stash(action, "_uvr_display_name", display)
         stash(action, "_uvr_arch", arch)
@@ -662,6 +789,8 @@ class DownloadCenterWindow:
         stash(action, "_uvr_sort_name", display.casefold())
 
         self._row_actions[key] = action
+        self._add_details(action, key)
+        self._render_row(key)
         self._list_boxes[arch].append(action)
 
     def _on_row_check_toggled(self, key: tuple[str, str]) -> None:
@@ -675,23 +804,17 @@ class DownloadCenterWindow:
             return
         action = self._row_actions.get(key)
         if action is not None:
+            self._size_lookup_ids[key] = self._size_lookup_ids.get(key, 0) + 1
             drop(action, "_uvr_size")
-            set_row_subtitle(
-                action,
-                format_sdr_subtitle(
-                    fetch(action, "_uvr_sdr", None),
-                    "",
-                    stem=fetch(action, "_uvr_sdr_stem", None),
-                    extra=fetch(action, "_uvr_stems_text", ""),
-                ),
-            )
+            self._render_row(key)
 
     def _lookup_row_size(self, key: tuple[str, str]) -> None:
         arch, name = key
         action = self._row_actions.get(key)
         if action is None:
             return
-        set_row_subtitle(action, "Looking up size…")
+        stash(action, "_uvr_size", "Looking up size…")
+        self._render_row(key)
         generation = self.browser.generation
         lookup_id = self._size_lookup_ids.get(key, 0) + 1
         self._size_lookup_ids[key] = lookup_id
@@ -701,6 +824,8 @@ class DownloadCenterWindow:
             if isinstance(jobs_obj, (list, tuple))
             else []
         )
+        stash(action, "_uvr_size_jobs", jobs)
+        self._update_download_button()
         pending = [url for url, path in jobs if url and not os.path.isfile(path)]
         if not pending:
 
@@ -737,18 +862,10 @@ class DownloadCenterWindow:
         if generation != self.browser.generation or self._size_lookup_ids.get(key) != lookup_id:
             return
         action = self._row_actions.get(key)
-        if action is not None:
-            size_text = text or ""
-            stash(action, "_uvr_size", size_text)
-            set_row_subtitle(
-                action,
-                format_sdr_subtitle(
-                    fetch(action, "_uvr_sdr", None),
-                    size_text,
-                    stem=fetch(action, "_uvr_sdr_stem", None),
-                    extra=fetch(action, "_uvr_stems_text", ""),
-                ),
-            )
+        if action is not None and key in self.browser.selected_keys():
+            stash(action, "_uvr_size", text or "Download size unavailable")
+            self._render_row(key)
+            self._update_download_button()
 
     def _selected_entries(self) -> list[tuple[str, str]]:
         return [(name, arch) for arch, name in self.browser.selected_keys()]
@@ -758,74 +875,75 @@ class DownloadCenterWindow:
         return self.browser.selected_counts()
 
     def _update_tab_badges(self) -> None:
-        if not self._stack_pages:
+        if not hasattr(self, "_purpose_badges"):
             return
         selected = self._selected_count_by_purpose()
-        for value, _label in PURPOSE_PAGE_OPTIONS:
-            page = self._stack_pages.get(value)
-            if page is not None:
-                count = selected.get(value, 0)
-                page.set_badge_number(count)
-                page.set_needs_attention(count > 0)
+        labels = []
+        for value, label in PURPOSE_PAGE_OPTIONS:
+            count = selected.get(value, 0)
+            badge = self._purpose_badges[value]
+            badge.set_label(str(count))
+            badge.set_visible(count > 0)
+            text = f"{label} ({count} selected)" if count else label
+            description = PURPOSE_DESCRIPTIONS[value]
+            if count:
+                description += f"\n{count} selected"
+            self._purpose_buttons[value].set_tooltip_text(description)
+            labels.append(text)
+        model = self.compact_purpose.get_model()
+        if isinstance(model, Gtk.StringList) and labels != [
+            model.get_string(i) for i in range(model.get_n_items())
+        ]:
+            self._syncing_purpose = True
+            try:
+                index = self.compact_purpose.get_selected()
+                model.splice(0, model.get_n_items(), labels)
+                self.compact_purpose.set_selected(index)
+            finally:
+                self._syncing_purpose = False
 
     def _filter_archs(self) -> list[str]:
-        arch_filter = getattr(self, "_arch_filter", ARCH_FILTER_ALL)
-        if arch_filter in ("", ARCH_FILTER_ALL, None):
-            return [arch for _label, arch in _NETWORKS]
-        family = family_arch_for_network_filter(str(arch_filter))
-        if family in ("", ARCH_FILTER_ALL, None):
-            return [arch for _label, arch in _NETWORKS]
-        return [family]
+        families = {family: arch for arch, family in FAMILY_BY_ARCH.items()}
+        if self._arch_filter in families:
+            return [families[self._arch_filter]]
+        if self._arch_filter in families.values():
+            return [self._arch_filter]
+        return [arch for _, arch in _NETWORKS]
 
     def _update_download_button(self) -> None:
-        count = len(self._selected_entries())
-        if count:
-            self.download_button.set_label(f"Download ({count})")
-            self.download_button.set_sensitive(not self._refreshing)
-        else:
-            self.download_button.set_label("Download")
-            self.download_button.set_sensitive(False)
-        if self.browser.available:
-            total = sum(
-                1
-                for _arch, models in self.browser.available.items()
-                for name in models
-                if name not in (NO_NEW_MODELS, NO_CONNECTION)
+        selected = self.browser.selected_keys()
+        self.download_button.set_label("Download")
+        self.download_button.set_sensitive(bool(selected) and not self._refreshing)
+        visible = {key for key, data in self.browser.rows.items() if self._matches(data)}
+        if hasattr(self, "selection_summary"):
+            self.selection_summary.set_visible_child_name("selected" if selected else "empty")
+            self.clear_button.set_visible(bool(selected))
+            hidden = sum(key not in visible for key in selected)
+            text = f"{len(selected)} selected" + (
+                f" · {hidden} outside this view" if hidden else ""
             )
-            query = self._search_query()
-            purpose_label = next(
-                (label for value, label in PURPOSE_PAGE_OPTIONS if value == self._purpose),
-                next(
-                    (label for value, label in PURPOSE_FILTER_OPTIONS if value == self._purpose),
-                    "selected purpose",
-                ),
+            self.selection_label.set_label(text)
+            self.selection_label.set_tooltip_text(text)
+            from core.download_sizes import describe_cached_download_size
+
+            jobs = []
+            complete = True
+            for key in selected:
+                resolved = fetch(self._row_actions.get(key), "_uvr_size_jobs", None)
+                if resolved is None:
+                    complete = False
+                else:
+                    jobs.extend(resolved)
+            text = (
+                describe_cached_download_size(list(dict.fromkeys(jobs)))
+                if complete and jobs
+                else "Size unknown"
             )
-            arch_filter = getattr(self, "_arch_filter", ARCH_FILTER_ALL)
-            filtered = query or self._purpose not in ("", PURPOSE_ALL, None)
-            if filtered:
-                shown = sum(self._matching_count(arch, query) for arch in self._filter_archs())
-                if query:
-                    message = f"{shown} match{'es' if shown != 1 else ''} for “{query}”"
-                else:
-                    message = f"{shown} {purpose_label.casefold()} model{'s' if shown != 1 else ''}"
-                if arch_filter not in ("", ARCH_FILTER_ALL, None):
-                    network_label = next(
-                        (label for value, label in NETWORK_FILTER_OPTIONS if value == arch_filter),
-                        "current network",
-                    )
-                    message += f" in {network_label}"
-                self._set_catalogue_status(message)
-            elif count:
-                self._set_catalogue_status(
-                    f"{count} selected · {total} available across all networks"
-                )
-            elif not self._refreshing:
-                if total:
-                    self._set_catalogue_status(
-                        f"{total} models available — check one or more, then Download"
-                    )
-                else:
-                    self._set_catalogue_status("All available models are already installed")
+            self.sizes_label.set_label(
+                "Download size unavailable" if text == "Size unknown" else text
+            )
+        if not self._refreshing:
+            self._set_catalogue_status(f"{len(visible)} models shown")
         self._update_tab_badges()
 
     def start_refresh(self) -> None:
@@ -843,6 +961,10 @@ class DownloadCenterWindow:
     def _refresh_worker(self) -> None:
         try:
             is_online = self.manager.refresh()
+            if is_online:
+                # Row rendering may have seeded the cache from the bundled fallback.
+                # An explicit online refresh updates benchmarks off the GTK thread.
+                load_model_scores(force=True)
             if is_online and self.settings.process.auto_update_model_params:
                 self.manager.update_model_settings(self.context.repo)
             usable = is_online or self.manager.ensure_catalogues()
@@ -1033,6 +1155,14 @@ class DownloadCenterWindow:
 
     def _visible_catalogue_entries(self) -> list[tuple[str, str]]:
         """Return visible canonical selections with their catalogue family."""
+        if self.browser.rows:
+            return [
+                (family, key[1])
+                for key, row in self.browser.rows.items()
+                if row.reason is None
+                and self._matches(row)
+                and (family := FAMILY_BY_ARCH.get(key[0])) is not None
+            ]
         archs = [
             arch
             for arch in self._filter_archs()
@@ -1150,32 +1280,13 @@ class DownloadCenterWindow:
         updated = self.manager.apply_catalogue_stem_cache()
         if not updated:
             return False
-        for key, action in self._row_actions.items():
-            arch, name = key
-            if name not in updated:
-                continue
-            if fetch(action, "_uvr_unsupported", False):
-                continue
-            meta = self._catalogue_row_metadata(arch, name)
-            data = self.browser.rows[key]
-            data = replace(
-                data,
-                semantics=catalogue_semantics_subtitle(meta) if meta is not None else "",
-                evidence_detail=catalogue_evidence_detail(meta) if meta is not None else "",
-            )
-            self.browser.rows[key] = data
-            stems_text = data.semantics
-            stash(action, "_uvr_stems_text", stems_text)
-            set_tooltip(action, data.evidence_detail)
-            set_row_subtitle(
-                action,
-                format_sdr_subtitle(
-                    fetch(action, "_uvr_sdr", None),
-                    fetch(action, "_uvr_size", ""),
-                    stem=fetch(action, "_uvr_sdr_stem", None),
-                    extra=stems_text,
-                ),
-            )
+        for key in self._row_actions:
+            if key[1] in updated:
+                data = self._project_browser_row(*key, self.browser.rows[key].reason)
+                self.browser.rows[key] = data
+                self._render_row(key)
+        self._invalidate_all_filters()
+        self._invalidate_all_sorts()
         return False
 
     def _available_count(self) -> int:
@@ -1185,44 +1296,23 @@ class DownloadCenterWindow:
         return self.browser.unsupported_count(hide=visible_only and self._hide_unsupported)
 
     def _update_status_from_catalogue(self) -> None:
-        total = self.browser.available_count()
-        unsupported = self._unsupported_count(visible_only=True)
-        selected = len(self._selected_entries())
-        if selected:
-            self._set_catalogue_status(
-                f"{selected} selected · {total} available across all networks"
-            )
-            return
-        if total and unsupported:
-            self._set_catalogue_status(f"{total} downloadable · {unsupported} unsupported shown")
-        elif total:
-            self._set_catalogue_status(
-                f"{total} models available — check one or more, then Download"
-            )
-        elif unsupported:
-            self._set_catalogue_status(
-                f"{unsupported} unsupported models listed (not downloadable)"
-            )
-        else:
-            self._set_catalogue_status("All available models are already installed")
+        if not self._refreshing:
+            shown = sum(self._matches(data) for data in self.browser.rows.values())
+            self._set_catalogue_status(f"{shown} models shown")
 
     def _set_catalogue_status(self, message: str) -> None:
         notice = getattr(self, "_catalogue_notice", "")
         self.status_label.set_label(f"{notice}{message}")
+        self.status_label.set_tooltip_text(f"{notice}{message}")
 
     def _update_tab_counts(self) -> None:
         search = getattr(self, "_search_entry", None)
-        if search is None and self._search_entries:
-            search = next(iter(self._search_entries.values()))
-        if search is None:
-            return
-        purpose_label = next(
-            (label for value, label in PURPOSE_PAGE_OPTIONS if value == self._purpose),
-            "models",
-        )
-        self._refresh_browser_metadata()
-        count = self._live_catalogue_counts(self._browser_filters("")).placeholder_count
-        search.set_placeholder_text(f"Search {purpose_label.casefold()} — {count} available")
+        if search is not None:
+            index = next(
+                (i for i, (value, _) in enumerate(PURPOSE_PAGE_OPTIONS) if value == self._purpose),
+                0,
+            )
+            search.set_placeholder_text(SEARCH_LABELS[index])
 
     def _clear_catalogue(self) -> None:
         self._row_checks.clear()
@@ -1241,39 +1331,32 @@ class DownloadCenterWindow:
         offline: bool = False,
     ) -> None:
         page = self._empty_pages.get(arch) or getattr(self, "_empty_page", None)
-        list_box = self._list_boxes.get(arch) or getattr(self, "_list_box", None)
         if page is None:
             return
-        list_parent = list_box.get_parent() if list_box is not None else None
+        if hasattr(self, "results"):
+            self.results.set_visible_child_name("empty" if title else "models")
+        page.set_visible(bool(title))
         if not title:
-            page.set_visible(False)
-            if list_parent is not None:
-                list_parent.set_visible(True)
             return
         page.set_title(title)
         page.set_description(description or None)
         page.set_icon_name("network-offline-symbolic" if offline else "edit-find-symbolic")
         child = page.get_child()
-        if child is not None:
-            child.set_visible(offline)
-        page.set_visible(True)
-        if list_parent is not None:
-            list_parent.set_visible(False)
+        if isinstance(child, Gtk.Button):
+            child.set_visible(True)
+            child.set_label("Try Again" if offline else "Reset Search and Filters")
 
     def _update_catalogue_page_state(self, arch: str | None = None) -> None:
         self._refresh_browser_metadata()
-        filters = self._browser_filters()
-        view = project_browser(
-            self.browser,
-            filters,
-            online=self._catalogue_online,
-            live_counts=self._live_catalogue_counts(filters),
-        )
+        any_visible = any(self._matches(data) for data in self.browser.rows.values())
+        offline = not self.browser.rows and not self._catalogue_online
         self._set_catalogue_page_message(
             arch or next(iter(self._empty_pages), ""),
-            view.title,
-            description=view.description,
-            offline=view.offline,
+            "" if any_visible else ("Catalogue unavailable" if offline else "No Models Found"),
+            description="Check your connection and try again."
+            if offline
+            else "Try a different search or reset the filters.",
+            offline=offline,
         )
 
     def _matching_count(self, arch: str, query: str) -> int:

@@ -4,7 +4,7 @@ from unittest.mock import Mock, patch
 from ui.run_control import RunController
 
 
-class ReadinessHintTests(unittest.TestCase):
+class ReadinessToastTests(unittest.TestCase):
     def setUp(self):
         self.host = Mock()
         self.host.target.start_blocked_reason.return_value = 'Choose a model'
@@ -13,13 +13,13 @@ class ReadinessHintTests(unittest.TestCase):
     def test_blocked_and_ready(self):
         self.controller.refresh_start_readiness()
         self.host.set_start_blocked_reason.assert_called_with('Choose a model')
-        self.host.enable_start.assert_called_with(False)
+        self.host.enable_start.assert_called_with(True)
         self.host.target.start_blocked_reason.return_value = None
         self.controller.refresh_start_readiness()
         self.host.set_start_blocked_reason.assert_called_with(None)
         self.host.enable_start.assert_called_with(True)
 
-    def test_busy_hides_hint_and_keeps_start_disabled(self):
+    def test_busy_keeps_start_disabled(self):
         for state in ('_preflight_in_progress', '_plan_dialog', '_running_target'):
             with self.subTest(state=state):
                 controller = RunController(self.host)
@@ -39,6 +39,38 @@ class ReadinessHintTests(unittest.TestCase):
         self.controller._restore_idle_controls()
         self.host.enable_stop.assert_called_with(False)
         self.host.enable_start.assert_called_with(True)
+
+    def test_blocked_activation_shows_current_reason_without_starting(self):
+        for action in ('click', 'keyboard'):
+            with self.subTest(action=action):
+                self.host.reset_mock()
+                self.controller.refresh_start_readiness()
+                self.host.start_enabled.return_value = True
+                with patch.object(self.controller, '_begin_preflight') as begin:
+                    if action == 'click':
+                        self.controller.handle_start(self.host.target)
+                    else:
+                        self.controller.handle_start_action()
+                self.host.toast.assert_called_once_with('Choose a model')
+                begin.assert_not_called()
+                self.assertIsNone(self.controller._operation_id)
+
+    def test_busy_activation_does_not_show_readiness_toast(self):
+        for state in ('_preflight_in_progress', '_plan_dialog', '_running_target', '_closing'):
+            with self.subTest(state=state):
+                self.host.reset_mock()
+                controller = RunController(self.host)
+                setattr(controller, state, True)
+                controller.handle_start(self.host.target)
+                self.host.toast.assert_not_called()
+                self.host.target.start_blocked_reason.assert_not_called()
+
+    def test_activation_uses_new_tab_reason(self):
+        self.controller.refresh_start_readiness()
+        self.host.target = Mock()
+        self.host.target.start_blocked_reason.return_value = 'Choose two ensemble models'
+        self.controller.handle_start_action()
+        self.host.toast.assert_called_once_with('Choose two ensemble models')
 
 
 class RunCallbackIdentityTests(unittest.TestCase):

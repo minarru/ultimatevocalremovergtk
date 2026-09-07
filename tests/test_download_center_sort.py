@@ -30,24 +30,24 @@ class DownloadCenterSortTests(unittest.TestCase):
     def _window(self):
         from ui.catalogue_browser import CatalogueBrowserState
         from ui.download_center import DownloadCenterWindow
+
         window = DownloadCenterWindow.__new__(DownloadCenterWindow)
         window.browser = CatalogueBrowserState()
         return window
 
     def test_sort_change_does_not_rebuild(self) -> None:
-        from ui.download_center import SORT_OPTIONS
+        from core.model_scores import SORT_OPTIONS
 
         window = self._window()
         window._sort_mode = SORT_OPTIONS[0][0]
         window.sort_row = mock.MagicMock()
+        window.sort_row.get_selected.return_value = 1
+        window._update_direction = mock.MagicMock()
         window._list_boxes = {}
 
-        with mock.patch.object(
-            type(window), "_rebuild_catalogue", autospec=True
-        ) as rebuild, mock.patch.object(
-            type(window), "_invalidate_all_sorts", autospec=True
-        ) as invalidate, mock.patch(
-            "ui.download_center.get_combo_value", return_value=SORT_OPTIONS[1][1]
+        with (
+            mock.patch.object(type(window), "_rebuild_catalogue", autospec=True) as rebuild,
+            mock.patch.object(type(window), "_invalidate_all_sorts", autospec=True) as invalidate,
         ):
             window._on_sort_changed()
 
@@ -63,6 +63,7 @@ class DownloadCenterSortTests(unittest.TestCase):
 
         window = self._window()
         window._sort_mode = SORT_SDR
+        window._descending = True
 
         high = Adw.ActionRow()
         stash(high, "_uvr_sort_name", "high")
@@ -75,6 +76,7 @@ class DownloadCenterSortTests(unittest.TestCase):
         stash(low, "_uvr_unsupported", False)
 
         from tests.browser_ui_helpers import seed_browser_row
+
         seed_browser_row(window, high)
         seed_browser_row(window, low)
         self.assertLess(window._compare_rows(high, low), 0)
@@ -99,6 +101,7 @@ class DownloadCenterSortTests(unittest.TestCase):
         stash(unsupported, "_uvr_unsupported", True)
 
         from tests.browser_ui_helpers import seed_browser_row
+
         seed_browser_row(window, supported)
         seed_browser_row(window, unsupported)
         self.assertLess(window._compare_rows(supported, unsupported), 0)
@@ -128,6 +131,7 @@ class DownloadCenterSortTests(unittest.TestCase):
         stash(b, "_uvr_sdr", None)
         stash(b, "_uvr_unsupported", False)
         from tests.browser_ui_helpers import seed_browser_row
+
         seed_browser_row(window, a)
         seed_browser_row(window, b)
         list_box.append(a)

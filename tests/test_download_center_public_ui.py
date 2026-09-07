@@ -85,11 +85,8 @@ class DownloadCenterPublicUiTests(unittest.TestCase):
             _purpose_page_titles(center.stack),
             [label for _value, label in PURPOSE_PAGE_OPTIONS],
         )
-        inline_switcher_type = getattr(Adw, "InlineViewSwitcher", None)
-        if inline_switcher_type is not None and isinstance(center.switcher, inline_switcher_type):
-            self.assertFalse(cast(Any, center.switcher).get_homogeneous())
-        else:
-            self.assertIsInstance(center.switcher, Gtk.StackSwitcher)
+        self.assertEqual(set(center._purpose_buttons), {value for value, _ in PURPOSE_PAGE_OPTIONS})
+        self.assertIsInstance(center.switcher, Gtk.Box)
 
     def test_header_switcher_falls_back_without_inline_view_switcher(self) -> None:
         import gi
@@ -117,7 +114,7 @@ class DownloadCenterPublicUiTests(unittest.TestCase):
         self.addCleanup(center.window.set_visible, False)
 
         self.assertIsInstance(center.stack, Gtk.Stack)
-        self.assertIsInstance(center.switcher, Gtk.StackSwitcher)
+        self.assertIsInstance(center.switcher, Gtk.Box)
         self.assertEqual(center.stack.get_visible_child_name(), PURPOSE_VOCALS)
         self.assertEqual(
             _purpose_page_titles(center.stack),
@@ -125,19 +122,17 @@ class DownloadCenterPublicUiTests(unittest.TestCase):
         )
 
     def test_network_filter_options_are_arch_value_then_label(self) -> None:
-        from bundled.constants import MDX_ARCH_TYPE, VR_ARCH_TYPE
+        from bundled.constants import MDX_ARCH_TYPE
         from core.model_scores import (
             ARCH_FILTER_ALL,
-            NETWORK_FILTER_OPTIONS,
             NETWORK_MEL_BAND,
         )
         from ui.download_center import _ARCH_FILTER_OPTIONS
 
-        self.assertEqual(_ARCH_FILTER_OPTIONS, NETWORK_FILTER_OPTIONS)
         mapping = dict(_ARCH_FILTER_OPTIONS)
-        self.assertEqual(mapping[ARCH_FILTER_ALL], "Any network")
-        self.assertEqual(mapping[VR_ARCH_TYPE], "VR Arch")
-        self.assertEqual(mapping[MDX_ARCH_TYPE], "MDX-Net")
+        self.assertEqual(mapping[ARCH_FILTER_ALL], "All architectures")
+        self.assertEqual(mapping["vr"], "VR")
+        self.assertNotIn(MDX_ARCH_TYPE, mapping)
         self.assertEqual(mapping[NETWORK_MEL_BAND], "Mel-Band Roformer")
 
     def test_select_catalogue_opens_restore_and_apollo_network(self) -> None:
@@ -146,7 +141,6 @@ class DownloadCenterPublicUiTests(unittest.TestCase):
         from core.model_scores import PURPOSE_RESTORE
         from core.settings import Settings
         from ui.download_center import DownloadCenterWindow
-        from ui.widgets.rows import get_combo_value
 
         context = SimpleNamespace(settings=Settings.defaults())
         center = DownloadCenterWindow(None, context, DownloadManager(), mock.MagicMock())
@@ -157,8 +151,8 @@ class DownloadCenterPublicUiTests(unittest.TestCase):
 
         self.assertEqual(center.stack.get_visible_child_name(), PURPOSE_RESTORE)
         self.assertEqual(center._purpose, PURPOSE_RESTORE)
-        self.assertEqual(center._arch_filter, APOLLO_ARCH_TYPE)
-        self.assertEqual(get_combo_value(center.arch_row), "Apollo")
+        self.assertEqual(center._arch_filter, "apollo")
+        self.assertEqual(center.arch_row.get_selected(), 10)
 
     def test_select_catalogue_vr_uses_vr_arch_type_not_display_label(self) -> None:
         from bundled.constants import VR_ARCH_TYPE
@@ -166,7 +160,6 @@ class DownloadCenterPublicUiTests(unittest.TestCase):
         from core.model_scores import PURPOSE_VOCALS
         from core.settings import Settings
         from ui.download_center import DownloadCenterWindow
-        from ui.widgets.rows import get_combo_value
 
         context = SimpleNamespace(settings=Settings.defaults())
         center = DownloadCenterWindow(None, context, DownloadManager(), mock.MagicMock())
@@ -176,8 +169,8 @@ class DownloadCenterPublicUiTests(unittest.TestCase):
         center.select_catalogue(purpose=PURPOSE_VOCALS, arch=VR_ARCH_TYPE)
 
         self.assertEqual(center.stack.get_visible_child_name(), PURPOSE_VOCALS)
-        self.assertEqual(center._arch_filter, VR_ARCH_TYPE)
-        self.assertEqual(get_combo_value(center.arch_row), "VR Arch")
+        self.assertEqual(center._arch_filter, "vr")
+        self.assertEqual(center.arch_row.get_selected(), 1)
 
 
 class DownloadCenterOpenTests(unittest.TestCase):

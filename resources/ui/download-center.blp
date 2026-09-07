@@ -12,95 +12,248 @@ menu download_center_menu {
   }
 }
 
+
+
 Adw.Window window {
   title: "Download Center";
-  default-width: 760;
+  default-width: 860;
   default-height: 620;
-
   content: Adw.ToastOverlay toast_overlay {
-    child: Adw.ToolbarView toolbar {
-      [top]
-      Adw.HeaderBar header {
-        [end]
-        Gtk.MenuButton menu_button {
-          icon-name: "open-menu-symbolic";
-          menu-model: download_center_menu;
+   child: Adw.ToolbarView {
+    bottom-bar-style: raised;
+    [top]
+    Adw.HeaderBar header {
+      [end]
+      Gtk.MenuButton menu_button { icon-name: "open-menu-symbolic"; menu-model: download_center_menu; }
+      title-widget: Gtk.Box {
+        halign: center;
+      Gtk.Box purposes {
+        halign: center;
+        spacing: 2;
+        styles ["flat"]
+        Gtk.Overlay {
+          child: Gtk.ToggleButton vocals {
+            styles ["flat"]
+            label: "Vocals";
+            active: true;
+          };
+          [overlay]
+          Gtk.Label vocals_badge {
+            visible: false;
+            halign: end;
+            valign: start;
+            can-target: false;
+            styles ["uvr-selection-badge", "numeric", "caption"]
+          }
+        }
+        Gtk.Overlay {
+          child: Gtk.ToggleButton instrumental {
+            styles ["flat"]
+            label: "Instrumental";
+            group: vocals;
+          };
+          [overlay]
+          Gtk.Label instrumental_badge {
+            visible: false;
+            halign: end;
+            valign: start;
+            can-target: false;
+            styles ["uvr-selection-badge", "numeric", "caption"]
+          }
+        }
+        Gtk.Overlay {
+          child: Gtk.ToggleButton karaoke {
+            styles ["flat"]
+            label: "Karaoke";
+            group: vocals;
+          };
+          [overlay]
+          Gtk.Label karaoke_badge {
+            visible: false;
+            halign: end;
+            valign: start;
+            can-target: false;
+            styles ["uvr-selection-badge", "numeric", "caption"]
+          }
+        }
+        Gtk.Overlay {
+          child: Gtk.ToggleButton stems {
+            styles ["flat"]
+            label: "Stems";
+            group: vocals;
+          };
+          [overlay]
+          Gtk.Label stems_badge {
+            visible: false;
+            halign: end;
+            valign: start;
+            can-target: false;
+            styles ["uvr-selection-badge", "numeric", "caption"]
+          }
+        }
+        Gtk.Overlay {
+          child: Gtk.ToggleButton fx {
+            styles ["flat"]
+            label: "FX";
+            group: vocals;
+          };
+          [overlay]
+          Gtk.Label fx_badge {
+            visible: false;
+            halign: end;
+            valign: start;
+            can-target: false;
+            styles ["uvr-selection-badge", "numeric", "caption"]
+          }
+        }
+        Gtk.Overlay {
+          child: Gtk.ToggleButton removal {
+            styles ["flat"]
+            label: "Removal";
+            group: vocals;
+          };
+          [overlay]
+          Gtk.Label removal_badge {
+            visible: false;
+            halign: end;
+            valign: start;
+            can-target: false;
+            styles ["uvr-selection-badge", "numeric", "caption"]
+          }
+        }
+        Gtk.Overlay {
+          child: Gtk.ToggleButton restore {
+            styles ["flat"]
+            label: "Restore";
+            group: vocals;
+          };
+          [overlay]
+          Gtk.Label restore_badge {
+            visible: false;
+            halign: end;
+            valign: start;
+            can-target: false;
+            styles ["uvr-selection-badge", "numeric", "caption"]
+          }
+        }
+      }
+      Gtk.DropDown compact_purpose { visible: false; tooltip-text: "Model Purpose"; }
+      };
+      [start]
+      Gtk.Button refresh_button {
+        icon-name: "view-refresh-symbolic";
+        tooltip-text: "Refresh Catalogue";
+      }
+    }
+    content: Gtk.Box {
+      orientation: vertical;
+      spacing: 12;
+      margin-start: 18;
+      margin-end: 18;
+
+      Gtk.SearchEntry search { placeholder-text: "Search models"; hexpand: true; }
+
+      Gtk.Box filter_bar {
+        spacing: 10;
+        Gtk.Box network_controls {
+          styles ["linked"]
+          Gtk.DropDown network { tooltip-text: "Filter by Architecture"; }
+          Gtk.MenuButton filters {
+            label: "Filters";
+            tooltip-text: "Filter Options";
+            popover: Gtk.Popover {
+              child: Gtk.Box {
+                orientation: vertical;
+                spacing: 12;
+                margin-start: 12;
+                margin-end: 12;
+                margin-top: 12;
+                margin-bottom: 12;
+                Gtk.CheckButton supported { label: "Hide Unsupported Models"; }
+                Gtk.Button reset_filters { label: "Reset Filters"; styles ["flat"] }
+              };
+            };
+          }
+        }
+        Gtk.Box sort_controls {
+          halign: end;
+          hexpand: true;
+          styles ["linked"]
+          Gtk.DropDown sort { tooltip-text: "Sort by"; }
+          Gtk.Button direction {
+            tooltip-text: "A–Z — switch to Z–A";
+            child: Gtk.Box {
+              spacing: 6;
+              Gtk.Image direction_icon { icon-name: "vertical-arrows-up-symbolic"; }
+              Gtk.Label direction_label { label: "A–Z"; }
+            };
+          }
         }
       }
 
-      content: Gtk.Box body {
-        orientation: vertical;
-        spacing: 0;
+      Gtk.Box {
+        spacing: 8;
+        Gtk.Spinner refresh_spinner { visible: false; }
+        Gtk.Label status_label { label: "Loading catalogue…"; ellipsize: end; xalign: 0; hexpand: true; styles ["dim-label"] }
+        Gtk.Label filter_summary { label: ""; wrap: true; styles ["dim-label", "caption"] }
+      }
+      Gtk.Stack results {
+        hhomogeneous: false; vhomogeneous: false;
         vexpand: true;
-
-        Gtk.Box purpose_stack_holder {
-          orientation: vertical;
+        Gtk.StackPage {
+          name: "models";
+          child: Gtk.ScrolledWindow {
+            hscrollbar-policy: never;
+            child: Gtk.ListBox models { selection-mode: none; valign: start; styles ["boxed-list"] };
+          };
         }
-
-        Adw.PreferencesGroup filter_group {
-          margin-top: 6;
-          margin-start: 12;
-          margin-end: 12;
-
-          Adw.ComboRow arch_row {
-            title: "Network";
-          }
-
-          Adw.ComboRow sort_row {
-            title: "Sort";
-          }
-
-          Adw.SwitchRow hide_unsupported_row {
-            title: "Hide unsupported";
-            subtitle: "Hide catalogue models this build cannot run yet";
-          }
+        Gtk.StackPage {
+          name: "empty";
+          child: Adw.StatusPage empty_page {
+            icon-name: "edit-find-symbolic";
+            title: "No Models Found";
+            description: "Try a different search or reset the filters.";
+            styles ["compact"]
+            child: Gtk.Button empty_reset { label: "Reset Search and Filters"; halign: center; };
+          };
         }
-
-        Gtk.Box catalogue_holder {
-          orientation: vertical;
-          vexpand: true;
-        }
-
-        Gtk.Box action_dock {
-          orientation: vertical;
-          spacing: 8;
-          styles ["uvr-run-controls"]
-
-          Gtk.Box status_row {
-            orientation: horizontal;
-            spacing: 8;
-
-            Gtk.Spinner refresh_spinner {
-              visible: false;
-            }
-
-            Gtk.Label status_label {
-              label: "Loading catalogue…";
-              xalign: 0;
-              wrap: true;
-              styles ["dim-label"]
-            }
-          }
-
-          Gtk.Box action_row {
-            orientation: horizontal;
-            spacing: 8;
-            styles ["uvr-run-actions"]
-
-            Gtk.Button refresh_button {
-              icon-name: "view-refresh-symbolic";
-              styles ["flat"]
-            }
-
-            Gtk.Button download_button {
-              label: "_Download";
-              use-underline: true;
-              hexpand: true;
-              styles ["suggested-action"]
-            }
-          }
-        }
-      };
+      }
     };
+    [bottom]
+      Gtk.Box action_bar {
+        spacing: 12;
+        margin-start: 18;
+        margin-end: 18;
+        margin-top: 12;
+        margin-bottom: 12;
+        Gtk.Stack selection_summary {
+          hexpand: true;
+          valign: center;
+          hhomogeneous: false;
+          vhomogeneous: true;
+          transition-type: none;
+          Gtk.StackPage {
+            name: "empty";
+            child: Gtk.Label {
+              label: "Select models to download";
+              xalign: 0;
+              valign: center;
+              ellipsize: end;
+            };
+          }
+          Gtk.StackPage {
+            name: "selected";
+            child: Gtk.Box {
+              orientation: vertical;
+              valign: center;
+              Gtk.Label selection { label: "1 selected"; xalign: 0; ellipsize: end; }
+              Gtk.Label sizes { label: "Download size unavailable"; xalign: 0; ellipsize: end; styles ["dim-label", "caption"] }
+            };
+          }
+        }
+        Gtk.Button clear { label: "Clear"; valign: center; styles ["flat"] }
+        Gtk.Button download_button { label: "Download"; valign: center; sensitive: false; styles ["suggested-action"] }
+      }
+   };
   };
 }

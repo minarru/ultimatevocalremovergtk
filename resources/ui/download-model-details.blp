@@ -1,0 +1,22 @@
+using Gtk 4.0;
+
+Gtk.Popover details {
+  width-request: 320;
+  child: Gtk.ScrolledWindow {
+    hscrollbar-policy: never;
+    min-content-width: 280;
+    max-content-height: 400;
+    propagate-natural-height: true;
+    child: Gtk.Label details_text {
+      wrap: true;
+      wrap-mode: word_char;
+      selectable: true;
+      xalign: 0;
+      max-width-chars: 48;
+      margin-start: 12;
+      margin-end: 12;
+      margin-top: 12;
+      margin-bottom: 12;
+    };
+  };
+}

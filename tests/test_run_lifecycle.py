@@ -30,7 +30,7 @@ class LifecycleTests(unittest.TestCase):
         target = Mock()
         target.worker_is_running.return_value = True
         life.schedule_inference_cleanup(target)
-        self.assertEqual(scheduler.calls, [50])
+        self.assertEqual(scheduler.calls, [10000, 50])
         for _ in range(79):
             self.assertTrue(life.poll_inference_cleanup())
         release.assert_not_called()
@@ -51,7 +51,7 @@ class LifecycleTests(unittest.TestCase):
         self.assertFalse(life.poll_inference_cleanup())
         release.call_args.kwargs['on_done']()
         stopped.assert_not_called()
-        self.assertEqual(scheduler.calls, [50, 50])
+        self.assertEqual(scheduler.calls, [10000, 50, 50])
         self.assertTrue(life.poll_inference_cleanup())
         release.assert_called_once()
         target.worker_is_running.return_value = False
@@ -131,3 +131,58 @@ class LifecycleTests(unittest.TestCase):
         app = host.get_application.return_value
         app.release.assert_called_once_with()
         app.quit.assert_called_once_with()
+
+
+class StopDeadlineTests(unittest.TestCase):
+    def test_deadline_covers_release_that_never_returns_and_living_worker(self):
+        for release_finished in (False, True):
+            with self.subTest(release_finished=release_finished):
+                scheduler, release, stopped, timed_out = Scheduler(), Mock(), Mock(), Mock()
+                life = RunShutdownCoordinator(
+                    Mock(), scheduler, release, Mock(), stopped, timed_out
+                )
+                target = Mock()
+                target.worker_is_running.return_value = True
+                life.schedule_inference_cleanup(target)
+                deadline = scheduler.callbacks[scheduler.calls.index(10000)]
+                life.cleanup_attempts = 79
+                life.poll_inference_cleanup()
+                if release_finished:
+                    release.call_args.kwargs['on_done']()
+                self.assertFalse(deadline())
+                timed_out.assert_called_once_with(target)
+                stopped.assert_not_called()
+                self.assertFalse(life.poll_inference_cleanup())
+                # Waiting again must not start a second concurrent release.
+                life.resume_inference_cleanup(target)
+                self.assertTrue(life.poll_inference_cleanup() is release_finished)
+                release.assert_called_once()
+                target.worker_is_running.return_value = False
+                if not release_finished:
+                    release.call_args.kwargs['on_done']()
+                else:
+                    life.poll_inference_cleanup()
+                stopped.assert_called_once_with(target)
+
+    def test_old_deadline_cannot_time_out_new_cleanup(self):
+        scheduler, timed_out = Scheduler(), Mock()
+        life = RunShutdownCoordinator(Mock(), scheduler, Mock(), Mock(), Mock(), timed_out)
+        target = Mock()
+        life.schedule_inference_cleanup(target)
+        deadline = scheduler.callbacks[scheduler.calls.index(10000)]
+        life.cancel_inference_cleanup()
+        life.schedule_inference_cleanup(target)
+        deadline()
+        timed_out.assert_not_called()
+
+    def test_old_poll_cannot_advance_cleanup_for_a_new_run(self):
+        scheduler = Scheduler()
+        life = RunShutdownCoordinator(Mock(), scheduler, Mock(), Mock())
+        target = Mock()
+        target.worker_is_running.return_value = True
+        life.schedule_inference_cleanup(target)
+        old_poll = scheduler.callbacks[-1]
+        life.cancel_inference_cleanup()
+        life.schedule_inference_cleanup(target)
+        self.assertFalse(old_poll())
+        self.assertEqual(life.cleanup_attempts, 0)

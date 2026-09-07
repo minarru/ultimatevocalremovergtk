@@ -97,6 +97,7 @@ class RunController:
         self._stop_confirm_dialog: Optional[Adw.AlertDialog] = None
         self._shutdown_dialog: Optional[Adw.AlertDialog] = None
         self._oom_dialog: Optional[Adw.AlertDialog] = None
+        self._stop_timeout_dialog: Optional[Adw.AlertDialog] = None
         self._on_close_complete: Optional[Callable[[bool], None]] = None
         self._close_deferred = False
         self._closing = False
@@ -106,6 +107,7 @@ class RunController:
             self._schedule_release_inference_memory,
             lambda: self._complete_shutdown(deferred=self._close_deferred),
             self._on_stop_cleanup,
+            self._on_stop_timeout,
         )
         self._run_ui_suspended = False
         self._preflight_in_progress = False
@@ -156,6 +158,8 @@ class RunController:
 
     def handle_start(self, target: RunTarget | None) -> None:
         """Validate readiness, then hand off to the active run target."""
+        if self._closing or self.is_running() or self._preflight_in_progress or self._plan_dialog is not None:
+            return
         reason = target_blocked_reason(target)
         if reason is not None:
             debug("ui", f"handle_start blocked reason={reason!r}")
@@ -163,8 +167,6 @@ class RunController:
             return
 
         assert target is not None  # None is rejected by the readiness reason above.
-        if self._closing or self.is_running() or self._preflight_in_progress or self._plan_dialog is not None:
-            return
         self._ensure_operation()
         self._begin_preflight(target)
 
@@ -521,10 +523,11 @@ class RunController:
         )
         clear_run_start()
         self._host.set_pulse(False)
+        failed_target = self._running_target or self._host.target
         self._restore_idle_controls()
         self._host.set_progress_text("Failed")
         self._host.append_console(f"\n{message}\n")
-        self._report_error(message, exc)
+        self._report_error(message, exc, target=failed_target)
 
     def _finish_operation(
         self,
@@ -741,7 +744,7 @@ class RunController:
         self._host.set_pulse(False)
         self._set_running(False)
         self._running_target = None
-        self.shutdown.cleanup_target = None
+        self.shutdown.cancel_inference_cleanup()
         clear_run_start()
         self._finish_operation("run_stopped", reason="shutdown")
         if target is not None:
@@ -752,7 +755,7 @@ class RunController:
 
     def _complete_shutdown(self, *, deferred: bool) -> None:
         debug("ui", f"complete_shutdown deferred={deferred}")
-        self.shutdown.cleanup_target = None
+        self.shutdown.cancel_inference_cleanup()
         self.shutdown.shutdown_target = None
         self._host.set_pulse(False)
         self._stop_all_workers(force=True)
@@ -836,6 +839,47 @@ class RunController:
             on_choice=on_choice,
         )
 
+    def _on_stop_timeout(self, target: RunTarget) -> None:
+        if self._closing or self._running_target is not target:
+            return
+        self._host.enable_start(False)
+        self._host.enable_stop(False)
+        self._host.set_pulse(False)
+        self._host.set_progress_text("Unable to stop — restart required")
+        self._host.append_console(
+            "\nProcessing has not stopped. Wait longer or quit and restart the app.\n"
+        )
+        dialog = Adw.AlertDialog(
+            heading="Processing has not stopped",
+            body=(
+                "The worker or its cleanup is not responding. Another run cannot start safely. "
+                "You can wait longer, or quit and restart the app. Quitting also stops downloads."
+            ),
+        )
+        dialog.add_response("wait", "Wait Longer")
+        dialog.add_response("quit", "Quit")
+        dialog.set_default_response("wait")
+        dialog.set_close_response("wait")
+        dialog.set_response_appearance("quit", Adw.ResponseAppearance.DESTRUCTIVE)
+        operation_id = self._operation_id
+
+        def respond(_dialog: Adw.AlertDialog, response: str) -> None:
+            if self._stop_timeout_dialog is not dialog:
+                return
+            self._stop_timeout_dialog = None
+            if not self._operation_is_current(operation_id) or self._running_target is not target:
+                return
+            if response == "quit":
+                self._closing = True
+                self._complete_shutdown(deferred=False)
+            else:
+                self._host.set_progress_text("Stopping…")
+                self.shutdown.resume_inference_cleanup(target)
+
+        self._stop_timeout_dialog = dialog
+        dialog.connect("response", respond)
+        dialog.present(self._host.dialog_parent)
+
     def _on_stop_cleanup(self, target: RunTarget) -> None:
         if self._running_target is target:
             self._on_stopped()
@@ -845,7 +889,7 @@ class RunController:
 
         debug("ui", "on_stopped cooperative worker stop")
         clear_run_error_context()
-        self.shutdown.cleanup_target = None
+        self.shutdown.cancel_inference_cleanup()
         exported = self._host.exported_after_oom()
         self._finish_run_ui(stopped=True)
         if exported:
@@ -880,11 +924,12 @@ class RunController:
             error=str(exc),
         )
         self._host.set_pulse(False)
+        failed_target = self._running_target or self._host.target
         self._restore_idle_controls()
         self._host.set_progress_text("Failed")
         message = f"Process failed: {exc}"
         self._host.append_console(f"\n{message}\n")
-        self._report_error(message, exc)
+        self._report_error(message, exc, target=failed_target)
         self._send_failure_notification()
         clear_run_start()
         # Worker already parks on failure; park again here in case UI cleanup
@@ -961,10 +1006,12 @@ class RunController:
         if presentation.fraction is not None:
             self._host.set_progress_fraction(presentation.fraction)
 
-    def _report_error(self, message: str, exc: BaseException) -> None:
+    def _report_error(
+        self, message: str, exc: BaseException, *, target: RunTarget | None = None
+    ) -> None:
         from .errorlog import log_error, present_error_dialog
 
-        target = self._running_target or self._host.target
+        target = target or self._running_target or self._host.target
         key = (
             target.error_key if target is not None else self._host.fallback_error_key
         )
@@ -983,9 +1030,9 @@ class RunController:
         return self._host.context_target.snapshot_error_context()
 
     def _restore_idle_controls(self) -> None:
-        self.shutdown.cleanup_target = None
+        self.shutdown.cancel_inference_cleanup()
         self._running_target = None
-        for name in ("_stop_confirm_dialog", "_oom_dialog"):
+        for name in ("_stop_confirm_dialog", "_oom_dialog", "_stop_timeout_dialog"):
             dialog = getattr(self, name)
             setattr(self, name, None)
             if dialog is not None:
@@ -1018,9 +1065,10 @@ class RunController:
         return self._host.active_download_count()
 
     def refresh_start_readiness(self) -> Optional[str]:
-        """Synchronize Start sensitivity, tooltip and accessibility description."""
+        """Allow idle activation to explain readiness; disable Start only while busy."""
         if (
-            self._running_target is not None
+            self._closing
+            or self._running_target is not None
             or self._preflight_in_progress
             or self._plan_dialog is not None
         ):
@@ -1029,7 +1077,7 @@ class RunController:
             return None
         target = self._host.target
         reason = target_blocked_reason(target)
-        self._host.enable_start(reason is None)
+        self._host.enable_start(True)
         description = reason or "Start processing"
         self._host.describe_start(description)
         self._host.set_start_blocked_reason(reason)

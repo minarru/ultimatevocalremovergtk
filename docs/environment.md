@@ -291,7 +291,12 @@ type checking also uses that stable image. `unittest-preview` uses Ubuntu 26.04
 with system Python 3.14 and is nonblocking while that runner is in public
 preview. Both unittest jobs create a venv with `--system-site-packages`, install
 distro GTK/libadwaita, assert Python and GI origins/versions, and assert an
-isolated `GdkX11Display` before discovery. CI's private D-Bus maps its system-bus
+isolated `GdkX11Display` before discovery. Resource verification uses
+`./resources/compile_resources.sh --check`: it builds into temporary staging and
+compares resource paths and contents against the committed bundle without replacing
+it. XML comments, indentation and attribute ordering are ignored; widget values,
+resource membership and non-XML bytes must match. This catches stale bundles even
+when checkout timestamps make the launcher consider them current. CI's private D-Bus maps its system-bus
 address to the new session bus. No host display or D-Bus endpoint is inherited.
 These jobs run on every PR base and pushes to `main`.
 

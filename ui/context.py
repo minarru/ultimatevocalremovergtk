@@ -45,6 +45,28 @@ class AppContext:
         self._unrecognized_hook_installed = False
         #: Ephemeral: paths that failed the last Verify Inputs run (not persisted).
         self.unreadable_input_paths: set[str] = set()
+        self._input_verification_generation = 0
+
+    def begin_input_verification(self) -> int:
+        self._input_verification_generation += 1
+        return self._input_verification_generation
+
+    def apply_input_verification(
+        self, generation: int, verified_paths: Sequence[str], failed_paths: Sequence[str]
+    ) -> bool:
+        """Merge completed probes into current app state, independently of a dialog."""
+        if generation != self._input_verification_generation:
+            return False
+        current = set(self.settings.process.input_paths or [])
+        verified = set(verified_paths) & current
+        if not verified:
+            return False
+        failures = (
+            (self.unreadable_input_paths - verified) | (set(failed_paths) & verified)
+        ) & current
+        changed = failures != self.unreadable_input_paths
+        self.set_unreadable_input_paths(sorted(failures))
+        return changed
 
     def set_unreadable_input_paths(self, paths: Sequence[str]) -> None:
         self.unreadable_input_paths = {p for p in paths if p}

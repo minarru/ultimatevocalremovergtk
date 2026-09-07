@@ -108,6 +108,8 @@ class DownloadCenterStateTests(unittest.TestCase):
         key_a = (MDX_ARCH_TYPE, "Model A")
         key_b = (MDX_ARCH_TYPE, "Model B")
 
+        win.browser.set_selected(key_a, True)
+        win.browser.set_selected(key_b, True)
         a_started = threading.Event()
         a_release = threading.Event()
 
@@ -143,8 +145,9 @@ class DownloadCenterStateTests(unittest.TestCase):
             finally:
                 a_release.set()
 
-        self.assertIn("12 MB", win._row_actions[key_a].get_subtitle() or "")
-        self.assertIn("5 MB", win._row_actions[key_b].get_subtitle() or "")
+        from ui.widget_state import fetch
+        self.assertIn("12 MB", fetch(win._row_actions[key_a], "_uvr_status_label").get_label())
+        self.assertIn("5 MB", fetch(win._row_actions[key_b], "_uvr_status_label").get_label())
 
 
 if __name__ == "__main__":

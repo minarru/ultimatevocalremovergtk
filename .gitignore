@@ -159,3 +159,5 @@ docs/superpowers/specs/
 !scripts/catalogue/manifest_candidate.py
 !scripts/catalogue/stem_audit.py
 !scripts/catalogue/types.py
+
+!scripts/check_resource_bundle.py

@@ -36,6 +36,11 @@ class ResourceBuildTests(unittest.TestCase):
         (resources / "style.css").write_text("window { color: white; }\n")
         script = resources / "compile_resources.sh"
         shutil.copy2(RESOURCE_SCRIPT, script)
+        (root / 'scripts').mkdir()
+        shutil.copy2(
+            REPO_ROOT / 'scripts/check_resource_bundle.py',
+            root / 'scripts/check_resource_bundle.py',
+        )
         for name, source in blueprints.items():
             path = resources / "ui" / name
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -151,6 +156,31 @@ class ResourceBuildTests(unittest.TestCase):
             ).stdout
             self.assertIn("second build", generated)
             self.assertNotIn("first build", generated)
+
+    def test_check_rejects_stale_bundle_without_replacing_it(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            script, output = self._fixture(
+                root, {'sample.blp': 'using Gtk 4.0;\nGtk.Label { label: "old"; }\n'}
+            )
+            compiler = self._compiler()
+            result = self._run(script, compiler)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            original = output.read_bytes()
+            env = {**os.environ, 'BLUEPRINT_COMPILER': compiler}
+            clean = subprocess.run(
+                [str(script), '--check'], env=env, capture_output=True, text=True
+            )
+            self.assertEqual(clean.returncode, 0, clean.stderr)
+            (root / 'resources/ui/sample.blp').write_text(
+                'using Gtk 4.0;\nGtk.Label { label: "new"; }\n'
+            )
+            stale = subprocess.run(
+                [str(script), '--check'], env=env, capture_output=True, text=True
+            )
+            self.assertNotEqual(stale.returncode, 0)
+            self.assertIn('sample.ui', stale.stdout + stale.stderr)
+            self.assertEqual(output.read_bytes(), original)
 
 
 @unittest.skipUnless(GTK_AVAILABLE, "GTK resource loading needs PyGObject")

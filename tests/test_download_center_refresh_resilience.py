@@ -138,7 +138,7 @@ class MatchingCountTests(unittest.TestCase):
         seed_browser_sources(win)
         win._update_download_button()
 
-        win.status_label.set_label.assert_called_once_with("1 vocals model in MDX-Net")
+        win.status_label.set_label.assert_called_once_with("1 models shown")
 
 
 if __name__ == "__main__":

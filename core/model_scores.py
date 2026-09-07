@@ -239,11 +239,14 @@ def _aggregate_entry(entry: Mapping[str, Any]) -> Dict[str, float]:
     return {stem: round(statistics.mean(vals), 2) for stem, vals in per_stem.items() if vals}
 
 
-def load_model_scores(*, force: bool = False) -> Dict[str, Dict[str, float]]:
+def load_model_scores(
+    *, force: bool = False, allow_network: bool = True
+) -> Dict[str, Dict[str, float]]:
     """Return ``{checkpoint_filename: {stem: mean_sdr}}``, lowercased keys.
 
     Live fetch, then the seven-day disk cache, then the bundled snapshot, so
-    the badge works offline and in CI.
+    the badge works offline and in CI. ``allow_network=False`` uses only
+    memory, disk, or bundled scores and never writes the disk cache.
     """
     global _cached_scores, _cached_loaded_at
 
@@ -261,7 +264,7 @@ def load_model_scores(*, force: bool = False) -> Dict[str, Dict[str, float]]:
         return _cached_scores
 
     raw = _read_disk_cache() if not force else None
-    if raw is None:
+    if raw is None and allow_network:
         raw = _fetch_model_scores()
         if raw is not None:
             _write_disk_cache(raw)

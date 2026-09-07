@@ -986,7 +986,7 @@ class StemSubtitleDebounceTests(unittest.TestCase):
         self.assertIs(win._catalogue_row_metadata(VR_ARCH_TYPE, shared), vr)
 
     def test_reviewed_subtitle_uses_exact_route_labels_and_reviewed_purpose(self) -> None:
-        from ui.download_center import catalogue_semantics_subtitle
+        from ui.catalogue_browser import catalogue_semantics_subtitle
 
         semantics = resolve_model_stem_semantics(
             "mdx:UVR_MDXNET_KARA_2",
@@ -1044,7 +1044,7 @@ class StemSubtitleDebounceTests(unittest.TestCase):
         self,
     ) -> None:
         from core.model_stem_semantics import INTENT_DUAL_VOC_INST, INTENT_SPECIALTY_STEM
-        from ui.download_center import catalogue_semantics_subtitle
+        from ui.catalogue_browser import catalogue_semantics_subtitle
 
         semantics = resolve_model_stem_semantics(
             "mdx:UVR_MDXNET_KARA_2",
@@ -1072,7 +1072,7 @@ class StemSubtitleDebounceTests(unittest.TestCase):
                     self.assertTrue(catalogue_semantics_subtitle(meta).startswith(f"{purpose} · "))
 
     def test_reviewed_stale_subtitle_keeps_curated_routes_and_warning_detail(self) -> None:
-        from ui.download_center import (
+        from ui.catalogue_browser import (
             catalogue_evidence_detail,
             catalogue_semantics_subtitle,
         )
@@ -1104,7 +1104,7 @@ class StemSubtitleDebounceTests(unittest.TestCase):
         )
 
     def test_pending_without_evidence_has_loading_subtitle(self) -> None:
-        from ui.download_center import catalogue_semantics_subtitle
+        from ui.catalogue_browser import catalogue_semantics_subtitle
 
         meta = EntryMeta(
             label="Pending",
@@ -1117,7 +1117,7 @@ class StemSubtitleDebounceTests(unittest.TestCase):
         self.assertEqual(catalogue_semantics_subtitle(meta), "Loading output details…")
 
     def test_failed_without_evidence_has_unavailable_subtitle(self) -> None:
-        from ui.download_center import catalogue_semantics_subtitle
+        from ui.catalogue_browser import catalogue_semantics_subtitle
 
         meta = EntryMeta(
             label="Failed",
@@ -1130,7 +1130,7 @@ class StemSubtitleDebounceTests(unittest.TestCase):
         self.assertEqual(catalogue_semantics_subtitle(meta), "Output details unavailable")
 
     def test_apollo_waiver_is_restoration_not_raw(self) -> None:
-        from ui.download_center import catalogue_semantics_subtitle
+        from ui.catalogue_browser import catalogue_semantics_subtitle
 
         meta = EntryMeta(
             label="Apollo",
@@ -1146,7 +1146,7 @@ class StemSubtitleDebounceTests(unittest.TestCase):
         )
 
     def test_observed_mismatch_renders_raw_observed_native_names(self) -> None:
-        from ui.download_center import catalogue_semantics_subtitle
+        from ui.catalogue_browser import catalogue_semantics_subtitle
 
         meta = EntryMeta(
             label="Mismatch",
@@ -1164,7 +1164,7 @@ class StemSubtitleDebounceTests(unittest.TestCase):
         )
 
     def test_genuine_unknown_renders_raw_without_inventing_names(self) -> None:
-        from ui.download_center import catalogue_semantics_subtitle
+        from ui.catalogue_browser import catalogue_semantics_subtitle
 
         meta = EntryMeta(
             label="Unknown",
@@ -1177,7 +1177,7 @@ class StemSubtitleDebounceTests(unittest.TestCase):
         self.assertEqual(catalogue_semantics_subtitle(meta), "Raw outputs")
 
     def test_raw_subtitle_is_explicit_and_preserves_native_names(self) -> None:
-        from ui.download_center import catalogue_semantics_subtitle
+        from ui.catalogue_browser import catalogue_semantics_subtitle
 
         meta = EntryMeta(
             label="Private",
@@ -1206,6 +1206,8 @@ class StemSubtitleDebounceTests(unittest.TestCase):
         win.manager = mock.MagicMock()
         win.manager.latest_snapshot = None
         win._stem_refresh_armed = False
+        win._invalidate_all_filters = mock.MagicMock()
+        win._invalidate_all_sorts = mock.MagicMock()
         win._row_checks = {}
         win._row_actions = {}
         return win
@@ -1230,7 +1232,7 @@ class StemSubtitleDebounceTests(unittest.TestCase):
     def test_flush_clears_arm_and_updates_subtitles(self) -> None:
         win = self._bare_window()
         win._stem_refresh_armed = True
-        action = mock.MagicMock()
+        action = mock.MagicMock(spec=["get_subtitle", "set_tooltip_text"])
         win._row_actions[(MDX_ARCH_TYPE, "M")] = action
         from ui.catalogue_browser import BrowserRow
         win.browser.rows[(MDX_ARCH_TYPE, "M")] = BrowserRow((MDX_ARCH_TYPE, "M"), "M", MDX_ARCH_TYPE)
@@ -1245,13 +1247,7 @@ class StemSubtitleDebounceTests(unittest.TestCase):
             )
         }
 
-        with (
-            mock.patch("ui.download_center.stash"),
-            mock.patch(
-                "ui.download_center.fetch", side_effect=lambda _row, key, default=None: default
-            ),
-            mock.patch("ui.download_center.set_row_subtitle") as set_subtitle,
-        ):
+        with mock.patch("ui.download_center.set_row_subtitle") as set_subtitle:
             result = win._flush_stem_subtitles()
 
         self.assertFalse(result)
@@ -1290,7 +1286,7 @@ class StemSubtitleDebounceTests(unittest.TestCase):
         subtitle = set_subtitle.call_args[0][1]
         self.assertIn("Vocals, other", subtitle)
         self.assertIn("12 MB", subtitle)
-        self.assertEqual(fetch(action, "_uvr_stems_text"), "Raw outputs · Vocals, other")
+        self.assertEqual(fetch(action, "_uvr_stems_text"), "Raw outputs: Vocals, other")
 
     def test_schedule_hops_to_main_via_idle_on_main(self) -> None:
         win = self._bare_window()
@@ -1355,6 +1351,7 @@ class DownloadCenterGtkEvidenceTransitionTests(unittest.TestCase):
         win._list_boxes = {MDX_ARCH_TYPE: Gtk.ListBox()}
         win._stem_refresh_armed = True
         win._update_download_button = mock.MagicMock()
+        win._update_catalogue_page_state = mock.MagicMock()
         win._lookup_row_size = mock.MagicMock()
         win._rebuild_catalogue = mock.MagicMock()
         with mock.patch.object(
@@ -1480,6 +1477,7 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
         win._update_tab_counts = mock.MagicMock()
         win._update_status_from_catalogue = mock.MagicMock()
         win._update_download_button = mock.MagicMock()
+        win._update_catalogue_page_state = mock.MagicMock()
         win._ensure_background_listeners = mock.MagicMock()
         win._schedule_stem_yaml_fetches = mock.MagicMock()
         win.manager = mock.MagicMock()
@@ -1687,8 +1685,8 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
             self.assertFalse(win._row_matches_filter(mock.MagicMock(), VR_ARCH_TYPE))
 
     def test_visible_labels_fall_back_when_no_active_tab(self) -> None:
-        from core.model_scores import ARCH_FILTER_ALL
-        from ui.download_center import PURPOSE_ALL, DownloadCenterWindow
+        from core.model_scores import ARCH_FILTER_ALL, PURPOSE_ALL
+        from ui.download_center import DownloadCenterWindow
 
         win = object.__new__(DownloadCenterWindow)
         from ui.catalogue_browser import CatalogueBrowserState
@@ -1752,7 +1750,8 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
         import tempfile
 
         import core.catalogue_stem_cache as csc
-        from ui.download_center import PURPOSE_ALL, DownloadCenterWindow
+        from core.model_scores import PURPOSE_ALL
+        from ui.download_center import DownloadCenterWindow
 
         def meta_for(
             label: str,

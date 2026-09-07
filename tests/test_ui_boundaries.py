@@ -178,7 +178,11 @@ class RunDialogOrderingTests(unittest.TestCase):
             self.assertNotIn(('options', True), order)
             self.assertTrue(controller.is_running())
             self.assertEqual(order[-1], 'stop')
-            timeout.assert_called_once_with(50, controller.shutdown.poll_inference_cleanup)
+            self.assertEqual([call.args[0] for call in timeout.call_args_list], [10000, 50])
+            poll = timeout.call_args_list[1].args[1]
+            self.assertTrue(poll())
+            self.assertEqual(controller.shutdown.cleanup_attempts, 1)
+            self.assertNotIn(('options', True), order)
 
     def test_shutdown_orders_context_stop_deferred_poll_cleanup_and_destroy(self):
         from ui.protocols import RunHost, RunTarget
@@ -297,7 +301,7 @@ class ReviewedContractTests(unittest.TestCase):
                 host.target.start_blocked_reason.reset_mock()
                 self.assertEqual(controller.refresh_start_readiness(), reason)
                 host.target.start_blocked_reason.assert_called_once_with()
-                host.enable_start.assert_called_with(reason is None)
+                host.enable_start.assert_called_with(True)
                 host.describe_start.assert_called_with(reason or 'Start processing')
 
     def test_live_counts_and_empty_state_survive_pinned_incremental_removal(self):
@@ -326,14 +330,16 @@ class ReviewedContractTests(unittest.TestCase):
         cast(Any, win.manager.unsupported_downloads).return_value = {}
         win._flush_catalogue_row_refresh()
         self.assertEqual(win._matching_count(MDX_ARCH_TYPE, ''), 2)
-        self.assertIn('2 available', win._search_entry.get_placeholder_text() or '')
+        self.assertEqual(win._search_entry.get_placeholder_text(), 'Search vocal models')
+        self.assertEqual(win.status_label.get_label(), '1 models shown')
         win._search_entry.set_text('Missing entry')
         win._update_catalogue_page_state(MDX_ARCH_TYPE)
-        self.assertEqual(win._empty_pages[MDX_ARCH_TYPE].get_title(), 'No matching models')
+        self.assertEqual(win._empty_pages[MDX_ARCH_TYPE].get_title(), 'No Models Found')
         self.assertTrue(win._empty_pages[MDX_ARCH_TYPE].get_visible())
         win._search_entry.set_text('Added later')
         win._update_catalogue_page_state(MDX_ARCH_TYPE)
-        self.assertFalse(win._empty_pages[MDX_ARCH_TYPE].get_visible())
+        # A source arriving after the pinned snapshot is not yet a rendered row.
+        self.assertTrue(win._empty_pages[MDX_ARCH_TYPE].get_visible())
         self.assertEqual(win._matching_count(MDX_ARCH_TYPE, 'Added later'), 1)
         self.assertIs(win._row_actions[(MDX_ARCH_TYPE, 'Survivor')], survivor)
         self.assertNotIn((MDX_ARCH_TYPE, 'Added later'), win.browser.rows)

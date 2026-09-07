@@ -43,8 +43,20 @@ class ViewInputsTests(unittest.TestCase):
             clear_unreadable_input_paths=Mock(),
             set_unreadable_input_paths=Mock(),
         )
+        from ui.context import AppContext
+
+        context._input_verification_generation = 0
+        context.begin_input_verification = types.MethodType(
+            AppContext.begin_input_verification, context
+        )
+        context.apply_input_verification = types.MethodType(
+            AppContext.apply_input_verification, context
+        )
+        context.set_unreadable_input_paths.side_effect = lambda paths: setattr(
+            context, 'unreadable_input_paths', set(paths)
+        )
         changed = Mock()
-        view = ViewInputs(None, context, changed)
+        view = ViewInputs(None, context, changed, on_verification_changed=Mock())
         self.addCleanup(view.window.close)
         return view, context, changed
 
@@ -159,6 +171,8 @@ class ViewInputsTests(unittest.TestCase):
 
     def test_cancelled_current_verification_preserves_unchecked_failures(self) -> None:
         view, context, changed = self.make_view()
+        context.unreadable_input_paths = {"/tmp/bad.wav"}
+        view._verification_generation = context.begin_input_verification()
         view._verifying = True
         view._verify_total = 2
         view._on_verify(view.verify_button)
@@ -167,9 +181,32 @@ class ViewInputsTests(unittest.TestCase):
             [],
             cancelled=True,
             verified_paths=["/tmp/good.wav"],
-            prior_unreadable=["/tmp/bad.wav"],
         )
         context.set_unreadable_input_paths.assert_called_once_with(["/tmp/bad.wav"])
         self.assertFalse(view._verifying)
         self.assertTrue(view.verify_button.get_sensitive())
-        changed.assert_called_once_with(["/tmp/good.wav", "/tmp/bad.wav"])
+        changed.assert_not_called()
+
+    def test_closed_scan_updates_application_results_without_touching_widgets(self):
+        view, context, changed = self.make_view()
+        context.unreadable_input_paths = {'/tmp/good.wav', '/tmp/bad.wav'}
+        view._verification_generation = context.begin_input_verification()
+        verified = Mock()
+        view._on_verification_changed = verified
+        view._on_close_request()
+        with patch.object(view, '_rebuild_list') as rebuild:
+            view._verify_done([], True, ['/tmp/good.wav'])
+        self.assertEqual(context.unreadable_input_paths, {'/tmp/bad.wav'})
+        verified.assert_called_once_with()
+        changed.assert_not_called()
+        rebuild.assert_not_called()
+
+    def test_closed_old_scan_cannot_overwrite_new_scan_results(self):
+        view, context, changed = self.make_view()
+        view._verification_generation = context.begin_input_verification()
+        view._on_close_request()
+        newer = context.begin_input_verification()
+        context.apply_input_verification(newer, ['/tmp/good.wav'], ['/tmp/good.wav'])
+        view._verify_done([], True, ['/tmp/good.wav'])
+        self.assertEqual(context.unreadable_input_paths, {'/tmp/good.wav'})
+        changed.assert_not_called()
