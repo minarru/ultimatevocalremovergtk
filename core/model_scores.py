@@ -534,6 +534,12 @@ def catalogue_network_id(
 
 def family_arch_for_network_filter(filter_id: str) -> str:
     """Map a Network combo value to the family used for downloads and folders."""
+    filter_id = {
+        "vr": VR_ARCH_TYPE,
+        "demucs": DEMUCS_ARCH_TYPE,
+        "apollo": APOLLO_ARCH_TYPE,
+        "bs_polarformer": MDX_ARCH_TYPE,
+    }.get(filter_id, filter_id)
     if filter_id in ("", ARCH_FILTER_ALL, None):
         return ARCH_FILTER_ALL
     if filter_id == MDX_ARCH_TYPE or filter_id in MDX_NETWORK_SUBTYPES:
