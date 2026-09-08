@@ -421,13 +421,14 @@ class SaveStemsSectionTests(unittest.TestCase):
         self.assertTrue(self.section.repick_required)
         self.section._custom_dialog.present()
         self._drain_main_context()
-        self.section._on_custom_stems_save()
+        self.section._apply_custom_stems()
         self.assertFalse(self.section.repick_required)
         self._drain_main_context()
         self.assertFalse(self.section._quick_row.get_visible())
         self.assertEqual(fetch(self.section._quick_row, "_uvr_combo_ids"), [])
         self.section.persist_to_settings()
         self.assertNotEqual(self.settings.process.stem_focus, "choose")
+        self.section._custom_dialog.close()
 
     def test_demucs_removed_role_selects_choose_until_explicit_repick(self) -> None:
         routes = (

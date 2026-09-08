@@ -224,6 +224,21 @@ class ModelConfig(
                     selected = matched
                     selected_stem_routes_explicit = True
 
+        if (
+            not focus.strip()
+            and self.process_method == DEMUCS_ARCH_TYPE
+            and not self.is_secondary_model
+            and not self.is_pre_proc_model
+            and not self.is_ensemble_mode
+            and not self.is_vocal_split_model
+        ):
+            from core.demucs_selection import select_demucs_native_subset
+
+            sidecar = self.settings.demucs.stems_selected
+            if sidecar:
+                selected, _invalid = select_demucs_native_subset(routes, sidecar)
+                selected_stem_routes_explicit = True
+
         # Dual-stem ensemble members default to the pair, not a 4-stem model's
         # full native inventory. Four/multi-stem members keep the selection for
         # final combine; ``run_export_routes`` emits the full inventory.

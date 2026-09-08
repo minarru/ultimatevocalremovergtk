@@ -57,6 +57,7 @@ def _resolved_settings(
             "mdx.stems",
             "mdx.stems_selected",
             "demucs.stems",
+            "demucs.stems_selected",
         ):
             sources[path] = "cli"
     if long_chunk_seconds is not None:

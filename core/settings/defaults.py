@@ -139,6 +139,7 @@ def default_demucs() -> dict:
         "bass_secondary_model_scale": 0.5,
         "drums_secondary_model_scale": 0.5,
         "stems": ALL_STEMS,
+        "stems_selected": [],
         "pre_proc_model": NO_MODEL,
         "is_pre_proc_model_activate": False,
         "is_pre_proc_model_inst_mix": False,

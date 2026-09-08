@@ -225,6 +225,28 @@ def stem_focus_diagnostics(
 ) -> list[Diagnostic]:
     """Observe fallback routes and assess each member before observing the next."""
     focus = str(settings.process.stem_focus or "")
+    if not focus and command != "ensemble" and settings.demucs.stems_selected:
+        from .demucs_selection import select_demucs_native_subset
+
+        diagnostics = []
+        for descriptor in descriptors:
+            if descriptor.family != "demucs":
+                continue
+            _selected, invalid = select_demucs_native_subset(
+                descriptor.routes, settings.demucs.stems_selected
+            )
+            if invalid:
+                diagnostics.append(
+                    Diagnostic(
+                        "stems.demucs_subset_unmatched",
+                        f"Demucs native outputs unavailable: {', '.join(invalid)}; exporting all native stems",
+                        "error"
+                        if (provenance or {}).get("demucs.stems_selected") == Provenance.CLI.value
+                        else "warning",
+                        path="demucs.stems_selected",
+                    )
+                )
+        return diagnostics
     if not focus or positional_stem_focus(focus):
         return []
     severity = (

@@ -14,6 +14,7 @@ from bundled.constants import (
     BV_VOCAL_STEM,
     INST_STEM,
     LEAD_VOCAL_STEM,
+    MDX_ARCH_TYPE,
     VOCAL_STEM,
 )
 from core.model_stem_semantics import (
@@ -62,6 +63,7 @@ def _semantic_model(
     from types import SimpleNamespace
 
     return SimpleNamespace(
+        process_method=MDX_ARCH_TYPE,
         canonical_id=canonical_id,
         mdx_model_stems=native_stems,
         demucs_source_list=[],

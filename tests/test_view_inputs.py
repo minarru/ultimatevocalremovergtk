@@ -88,6 +88,138 @@ class ViewInputsTests(unittest.TestCase):
             parent, None, view._on_add_finished
         )
 
+    def test_verification_emphasis_summary_and_short_folder_paths(self):
+        view, _context, _changed = self.make_view()
+        self.assertFalse(view.verify_button.has_css_class("suggested-action"))
+        self.assertIn("Not verified", view._total_text())
+        path = "/mnt/Backup/recordings/Session/song.wav"
+        view.paths = [path]
+        view._rebuild_list()
+        row = view._rows[path]
+        self.assertEqual(row.get_subtitle(), "…/recordings/Session")
+        self.assertEqual(row.get_tooltip_text(), path)
+        view._apply_result(path, True, "Readable", 1)
+        self.assertIn("All readable", view._total_text())
+        view.clear_button.emit("clicked")
+        self.assertTrue(view.add_button.has_css_class("suggested-action"))
+        self.assertFalse(view.verify_button.get_sensitive())
+
+    def test_search_filters_without_changing_the_batch(self):
+        view, context, _changed = self.make_view()
+        self.assertFalse(view._search.get_visible())
+        paths = [f"/recordings/Session/track-{n}.wav" for n in range(8)]
+        view.paths = paths.copy()
+        view._rebuild_list()
+        self.assertTrue(view._search.get_visible())
+        context.settings.process.input_paths = paths.copy()
+        view._search.set_text("TRACK-3")
+        view._search.emit("search-changed")
+        self.assertEqual([p for p, row in view._rows.items() if row.get_visible()], [paths[3]])
+        self.assertIn("1 of 8 files", view._total_text())
+        self.assertEqual(context.settings.process.input_paths, paths)
+        view._search.set_text("does not exist")
+        view._search.emit("search-changed")
+        self.assertTrue(view._empty_state.get_visible())
+        self.assertEqual(view._empty_state.get_title(), "No matching files")
+        view._search.set_text("session")
+        view._search.emit("search-changed")
+        self.assertTrue(all(row.get_visible() for row in view._rows.values()))
+        self.assertFalse(view._empty_state.get_visible())
+
+    def test_search_and_summary_stay_fixed_while_files_scroll(self):
+        from gi.repository import Adw, Gtk
+
+        settings = Gtk.Settings.get_default()
+        assert settings is not None
+        animations = settings.get_property("gtk-enable-animations")
+        settings.set_property("gtk-enable-animations", False)
+        self.addCleanup(settings.set_property, "gtk-enable-animations", animations)
+        parent = Adw.Window(default_width=900, default_height=700)
+        self.addCleanup(parent.close)
+        parent.present()
+        view, _context, _changed = self.make_view(parent)
+        view.paths = [f"/tmp/track-{n}.wav" for n in range(40)]
+        view._rebuild_list()
+        view._sync_actions()
+        view.present()
+        scroll = view._input_scroll.get_vadjustment()
+
+        def wait_for(predicate: Callable[[], bool]) -> None:
+            deadline = time.monotonic() + 3
+            while not predicate() and time.monotonic() < deadline:
+                self.main_context.iteration(False)
+                time.sleep(0.001)
+            self.assertTrue(predicate())
+
+        wait_for(lambda: view._search.get_height() > 0 and scroll.get_upper() > scroll.get_page_size())
+        self.assertFalse(view._search.is_ancestor(view._input_scroll))
+        self.assertFalse(view._summary.is_ancestor(view._input_scroll))
+        body = view.dialog.get_child()
+        assert body is not None
+
+        def y(widget: Gtk.Widget) -> float:
+            valid, bounds = widget.compute_bounds(body)
+            self.assertTrue(valid)
+            return bounds.get_y()
+
+        first = view._rows[view.paths[0]]
+        old_row_y = y(first)
+        old_search_y, old_summary_y = y(view._search), y(view._summary)
+        scroll.set_value(scroll.get_upper() - scroll.get_page_size())
+        wait_for(lambda: y(first) < old_row_y)
+        self.assertEqual(y(view._search), old_search_y)
+        self.assertEqual(y(view._summary), old_summary_y)
+
+    def test_undo_clear_restores_order_and_unreadable_state(self):
+        view, context, changed = self.make_view()
+        view._status = {"/tmp/good.wav": (True, "Readable"), "/tmp/bad.wav": (False, "Unreadable")}
+        context.unreadable_input_paths = {"/tmp/bad.wav"}
+        context.clear_unreadable_input_paths.side_effect = context.unreadable_input_paths.clear
+        before = list(view.paths)
+        view.clear_button.emit("clicked")
+        toast = view._undo_toast
+        self.assertIsNotNone(toast)
+        self.assertEqual(context.settings.process.input_paths, [])
+        assert toast is not None
+        toast.emit("button-clicked")
+        self.assertEqual(view.paths, before)
+        self.assertEqual(context.settings.process.input_paths, before)
+        self.assertEqual(context.unreadable_input_paths, {"/tmp/bad.wav"})
+        self.assertTrue(view._status_icons["/tmp/good.wav"].has_css_class("success"))
+        self.assertTrue(view._status_icons["/tmp/bad.wav"].has_css_class("warning"))
+        changed.assert_called_with(before)
+
+    def test_undo_is_invalidated_by_another_removal_verification_and_close(self):
+        view, _context, _changed = self.make_view()
+        view._remove_path("/tmp/good.wav")
+        first = view._undo_toast
+        view._remove_path("/tmp/bad.wav")
+        assert first is not None
+        first.emit("button-clicked")
+        self.assertEqual(view.paths, [])
+        current = view._undo_toast
+        assert current is not None
+        current.emit("button-clicked")
+        self.assertEqual(view.paths, ["/tmp/bad.wav"])
+        view._remove_path("/tmp/bad.wav")
+        last = view._undo_toast
+        assert last is not None
+        view._on_closed()
+        last.emit("button-clicked")
+        self.assertEqual(view.paths, [])
+
+        other, _context, _changed = self.make_view()
+        other._remove_path("/tmp/bad.wav")
+        pending = other._undo_toast
+        assert pending is not None
+        with patch("ui.inputs.threading.Thread"):
+            other.verify_button.emit("clicked")
+        pending.emit("button-clicked")
+        self.assertEqual(other.paths, ["/tmp/good.wav"])
+        self.assertFalse(other._remove_buttons["/tmp/good.wav"].get_sensitive())
+        other._apply_result("/tmp/good.wav", True, "Readable", 1)
+        self.assertEqual(other.verify_button.get_label(), "Cancel")
+
     def test_closing_attached_dialog_stops_verification_delivery(self):
         from gi.repository import Adw
 
@@ -104,12 +236,12 @@ class ViewInputsTests(unittest.TestCase):
             time.sleep(0.001)
         self.assertTrue(view._lifetime.disposed)
         self.assertTrue(view._verify_stop.is_set())
-        with patch.object(view._files_group, "set_title") as set_title:
+        with patch.object(view._summary, "set_label") as set_title:
             view._apply_result("/tmp/good.wav", True, "late result", 1)
         set_title.assert_not_called()
 
     def test_dialog_height_tracks_files_and_verification_with_bounded_scrolling(self):
-        from gi.repository import Adw
+        from gi.repository import Adw, Gtk
 
         parent = Adw.Window(default_width=900, default_height=700)
         self.addCleanup(parent.close)
@@ -126,7 +258,10 @@ class ViewInputsTests(unittest.TestCase):
                 self.main_context.iteration(False)
                 time.sleep(0.001)
             self.assertTrue(
-                predicate(), f"Unexpected dialog size: {body.get_width()}x{body.get_height()}"
+                predicate(),
+                f"Unexpected dialog size: {body.get_width()}x{body.get_height()}; "
+                f"status allocation: {view._empty_state.get_width()}x{view._empty_state.get_height()}; "
+                f"status measure: {view._empty_state.measure(Gtk.Orientation.VERTICAL, view._empty_state.get_width())}",
             )
 
         wait_for(lambda: body.get_width() == 620 and 0 < body.get_height() < 400)
@@ -146,7 +281,16 @@ class ViewInputsTests(unittest.TestCase):
         wait_for(lambda: scroll.get_upper() > scroll.get_page_size())
         expanded_height = body.get_height()
         view.clear_button.emit("clicked")
-        wait_for(lambda: 0 < body.get_height() < compact_height)
+        assert view._undo_toast is not None
+        view._undo_toast.dismiss()
+        wait_for(lambda: 0 < body.get_height() < 400)
+        # The status page must fit after its internal clamp applies typography.
+        wait_for(
+            lambda: view._empty_state.get_height()
+            >= view._empty_state.measure(
+                Gtk.Orientation.VERTICAL, view._empty_state.get_width()
+            )[1]
+        )
         self.assertLess(body.get_height(), expanded_height)
         self.assertEqual(body.get_width(), 620)
 
@@ -173,13 +317,35 @@ class ViewInputsTests(unittest.TestCase):
         self.assertNotIn("/tmp/bad.wav", view._rows)
         view.clear_button.emit("clicked")
         self.assertEqual(context.settings.process.input_paths, [])
-        self.assertEqual(list(view._rows), ["__placeholder__"])
+        self.assertEqual(view._rows, {})
+        self.assertTrue(view._empty_state.get_visible())
+        self.assertFalse(view._header_box.get_visible())
         self.assertFalse(view.verify_button.get_sensitive())
         self.assertFalse(view.clear_button.get_sensitive())
         self.assertTrue(view.add_button.get_sensitive())
 
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(suffix=".wav") as audio:
+            with patch("ui.inputs.audio_open_dialog") as chooser:
+                view.add_button.emit("clicked")
+            picker = chooser.return_value
+            picker.open_multiple.assert_called_once_with(None, None, view._on_add_finished)
+            picker.open_multiple_finish.return_value.get_n_items.return_value = 1
+            picker.open_multiple_finish.return_value.get_item.return_value.get_path.return_value = (
+                audio.name
+            )
+            view._on_add_finished(picker, object())
+            self.assertEqual(context.settings.process.input_paths, [audio.name])
+            self.assertIn(audio.name, view._rows)
+        self.assertFalse(view._empty_state.get_visible())
+        self.assertTrue(view._header_box.get_visible())
+        self.assertTrue(view.verify_button.get_sensitive())
+
     def test_verify_button_delivers_results_then_removes_only_unreadable(self) -> None:
         view, context, changed = self.make_view()
+        for icon in view._status_icons.values():
+            self.assertEqual(icon.get_icon_name(), "audio-x-generic-symbolic")
         with patch(
             "ui.inputs.inspect_audio",
             side_effect=lambda p: (p.endswith("good.wav"), "probe result"),
@@ -193,13 +359,32 @@ class ViewInputsTests(unittest.TestCase):
             self.assertFalse(view._verifying, "Verification worker never reached GTK")
         context.set_unreadable_input_paths.assert_called_once_with(["/tmp/bad.wav"])
         self.assertTrue(view.remove_unreadable_button.get_visible())
-        self.assertIn("1 unreadable", view._files_group.get_title() or "")
+        self.assertIn("1 unreadable", view._summary.get_label() or "")
         self.assertIn("probe result", view._rows["/tmp/bad.wav"].get_subtitle() or "")
+        good_icon = view._status_icons["/tmp/good.wav"]
+        bad_icon = view._status_icons["/tmp/bad.wav"]
+        self.assertEqual(good_icon.get_icon_name(), "success-small-symbolic")
+        self.assertTrue(good_icon.has_css_class("success"))
+        self.assertEqual(bad_icon.get_icon_name(), "warning-outline-symbolic")
+        self.assertTrue(bad_icon.has_css_class("warning"))
         view.remove_unreadable_button.emit("clicked")
         self.assertEqual(context.settings.process.input_paths, ["/tmp/good.wav"])
         self.assertFalse(view.remove_unreadable_button.get_visible())
         self.assertTrue(view.verify_button.get_sensitive())
         changed.assert_called_with(["/tmp/good.wav"])
+
+        with patch("ui.inputs.threading.Thread"):
+            view.verify_button.emit("clicked")
+        icon = view._status_icons["/tmp/good.wav"]
+        self.assertEqual(icon.get_icon_name(), "audio-x-generic-symbolic")
+        self.assertFalse(icon.has_css_class("success"))
+        self.assertFalse(icon.has_css_class("warning"))
+        view._apply_result("/tmp/good.wav", False, "Unreadable", 1)
+        self.assertEqual(icon.get_icon_name(), "warning-outline-symbolic")
+        view._apply_result("/tmp/good.wav", True, "Readable", 1)
+        self.assertEqual(icon.get_icon_name(), "success-small-symbolic")
+        self.assertTrue(icon.has_css_class("success"))
+        self.assertFalse(icon.has_css_class("warning"))
 
     def test_closed_verification_cannot_restore_old_input_selection(self) -> None:
         import threading

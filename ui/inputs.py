@@ -15,8 +15,10 @@ Entry point: :func:`open_view_inputs` (wire to ``win.view_inputs``).
 import os
 import threading
 import typing
+from dataclasses import dataclass
+from pathlib import Path
 
-from gi.repository import Adw, GLib, Gtk
+from gi.repository import Adw, Gdk, GLib, Gtk
 
 from bundled.constants import VERIFY_INPUTS_TEXT
 from core.audio_probe import probe_audio
@@ -41,10 +43,24 @@ from .shared_settings import (
 from .template import load_builder, object_from_builder
 from .widgets.file_chooser import merge_input_paths
 from .widgets.file_dialogs import audio_open_dialog, is_dialog_dismissed
-from .widgets.rows import set_row_icon
 
 _STATUS_OK = "success-small-symbolic"
-_STATUS_BAD = "error-small-symbolic"
+_STATUS_BAD = "warning-outline-symbolic"
+_SEARCH_THRESHOLD = 8
+
+
+@dataclass(frozen=True)
+class _InputSnapshot:
+    paths: tuple[str, ...]
+    status: dict[str, tuple[bool, str]]
+    unreadable: frozenset[str]
+
+
+def _folder_label(path: str) -> str:
+    folder = Path(path).parent
+    if len(folder.parts) > (3 if folder.is_absolute() else 2):
+        return str(Path("…", *folder.parts[-2:]))
+    return str(folder)
 
 
 def _fmt_duration(seconds: float) -> str:
@@ -92,11 +108,15 @@ class ViewInputs:
         self._verification_generation: int | None = None
         self.paths = list(self.settings.process.input_paths or [])
         self._rows = {}
+        self._status_icons: dict[str, Gtk.Image] = {}
+        self._remove_buttons: dict[str, Gtk.Button] = {}
         self._status = {}  # path -> (is_valid, info) after verify
         self._verifying = False
         self._verify_total = 0
         self._verify_stop = threading.Event()
         self._lifetime = UiLifetime()
+        self._undo_snapshot: _InputSnapshot | None = None
+        self._undo_toast: Adw.Toast | None = None
 
         builder = load_builder("verify-inputs")
         self.dialog = object_from_builder(builder, "dialog", Adw.Dialog)
@@ -117,8 +137,15 @@ class ViewInputs:
         self.verify_button.connect("clicked", self._on_verify)
         self.toast_overlay = object_from_builder(builder, "toast_overlay", Adw.ToastOverlay)
         self._input_scroll = object_from_builder(builder, "input_scroll", Gtk.ScrolledWindow)
-        self._files_group = object_from_builder(builder, "files_group", Adw.PreferencesGroup)
-        self._files_group.set_title(self._total_text())
+        self._empty_state = object_from_builder(builder, "empty_state", Adw.StatusPage)
+        # StatusPage's internal clamp adjusts typography when first allocated.
+        self._empty_state.connect("map", self._on_empty_state_mapped)
+        self._search = object_from_builder(builder, "input_search", Gtk.SearchEntry)
+        self._search.connect("search-changed", self._filter_rows)
+        self._header_box = object_from_builder(builder, "header_box", Gtk.Box)
+        self._summary = object_from_builder(builder, "files_summary", Gtk.Label)
+        self._files_list = object_from_builder(builder, "files_list", Gtk.ListBox)
+        self._summary.set_label(self._total_text())
 
         # Seed status from any prior verify still tracked on the context.
         for path in self.context.unreadable_input_paths:
@@ -145,6 +172,19 @@ class ViewInputs:
         # retaining the requested desktop width.
         self.dialog.set_content_height(-1)
 
+    def _on_empty_state_mapped(self, widget: Gtk.Widget) -> None:
+        # An idle on map can precede the first allocation and capture the old
+        # natural height, before the status page's clamp updates its labels.
+        def after_allocation(widget: Gtk.Widget, _clock: Gdk.FrameClock) -> bool:
+            if self._lifetime.disposed:
+                return GLib.SOURCE_REMOVE
+            if widget.get_width() <= 0:
+                return GLib.SOURCE_CONTINUE
+            self._resize_to_content()
+            return GLib.SOURCE_REMOVE
+
+        widget.add_tick_callback(after_allocation)
+
     # -- List management --------------------------------------------------------
 
     def _failed_paths(self) -> list[str]:
@@ -153,51 +193,104 @@ class ViewInputs:
     def _total_text(self) -> str:
         n = len(self.paths)
         base = f"{n} file" if n == 1 else f"{n} files"
+        query = self._search.get_text().strip().casefold()
+        if query:
+            matches = sum(query in path.casefold() for path in self.paths)
+            base = f"{matches} of {n} files"
+        checked = sum(path in self._status for path in self.paths)
+        if self._verifying:
+            return f"{base} · Verifying {checked}/{n}"
         failed = len(self._failed_paths())
         if failed:
-            return f"{base} · {failed} unreadable"
-        if self._status and n and failed == 0 and len(self._status) >= n:
-            return f"{base} · all readable"
-        return base
+            remaining = f" · {n - checked} not verified" if checked < n else ""
+            return f"{base} · {failed} unreadable{remaining}"
+        if n and checked == n:
+            return f"{base} · All readable"
+        if checked:
+            return f"{base} · {checked}/{n} verified"
+        return f"{base} · Not verified" if n else base
+
+    def _filter_rows(self, *_args: object) -> None:
+        if self._lifetime.disposed:
+            return
+        if not self.paths:
+            self._search.set_text("")
+        query = self._search.get_text().strip().casefold()
+        self._search.set_visible(len(self.paths) >= _SEARCH_THRESHOLD or bool(query))
+        matches = 0
+        for path, row in self._rows.items():
+            visible = query in path.casefold()
+            row.set_visible(visible)
+            matches += visible
+        self._header_box.set_visible(bool(self.paths))
+        self._files_list.set_visible(bool(matches))
+        self._summary.set_label(self._total_text())
+        self._empty_state.set_visible(not matches)
+        no_matches = bool(self.paths) and not matches
+        self._empty_state.set_title("No matching files" if no_matches else "No input files")
+        self._empty_state.set_description(
+            "Try another filename or folder" if no_matches else "Add audio files to get started"
+        )
+        self._empty_state.set_icon_name(
+            "system-search-symbolic" if no_matches else "audio-x-generic-symbolic"
+        )
+        self._resize_to_content()
 
     def _rebuild_list(self) -> None:
         for row in self._rows.values():
-            self._files_group.remove(row)
+            self._files_list.remove(row)
         self._rows = {}
-        self._files_group.set_title(self._total_text())
-
-        if not self.paths:
-            builder = load_builder("verify-inputs-empty")
-            placeholder = object_from_builder(builder, "row", Adw.ActionRow)
-            add_suffix = object_from_builder(builder, "add_button", Gtk.Button)
-            add_suffix.connect("clicked", self._on_add)
-            self._rows["__placeholder__"] = placeholder
-            self._files_group.add(placeholder)
-            return
+        self._status_icons.clear()
+        self._remove_buttons.clear()
 
         for path in self.paths:
             builder = load_builder("verify-inputs-row")
             row = object_from_builder(builder, "row", Adw.ActionRow)
             set_row_title(row, os.path.basename(path))
             row.set_tooltip_text(path)
-            status = self._status.get(path)
-            if status is None:
-                set_row_subtitle(row, os.path.dirname(path))
-                set_row_icon(row, None)
-            else:
-                is_valid, info = status
-                set_row_icon(row, _STATUS_OK if is_valid else _STATUS_BAD)
-                set_row_subtitle(row, f"{os.path.dirname(path)}\n{info}")
             remove_button = object_from_builder(builder, "remove_button", Gtk.Button)
             set_icon_button_a11y(remove_button, REMOVE_INPUT_HINT)
             remove_button.connect("clicked", lambda _b, p=path: self._remove_path(p))
-            self._files_group.add(row)
+            self._files_list.append(row)
             self._rows[path] = row
+            self._status_icons[path] = object_from_builder(builder, "status_icon", Gtk.Image)
+            self._remove_buttons[path] = remove_button
+            remove_button.set_sensitive(not self._verifying)
+            self._update_row_status(path)
+        self._filter_rows()
+
+    def _update_row_status(self, path: str) -> None:
+        row = self._rows.get(path)
+        icon = self._status_icons.get(path)
+        if row is None or icon is None:
+            return
+        status = self._status.get(path)
+        if status is None:
+            icon_name, style, label = "audio-x-generic-symbolic", "dim-label", "Not verified"
+            subtitle = _folder_label(path)
+        else:
+            valid, info = status
+            icon_name = _STATUS_OK if valid else _STATUS_BAD
+            style, label = ("success", "Readable") if valid else ("warning", "Unreadable")
+            subtitle = f"{_folder_label(path)}\n{info}"
+        icon.set_from_icon_name(icon_name)
+        for old_style in ("dim-label", "success", "warning"):
+            icon.remove_css_class(old_style)
+        icon.add_css_class(style)
+        icon.set_tooltip_text(label)
+        icon.update_property([Gtk.AccessibleProperty.LABEL], [label])
+        set_row_subtitle(row, subtitle)
 
     def _sync_actions(self) -> None:
         has_files = bool(self.paths)
         self.clear_button.set_sensitive(has_files and not self._verifying)
         self.add_button.set_sensitive(not self._verifying)
+        if has_files:
+            self.add_button.remove_css_class("suggested-action")
+        else:
+            self.add_button.add_css_class("suggested-action")
+        for button in self._remove_buttons.values():
+            button.set_sensitive(not self._verifying)
         failed = self._failed_paths()
         self.remove_unreadable_button.set_visible(bool(failed))
         self.remove_unreadable_button.set_sensitive(bool(failed) and not self._verifying)
@@ -210,8 +303,49 @@ class ViewInputs:
             self.verify_button.set_sensitive(has_files)
             self.verify_button.set_label(f"_{VERIFY_INPUTS_TEXT}")
             self.verify_button.remove_css_class("destructive-action")
-            self.verify_button.add_css_class("suggested-action")
+            self.verify_button.remove_css_class("suggested-action")
+        self._summary.set_label(self._total_text())
         self._resize_to_content()
+
+    def _snapshot_inputs(self) -> _InputSnapshot:
+        return _InputSnapshot(
+            tuple(self.paths), dict(self._status), frozenset(self.context.unreadable_input_paths)
+        )
+
+    def _discard_undo(self) -> None:
+        toast = self._undo_toast
+        self._undo_toast = None
+        self._undo_snapshot = None
+        if toast is not None:
+            toast.dismiss()
+
+    def _offer_undo(self, snapshot: _InputSnapshot, message: str) -> None:
+        self._discard_undo()
+        toast = Adw.Toast(title=message, button_label="_Undo", timeout=8)
+        self._undo_snapshot = snapshot
+        self._undo_toast = toast
+        toast.connect("button-clicked", self._undo_removal)
+        toast.connect("dismissed", self._undo_dismissed)
+        self.toast_overlay.add_toast(toast)
+
+    def _undo_dismissed(self, toast: Adw.Toast) -> None:
+        if toast is self._undo_toast:
+            self._undo_toast = None
+            self._undo_snapshot = None
+
+    def _undo_removal(self, toast: Adw.Toast) -> None:
+        if self._lifetime.disposed or self._verifying or toast is not self._undo_toast:
+            return
+        snapshot = self._undo_snapshot
+        if snapshot is None:
+            return
+        self._discard_undo()
+        self.paths = list(snapshot.paths)
+        self._status = dict(snapshot.status)
+        self.context.set_unreadable_input_paths(sorted(snapshot.unreadable))
+        self._commit_paths()
+        self._rebuild_list()
+        self._sync_actions()
 
     def _commit_paths(self) -> None:
         self.settings.process.input_paths = list(self.paths)
@@ -223,27 +357,34 @@ class ViewInputs:
             self._on_inputs_changed(list(self.paths))
 
     def _remove_path(self, path: str) -> None:
-        if path in self.paths:
+        if not self._verifying and path in self.paths:
+            snapshot = self._snapshot_inputs()
             self.paths.remove(path)
             self._status.pop(path, None)
             self._commit_paths()
             self._rebuild_list()
             self._sync_actions()
+            self._offer_undo(snapshot, "File removed")
 
     def _on_clear(self, _button: typing.Any) -> None:
-        if not self.paths:
+        if not self.paths or self._verifying:
             return
+        snapshot = self._snapshot_inputs()
         self.paths = []
         self._status.clear()
         self.context.clear_unreadable_input_paths()
         self._commit_paths()
         self._rebuild_list()
         self._sync_actions()
+        self._offer_undo(snapshot, "Input files cleared")
 
     def _on_remove_unreadable(self, _button: typing.Any) -> None:
+        if self._verifying:
+            return
         failed = set(self._failed_paths()) | set(self.context.unreadable_input_paths)
         if not failed:
             return
+        snapshot = self._snapshot_inputs()
         before = len(self.paths)
         self.paths = remove_unreadable_from_paths(self.paths, failed)
         for path in failed:
@@ -255,7 +396,7 @@ class ViewInputs:
         self._sync_actions()
         if removed:
             noun = "file" if removed == 1 else "files"
-            self._toast(f"Removed {removed} unreadable {noun}.")
+            self._offer_undo(snapshot, f"Removed {removed} unreadable {noun}")
 
     def _on_add(self, _button: typing.Any) -> None:
         initial = os.path.dirname(self.paths[0]) if self.paths else None
@@ -279,6 +420,7 @@ class ViewInputs:
         added = [p for p in added if p]
         if not added:
             return
+        self._discard_undo()
         merged = merge_input_paths(self.paths, added)
         cleaned, sanitize_result = sanitize_input_paths(merged)
         self.paths = cleaned
@@ -297,6 +439,7 @@ class ViewInputs:
 
     def _on_closed(self, *_args: typing.Any) -> None:
         self._lifetime.dispose()
+        self._discard_undo()
         if self._verifying:
             self._verify_stop.set()
 
@@ -309,12 +452,14 @@ class ViewInputs:
         if not self.paths:
             self._toast("No files to verify.")
             return
+        self._discard_undo()
         self._verifying = True
         self._verification_generation = self.context.begin_input_verification()
         self._verify_stop.clear()
         self._verify_total = len(self.paths)
         self._status.clear()
-        self.verify_button.set_label(f"Verifying… 0/{self._verify_total}")
+        for path in self._rows:
+            self._update_row_status(path)
         self._sync_actions()
         snapshot = list(self.paths)
         threading.Thread(
@@ -349,13 +494,11 @@ class ViewInputs:
         if self._lifetime.disposed:
             return
         self._status[path] = (is_valid, info)
-        self.verify_button.set_label(f"Verifying… {index}/{self._verify_total}")
         row = self._rows.get(path)
         if row is None:
             return
-        set_row_icon(row, _STATUS_OK if is_valid else _STATUS_BAD)
-        set_row_subtitle(row, f"{os.path.dirname(path)}\n{info}")
-        self._files_group.set_title(self._total_text())
+        self._update_row_status(path)
+        self._summary.set_label(self._total_text())
         self._resize_to_content()
 
     def _verify_done(

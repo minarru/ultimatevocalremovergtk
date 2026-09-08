@@ -12,6 +12,7 @@ model combo as a settings adapter and owns stem reconciliation.
 """
 
 import typing
+from dataclasses import replace
 from typing import Callable, List, Optional, Type
 
 from gi.repository import Adw, Gio, GObject, Gtk
@@ -21,8 +22,10 @@ from bundled.constants import (
     CHOOSE_MODEL,
     CHOOSE_MODEL_HELP,
     CLEAR_CACHE_HELP,
+    DEMUCS_ARCH_TYPE,
     DRUM_STEM,
     INST_STEM,
+    MDX_ARCH_TYPE,
     NO_MODEL,
     OTHER_STEM,
     PRE_PROC_MODEL_ACTIVATE_HELP,
@@ -38,7 +41,13 @@ from core.model_display import map_basenames_to_display
 from core.model_identity import FAMILY_BY_ARCH, ModelIdentityService, parse_stored_model_id
 from core.model_scores import parse_sdr_score
 from core.model_stem_semantics import recommended_export_note, stem_display_overrides
-from core.run_estimate import compose_stem_group_tooltip, estimate_workload, format_workload_line
+from core.run_estimate import (
+    classify_export_tier,
+    compose_stem_group_tooltip,
+    count_expected_outputs,
+    estimate_workload,
+    format_workload_line,
+)
 from core.settings import Settings
 from core.stems import StemBucket, logical_secondary_route, model_stem_count, model_stem_routes
 
@@ -54,6 +63,7 @@ from ..settings_bind import get_flat, set_flat, setting_for_combo
 from ..template import load_builder, object_from_builder
 from ..widget_state import fetch, stash
 from ..widgets.lazy_populate import LazyPopulator
+from ..widgets.output_stems import OutputStemsSection
 from ..widgets.rows import (
     configure_combo_row,
     configure_discrete_scale_row,
@@ -207,7 +217,7 @@ class MethodView:
         self._resolved_secondary_stem = None
         self._resolved_model = None
         self._resolved_routes = ()
-        self.save_stems.attach_to(self.stem_group)
+        self.output_stems = OutputStemsSection(self.save_stems, self.stem_group)
         self.hints.register(self.stem_group, SAVE_STEM_ONLY_HELP)
         self.build_stem_options(self.stem_group)
         self.groups.append(self.stem_group)
@@ -411,6 +421,9 @@ class MethodView:
         self._resolved_secondary_stem = secondary
         self._resolved_model = model
         self._resolved_routes = routes
+        self.save_stems.set_model_context(
+            str(getattr(model, "canonical_id", "") or model_name or "")
+        )
         if not self.has_model():
             self.save_stems.configure_hidden(has_model=False)
         else:
@@ -438,18 +451,51 @@ class MethodView:
             routes=self._resolved_routes,
         )
 
-    def _update_stem_group_metadata(self) -> None:
-        line1 = self.save_stems.export_summary()
-        workload = estimate_workload(
-            self.settings,
-            method_key=self.method_key,
-            save_stems=self.save_stems,
-            repo=self.context.repo,
-            model_name=self.selected_model() if self.has_model() else None,
-            has_model=self.has_model(),
+    def _update_stem_group_metadata(self, *, refresh_workload: bool = True) -> None:
+        has_model = self.has_model()
+        model_id = self.selected_model() if has_model else None
+        scope = (
+            self.method_key,
+            model_id,
+            self.settings.demucs.stems if self.method_key == DEMUCS_ARCH_TYPE
+            else self.settings.mdx.stems if self.method_key == MDX_ARCH_TYPE else None,
         )
-        line2 = format_workload_line(workload)
-        self.stem_group.set_description(f"{line1}\n{line2}" if line2 else line1)
+        cached = hasattr(self, "_stem_workload_estimate")
+        workload = getattr(self, "_stem_workload_estimate", None)
+        if not has_model:
+            workload = None
+        elif refresh_workload or not cached:
+            workload = estimate_workload(
+                self.settings,
+                method_key=self.method_key,
+                save_stems=self.save_stems,
+                repo=self.context.repo if refresh_workload else None,
+                model_name=model_id,
+                has_model=has_model,
+            )
+        elif workload is None or getattr(self, "_stem_workload_scope", None) != scope:
+            # Native focus can change the secondary/preprocessor graph. Hide
+            # stale costs until a normal refresh resolves it. A cached None
+            # preserves that invalidation through subsequent checkbox edits.
+            workload = None
+        else:
+            # Stable-scope stem edits only update export costs. Avoid assembly,
+            # hashing and config fetches in this checkbox callback.
+            output_count = count_expected_outputs(
+                self.save_stems, settings=self.settings, method_key=self.method_key
+            )
+            workload = replace(
+                workload,
+                output_count=output_count,
+                export_tier=classify_export_tier(output_count),
+            )
+        self._stem_workload_estimate = workload
+        self._stem_workload_scope = scope
+        line2 = format_workload_line(workload, include_output_count=False)
+        selected = self.model_row.get_selected_item()
+        model_name = selected.get_string() if isinstance(selected, Gtk.StringObject) else ""
+        self.output_stems.refresh(model_name=model_name if self.has_model() else "", workload=line2)
+        self.stem_group.set_description("")
         composed = compose_stem_group_tooltip(
             self.save_stems.active_hint(),
             workload,
@@ -475,7 +521,7 @@ class MethodView:
         if self._loading:
             return
         self._persist_stem_only()
-        self._update_stem_group_metadata()
+        self._update_stem_group_metadata(refresh_workload=False)
         self.sync_dynamic_option_state()
         self._on_settings_changed()
 

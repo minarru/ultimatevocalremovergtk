@@ -224,6 +224,17 @@ def select_output_routes(
             )
             reason = f"{reason}+complement"
 
+    if (
+        not focus.strip()
+        and descriptors
+        and descriptors[0].family == "demucs"
+        and settings.demucs.stems_selected
+    ):
+        from .demucs_selection import select_demucs_native_subset
+
+        selected, invalid = select_demucs_native_subset(routes, settings.demucs.stems_selected)
+        reason = "demucs-subset-unmatched-fallback-all" if invalid else "demucs-native-subset"
+
     return OutputRouteProjection(selected, focus, positional, reason)
 
 

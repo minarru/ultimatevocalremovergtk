@@ -9,6 +9,7 @@ from bundled.constants import (
     BASS_STEM,
     DRUM_STEM,
     INST_STEM,
+    MDX_ARCH_TYPE,
     OTHER_STEM,
     VOCAL_PAIR,
 )
@@ -496,6 +497,7 @@ class RunExportRoutesTests(unittest.TestCase):
         from types import SimpleNamespace
 
         values: dict[str, object] = dict(
+            process_method=MDX_ARCH_TYPE,
             available_stem_routes=(),
             selected_stem_routes=(),
             is_vocal_split_model=False,

@@ -4,10 +4,15 @@ using Adw 1;
 Adw.ActionRow row {
   title-lines: 1;
   subtitle-lines: 2;
+  [prefix]
+  Gtk.Image status_icon {
+    icon-name: "audio-x-generic-symbolic";
+    styles ["dim-label"]
+  }
   [suffix]
   Gtk.Button remove_button {
     icon-name: "cross-small-symbolic";
     valign: center;
-    styles ["flat"]
+    styles ["circular"]
   }
 }

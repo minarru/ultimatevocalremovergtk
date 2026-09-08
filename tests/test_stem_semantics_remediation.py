@@ -11,6 +11,7 @@ from unittest import mock
 
 import numpy as np
 
+from bundled.constants import MDX_ARCH_TYPE
 from core.model_config.config import ModelConfig
 from core.model_stem_manifest import (
     load_bundled_stem_semantics,
@@ -674,6 +675,7 @@ def _classic_fake(
     settings.process.stem_focus = focus
     return SimpleNamespace(
         settings=settings,
+        process_method=MDX_ARCH_TYPE,
         canonical_id=canonical_id,
         model_hash=(contract.artifact_evidence[0].uvr_md5 if contract is not None else ""),
         mdx_hash_record_source=(

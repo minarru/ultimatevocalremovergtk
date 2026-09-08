@@ -78,7 +78,10 @@ class SeperateDemucs(SeperateAttributes):
         native_export = tuple(route for route in export_routes if route.native is not None)
         if native_export:
             write_all_sources = (
-                len(native_export) == len(self.demucs_source_map)
+                (
+                    len(native_export) == len(self.demucs_source_map)
+                    or (self.demucs_stems == ALL_STEMS and len(native_export) == len(export_routes))
+                )
                 and not self.process_data.is_ensemble_master
             ) or (self.is_4_stem_ensemble and not self.is_return_dual)
         else:

@@ -35,7 +35,6 @@ from ui.resources import RESOURCE_PREFIX, require_resource_bundle
 
 from ..protocols import FormatEdit
 from ..settings_bind import enum_value, get_flat, set_flat
-from .rows import set_row_icon
 
 _TEMPLATE_RESOURCE = f"{RESOURCE_PREFIX}/ui/output_format_row.ui"
 require_resource_bundle(_TEMPLATE_RESOURCE)
@@ -116,7 +115,6 @@ class OutputFormatRow(Adw.ActionRow):
 
     def __init__(self, on_changed: Callable[[FormatEdit], None]):
         super().__init__()
-        set_row_icon(self, "waveform-symbolic")
         self._on_changed = on_changed
         self._syncing = False
         #: Cached from the last ``apply_from_settings`` call so an interactive

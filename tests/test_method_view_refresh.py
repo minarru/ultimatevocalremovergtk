@@ -166,6 +166,7 @@ class StemLabelResolutionTests(unittest.TestCase):
         view.has_model = mock.Mock(return_value=True)
         view.save_stems = SimpleNamespace(
             configure_exclusive=configure,
+            set_model_context=mock.Mock(),
             sync_from_settings=mock.Mock(),
         )
         view._on_model_resolved = mock.Mock()
@@ -822,6 +823,146 @@ class InstalledRecordPickerGtkTests(unittest.TestCase):
 
         writes.assert_called_once_with(view.settings, view.model_key, missing.id)
         self.assertEqual(get_combo_value(view.model_row), missing.id)
+
+
+class StemEditWorkloadTests(unittest.TestCase):
+    def _metadata_view(self) -> Any:
+        from core.settings import Settings
+
+        view: Any = MethodView.__new__(MethodView)
+        view.settings = Settings.defaults()
+        view.settings.process.use_gpu = False
+        view.method_key = MDX_ARCH_TYPE
+        view._loading = False
+        view.context = SimpleNamespace(repo=object())
+        view.selected_model = lambda: "mdx:workload-fixture"
+        view.has_model = lambda: True
+        selected = SimpleNamespace(count=4)
+
+        def persist() -> None:
+            view.settings.process.stem_focus = "vocal.vocals"
+
+        view.save_stems = SimpleNamespace(
+            mode="subset",
+            expected_output_count=lambda: selected.count,
+            persist_to_settings=persist,
+            active_hint=lambda: "Selected output",
+        )
+        view._selected_outputs = selected
+        view.model_row = SimpleNamespace(get_selected_item=lambda: None)
+        rendered = SimpleNamespace(workload="", hint="")
+
+        def refresh(*, model_name: str, workload: str) -> None:
+            rendered.workload = workload
+
+        view.output_stems = SimpleNamespace(refresh=refresh)
+        view._rendered_metadata = rendered
+        view.stem_group = SimpleNamespace(set_description=lambda value: None)
+
+        def register(widget: Any, hint: str) -> None:
+            rendered.hint = hint
+
+        view.hints = SimpleNamespace(register=register)
+        view._on_settings_changed = lambda: None
+        return view
+
+    def test_real_stem_callback_reuses_resolved_workload_without_assembly(self) -> None:
+        view = self._metadata_view()
+        # Resolve an estimate with three actual passes, while light defaults
+        # would estimate one. Retaining three proves the cached path is used.
+        model = SimpleNamespace(
+            model_status=True,
+            process_method=MDX_ARCH_TYPE,
+            is_mdx_c=True,
+            is_secondary_model_activated=True,
+            is_vocal_split_model_activated=True,
+        )
+        with mock.patch("core.model_config.assemble_model", return_value=[model]):
+            view._update_stem_group_metadata()
+        self.assertIn("3 passes", view._rendered_metadata.workload)
+        view._selected_outputs.count = 1
+        with mock.patch(
+            "core.model_config.assemble_model",
+            side_effect=AssertionError("A checkbox must not assemble models"),
+        ):
+            view._on_save_stems_changed()
+        self.assertEqual(view.settings.process.stem_focus, "vocal.vocals")
+        self.assertIn("3 passes", view._rendered_metadata.workload)
+        self.assertIn("Fastest export", view._rendered_metadata.workload)
+        self.assertNotIn(" output", view._rendered_metadata.workload)
+
+    def test_demucs_focus_change_hides_workload_until_normal_refresh(self) -> None:
+        view = self._metadata_view()
+        view.method_key = DEMUCS_ARCH_TYPE
+        view.selected_model = lambda: "demucs:workload-fixture"
+        view.settings.demucs.shifts = 2
+        focus = SimpleNamespace(native="Bass")
+
+        def persist() -> None:
+            view.settings.demucs.stems = focus.native
+            view.settings.process.stem_focus = "instrument.bass"
+
+        view.save_stems.persist_to_settings = persist
+        model = SimpleNamespace(
+            model_status=True,
+            process_method=DEMUCS_ARCH_TYPE,
+            demucs_4_stem_added_count=3,
+        )
+        with mock.patch("core.model_config.assemble_model", return_value=[model]):
+            view._update_stem_group_metadata()
+        self.assertIn("4 passes", view._rendered_metadata.workload)
+        self.assertIn("Cost factors:", view._rendered_metadata.hint)
+        with mock.patch(
+            "core.model_config.assemble_model",
+            side_effect=AssertionError("Changing focus must not assemble models"),
+        ):
+            view._on_save_stems_changed()
+            self.assertEqual(view.settings.demucs.stems, "Bass")
+            self.assertEqual(view._rendered_metadata.workload, "")
+            self.assertNotIn("Cost factors:", view._rendered_metadata.hint)
+            # An additional side checkbox must not resurrect a lightweight
+            # estimate after the resolved graph was deliberately invalidated.
+            view._selected_outputs.count = 1
+            view._on_save_stems_changed()
+            self.assertEqual(view._rendered_metadata.workload, "")
+        model.demucs_4_stem_added_count = 1
+        with mock.patch("core.model_config.assemble_model", return_value=[model]):
+            view._update_stem_group_metadata()
+        self.assertIn("2 passes", view._rendered_metadata.workload)
+
+    def test_mdx_native_focus_change_also_invalidates_secondary_graph_cost(self) -> None:
+        view = self._metadata_view()
+        model = SimpleNamespace(
+            model_status=True, process_method=MDX_ARCH_TYPE, is_mdx_c=True,
+            is_secondary_model_activated=True,
+        )
+        with mock.patch("core.model_config.assemble_model", return_value=[model]):
+            view._update_stem_group_metadata()
+        self.assertIn("2 passes", view._rendered_metadata.workload)
+
+        def persist() -> None:
+            view.settings.mdx.stems = "Drums"
+            view.settings.process.stem_focus = "instrument.drums"
+
+        view.save_stems.persist_to_settings = persist
+        with mock.patch(
+            "core.model_config.assemble_model",
+            side_effect=AssertionError("Changing focus must not assemble models"),
+        ):
+            view._on_save_stems_changed()
+        self.assertEqual(view._rendered_metadata.workload, "")
+
+    def test_first_stem_callback_uses_light_estimator_without_assembly(self) -> None:
+        view = self._metadata_view()
+        view._selected_outputs.count = 1
+        with mock.patch(
+            "core.model_config.assemble_model",
+            side_effect=AssertionError("An uncached checkbox must not assemble models"),
+        ):
+            view._on_save_stems_changed()
+        self.assertEqual(view.settings.process.stem_focus, "vocal.vocals")
+        self.assertIn("1 pass", view._rendered_metadata.workload)
+        self.assertIn("Fastest", view._rendered_metadata.workload)
 
 
 if __name__ == "__main__":

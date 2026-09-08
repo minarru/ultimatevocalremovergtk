@@ -865,6 +865,10 @@ class StemSelectionState:
                 custom_all=self.custom_all,
             )
         if self.mode == "demucs":
+            sidecar = list(getattr(settings.demucs, "stems_selected", []) or [])
+            if sidecar and not str(getattr(settings.process, "stem_focus", "") or ""):
+                self.set_custom_selection(set(sidecar))
+                return SubsetView(_SUBSET_CUSTOM, set(self.custom_selected), self.custom_all)
             native_focus = settings.demucs.stems or ALL_STEMS
             stem_focus = str(getattr(settings.process, "stem_focus", "") or "")
             focus_is_vocals = concept_is(str(native_focus), StemBucket.VOCALS, stem_count=4)
@@ -903,7 +907,10 @@ class StemSelectionState:
         if isinstance(view, ExclusiveView):
             detail = self._write_exclusive(settings, view)
         elif isinstance(view, SubsetView):
-            self._write_subset(settings, view)
+            if self.mode == "demucs":
+                self._write_demucs_subset(settings, view)
+            else:
+                self._write_subset(settings, view)
         else:
             self._write_demucs(settings, view)
         _debug_stem_focus_persist(
@@ -919,6 +926,7 @@ class StemSelectionState:
         if selection.status is not StemSelectionStatus.MATCHED or len(selection.routes) != 1:
             raise ValueError(f"invalid stem selection {concept!r}")
         route = selection.routes[0]
+        settings.demucs.stems_selected = []
         settings.process.stem_focus = _persist_route_focus(route)
         if route.concept in (
             "vocal.vocals",
@@ -937,6 +945,7 @@ class StemSelectionState:
 
     def write_cli_positional(self, settings: Settings, choice: str) -> None:
         """Persist a CLI positional pick as a stem_focus sentinel."""
+        settings.demucs.stems_selected = []
         if choice == "both":
             settings.process.stem_focus = ""
             settings.demucs.stems = settings.mdx.stems = ALL_STEMS
@@ -998,7 +1007,17 @@ class StemSelectionState:
             else:
                 settings.process.stem_focus = ""
 
+    def _write_demucs_subset(self, settings: Any, view: SubsetView) -> None:
+        concepts = {self._concept_for_subset_token(token) for token in view.selected}
+        all_selected = view.custom_all or not concepts or concepts >= self._subset_concepts()
+        settings.demucs.stems_selected = (
+            [] if all_selected else self._natives_for_subset_concepts(concepts)
+        )
+        settings.demucs.stems = ALL_STEMS
+        settings.process.stem_focus = ""
+
     def _write_demucs(self, settings: Any, view: DemucsView) -> None:
+        settings.demucs.stems_selected = []
         active = view.active
         if active == _QUICK_ALL:
             settings.demucs.stems = ALL_STEMS

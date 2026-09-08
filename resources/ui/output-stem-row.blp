@@ -1,0 +1,13 @@
+using Gtk 4.0;
+using Adw 1;
+
+Adw.ActionRow row {
+  title-lines: 2;
+  subtitle-lines: 2;
+  [suffix] Gtk.CheckButton selected { valign: center; }
+  [suffix] Gtk.Image fixed_selection {
+    icon-name: "object-select-symbolic";
+    valign: center;
+    styles ["dim-label"]
+  }
+}

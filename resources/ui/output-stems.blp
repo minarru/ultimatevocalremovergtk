@@ -1,0 +1,95 @@
+using Gtk 4.0;
+using Adw 1;
+
+Adw.ActionRow summary_row {
+  title: "Save stems";
+  subtitle: "Choose a model to configure stem export";
+  subtitle-lines: 2;
+  activatable: true;
+  [suffix] Gtk.Label file_count {
+    valign: center;
+    styles ["dim-label"]
+  }
+  [suffix] Gtk.Image { icon-name: "go-next-symbolic"; }
+}
+
+Adw.Dialog dialog {
+  title: "Save stems";
+  content-width: 620;
+  content-height: -1;
+  width-request: 320;
+  height-request: 240;
+  child: Adw.ToolbarView {
+    bottom-bar-style: flat;
+    [top] Adw.HeaderBar {}
+    [top] Gtk.Box context_box {
+      orientation: vertical;
+      spacing: 12;
+      margin-top: 8;
+      margin-bottom: 8;
+      margin-start: 18;
+      margin-end: 18;
+      Gtk.Box {
+        spacing: 12;
+        Gtk.Label model_name {
+          xalign: 0;
+          hexpand: true;
+          ellipsize: end;
+          styles ["dim-label"]
+        }
+        Gtk.Button select_all { label: "Select All"; styles ["flat"] }
+      }
+      Adw.PreferencesGroup mode_group {
+        Adw.ComboRow export_mode { title: "Export"; }
+        Adw.ComboRow stem_focus { title: "Stem focus"; }
+      }
+      Gtk.Box presets { halign: start; styles ["linked"] }
+      Gtk.SearchEntry search {
+        placeholder-text: "Search stems";
+        hexpand: true;
+      }
+      Gtk.Label review {
+        label: "The previous selection is no longer available. Choose outputs again.";
+        xalign: 0;
+        wrap: true;
+        styles ["warning"]
+      }
+    }
+    content: Gtk.ScrolledWindow scroll {
+      hscrollbar-policy: never;
+      propagate-natural-height: true;
+      min-content-height: 120;
+      max-content-height: 440;
+      child: Gtk.Box {
+        orientation: vertical;
+        spacing: 12;
+        margin-top: 4;
+        margin-bottom: 8;
+        margin-start: 18;
+        margin-end: 18;
+        Adw.PreferencesGroup selection_group {}
+        Gtk.ListBox output_list {
+          selection-mode: none;
+          styles ["boxed-list"]
+        }
+        Adw.StatusPage no_matches {
+          title: "No matching stems";
+          icon-name: "system-search-symbolic";
+          styles ["compact"]
+        }
+      };
+    };
+    [bottom] Gtk.Box {
+      orientation: vertical;
+      spacing: 4;
+      margin-start: 18;
+      margin-end: 18;
+      margin-top: 12;
+      margin-bottom: 12;
+      Gtk.Label result_count { xalign: 0; wrap: true; styles ["heading"] }
+      Gtk.Label result_names { xalign: 0; wrap: true; lines: 2; ellipsize: end; styles ["dim-label"] }
+      Gtk.Label additional_outputs { xalign: 0; wrap: true; styles ["dim-label"] }
+      Gtk.Label workload { xalign: 0; wrap: true; styles ["dim-label"] }
+    }
+  };
+}

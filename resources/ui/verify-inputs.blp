@@ -7,12 +7,39 @@ Adw.Dialog dialog {
   content-height: -1;
   width-request: 320;
   height-request: 240;
-  child: Adw.ToolbarView {
-    bottom-bar-style: raised;
-    [top]
-    Adw.HeaderBar {}
-    content: Adw.ToastOverlay toast_overlay {
-      child: Gtk.ScrolledWindow input_scroll {
+  child: Adw.ToastOverlay toast_overlay {
+    child: Adw.ToolbarView {
+      bottom-bar-style: flat;
+      [top]
+      Adw.HeaderBar {}
+      [top]
+      Gtk.Box header_box {
+        orientation: vertical;
+        spacing: 12;
+        margin-start: 18;
+        margin-end: 18;
+        margin-top: 8;
+        margin-bottom: 4;
+        Gtk.SearchEntry input_search {
+          placeholder-text: "Search files";
+          visible: false;
+        }
+        Gtk.Box {
+          spacing: 12;
+          Gtk.Label files_summary {
+            xalign: 0;
+            hexpand: true;
+            wrap: true;
+            styles ["heading"]
+          }
+          Gtk.Button clear_button {
+            icon-name: "edit-clear-all-symbolic";
+            valign: center;
+            styles ["flat"]
+          }
+        }
+      }
+      content: Gtk.ScrolledWindow input_scroll {
         hscrollbar-policy: never;
         propagate-natural-height: true;
         min-content-height: 120;
@@ -20,47 +47,51 @@ Adw.Dialog dialog {
         vexpand: true;
         child: Gtk.Box {
           orientation: vertical;
+          spacing: 12;
           margin-start: 18;
           margin-end: 18;
-          margin-top: 12;
           margin-bottom: 18;
-          Adw.PreferencesGroup files_group {
-            [header-suffix]
-            Gtk.Button clear_button {
-              icon-name: "edit-clear-all-symbolic";
-              valign: center;
-              styles ["flat"]
-            }
+          Gtk.ListBox files_list {
+            selection-mode: none;
+            styles ["boxed-list"]
+          }
+          Adw.StatusPage empty_state {
+            title: "No input files";
+            description: "Add audio files to get started";
+            icon-name: "audio-x-generic-symbolic";
+            valign: center;
+            vexpand: true;
+            visible: false;
+            styles ["compact"]
           }
         };
       };
-    };
-    [bottom]
-    Gtk.Box {
-      orientation: vertical;
-      spacing: 8;
-      margin-start: 18;
-      margin-end: 18;
-      margin-top: 12;
-      margin-bottom: 12;
-      Gtk.Button remove_unreadable_button {
-        label: "Remove _Unreadable";
-        use-underline: true;
-        halign: end;
-        styles ["flat"]
-      }
+      [bottom]
       Gtk.Box {
-        spacing: 12;
-        Gtk.Button add_button {
-          label: "_Add Files…";
+        orientation: vertical;
+        spacing: 8;
+        margin-start: 18;
+        margin-end: 18;
+        margin-top: 12;
+        margin-bottom: 12;
+        Gtk.Button remove_unreadable_button {
+          label: "Remove _Unreadable";
           use-underline: true;
+          halign: end;
+          styles ["flat"]
         }
-        Gtk.Box { hexpand: true; }
-        Gtk.Button verify_button {
-          use-underline: true;
-          styles ["suggested-action"]
+        Gtk.Box {
+          spacing: 12;
+          Gtk.Button add_button {
+            label: "_Add Files…";
+            use-underline: true;
+          }
+          Gtk.Box { hexpand: true; }
+          Gtk.Button verify_button {
+            use-underline: true;
+          }
         }
       }
-    }
+    };
   };
 }

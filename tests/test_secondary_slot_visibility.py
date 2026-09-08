@@ -100,51 +100,52 @@ class SecondarySlotVisibilityTests(unittest.TestCase):
         view._sync_secondary_slot_visibility()
         self.assertEqual(window.settings.get("mdx_bass_secondary_model"), "VR Arc: 1_HP-UVR")
 
-    def test_the_real_demucs_stem_focus_combo_re_syncs_slot_visibility(self):
-        """Regression: changing focus through the widget must re-sync slots.
+    def test_native_demucs_checkbox_edit_re_syncs_full_source_slot_visibility(self):
+        """Migrating legacy focus through the checkbox restores four-source slots.
 
-        Drives the real ``Adw.ComboRow`` widgets a user interacts with
-        (model picker, then stem-focus picker) rather than calling
-        ``_sync_secondary_slot_visibility`` directly, so this exercises the
-        ``_on_demucs_focus_changed`` -> ``_notify`` ->
-        ``_on_save_stems_changed`` wiring, not just the predicate.
+        Native subsets filter saved files while Demucs keeps its all-source
+        processing branch. The checkbox callback must both persist that branch
+        and refresh the existing option rows.
         """
-        from ui.widgets.rows import set_combo_value
-
         window = self._window()
-        # ``four_stem_secondaries_apply`` special-cases Ensemble Mode ahead of
-        # ``demucs_stems`` -- force a known separation method regardless of
-        # whatever a previous session left persisted on disk (the app writes
-        # ``chosen_process_method='Ensemble Mode'`` whenever you quit on the
-        # Ensemble tab).
         window.settings.set("chosen_process_method", DEMUCS_ARCH_TYPE)
-        # Selecting a model does not reset ``demucs_stems`` -- ``configure_demucs``
-        # only (re)populates the focus combo's items; ``sync_from_settings`` then
-        # reflects whatever is already stored back into the combo without writing
-        # it (see ``SaveStemsSection._sync_demucs_from_settings``). So the starting
-        # "all stems" state below must be set explicitly, or this test would only
-        # be checking whatever a previous run (or a stale data.pkl) left behind.
-        window.settings.set("demucs_stems", ALL_STEMS)
+        window.settings.demucs.stems = "bass"
+        window.settings.demucs.stems_selected = []
+        window.settings.process.stem_focus = "instrument.bass"
         view = self._view(window, "demucs")
-
-        # Pick a real installed-metadata Demucs model so the stem-focus combo
-        # is populated (``configure_demucs`` only runs once a model resolves).
         self._select_installed_model(window, view, "demucs:hdemucs_mmi")
+        # Restore the changed settings even if the installed model was already
+        # selected when this reused view was constructed.
+        view.load()
         self.assertEqual(view.save_stems.mode, "demucs")
-        self.assertEqual(window.settings.get("demucs_stems"), ALL_STEMS)
+        self.assertEqual(window.settings.demucs.stems, "bass")
         for slot in ("other", "bass", "drums"):
             for row in view._secondary_slot_rows[slot]:
-                self.assertTrue(row.get_visible(), f"{slot} should start visible")
+                self.assertFalse(row.get_visible(), f"{slot} should start hidden for legacy focus")
 
-        focus_row = view.save_stems._demucs_focus_row
-        self.assertTrue(set_combo_value(focus_row, "vocal.vocals"))
-        self.assertEqual(window.settings.get("demucs_stems"), "vocals")
+        output = view.output_stems
+        controls = output.controls
+        self.assertIsNotNone(controls)
+        drums = next(
+            choice
+            for choice in controls.snapshot().choices
+            if choice.route.native and choice.route.native.raw == "drums"
+        )
+        output._output_rows[drums.id][1].set_active(True)
+        self.assertEqual(window.settings.demucs.stems_selected, ["drums", "bass"])
+        self.assertEqual(window.settings.demucs.stems, ALL_STEMS)
+        self.assertEqual(window.settings.process.stem_focus, "")
         for slot in ("other", "bass", "drums"):
             for row in view._secondary_slot_rows[slot]:
-                self.assertFalse(
-                    row.get_visible(),
-                    f"{slot} should hide once the real combo drops to Vocals-only",
+                self.assertTrue(
+                    row.get_visible(), f"{slot} should be visible for native-subset processing"
                 )
+
+        output._select_all.emit("clicked")
+        self.assertEqual(window.settings.demucs.stems_selected, [])
+        for slot in ("other", "bass", "drums"):
+            for row in view._secondary_slot_rows[slot]:
+                self.assertTrue(row.get_visible(), f"{slot} should stay visible for All Stems")
 
     def test_the_options_sheet_re_syncs_reused_views_on_update_context(self):
         """Regression: the sheet reuses view instances across opens.

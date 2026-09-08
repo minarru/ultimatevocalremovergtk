@@ -101,6 +101,8 @@ class SettingsResolver:
         for layer in layers:
             apply_settings_overrides(settings, layer.values)
             provenance.update({path: layer.source for path, _value in layer.values})
+            if any(path in {"process.stem_focus", "demucs.stems"} for path, _ in layer.values):
+                provenance["demucs.stems_selected"] = layer.source
         for path in apply_environment_overrides(settings):
             provenance[path] = "environment"
         validate_processing_settings(settings)

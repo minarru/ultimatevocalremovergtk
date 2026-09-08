@@ -204,6 +204,7 @@ class DemucsSettings:
     bass_secondary_model_scale: float = 0.5
     drums_secondary_model_scale: float = 0.5
     stems: str = ALL_STEMS
+    stems_selected: list[str] = field(default_factory=list)
     pre_proc_model: str = NO_MODEL
     is_pre_proc_model_activate: bool = False
     is_pre_proc_model_inst_mix: bool = False

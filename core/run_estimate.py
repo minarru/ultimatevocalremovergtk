@@ -54,15 +54,16 @@ class WorkloadEstimate:
     run_tier: Optional[RunCostTier] = None
     hints: Tuple[str, ...] = ()
 
-    def format_summary(self) -> str:
+    def format_summary(self, *, include_output_count: bool = True) -> str:
         """Structural workload line (passes, outputs, device, tier) — no cost factors."""
         if self.inference_passes <= 0 or self.output_count <= 0:
             return ""
         parts = [
             f"{self.inference_passes} pass" + ("es" if self.inference_passes != 1 else ""),
-            f"{self.output_count} output" + ("s" if self.output_count != 1 else ""),
-            "GPU" if self.uses_gpu else "CPU",
         ]
+        if include_output_count:
+            parts.append(f"{self.output_count} output" + ("s" if self.output_count != 1 else ""))
+        parts.append("GPU" if self.uses_gpu else "CPU")
         if self.sample_mode:
             parts.append(f"Sample {self.sample_seconds}s")
         tier = self._tier_label()
@@ -451,10 +452,12 @@ def estimate_workload(
     )
 
 
-def format_workload_line(estimate: Optional[WorkloadEstimate]) -> str:
+def format_workload_line(
+    estimate: Optional[WorkloadEstimate], *, include_output_count: bool = True
+) -> str:
     if estimate is None:
         return ""
-    return estimate.format_summary()
+    return estimate.format_summary(include_output_count=include_output_count)
 
 
 def format_workload_tooltip_section(

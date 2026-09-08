@@ -205,6 +205,8 @@ def apply_settings_overrides(
         validate_setting_path(settings, path, allow_containers=True)
         validate_setting_value(settings, path, value)
     for path, value in pairs:
+        if path in {"process.stem_focus", "demucs.stems"}:
+            settings.demucs.stems_selected = []
         set_path(settings, path, value)
 
 

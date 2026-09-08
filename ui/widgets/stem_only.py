@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import typing
+from dataclasses import replace
 from typing import Callable, Dict, List, Optional, Sequence, Set, Tuple
 
 from gi.repository import Adw, GLib, Gtk
@@ -29,11 +30,12 @@ from core.stems import (
     persisted_stem_focus,
 )
 
-from ..dialogs.utils import present_modal_dialog, set_form_dialog_content
+from ..dialogs.utils import present_modal_dialog, set_dialog_content
 from ..help_text import (
     MDX_STEMS_HINT,
 )
 from ..markup import set_row_subtitle
+from ..stem_controls import StemControls
 from ..stem_labels import (
     _CHOOSE_STEM as _CHOOSE_STEM,
 )
@@ -123,6 +125,8 @@ class SaveStemsSection:
         self._on_changed = on_changed
         self._loading = False
         self._state = StemSelectionState()
+        self.controls: StemControls | None = None
+        self._model_id = ""
 
         self._stem_label_overrides: Optional[Dict[str, str]] = None
         self._export_semantics_note = ""
@@ -346,12 +350,7 @@ class SaveStemsSection:
         self._custom_listbox = object_from_builder(builder, "custom_listbox", Gtk.ListBox)
         content = object_from_builder(builder, "custom_content", Gtk.Box)
         self._custom_dialog = object_from_builder(builder, "custom_dialog", Adw.Dialog)
-        set_form_dialog_content(
-            self._custom_dialog,
-            content,
-            on_save=self._on_custom_stems_save,
-            save_label="Save",
-        )
+        set_dialog_content(self._custom_dialog, content)
 
     def configure_hidden(self, *, has_model: bool = False) -> None:
         self._state.configure_hidden(has_model=has_model)
@@ -360,6 +359,24 @@ class SaveStemsSection:
         self._section_visible = False
         self._clear_refresh_repick()
         self._hide_all_rows()
+        if self.controls is not None:
+            self.controls.configure(self._model_id, self._state)
+
+    def enable_direct_controls(self) -> StemControls:
+        """Use a display-independent selection owner for Separation."""
+        if self.controls is None:
+            self.controls = StemControls(self._state, self._model_id)
+            self.controls.sync_from_settings(self.settings)
+        return self.controls
+
+    def set_model_context(self, model_id: str) -> None:
+        self._model_id = model_id
+
+    def controls_changed(self) -> None:
+        """Publish an accepted direct edit through the existing page owner."""
+        self._clear_refresh_repick()
+        if not self._loading and self._on_changed is not None:
+            self._on_changed()
 
     def configure_exclusive(
         self,
@@ -558,9 +575,15 @@ class SaveStemsSection:
         finally:
             self._loading = was_loading
         self._refresh_primary_semantics()
+        if self.controls is not None:
+            self.controls.configure(self._model_id, self._state)
+            self.controls.sync_from_settings(self.settings)
 
     def persist_to_settings(self) -> None:
         if self._repick_required:
+            return
+        if self.controls is not None:
+            self.controls.persist_to_settings(self.settings)
             return
         if self.mode == "exclusive":
             self._state.write(
@@ -588,7 +611,7 @@ class SaveStemsSection:
             )
 
     def presentation(self) -> StemPresentation:
-        return project_stems(
+        presentation = project_stems(
             self._state,
             exclusive_choice=get_combo_value(self._exclusive_row) or _TOGGLE_ALL,
             exclusive_options=tuple(self._exclusive_options.values()),
@@ -601,6 +624,14 @@ class SaveStemsSection:
             repick=self._repick_required,
             semantics=self._export_semantics_note,
         )
+        if self.controls is not None:
+            snapshot = self.controls.snapshot()
+            return replace(
+                presentation,
+                export_summary="Exporting " + snapshot.summary,
+                expected_count=snapshot.main_count,
+            )
+        return presentation
 
     def export_summary(self) -> str:
         return self.presentation().export_summary
@@ -617,7 +648,9 @@ class SaveStemsSection:
 
     @property
     def repick_required(self) -> bool:
-        return self._repick_required
+        return self._repick_required or (
+            self.controls is not None and self.controls.snapshot().review_required
+        )
 
     def require_refresh_repick(self, previous_focus: str) -> bool:
         """Require an explicit pick when a stored exact role disappeared."""
@@ -631,6 +664,8 @@ class SaveStemsSection:
             return False
         self._repick_restore_token = None
         self._repick_required = True
+        if self.controls is not None:
+            self.controls.require_review()
         self.selection_warning_row.set_visible(True)
         if self.mode == "exclusive":
             options = [
@@ -853,12 +888,8 @@ class SaveStemsSection:
             self._loading = was_loading
 
     def _open_custom_stems_dialog(self, *_args: typing.Any) -> None:
-        if self._subset_mode == "custom":
-            self._draft_custom_all = self._custom_all
-            self._draft_custom_selected = set(self._custom_selected)
-        else:
-            self._draft_custom_all = True
-            self._draft_custom_selected = set()
+        self._draft_custom_all = self._custom_all
+        self._draft_custom_selected = set(self._custom_selected)
         self._rebuild_custom_checklist()
         self._sync_draft_checks()
         parent = self.widget.get_root()
@@ -867,11 +898,13 @@ class SaveStemsSection:
         )
 
     def _on_draft_all_toggled(self, button: Gtk.CheckButton) -> None:
-        if self._loading or not button.get_active():
+        if self._loading:
             return
         was_loading = self._loading
         self._loading = True
         try:
+            # All stems is the fallback; toggling it off cannot mean no output.
+            button.set_active(True)
             for stem, check in self._custom_checks.items():
                 if stem != ALL_STEMS:
                     check.set_active(False)
@@ -879,6 +912,7 @@ class SaveStemsSection:
             self._loading = was_loading
         self._draft_custom_all = True
         self._draft_custom_selected = set()
+        self._apply_custom_stems()
 
     def _on_draft_stem_toggled(self, _button: Gtk.CheckButton) -> None:
         if self._loading:
@@ -915,14 +949,15 @@ class SaveStemsSection:
                 finally:
                     self._loading = was_loading
 
-    def _on_custom_stems_save(self) -> None:
+        self._apply_custom_stems()
+
+    def _apply_custom_stems(self) -> None:
         self._custom_all = self._draft_custom_all
         self._custom_selected = set(self._draft_custom_selected)
         self._subset_mode = "custom"
         self._complete_refresh_repick()
         self._refresh_custom_subtitle()
         self._apply_subset_dimming()
-        self._custom_dialog.close()
         self._notify()
 
     def _on_quick_export_changed(self, *_args: typing.Any) -> None:
@@ -1026,4 +1061,18 @@ class SaveStemsSection:
     def _notify(self) -> None:
         if self._loading or self._on_changed is None:
             return
+        # The compatibility controls remain usable until the visual review.
+        # Their explicit edits feed the same owner as the new dialog.
+        if self.controls is not None:
+            if self.mode == "exclusive":
+                view = ExclusiveView(get_combo_value(self._exclusive_row) or _TOGGLE_ALL)
+            elif self.mode == "subset":
+                view = SubsetView(self._subset_mode, set(self._custom_selected), self._custom_all)
+            else:
+                view = DemucsView(
+                    self._demucs_active_name(),
+                    get_combo_value(self._demucs_export_row) or _TOGGLE_ALL,
+                    self._demucs_export_row.get_visible(),
+                )
+            self.controls.adopt_view(view)
         self._on_changed()
