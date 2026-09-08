@@ -1218,21 +1218,27 @@ def routes_matching_stems(
     """Native inventory routes matching ``stems``, in sidecar order.
 
     Derived routes (no native key) are skipped so a custom MDX-C subset
-    does not pull in a vocals complement. Unmatched names are ignored.
+    does not pull in a vocals complement. Exact native keys take precedence
+    over case-insensitive native matches and legacy display/concept aliases.
+    Unmatched names are ignored.
     """
     picked: list[StemRoute] = []
     seen: set[str] = set()
+    native_routes = tuple(route for route in routes if route.native is not None)
     for stem in stems:
         token = str(stem).strip()
         if not token:
             continue
-        for route in routes:
-            if route.native is None or route.concept in seen:
-                continue
-            if route_matches_stem(route, token, model):
-                picked.append(route)
-                seen.add(route.concept)
-                break
+        matches = (
+            tuple(route for route in native_routes if route.native and route.native.raw == token)
+            or tuple(
+                route for route in native_routes if route.native and route.native.matches(token)
+            )
+            or tuple(route for route in native_routes if route_matches_stem(route, token, model))
+        )
+        if matches and matches[0].concept not in seen:
+            picked.append(matches[0])
+            seen.add(matches[0].concept)
     return tuple(picked)
 
 

@@ -756,6 +756,7 @@ class DownloadCenterWindow:
             return
 
         check = Gtk.CheckButton(valign=Gtk.Align.CENTER)
+        check.add_css_class("selection-mode")
         check.connect("toggled", lambda *_: self._on_row_check_toggled(key))
 
         data = data if data is not None else self._project_browser_row(arch, name)
@@ -802,6 +803,7 @@ class DownloadCenterWindow:
         set_row_subtitle(action, f"Unsupported — {reason}")
         action.add_css_class("dim-label")
         check = Gtk.CheckButton(sensitive=False, valign=Gtk.Align.CENTER)
+        check.add_css_class("selection-mode")
         action.add_prefix(check)
         stash(action, "_uvr_model_name", name)
         stash(action, "_uvr_display_name", display)

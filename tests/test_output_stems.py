@@ -314,6 +314,31 @@ class DirectOutputStemsTests(unittest.TestCase):
         self.assertEqual(self.settings.process.stem_focus, "vocal.backing")
         self.assertEqual(self.settings.mdx.stems_selected, ["backing_vocal"])
 
+    def test_karaoke_native_checkboxes_allow_backing_and_instrumental(self):
+        from tests.stem_control_cases import KARAOKE_THREE, manifest_routes
+
+        routes = manifest_routes(KARAOKE_THREE)
+        self.section.set_model_context(KARAOKE_THREE)
+        self.section.configure_subset(
+            stems=[r.native.raw for r in routes if r.native],
+            show_quick_export=False,
+            primary_key="is_primary_stem_only",
+            secondary_key="is_secondary_stem_only",
+            routes=routes,
+        )
+        self.section.sync_from_settings()
+        self.output.refresh()
+        lead = self.check("Lead Vocals")
+        self.assertTrue(lead.get_sensitive())
+        lead.set_active(False)
+        self.assertEqual(self.settings.mdx.stems_selected, ["backing_vocal", "instrumental"])
+        self.assertEqual(self.output.count.get_label(), "2 stems")
+        self.section.sync_from_settings()
+        self.output.refresh()
+        self.assertFalse(self.check("Lead Vocals").get_active())
+        self.assertTrue(self.check("Backing Vocals").get_active())
+        self.assertTrue(self.check("Instrumental").get_active())
+
     def test_model_option_refresh_does_not_replace_selection(self):
         self.section.configure_subset(
             stems=["Vocals", "Drums", "Bass", "Other"],

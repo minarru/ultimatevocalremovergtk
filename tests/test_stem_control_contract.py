@@ -1,7 +1,6 @@
 """Characterize persisted stem choices through resolution, planning and writing.
 
-Known compatibility limits are assertions, not expected failures: native subsets
-are runtime-supported but job projection ignores their sidecars; reviewed Include
+Known compatibility limits are assertions, not expected failures: reviewed Include
 complement creates an unused array; arbitrary native/derived unions have no
 settings encoding. Do not use these gaps to broaden the direct control modes.
 """
@@ -94,7 +93,9 @@ def mdxc_plan(model: Any, *, combine: bool = False, invert: bool = False) -> Exp
         return SeperateMDXC.seperate(fake)
 
 
-def scheduled_routes(model: Any, plan: ExportPlan) -> tuple[StemRoute, ...]:
+def scheduled_routes(
+    model: Any, plan: ExportPlan, *, expected_native_values: dict[str, float] | None = None
+) -> tuple[StemRoute, ...]:
     writer = SimpleNamespace(
         selected_stem_routes=model.selected_stem_routes,
         available_stem_routes=model.available_stem_routes,
@@ -105,6 +106,13 @@ def scheduled_routes(model: Any, plan: ExportPlan) -> tuple[StemRoute, ...]:
         write_audio=Mock(),
     )
     export_source_map(writer, plan.sources, plan.samplerate, extra_sources=plan.extra_sources)
+    if expected_native_values is not None:
+        for call in writer.write_audio.call_args_list:
+            route = call.kwargs["route"]
+            assert route.native is not None
+            np.testing.assert_array_equal(
+                call.args[1], np.full((8, 2), expected_native_values[route.native.raw])
+            )
     return tuple(call.kwargs["route"] for call in writer.write_audio.call_args_list)
 
 
@@ -194,6 +202,7 @@ class NativeStemControlContractTests(unittest.TestCase):
         expected = tuple(natives[index] for index in indices)
         settings = Settings.defaults()
         state.write(settings, SubsetView("custom", {r.concept for r in expected}, False))
+        settings = Settings.from_json_dict(settings.to_json_dict())
         readback = state.read(settings)
         self.assertIsInstance(readback, SubsetView)
         assert isinstance(readback, SubsetView)
@@ -202,24 +211,16 @@ class NativeStemControlContractTests(unittest.TestCase):
         else:
             self.assertEqual(readback.selected, {r.concept for r in expected})
         model = resolved_mdx_model(model_id, settings)
-        if model_id == KARAOKE_THREE and indices == (1, 2):
-            # Existing fuzzy native-sidecar lookup maps backing_vocal to the
-            # earlier lead route. The controller must reject this combination.
-            expected = (natives[0], natives[2])
         self.assertEqual(route_ids(model.selected_stem_routes), route_ids(expected))
         plan = mdxc_plan(model)
-        self.assertEqual(route_ids(scheduled_routes(model, plan)), route_ids(expected))
+        values = {key: float(index + 1) for index, key in enumerate(model.mdx_model_stems)}
+        self.assertEqual(
+            route_ids(scheduled_routes(model, plan, expected_native_values=values)),
+            route_ids(expected),
+        )
         for audio in plan.sources.values():
             self.assertEqual(audio.shape, (8, 2))
-        if 1 < len(expected) < len(natives):
-            # Existing plan projection ignores the native sidecar. The new
-            # controls must preserve runtime subsets without claiming parity.
-            self.assertEqual(settings.process.stem_focus, "")
-            defaults = tuple(r for r in model.available_stem_routes if r.selected_by_default)
-            self.assertEqual(projected_routes(model), defaults)
-            self.assertNotEqual(projected_routes(model), model.selected_stem_routes)
-        else:
-            self.assertEqual(projected_routes(model), model.selected_stem_routes)
+        self.assertEqual(projected_routes(model), model.selected_stem_routes)
 
     def test_every_native_singleton_pair_and_defaults_for_small_inventories(self) -> None:
         for model_id in (KARAOKE_THREE, NATIVE_THREE, NATIVE_FOUR, NATIVE_FIVE):

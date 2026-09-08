@@ -20,6 +20,7 @@ from .stems import (
     StemSelectionStatus,
     logical_primary_route,
     logical_secondary_route,
+    routes_matching_stems,
 )
 
 
@@ -223,6 +224,18 @@ def select_output_routes(
                 )
             )
             reason = f"{reason}+complement"
+
+    if (
+        not focus.strip()
+        and descriptors
+        and descriptors[0].family == "mdx"
+        and sum(route.native is not None for route in routes) > 2
+        and settings.mdx.stems_selected
+    ):
+        matched = routes_matching_stems(routes, settings.mdx.stems_selected)
+        if matched:
+            selected = matched
+            reason = "mdx-native-subset"
 
     if (
         not focus.strip()

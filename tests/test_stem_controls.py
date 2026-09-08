@@ -231,25 +231,25 @@ class StemControlsTests(unittest.TestCase):
         controls.select_all()
         self.assertEqual(controls.snapshot().main_count, 53)
 
-    def test_unsafe_native_sidecar_toggle_is_disabled_and_rejected(self):
+    def test_backing_and_instrumental_subset_can_be_selected_and_restored(self):
         from tests.stem_control_cases import KARAOKE_THREE, selection_state
 
         settings = Settings.defaults()
         controls = self.controller(selection_state(KARAOKE_THREE), settings)
         lead = next(c for c in controls.snapshot().choices if c.route.concept == 'vocal.lead')
-        self.assertFalse(lead.enabled)
-        self.assertIn('not supported', lead.explanation)
-        self.assertFalse(controls.toggle_output(lead.id, False))
-        self.assertEqual(controls.snapshot().main_count, 3)
-        instrumental = next(
-            c for c in controls.snapshot().choices if c.route.concept == 'mix.instrumental'
-        )
-        self.assertTrue(controls.toggle_output(instrumental.id, False))
-        lead = next(c for c in controls.snapshot().choices if c.route.concept == 'vocal.lead')
         self.assertTrue(lead.enabled)
+        self.assertEqual(lead.explanation, '')
         self.assertTrue(controls.toggle_output(lead.id, False))
+        self.assertEqual(controls.snapshot().main_count, 2)
         controls.persist_to_settings(settings)
-        self.assertEqual(settings.process.stem_focus, 'vocal.backing')
+        self.assertEqual(settings.mdx.stems_selected, ['backing_vocal', 'instrumental'])
+        self.assertEqual(settings.process.stem_focus, '')
+        controls.sync_from_settings(settings)
+        self.assertFalse(controls.snapshot().review_required)
+        self.assertEqual(
+            {c.route.concept for c in controls.snapshot().choices if c.selected},
+            {'vocal.backing', 'mix.instrumental'},
+        )
 
     def test_recipe_refresh_updates_note_without_overwriting_selection(self):
         settings = Settings.defaults()
@@ -298,15 +298,15 @@ class StemControlsTests(unittest.TestCase):
         self.assertEqual(controls.snapshot().main_count, 2)
         self.assertFalse(controls.snapshot().review_required)
 
-    def test_imported_unsafe_native_subset_requires_review(self):
+    def test_imported_backing_and_instrumental_subset_needs_no_review(self):
         from tests.stem_control_cases import KARAOKE_THREE, selection_state
 
         settings = Settings.defaults()
         settings.mdx.stems_selected = ['backing_vocal', 'instrumental']
         before = deepcopy(settings)
         controls = self.controller(selection_state(KARAOKE_THREE), settings)
-        self.assertTrue(controls.snapshot().review_required)
-        self.assertEqual(controls.snapshot().main_count, 0)
+        self.assertFalse(controls.snapshot().review_required)
+        self.assertEqual(controls.snapshot().main_count, 2)
         controls.persist_to_settings(settings)
         self.assertEqual(settings, before)
         self.assertTrue(controls.select_all())

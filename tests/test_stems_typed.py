@@ -907,6 +907,15 @@ class RoutesMatchingStemsTests(unittest.TestCase):
             ["bass", "drums"],
         )
 
+    def test_exact_native_keys_win_over_aliases_and_do_not_fall_through_on_duplicates(self):
+        from tests.stem_control_cases import KARAOKE_THREE, manifest_routes
+
+        routes = manifest_routes(KARAOKE_THREE)
+        selected = routes_matching_stems(routes, ["backing_vocal", "backing_vocal", "instrumental"])
+        self.assertEqual(
+            [route.concept for route in selected], ["vocal.backing", "mix.instrumental"]
+        )
+
     def test_skips_derived_routes(self) -> None:
         derived = StemRoute(
             native=None,
