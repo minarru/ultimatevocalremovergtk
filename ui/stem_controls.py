@@ -316,14 +316,6 @@ class StemControls:
             ident = output_id(route)
             checked = ident in selected
             explanation = ''
-            if route.kind is StemRouteKind.DERIVED:
-                dependencies = [r.label for r in self._routes if r.role in route.derived_from]
-                derived = (
-                    'Combined from ' + ', '.join(dependencies) + '.'
-                    if dependencies
-                    else 'Derived output.'
-                )
-                explanation = ' '.join(filter(None, (derived, explanation)))
             proposed = selected - {ident} if checked else selected | {ident}
             enabled = mode != 'native_subset' or self._native_selection_supported(
                 frozenset(proposed)

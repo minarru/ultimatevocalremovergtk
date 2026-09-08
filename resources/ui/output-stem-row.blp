@@ -4,7 +4,10 @@ using Adw 1;
 Adw.ActionRow row {
   title-lines: 2;
   subtitle-lines: 2;
-  [suffix] Gtk.CheckButton selected { valign: center; }
+  [suffix] Gtk.CheckButton selected {
+    valign: center;
+    styles ["selection-mode"]
+  }
   [suffix] Gtk.Image fixed_selection {
     icon-name: "object-select-symbolic";
     valign: center;
