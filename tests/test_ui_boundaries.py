@@ -312,6 +312,8 @@ class ReviewedContractTests(unittest.TestCase):
         from tests.test_download_center_state import DownloadCenterStateTests
 
         win = DownloadCenterStateTests()._make_bare_window()
+        win.window = mock.MagicMock()
+        win.window.get_visible.return_value = True
         win.manager.catalogue_meta_by_family = {}
         win._search_entry = Gtk.SearchEntry()
         win.browser.available = {MDX_ARCH_TYPE: ['Survivor', 'Removed']}

@@ -2,9 +2,11 @@ using Gtk 4.0;
 using Adw 1;
 
 Adw.ActionRow row {
+  title-lines: 1;
+  subtitle-lines: 2;
   [suffix]
   Gtk.Button remove_button {
-    icon-name: "user-trash-symbolic";
+    icon-name: "cross-small-symbolic";
     valign: center;
     styles ["flat"]
   }

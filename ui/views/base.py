@@ -6,9 +6,9 @@ main-window options that the Tk app shows for that method
 (``update_main_widget_states``), and knows how to read/write its slice of the
 typed :class:`~core.settings.Settings`.
 
-The window builds a ``Gtk.Stack`` from :data:`METHOD_VIEWS` and a "Process
-method" ``Adw.ComboRow`` to choose between them, so additional method panels can
-be registered by appending to the registry without touching the window assembly.
+The window uses :data:`METHOD_VIEWS` to show the selected model's option panel.
+The unified installed-model browser chooses exact IDs; each view retains its
+model combo as a settings adapter and owns stem reconciliation.
 """
 
 import typing
@@ -344,6 +344,25 @@ class MethodView:
 
     def has_model(self) -> bool:
         return self.selected_model() not in (CHOOSE_MODEL, None)
+
+    def select_model(self, model_id: str) -> bool:
+        """Apply an explicit canonical choice from the unified Separation browser."""
+        family = FAMILY_BY_ARCH[self.method_key_for_resolution]
+        if not any(record.id == model_id and record.family == family
+                   and record.installed and record.identity_complete
+                   for record in ModelIdentityService(self.context.repo).records()):
+            return False
+        self._loading = True
+        try:
+            self.populate_models()
+            set_combo_value(self.model_row, model_id)
+        finally:
+            self._loading = False
+        if self.selected_model() != model_id:
+            return False
+        self._clear_stored_model_banner()
+        self._on_model_changed()
+        return True
 
     def _on_model_changed(self, *_args: typing.Any) -> None:
         if self._loading:

@@ -28,6 +28,20 @@ RESOURCE_SCRIPT = REPO_ROOT / "resources" / "compile_resources.sh"
 RESOURCE_PREFIX = "/org/uvr/UltimateVocalRemover"
 
 
+def _display_free_env(runtime_dir: str) -> dict[str, str]:
+    env = os.environ.copy()
+    for name in (
+        "DISPLAY", "WAYLAND_DISPLAY", "WAYLAND_SOCKET",
+        "DBUS_SESSION_BUS_ADDRESS", "XAUTHORITY",
+    ):
+        env.pop(name, None)
+    # An unset WAYLAND_DISPLAY still probes $XDG_RUNTIME_DIR/wayland-0.
+    # Use an empty runtime directory and one backend, not the desktop session.
+    env["XDG_RUNTIME_DIR"] = runtime_dir
+    env["GDK_BACKEND"] = "wayland"
+    return env
+
+
 class ResourceBuildTests(unittest.TestCase):
     def _fixture(self, root: Path, blueprints: dict[str, str]) -> tuple[Path, Path]:
         resources = root / "resources"
@@ -212,33 +226,32 @@ class ResourceLoadingTests(unittest.TestCase):
         return bundle
 
     def _assert_actionable_incomplete_bundle_error(self, bundle: Path, statement: str) -> None:
-        env = os.environ.copy()
-        for name in ("DISPLAY", "WAYLAND_DISPLAY", "DBUS_SESSION_BUS_ADDRESS"):
-            env.pop(name, None)
-        result = subprocess.run(
-            [
-                sys.executable,
-                "-c",
-                (
-                    "import sys\n"
-                    "import ui.resources as resources\n"
-                    "resources._RESOURCE_PATH = sys.argv[1]\n"
-                    "resources._bundle_registered = False\n"
-                    "try:\n"
-                    f"    {statement}\n"
-                    "except RuntimeError as exc:\n"
-                    "    assert './resources/compile_resources.sh' in str(exc), str(exc)\n"
-                    "else:\n"
-                    "    raise AssertionError('expected actionable RuntimeError')\n"
-                ),
-                str(bundle),
-            ],
-            cwd=REPO_ROOT,
-            env=env,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        with tempfile.TemporaryDirectory(prefix="uvr-no-display-") as runtime_dir:
+            env = _display_free_env(runtime_dir)
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-c",
+                    (
+                        "import sys\n"
+                        "import ui.resources as resources\n"
+                        "resources._RESOURCE_PATH = sys.argv[1]\n"
+                        "resources._bundle_registered = False\n"
+                        "try:\n"
+                        f"    {statement}\n"
+                        "except RuntimeError as exc:\n"
+                        "    assert './resources/compile_resources.sh' in str(exc), str(exc)\n"
+                        "else:\n"
+                        "    raise AssertionError('expected actionable RuntimeError')\n"
+                    ),
+                    str(bundle),
+                ],
+                cwd=REPO_ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_console_import_rejects_valid_bundle_missing_its_template(self) -> None:
@@ -289,29 +302,28 @@ class ResourceLoadingTests(unittest.TestCase):
                 resources.require_resource_bundle()
 
     def test_console_module_imports_without_a_display(self) -> None:
-        env = os.environ.copy()
-        for name in ("DISPLAY", "WAYLAND_DISPLAY", "DBUS_SESSION_BUS_ADDRESS"):
-            env.pop(name, None)
-        result = subprocess.run(
-            [
-                sys.executable,
-                "-c",
-                (
-                    "import gi; "
-                    "gi.require_version('Gdk', '4.0'); "
-                    "from gi.repository import Gdk; "
-                    "assert Gdk.Display.get_default() is None; "
-                    "from ui.widgets.console import ConsoleView; "
-                    "assert ConsoleView.__name__ == 'ConsoleView'; "
-                    "assert Gdk.Display.get_default() is None"
-                ),
-            ],
-            cwd=REPO_ROOT,
-            env=env,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        with tempfile.TemporaryDirectory(prefix="uvr-no-display-") as runtime_dir:
+            env = _display_free_env(runtime_dir)
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-c",
+                    (
+                        "import gi; "
+                        "gi.require_version('Gdk', '4.0'); "
+                        "from gi.repository import Gdk; "
+                        "assert Gdk.Display.get_default() is None; "
+                        "from ui.widgets.console import ConsoleView; "
+                        "assert ConsoleView.__name__ == 'ConsoleView'; "
+                        "assert Gdk.Display.get_default() is None"
+                    ),
+                ],
+                cwd=REPO_ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_typed_builder_lookup_accepts_expected_type_and_rejects_wrong_type(

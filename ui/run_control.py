@@ -121,6 +121,11 @@ class RunController:
     def is_running(self) -> bool:
         return self._running_target is not None
 
+    def can_edit_configuration(self) -> bool:
+        """Whether a new model selection can still change the pending run."""
+        return not (self._closing or self.is_running() or self._preflight_in_progress
+                    or self._plan_dialog is not None)
+
     def handle_close_request(self, on_complete: Callable[[bool], None]) -> bool:
         """Handle the main window close gesture.
 

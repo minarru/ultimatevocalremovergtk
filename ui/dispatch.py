@@ -5,6 +5,7 @@ callbacks from that thread. GTK widgets may only be touched from the main loop,
 so the helpers here wrap those callbacks with ``GLib.idle_add``. Later phases use
 :func:`gtk_job_callbacks` to bind progress/console/completion to widgets safely.
 """
+
 import threading
 import time
 import typing
@@ -12,6 +13,7 @@ from typing import Callable, Optional
 
 from gi.repository import GLib
 
+from bundled.constants import DONE
 from core import JobCallbacks
 from core.debug_log import correlation_seq, log_event, preview_text, verbose
 from core.oom_choice import OomChoiceRequest
@@ -63,9 +65,11 @@ def main_thread(func: Callable) -> Callable:
     def wrapper(*args: typing.Any, **kwargs: typing.Any):
         if is_progress and args and isinstance(args[0], float):
             if not _should_log_progress(args[0]):
+
                 def invoke_quiet():
                     func(*args, **kwargs)
                     return GLib.SOURCE_REMOVE
+
                 GLib.idle_add(invoke_quiet)
                 return
 
@@ -135,6 +139,66 @@ def latest_main_thread(func: Callable) -> Callable:
     return wrapper
 
 
+class _ConsoleBatch:
+    """Join adjacent text while keeping DONE and terminal events ordered."""
+
+    def __init__(self, func: Callable[[str], None]) -> None:
+        self._func = func
+        self._lock = threading.RLock()
+        self._pending: list[str] | None = None
+
+    def append(self, text: str) -> None:
+        with self._lock:
+            if self._pending is not None:
+                self._pending.append(text)
+                return
+            batch = [text]
+            self._pending = batch
+
+            def invoke() -> None:
+                with self._lock:
+                    if self._pending is batch:
+                        self._pending = None
+                    messages = tuple(batch)
+                parts: list[str] = []
+                for message in messages:
+                    # ConsoleView interprets standalone DONE using its open-line
+                    # state. Joining it with ordinary text would bypass that gate.
+                    if message == DONE:
+                        if parts:
+                            self._deliver_parts(parts)
+                            parts.clear()
+                        self._func(message)
+                    else:
+                        parts.append(message)
+                if parts:
+                    self._deliver_parts(parts)
+
+            main_thread(invoke)()
+
+    def _deliver_parts(self, parts: list[str]) -> None:
+        text = "".join(parts)
+        if text == DONE:
+            # Ordinary fragments can happen to spell the sentinel; retain their
+            # original calls so ConsoleView does not reinterpret them as DONE.
+            for part in parts:
+                self._func(part)
+        else:
+            self._func(text)
+
+    def boundary(self, func: Callable) -> Callable:
+        scheduled = main_thread(func)
+
+        def wrapper(*args: typing.Any, **kwargs: typing.Any) -> None:
+            with self._lock:
+                # The already scheduled idle retains the old batch. Later text
+                # must get its own idle after this completion/error/choice event.
+                self._pending = None
+                scheduled(*args, **kwargs)
+
+        return wrapper
+
+
 def gtk_job_callbacks(
     on_progress: Optional[Callable[[float], None]] = None,
     on_console: Optional[Callable[[str], None]] = None,
@@ -144,11 +208,13 @@ def gtk_job_callbacks(
     on_oom_choice: Optional[Callable[[OomChoiceRequest], None]] = None,
 ) -> JobCallbacks:
     """Build :class:`JobCallbacks` whose handlers run on the GTK main loop."""
+    console = _ConsoleBatch(on_console) if on_console else None
+    boundary = console.boundary if console else main_thread
     return JobCallbacks(
         on_progress=latest_main_thread(on_progress) if on_progress else None,
-        on_console=main_thread(on_console) if on_console else None,
-        on_complete=main_thread(on_complete) if on_complete else None,
-        on_stopped=main_thread(on_stopped) if on_stopped else None,
-        on_error=main_thread(on_error) if on_error else None,
-        on_oom_choice=main_thread(on_oom_choice) if on_oom_choice else None,
+        on_console=console.append if console else None,
+        on_complete=boundary(on_complete) if on_complete else None,
+        on_stopped=boundary(on_stopped) if on_stopped else None,
+        on_error=boundary(on_error) if on_error else None,
+        on_oom_choice=boundary(on_oom_choice) if on_oom_choice else None,
     )

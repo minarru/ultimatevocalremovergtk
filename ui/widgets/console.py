@@ -19,6 +19,9 @@ require_resource_bundle(_TEMPLATE_RESOURCE)
 
 #: Soft cap matching typical terminal scrollback; trim from the head when exceeded.
 _CONSOLE_LINE_CAP = 5000
+# Bound long unbroken output too: at most 1 MiB of UTF-8, without copying the
+# retained buffer to encode/count bytes on every append. GTK offsets are chars.
+_CONSOLE_CHAR_CAP = 256 * 1024
 
 
 @Gtk.Template(resource_path=_TEMPLATE_RESOURCE)
@@ -81,6 +84,11 @@ class ConsoleView(Gtk.ScrolledWindow):
         end = self._buffer.get_end_iter()
         self._buffer.insert(end, text)
         self._trim_to_line_cap()
+        excess = self._buffer.get_char_count() - _CONSOLE_CHAR_CAP
+        if excess > 0:
+            self._buffer.delete(
+                self._buffer.get_start_iter(), self._buffer.get_iter_at_offset(excess)
+            )
         if self._defer_scroll:
             self._reset_scroll()
         else:

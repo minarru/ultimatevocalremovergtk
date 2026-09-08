@@ -1,34 +1,66 @@
 using Gtk 4.0;
 using Adw 1;
 
-Adw.Window window {
-  default-width: 620;
-  default-height: 560;
-  content: Adw.ToolbarView {
+Adw.Dialog dialog {
+  title: "Input Files";
+  content-width: 620;
+  content-height: -1;
+  width-request: 320;
+  height-request: 240;
+  child: Adw.ToolbarView {
+    bottom-bar-style: raised;
     [top]
-    Adw.HeaderBar {
-      [start]
-      Gtk.Button add_button { icon-name: "list-add-symbolic"; }
-      [start]
-      Gtk.Button clear_button { icon-name: "edit-clear-all-symbolic"; }
-      [end]
-      Gtk.Button remove_unreadable_button {
-        label: "Remove unreadable";
-        styles ["destructive-action"]
-      }
-      [end]
-      Gtk.Button verify_button {
-        use-underline: true;
-        styles ["suggested-action"]
-      }
-    }
+    Adw.HeaderBar {}
     content: Adw.ToastOverlay toast_overlay {
-      child: Gtk.ScrolledWindow {
+      child: Gtk.ScrolledWindow input_scroll {
+        hscrollbar-policy: never;
+        propagate-natural-height: true;
+        min-content-height: 120;
+        max-content-height: 460;
         vexpand: true;
-        child: Adw.PreferencesPage page {
-          Adw.PreferencesGroup files_group {}
+        child: Gtk.Box {
+          orientation: vertical;
+          margin-start: 18;
+          margin-end: 18;
+          margin-top: 12;
+          margin-bottom: 18;
+          Adw.PreferencesGroup files_group {
+            [header-suffix]
+            Gtk.Button clear_button {
+              icon-name: "edit-clear-all-symbolic";
+              valign: center;
+              styles ["flat"]
+            }
+          }
         };
       };
     };
+    [bottom]
+    Gtk.Box {
+      orientation: vertical;
+      spacing: 8;
+      margin-start: 18;
+      margin-end: 18;
+      margin-top: 12;
+      margin-bottom: 12;
+      Gtk.Button remove_unreadable_button {
+        label: "Remove _Unreadable";
+        use-underline: true;
+        halign: end;
+        styles ["flat"]
+      }
+      Gtk.Box {
+        spacing: 12;
+        Gtk.Button add_button {
+          label: "_Add Files…";
+          use-underline: true;
+        }
+        Gtk.Box { hexpand: true; }
+        Gtk.Button verify_button {
+          use-underline: true;
+          styles ["suggested-action"]
+        }
+      }
+    }
   };
 }

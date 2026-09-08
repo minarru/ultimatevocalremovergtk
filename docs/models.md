@@ -3,7 +3,7 @@
 Models turn a mix into one or more audio outputs, called *stems*. Begin in the
 **Download Center**: it shows what a model is intended to produce, whether this
 build supports it, and whether it is already installed. A model must be
-installed before it appears in a method, ensemble, or Vocal Splitter picker.
+installed before it appears in a Separation, ensemble, or Vocal Splitter picker.
 
 The Download Center is a catalogue, not the list of models on your machine. In
 the CLI, keep those two views separate:
@@ -19,6 +19,21 @@ uvr models list --all-known                      # installed plus catalogue-only
 command. `uvr models catalog` searches Download Center entries, including
 uninstalled ones. `uvr models download` resolves an exact `catalog:` ID, exact
 selectable/display text, or a unique substring.
+
+## Choose an installed model
+
+On **Separation**, click the model row to browse installed models across VR,
+MDX-Net, and Demucs. Search by name or outputs and narrow by purpose and
+architecture. The picker shows supported models. **SDR** sorting is available for Vocals and Instrumental; models without
+a score stay last in either direction. **Reset**, beside search, clears the
+browser filters and sorting.
+
+The checkmark identifies the current model. Click a row to use it, or its
+information button to inspect outputs, scores, compatibility, and filenames.
+Selecting a model updates Separation's method-specific options and Save Stems
+controls. Closing the browser leaves your selection unchanged; browsing filters
+are remembered only while the main window is open. **Get More Models** opens Download
+Center.
 
 ## Choose a supported model
 

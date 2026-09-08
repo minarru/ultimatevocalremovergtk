@@ -19,6 +19,47 @@ class ErrorLogTests(unittest.TestCase):
     def setUp(self) -> None:
         set_error_log("")
 
+    def test_sink_coalesces_worker_updates_and_ignores_closed_delivery(self):
+        import threading
+        from unittest.mock import patch
+
+        from gi.repository import Gtk
+
+        from ui.errorlog import ErrorLogViewSink
+
+        buffer = Gtk.TextBuffer()
+        changes = []
+        buffer.connect("changed", lambda *_: changes.append(True))
+        pending = []
+        with patch(
+            "ui.errorlog.GLib.idle_add",
+            side_effect=lambda f, *a: pending.append((f, a)) or len(pending),
+        ):
+            sink = ErrorLogViewSink(buffer)
+            self.addCleanup(sink.close)
+            changes.clear()
+
+            def produce():
+                for value in range(100):
+                    set_error_log(str(value))
+
+            worker = threading.Thread(target=produce)
+            worker.start()
+            worker.join()
+            self.assertEqual(len(pending), 1)
+            callback, args = pending.pop()
+            callback(*args)
+            self.assertEqual(
+                buffer.get_text(buffer.get_start_iter(), buffer.get_end_iter(), False), "99"
+            )
+            # Replacing existing text emits deletion and insertion changes.
+            self.assertEqual(len(changes), 2)
+            set_error_log("late")
+            sink.close()
+            callback, args = pending.pop()
+            callback(*args)
+            self.assertEqual(len(changes), 2)
+
     def test_log_error_stores_formatted_text(self) -> None:
         from core.error_context import clear_run_error_context
 

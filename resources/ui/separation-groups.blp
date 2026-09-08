@@ -2,7 +2,7 @@ using Gtk 4.0;
 using Adw 1;
 
 Adw.PreferencesGroup files_group {
-  title: "Files";
+  title: "Input";
   [header-suffix]
   Gtk.Button view_inputs_button {
     icon-name: "view-list-symbolic";
@@ -13,6 +13,7 @@ Adw.PreferencesGroup files_group {
 }
 Adw.PreferencesGroup method_group {
   Adw.ComboRow method_row {
+    visible: false;
     title: "Process method";
     [prefix]
     Gtk.Image { icon-name: "system-run-symbolic"; }

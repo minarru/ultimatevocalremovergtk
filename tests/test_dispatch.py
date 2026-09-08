@@ -9,6 +9,48 @@ from ui.dispatch import gtk_job_callbacks, idle_on_main, latest_main_thread, mai
 
 class DispatchTests(unittest.TestCase):
     @patch("ui.dispatch.GLib.idle_add")
+    def test_console_burst_batches_without_crossing_terminal_callbacks(
+        self, idle_add: typing.Any
+    ) -> None:
+        from bundled.constants import DONE
+
+        pending = []
+        idle_add.side_effect = lambda func: pending.append(func) or len(pending)
+        seen = []
+        callbacks = gtk_job_callbacks(
+            on_console=lambda text: seen.append(text),
+            on_complete=lambda: seen.append("COMPLETE"),
+        )
+        for _ in range(100):
+            callbacks.console("part")
+        callbacks.console(DONE)
+        callbacks.console("next\n")
+        callbacks.complete()
+        callbacks.console("after")
+        self.assertEqual(len(pending), 3)
+        while pending:
+            pending.pop(0)()
+        self.assertEqual(seen, ["part" * 100, DONE, "next\n", "COMPLETE", "after"])
+
+    @patch("ui.dispatch.GLib.idle_add")
+    def test_console_arriving_during_delivery_is_not_lost(self, idle_add: typing.Any) -> None:
+        pending = []
+        idle_add.side_effect = lambda func: pending.append(func) or len(pending)
+        seen = []
+
+        def receive(text: str) -> None:
+            seen.append(text)
+            if text == "first":
+                callbacks.console("second")
+
+        callbacks = gtk_job_callbacks(on_console=receive)
+        callbacks.console("first")
+        pending.pop(0)()
+        self.assertEqual(len(pending), 1)
+        pending.pop(0)()
+        self.assertEqual(seen, ["first", "second"])
+
+    @patch("ui.dispatch.GLib.idle_add")
     def test_idle_on_main_schedules_once(self, idle_add: typing.Any):
         calls = []
 

@@ -2,6 +2,17 @@ using Gtk 4.0;
 using Adw 1;
 
 Adw.PreferencesGroup primary_group {
+  Adw.ActionRow selected_model_row {
+    visible: false;
+    title: "Choose a model";
+    subtitle: "Browse installed models";
+    activatable: true;
+    title-lines: 2;
+    subtitle-lines: 2;
+    use-markup: false;
+    [suffix]
+    Gtk.Image { icon-name: "go-next-symbolic"; }
+  }
   Adw.ComboRow model_row {
     title: "Model";
 

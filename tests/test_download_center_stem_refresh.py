@@ -970,6 +970,8 @@ class StemSubtitleDebounceTests(unittest.TestCase):
             catalogue_evidence_status=CatalogueEvidenceState.UNAVAILABLE,
         )
         win = typing.cast(Any, object.__new__(DownloadCenterWindow))
+        win.window = mock.MagicMock()
+        win.window.get_visible.return_value = True
         from ui.catalogue_browser import CatalogueBrowserState
         win.browser = CatalogueBrowserState()
         from ui.lifetime import UiLifetime
@@ -1196,6 +1198,8 @@ class StemSubtitleDebounceTests(unittest.TestCase):
         from ui.download_center import DownloadCenterWindow
 
         win = typing.cast(Any, object.__new__(DownloadCenterWindow))
+        win.window = mock.MagicMock()
+        win.window.get_visible.return_value = True
         from ui.catalogue_browser import CatalogueBrowserState
         win.browser = CatalogueBrowserState()
         from ui.lifetime import UiLifetime
@@ -1337,6 +1341,8 @@ class DownloadCenterGtkEvidenceTransitionTests(unittest.TestCase):
             apply_catalogue_stem_cache=mock.MagicMock(return_value={meta.label}),
         )
         win = typing.cast(Any, object.__new__(DownloadCenterWindow))
+        win.window = mock.MagicMock()
+        win.window.get_visible.return_value = True
         from ui.catalogue_browser import CatalogueBrowserState
         win.browser = CatalogueBrowserState()
         from ui.lifetime import UiLifetime
@@ -1437,6 +1443,8 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
         from ui.download_center import DownloadCenterWindow
 
         win = object.__new__(DownloadCenterWindow)
+        win.window = mock.MagicMock()
+        win.window.get_visible.return_value = True
         from ui.catalogue_browser import CatalogueBrowserState
         win.browser = CatalogueBrowserState()
         from ui.lifetime import UiLifetime
@@ -1461,6 +1469,8 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
         from ui.download_center import DownloadCenterWindow
 
         win = object.__new__(DownloadCenterWindow)
+        win.window = mock.MagicMock()
+        win.window.get_visible.return_value = True
         from ui.catalogue_browser import CatalogueBrowserState
         win.browser = CatalogueBrowserState()
         from ui.lifetime import UiLifetime
@@ -1499,6 +1509,8 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
         from ui.download_center import DownloadCenterWindow
 
         win = object.__new__(DownloadCenterWindow)
+        win.window = mock.MagicMock()
+        win.window.get_visible.return_value = True
         from ui.catalogue_browser import CatalogueBrowserState
         win.browser = CatalogueBrowserState()
         from ui.lifetime import UiLifetime
@@ -1533,6 +1545,8 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
         from ui.download_center import DownloadCenterWindow
 
         win = object.__new__(DownloadCenterWindow)
+        win.window = mock.MagicMock()
+        win.window.get_visible.return_value = True
         from ui.catalogue_browser import CatalogueBrowserState
         win.browser = CatalogueBrowserState()
         from ui.lifetime import UiLifetime
@@ -1557,6 +1571,8 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
         from ui.download_center import DownloadCenterWindow
 
         win = object.__new__(DownloadCenterWindow)
+        win.window = mock.MagicMock()
+        win.window.get_visible.return_value = True
         from ui.catalogue_browser import CatalogueBrowserState
         win.browser = CatalogueBrowserState()
         from ui.lifetime import UiLifetime
@@ -1597,6 +1613,8 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
             intent=INTENT_SPECIALTY_STEM,
         )
         win = typing.cast(Any, object.__new__(DownloadCenterWindow))
+        win.window = mock.MagicMock()
+        win.window.get_visible.return_value = True
         from ui.catalogue_browser import CatalogueBrowserState
         win.browser = CatalogueBrowserState()
         from ui.lifetime import UiLifetime
@@ -1651,6 +1669,8 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
             intent=INTENT_SPECIALTY_STEM,
         )
         win = typing.cast(Any, object.__new__(DownloadCenterWindow))
+        win.window = mock.MagicMock()
+        win.window.get_visible.return_value = True
         from ui.catalogue_browser import CatalogueBrowserState
         win.browser = CatalogueBrowserState()
         from ui.lifetime import UiLifetime
@@ -1689,6 +1709,8 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
         from ui.download_center import DownloadCenterWindow
 
         win = object.__new__(DownloadCenterWindow)
+        win.window = mock.MagicMock()
+        win.window.get_visible.return_value = True
         from ui.catalogue_browser import CatalogueBrowserState
         win.browser = CatalogueBrowserState()
         from ui.lifetime import UiLifetime
@@ -1815,6 +1837,8 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
                 return self._text
 
         win = object.__new__(DownloadCenterWindow)
+        win.window = mock.MagicMock()
+        win.window.get_visible.return_value = True
         from ui.catalogue_browser import CatalogueBrowserState
         win.browser = CatalogueBrowserState()
         from ui.lifetime import UiLifetime

@@ -23,6 +23,8 @@ def _bare_window() -> Any:
     from ui.download_center import DownloadCenterWindow
 
     win = object.__new__(DownloadCenterWindow)
+    win.window = mock.MagicMock()
+    win.window.get_visible.return_value = True
     from ui.catalogue_browser import CatalogueBrowserState
     win.browser = CatalogueBrowserState()
     from ui.lifetime import UiLifetime
@@ -40,6 +42,8 @@ def _bare_window() -> Any:
     win.browser.available = {}
     win.browser.unsupported = {}
     win._downloads_dirty = False
+    win._stem_fetch_armed = False
+    win._stem_metadata_dirty = False
     win.browser.snapshot = None
     win.browser.pending_source = False
     return win

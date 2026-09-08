@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import threading
 import typing
+from contextlib import contextmanager
 from dataclasses import replace
 
 from gi.repository import Adw, Gio, GObject, Gtk
@@ -43,6 +44,7 @@ from core.model_scores import (
 
 from .catalogue_browser import (
     BrowserFilters,
+    BrowserRow,
     CatalogueBrowserState,
     LiveCatalogueCounts,
     LiveCatalogueEntry,
@@ -133,6 +135,10 @@ class DownloadCenterWindow:
         self._stem_fetch_armed = False
         self._catalogue_refresh_armed = False
         self._downloads_dirty = False
+        self._stem_metadata_dirty = False
+        self._stem_changed_keys: set[tuple[str, str]] = set()
+        self._stem_refresh_all = False
+        self._selection_batch_depth = 0
 
         self._layout_builder = load_builder("download-center")
         self.window = object_from_builder(self._layout_builder, "window", Adw.Window)
@@ -189,6 +195,8 @@ class DownloadCenterWindow:
         self.browser.filters = replace(self.browser.filters, hide_unsupported=value)
 
     def present(self) -> None:
+        if self._lifetime.disposed:
+            return
         self.window.present()
         if self.browser.pending_source:
             self.browser.pending_source = False
@@ -196,8 +204,12 @@ class DownloadCenterWindow:
             return
         if self._downloads_dirty and self.browser.available:
             self._apply_download_completion_refresh()
+        if self._stem_metadata_dirty:
+            self._flush_stem_subtitles()
         if not self.browser.available:
             self.start_refresh()
+        else:
+            self._schedule_stem_yaml_fetches()
 
     def _on_close_request(self, _window: typing.Any) -> bool:
         self.window.set_visible(False)
@@ -305,8 +317,19 @@ class DownloadCenterWindow:
             self._reset_filters()
 
     def _clear_selection(self, *_args: object) -> None:
-        for check in self._row_checks.values():
-            check.set_active(False)
+        with self._batch_selection():
+            for check in self._row_checks.values():
+                check.set_active(False)
+
+    @contextmanager
+    def _batch_selection(self) -> typing.Iterator[None]:
+        self._selection_batch_depth = getattr(self, "_selection_batch_depth", 0) + 1
+        try:
+            yield
+        finally:
+            self._selection_batch_depth -= 1
+            if not self._selection_batch_depth:
+                self._update_download_button()
 
     def _toggle_direction(self, *_args: object) -> None:
         self._descending = not self._descending
@@ -650,6 +673,8 @@ class DownloadCenterWindow:
             return
         stem, score, outputs = self._row_score(*key)
         self.browser.rows[key] = replace(data, sdr=score, sdr_stem=stem, semantics=outputs)
+        stash(action, "_uvr_sdr", score)
+        stash(action, "_uvr_sdr_stem", stem)
         stash(action, "_uvr_stems_text", outputs)
         parts = ["Unsupported in this build" if data.reason is not None else outputs]
         if score is not None and data.reason is None:
@@ -723,7 +748,7 @@ class DownloadCenterWindow:
             sections.append("Files\n" + "\n".join(files))
         return "\n\n".join(sections)
 
-    def _add_model_row(self, arch: str, name: str) -> None:
+    def _add_model_row(self, arch: str, name: str, data: BrowserRow | None = None) -> None:
         if name in (NO_NEW_MODELS, NO_CONNECTION):
             return
         key = (arch, name)
@@ -733,8 +758,7 @@ class DownloadCenterWindow:
         check = Gtk.CheckButton(valign=Gtk.Align.CENTER)
         check.connect("toggled", lambda *_: self._on_row_check_toggled(key))
 
-        stem, sdr, _text = self._row_score(arch, name)
-        data = replace(self._project_browser_row(arch, name), sdr_stem=stem, sdr=sdr)
+        data = data if data is not None else self._project_browser_row(arch, name)
         self.browser.rows[key] = data
         stem, sdr, stems_text = data.sdr_stem, data.sdr, data.semantics
         display = data.display
@@ -763,12 +787,14 @@ class DownloadCenterWindow:
         self._render_row(key)
         self._list_boxes[arch].append(action)
 
-    def _add_unsupported_row(self, arch: str, name: str, reason: str) -> None:
+    def _add_unsupported_row(
+        self, arch: str, name: str, reason: str, data: BrowserRow | None = None
+    ) -> None:
         key = (arch, name)
         if key in self._row_actions:
             return
 
-        data = self._project_browser_row(arch, name, reason)
+        data = data if data is not None else self._project_browser_row(arch, name, reason)
         self.browser.rows[key] = data
         display = data.display
         action = Adw.ActionRow(title_lines=1, subtitle_lines=1)
@@ -796,7 +822,8 @@ class DownloadCenterWindow:
     def _on_row_check_toggled(self, key: tuple[str, str]) -> None:
         check = self._row_checks.get(key)
         self.browser.set_selected(key, check is not None and check.get_active())
-        self._update_download_button()
+        if not getattr(self, "_selection_batch_depth", 0):
+            self._update_download_button()
         if check is None:
             return
         if check.get_active():
@@ -806,7 +833,7 @@ class DownloadCenterWindow:
         if action is not None:
             self._size_lookup_ids[key] = self._size_lookup_ids.get(key, 0) + 1
             drop(action, "_uvr_size")
-            self._render_row(key)
+            self._render_row_status(key)
 
     def _lookup_row_size(self, key: tuple[str, str]) -> None:
         arch, name = key
@@ -825,7 +852,8 @@ class DownloadCenterWindow:
             else []
         )
         stash(action, "_uvr_size_jobs", jobs)
-        self._update_download_button()
+        if not getattr(self, "_selection_batch_depth", 0):
+            self._update_download_button()
         pending = [url for url, path in jobs if url and not os.path.isfile(path)]
         if not pending:
 
@@ -1087,7 +1115,7 @@ class DownloadCenterWindow:
             self._schedule_catalogue_row_refresh()
             return
         if value == "metadata_changed":
-            self._schedule_stem_subtitle_refresh()
+            self._schedule_stem_subtitle_refresh(delta)
             return
         self.browser.pending_source = True
 
@@ -1113,6 +1141,11 @@ class DownloadCenterWindow:
         removes, so removal is the whole contract.
         """
         self._catalogue_refresh_armed = False
+        if self._lifetime.disposed:
+            return False
+        if not self.window.get_visible():
+            self._downloads_dirty = True
+            return False
         self.browser.available = self.manager.available_downloads()
         self.browser.unsupported = self.manager.unsupported_downloads()
 
@@ -1249,6 +1282,8 @@ class DownloadCenterWindow:
     def _flush_stem_yaml_fetches(self) -> bool:
         """Prioritize visible rows, then drain the rest while DC is open."""
         self._stem_fetch_armed = False
+        if self._lifetime.disposed or not self.window.get_visible():
+            return False
         from core.catalogue_stem_cache import catalogue_stems_enabled
 
         if not catalogue_stems_enabled():
@@ -1262,12 +1297,26 @@ class DownloadCenterWindow:
             self.manager.queue_catalogue_evidence(bulk, priority=False)
         return False
 
-    def _schedule_stem_subtitle_refresh(self) -> None:
-        idle_on_main(self._arm_stem_subtitle_refresh)
+    def _schedule_stem_subtitle_refresh(self, delta: object | None = None) -> None:
+        if delta is None:
+            idle_on_main(self._arm_stem_subtitle_refresh)
+        else:
+            idle_on_main(self._arm_stem_subtitle_refresh, delta)
 
-    def _arm_stem_subtitle_refresh(self) -> None:
+    def _arm_stem_subtitle_refresh(self, delta: object | None = None) -> None:
         if self._lifetime.disposed:
             return
+        if delta is not None:
+            # The evidence owner may already have patched metadata before this
+            # delivery; a second cache apply need not report those labels again.
+            changed = getattr(delta, "changed", {})
+            if changed:
+                for arch, family in FAMILY_BY_ARCH.items():
+                    self._stem_changed_keys.update(
+                        (arch, label) for label in changed.get(family, ())
+                    )
+            else:
+                self._stem_refresh_all = True
         if self._stem_refresh_armed:
             return
         self._stem_refresh_armed = True
@@ -1277,14 +1326,27 @@ class DownloadCenterWindow:
 
     def _flush_stem_subtitles(self) -> bool:
         self._stem_refresh_armed = False
-        updated = self.manager.apply_catalogue_stem_cache()
-        if not updated:
+        if self._lifetime.disposed:
             return False
-        for key in self._row_actions:
-            if key[1] in updated:
-                data = self._project_browser_row(*key, self.browser.rows[key].reason)
-                self.browser.rows[key] = data
-                self._render_row(key)
+        if not self.window.get_visible():
+            self._stem_metadata_dirty = True
+            return False
+        self._stem_metadata_dirty = False
+        updated = self.manager.apply_catalogue_stem_cache()
+        changed_keys: set[tuple[str, str]] = set(getattr(self, "_stem_changed_keys", ()))
+        self._stem_changed_keys = set()
+        refresh_all = getattr(self, "_stem_refresh_all", False)
+        self._stem_refresh_all = False
+        changed_keys.update(key for key in self._row_actions if key[1] in updated)
+        if refresh_all:
+            changed_keys.update(self._row_actions)
+        changed_keys.intersection_update(self._row_actions)
+        if not changed_keys:
+            return False
+        for key in changed_keys:
+            data = self._project_browser_row(*key, self.browser.rows[key].reason)
+            self.browser.rows[key] = data
+            self._render_row(key)
         self._invalidate_all_filters()
         self._invalidate_all_sorts()
         return False
@@ -1318,7 +1380,7 @@ class DownloadCenterWindow:
         self._row_checks.clear()
         self._row_actions.clear()
         self._size_lookup_ids.clear()
-        for list_box in self._list_boxes.values():
+        for list_box in self._unique_list_boxes():
             while (child := list_box.get_first_child()) is not None:
                 list_box.remove(child)
 
@@ -1366,49 +1428,38 @@ class DownloadCenterWindow:
     def _rebuild_catalogue(self) -> None:
         previously_selected = self.browser.selected_keys()
         rows = []
+        seen = set()
         for _label, arch in _NETWORKS:
-            rows.extend(
-                self._project_browser_row(arch, name)
-                for name in self.browser.available.get(arch, ())
-                if name not in (NO_NEW_MODELS, NO_CONNECTION)
-            )
-            rows.extend(
-                self._project_browser_row(arch, name, reason)
-                for name, reason in sorted(
-                    self.browser.unsupported.get(arch, ()), key=lambda pair: pair[0].casefold()
-                )
-                if (arch, name) not in {row.key for row in rows}
-            )
+            candidates: list[tuple[str, str | None]] = [
+                (name, None) for name in self.browser.available.get(arch, ())
+            ]
+            candidates.extend(self.browser.unsupported.get(arch, ()))
+            for name, reason in candidates:
+                key = (arch, name)
+                if name in (NO_NEW_MODELS, NO_CONNECTION) or key in seen:
+                    continue
+                seen.add(key)
+                rows.append(self._project_browser_row(arch, name, reason))
         self.browser.replace_rows(rows)
         self._pin_current_snapshot()
         self._clear_catalogue()
-        for _label, arch in _NETWORKS:
-            models = [
-                name
-                for name in (self.browser.available.get(arch) or [])
-                if name not in (NO_NEW_MODELS, NO_CONNECTION)
-            ]
-            for name in models:
-                self._add_model_row(arch, name)
-            unsupported = sorted(
-                self.browser.unsupported.get(arch) or [],
-                key=lambda pair: pair[0].casefold(),
-            )
-            for name, reason in unsupported:
-                self._add_unsupported_row(arch, name, reason)
-            if not models and not unsupported:
-                # Keep a placeholder-free empty page via status message.
-                pass
-            list_box = self._list_boxes[arch]
+        for data in rows:
+            arch, name = data.key
+            if data.reason is None:
+                self._add_model_row(arch, name, data)
+            else:
+                self._add_unsupported_row(arch, name, data.reason, data)
+        for list_box in self._unique_list_boxes():
             list_box.invalidate_filter()
-            self._update_catalogue_page_state(arch)
+        self._update_catalogue_page_state()
         # Rebuilding (e.g. changing Sort) recreates every row/checkbox from
         # scratch — reapply any selection that still exists so it isn't
         # silently dropped, matching how purpose-filtering never loses it.
-        for key in previously_selected:
-            check = self._row_checks.get(key)
-            if check is not None:
-                check.set_active(True)
+        with self._batch_selection():
+            for key in previously_selected:
+                check = self._row_checks.get(key)
+                if check is not None:
+                    check.set_active(True)
 
     def _enqueue_selected(self) -> None:
         entries = self._selected_entries()
@@ -1428,21 +1479,13 @@ class DownloadCenterWindow:
                 ids.append(item_id)
         if not ids:
             if already_queued:
-                for name, arch in entries:
-                    check = self._row_checks.get((arch, name))
-                    if check is not None:
-                        check.set_active(False)
-                self._update_download_button()
+                self._clear_selection()
                 noun = "download" if already_queued == 1 else "downloads"
                 self._toast(f"{already_queued} {noun} already queued")
                 return
             self._toast("Nothing to download for the current selection")
             return
-        for arch, name in [(a, n) for n, a in entries]:
-            check = self._row_checks.get((arch, name))
-            if check is not None:
-                check.set_active(False)
-        self._update_download_button()
+        self._clear_selection()
         message = f"Queued {len(ids)} download(s)"
         if already_queued:
             message += f"; {already_queued} already queued"

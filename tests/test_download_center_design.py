@@ -307,3 +307,118 @@ class DownloadCenterDesignTests(unittest.TestCase):
             self.assertTrue(fetch(action, '_uvr_status_label').get_visible())
             self.assertEqual(subtitles.call_count, 2)
         scores.assert_not_called()
+
+    def test_clear_selection_recomputes_metadata_once_and_invalidates_size_results(self):
+        from ui.widget_state import fetch, stash
+
+        center = self.center
+        for index in range(20):
+            name = f'Model {index}'
+            center._add_model_row(self.arch, name)
+            key = (self.arch, name)
+            center._row_checks[key].set_active(True)
+            center._size_lookup_ids[key] = 4
+            stash(center._row_actions[key], '_uvr_size', '12 MB')
+        with patch.object(center, '_refresh_browser_metadata', wraps=center._refresh_browser_metadata) as metadata:
+            center._clear_selection()
+        self.assertEqual(center.browser.selected_keys(), ())
+        self.assertFalse(center.download_button.get_sensitive())
+        self.assertEqual(metadata.call_count, 1)
+        key = (self.arch, 'Model 0')
+        center._apply_row_size(4, key, '99 MB', center.browser.generation)
+        self.assertIsNone(fetch(center._row_actions[key], '_uvr_size', None))
+
+    def test_rebuild_projects_each_identity_once_and_batches_selection_restore(self):
+        center = self.center
+        self.manager.available_downloads.return_value = {self.arch: ['Dual', 'Second']}
+        center.browser.available = {self.arch: ['Dual', 'Second']}
+        center._add_model_row(self.arch, 'Second')
+        for check in center._row_checks.values():
+            check.set_active(True)
+        with (
+            patch.object(center, '_project_browser_row', wraps=center._project_browser_row) as project,
+            patch.object(center, '_update_download_button', wraps=center._update_download_button) as summary,
+            patch.object(center._list_box, 'invalidate_filter', wraps=center._list_box.invalidate_filter) as filters,
+        ):
+            center._rebuild_catalogue()
+        self.assertEqual(project.call_count, 3)  # two downloadable plus one unsupported
+        self.assertEqual(summary.call_count, 1)
+        self.assertEqual(filters.call_count, 1)
+        self.assertEqual(set(center.browser.selected_keys()), {(self.arch, 'Dual'), (self.arch, 'Second')})
+        self.assertTrue(all(check.get_active() for check in center._row_checks.values()))
+
+    def test_hidden_stem_updates_coalesce_until_present_and_disposal_blocks_delivery(self):
+        center = self.center
+        self.manager.apply_catalogue_stem_cache.return_value = {'Dual'}
+        with patch.object(center, '_render_row', wraps=center._render_row) as render:
+            center._flush_stem_subtitles()
+            center._flush_stem_subtitles()
+            self.manager.apply_catalogue_stem_cache.assert_not_called()
+            render.assert_not_called()
+            center.present()
+            self.manager.apply_catalogue_stem_cache.assert_called_once_with()
+            render.assert_called_once_with(self.key)
+            center.window.set_visible(False)
+            center._flush_stem_subtitles()
+            center.dispose()
+            center.present()
+            self.assertEqual(self.manager.apply_catalogue_stem_cache.call_count, 1)
+            self.assertFalse(center.window.get_visible())
+
+    def test_hidden_removal_refresh_retains_selection_until_present(self):
+        center = self.center
+        center._row_checks[self.key].set_active(True)
+        retained = center._row_actions[(self.arch, 'Future')]
+        self.manager.available_downloads.return_value = {self.arch: []}
+        self.manager.unsupported_downloads.return_value = {
+            self.arch: [('Future', 'Needs a newer build')]
+        }
+        center._flush_catalogue_row_refresh()
+        center._flush_catalogue_row_refresh()
+        self.manager.available_downloads.assert_not_called()
+        self.assertTrue(center._row_checks[self.key].get_active())
+        center.present()
+        self.manager.available_downloads.assert_called_once_with()
+        self.assertNotIn(self.key, center._row_actions)
+        self.assertEqual(center.browser.selected_keys(), ())
+        self.assertIs(center._row_actions[(self.arch, 'Future')], retained)
+        self.assertFalse(center.download_button.get_sensitive())
+
+    def test_new_source_refresh_takes_precedence_over_hidden_metadata_flush(self):
+        center = self.center
+        center._flush_stem_subtitles()
+        center.browser.pending_source = True
+        with patch.object(center, 'start_refresh') as refresh:
+            center.present()
+        refresh.assert_called_once_with()
+        self.manager.apply_catalogue_stem_cache.assert_not_called()
+        self.assertFalse(center.browser.pending_source)
+        self.assertIn(self.key, center.browser.rows)
+
+    def test_published_metadata_delta_survives_hidden_view_and_empty_cache_apply(self):
+        from dataclasses import replace
+
+        from core.catalogue_types import CatalogueDelta, DeltaKind
+
+        center = self.center
+        action = center._row_actions[self.key]
+        center._row_checks[self.key].set_active(True)
+        old = self.manager.catalogue_meta_by_family['mdx']['Dual']
+        # The evidence service patches family metadata before publishing its delta.
+        self.manager.catalogue_meta_by_family['mdx']['Dual'] = replace(
+            old, stems=['Lead Vocals', 'Backing Vocals']
+        )
+        self.manager.apply_catalogue_stem_cache.return_value = set()
+        delta = CatalogueDelta(kind=DeltaKind.METADATA_CHANGED, changed={'mdx': ('Dual',)})
+        with patch('ui.download_center.idle_on_main', side_effect=lambda fn, *args: fn(*args)):
+            center._on_catalogue_delta(delta)
+            center._on_catalogue_delta(delta)
+        center._flush_stem_subtitles()
+        self.assertNotIn('Backing Vocals', action.get_subtitle() or '')
+        with patch.object(center, '_render_row', wraps=center._render_row) as render:
+            center.present()
+            center._flush_stem_subtitles()  # A previously armed timeout must be harmless.
+        self.assertIn('Lead Vocals, Backing Vocals', action.get_subtitle() or '')
+        render.assert_called_once_with(self.key)
+        self.assertIs(center._row_actions[self.key], action)
+        self.assertTrue(center._row_checks[self.key].get_active())

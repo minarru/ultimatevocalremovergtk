@@ -3,9 +3,8 @@
 This is the GTK4 / libadwaita port of ``UVR.py``'s ``MainWindow`` core
 separation surface. It provides:
 
-* a "Process method" dropdown (``Adw.ComboRow``) that swaps the visible option
-  panel in a ``Gtk.Stack`` (VR Architecture / MDX-Net / Demucs), each panel
-  contributed by a :class:`ui.views.MethodView`;
+* one installed-model browser that selects the matching VR / MDX / Demucs
+  option panel contributed by a :class:`ui.views.MethodView`;
 * input file(s) and output folder choosers with native drag and drop;
 * the shared main-window options (output format, GPU conversion, sample mode);
 * Start / Stop and a progress bar in a collapsible log panel at the bottom of
@@ -467,10 +466,9 @@ class MainWindow(Adw.ApplicationWindow):
         method changes. Groups are removed from their current column and
         re-appended so the layout reflects ``self._current_view``.
 
-        The split keeps the common path on the left (Files, method, model,
-        basic options, model-options entry) and the run/output path on the right
-        (Save stems, Processing). Advanced and extra-model controls live in the
-        model-options sheet instead of inline expanders.
+        Input and Model occupy the left column; Output and Processing the
+        right. Shared rows move between the active view's groups without
+        recreating their widgets or changing their settings bindings.
         """
         for column in (self._col_start, self._col_end):
             child = column.get_first_child()
@@ -480,12 +478,21 @@ class MainWindow(Adw.ApplicationWindow):
                 child = nxt
 
         self._col_start.append(self.files_group)
-        self._col_start.append(self.method_group)
 
         view = self._current_view
         if view is not None:
+            self.selected_model_row = self._picker_rows[view.method_key]
+            if self._model_options_host is not view.group:
+                self._model_options_host.remove(self.model_options_row)
+                view.group.add(self.model_options_row)
+                self._model_options_host = view.group
+            if self._output_rows_host is not view.stem_group:
+                for row in (self.format_row, self.output_row):
+                    if self._output_rows_host is not None:
+                        self._output_rows_host.remove(row)
+                    view.stem_group.add(row)
+                self._output_rows_host = view.stem_group
             self._col_start.append(view.group)
-            self._col_start.append(self.model_options_group)
             self._col_end.append(view.stem_group)
             self._col_end.append(self.shared_group)
         else:
@@ -503,6 +510,7 @@ class MainWindow(Adw.ApplicationWindow):
         self._populate_columns()
         self._update_sep_banner()
         self._refresh_separation_layout()
+        self._sync_selected_model()
 
     def _refresh_separation_layout(self) -> None:
         """Force the options scroller to remeasure after column reparenting."""
@@ -618,23 +626,101 @@ class MainWindow(Adw.ApplicationWindow):
         )
         self.output_row = OutputFolderRow(self._on_output_changed, on_toast=self.toast)
         group.add(self.input_row)
-        group.add(self.output_row)
+        self._output_rows_host: Adw.PreferencesGroup | None = None
         return group
 
     def _build_method_group(self) -> Adw.PreferencesGroup:
-        # No group title: the "Process method" row already names the step, and
-        # the adjacent (title-less) model group reads as one "pick method ->
-        # pick model" block. This drops a redundant header from the separation
-        # page (see also the per-arch title removed on the model group).
+        # Existing method/view adapters retain ownership of per-method settings.
+        # Only the unified installed-model row is visible on Separation.
         group = object_from_builder(self._groups_builder, "method_group", Adw.PreferencesGroup)
         self.method_row = object_from_builder(self._groups_builder, "method_row", Adw.ComboRow)
         configure_combo_row(self.method_row, [view.title for view in self._views])
         self.method_row.connect("notify::selected", self._on_method_selected)
+        from .model_picker import ModelPicker
+
+        self._model_picker: ModelPicker | None = None
+        self._picker_rows: dict[str, Adw.ActionRow] = {}
+        for view in self._views:
+            view.model_row.set_visible(False)
+            row = view._layout_object("selected_model_row", Adw.ActionRow)
+            row.set_visible(True)
+            row.connect("activated", self._open_model_picker)
+            self._picker_rows[view.method_key] = row
+            view.group.set_title("Model")
+            view.stem_group.set_title("Output")
         return group
+
+    def _selected_model_id(self) -> str:
+        view = self._current_view
+        return view.selected_model() if view is not None else ""
+
+    def _sync_selected_model(self) -> None:
+        from core.model_identity import ModelIdentityService
+
+        from .model_picker_state import project_installed
+
+        row = getattr(self, "selected_model_row", None)
+        if row is None:
+            return
+        from .settings_bind import get_flat
+
+        view = self._current_view
+        model_id = str(get_flat(self.settings, view.model_key, "")) if view is not None else ""
+        record = next((r for r in ModelIdentityService(self.context.repo).records() if r.id == model_id), None)
+        if record is not None and record.installed:
+            snapshot = getattr(self.context.repo.catalogue, "latest_snapshot", None)
+            models = project_installed((record,), snapshot, {})
+            row.set_title(record.display)
+            if model_id != self._selected_model_id():
+                row.set_subtitle("Saved model available · Choose this model again to use it")
+            else:
+                row.set_subtitle(models[0].outputs if models else "Output details unavailable")
+        elif model_id and ":" in model_id:
+            row.set_title(model_id)
+            row.set_subtitle("Saved model unavailable · Choose another installed model")
+        else:
+            row.set_title("Choose a model")
+            row.set_subtitle("Browse installed models")
+
+    def _can_choose_model(self) -> bool:
+        controller = getattr(self, "_run_controller", None)
+        return (self.content_stack.get_visible_child_name() == "separation"
+                and (controller is None or controller.can_edit_configuration()))
+
+    def _open_model_picker(self, *_args: object) -> None:
+        if not self._can_choose_model():
+            return
+        if self._model_picker is None:
+            from .model_picker import ModelPicker
+
+            self._model_picker = ModelPicker(
+                self.context.repo, self._selected_model_id, self._choose_model,
+                lambda: self._on_download(None, None),
+            )
+        self._model_picker.present(self)
+
+    def _choose_model(self, model_id: str) -> bool:
+        from core.model_identity import ModelIdentityService
+
+        if not self._can_choose_model():
+            return False
+        record = next((r for r in ModelIdentityService(self.context.repo).records() if r.id == model_id), None)
+        if record is None or not record.installed or not record.identity_complete:
+            return False
+        view = self._views_by_method.get(record.method)
+        if view is None:
+            return False
+        # Select the exact ID only after the target view has a fresh inventory.
+        # Its established callback owns persistence and Save Stems reconciliation.
+        set_combo_value(self.method_row, view.title)
+        selected = view.select_model(model_id)
+        self._sync_selected_model()
+        return selected
 
     def _build_model_options_group(self) -> Adw.PreferencesGroup:
         group = object_from_builder(self._groups_builder, "model_options_group", Adw.PreferencesGroup)
         self.model_options_row = object_from_builder(self._groups_builder, "model_options_row", Adw.ActionRow)
+        self._model_options_host = group
         self.model_options_row.connect("activated", lambda *_: self._open_model_options())
         set_tooltip(self.model_options_row, MODEL_OPTIONS_ROW_HINT)
         return group
@@ -643,7 +729,6 @@ class MainWindow(Adw.ApplicationWindow):
         group = object_from_builder(self._groups_builder, "processing_group", Adw.PreferencesGroup)
 
         self.format_row = OutputFormatRow(self._on_format_changed)
-        group.add(self.format_row)
 
         self.gpu_row = object_from_builder(self._groups_builder, "gpu_row", Adw.SwitchRow)
         self.gpu_row.connect("notify::active", self._on_gpu_changed)
@@ -741,7 +826,7 @@ class MainWindow(Adw.ApplicationWindow):
         idle_on_main(self._refresh_separation_layout)
 
         # The embedded mode pages load their own slice of the settings model.
-        self._ensemble_page.load()
+        self._ensemble_page.load(defer_models=True)
         self._audio_tools_page.load()
         self._sync_narrow_window_title()
         self._sync_model_options_action()
@@ -823,6 +908,9 @@ class MainWindow(Adw.ApplicationWindow):
         target = self._targets.get(name)
         if target is None:
             return
+        previous = getattr(self, "_run_target", None)
+        if previous is not None and previous is not target:
+            previous.on_deactivated()
         if name != "ensemble":
             self.settings.process.method = ProcessMethod(self._active_view().method_key)
         self._run_target = target
@@ -882,6 +970,7 @@ class MainWindow(Adw.ApplicationWindow):
         In-memory updates are flushed to disk on Start and on close. Readiness
         is refreshed here because method views call this hook after model edits.
         """
+        self._sync_selected_model()
         self._refresh_start_readiness()
 
     def _on_method_selected(self, *_args: typing.Any) -> None:
@@ -1160,7 +1249,7 @@ class MainWindow(Adw.ApplicationWindow):
         must expose ``refresh_models()``.
         """
         consumers: typing.List[typing.Any] = list(self._views)
-        for attr in ("_ensemble_page", "_audio_tools_page", "vocal_split_row"):
+        for attr in ("_ensemble_page", "_audio_tools_page", "vocal_split_row", "_model_picker"):
             # getattr: a refresh can arrive before the window finishes building.
             consumer = getattr(self, attr, None)
             if consumer is not None:
@@ -1181,6 +1270,7 @@ class MainWindow(Adw.ApplicationWindow):
             model_count = len(getattr(view, "list_models", lambda: [])())
             debug("model", f"refresh_models view={method} models={model_count}")
         self._update_sep_banner()
+        self._sync_selected_model()
         self._refresh_start_readiness()
         self._deferred_model_refresh = None
 

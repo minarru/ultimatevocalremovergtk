@@ -434,13 +434,20 @@ class EnsemblePage:
 
     # -- Settings load / persist ------------------------------------------------
 
-    def load(self) -> None:
+    def load(self, *, defer_models: bool = False) -> None:
         """Populate every control from settings (driven by the main window).
 
         Does *not* set ``chosen_process_method``; that flips to ``ENSEMBLE_MODE``
         only while this tab is active (see :meth:`on_activated`), so the saved
         separation method is preserved at startup.
         """
+        if defer_models:
+            # The hidden startup page has no model consumers yet. Keep stored
+            # members intact until activation can validate the actual list.
+            self._load_deferred = True
+            self._models_dirty = True
+            return
+        self._load_deferred = False
         self._loading = True
         try:
             self._sync_shared_from_settings()
@@ -1050,6 +1057,8 @@ class EnsemblePage:
                 set_combo_value(self.main_stem_row, stored)
         finally:
             self._loading = was_loading
+        self._pair_choices_stems = str(self.settings.mdx.stems)
+        self._pairs_dirty = False
         self._update_ensemble_banner()
 
     def _refresh_ensemble_type_values(self) -> None:
@@ -1336,8 +1345,41 @@ class EnsemblePage:
                     f"ensemble preset members not eligible for {self.settings.ensemble.main_stem!r}, skipping {sorted(dropped)}",
                 )
             self._persist_selected_models()
+        self._models_dirty = False
+        self._member_list_state = (
+            self._current_member_list_state()
+            if projection.placeholder != "Could not list models"
+            and preselected
+            == list(getattr(getattr(self.settings, "ensemble", None), "selected_models", []) or [])
+            else None
+        )
         self._update_models_dialog_status()
         self._update_models_summary()
+
+    def _current_member_list_state(self) -> tuple:
+        return (
+            getattr(getattr(self.settings, "ensemble", None), "main_stem", ""),
+            str(getattr(getattr(self.settings, "mdx", None), "stems", "")),
+            list(getattr(getattr(self.settings, "ensemble", None), "selected_models", []) or []),
+        )
+
+    def _ensure_member_list(self) -> None:
+        if getattr(self, "_load_deferred", False):
+            self.load()
+            return
+        if hasattr(self, "main_stem_row") and (
+            getattr(self, "_pairs_dirty", False)
+            or (
+                getattr(self, "_pair_choices_stems", str(self.settings.mdx.stems))
+                != str(self.settings.mdx.stems)
+            )
+        ):
+            self._refresh_pair_choices()
+        if getattr(self, "_models_dirty", True) or (
+            getattr(self, "_member_list_state", None) != self._current_member_list_state()
+        ):
+            self._reconcile_member_list(self._model_members_for_rebuild())
+            self._models_dirty = False
 
     def _selected_model_tags(self) -> List[str]:
         return [tag for tag, check in self._model_checks.items() if check.get_active()]
@@ -1439,17 +1481,25 @@ class EnsemblePage:
         self.models_listbox.invalidate_filter()
         self._update_models_dialog_status()
 
+    def _set_visible_models_active(self, active: bool) -> None:
+        changed = False
+        self._batching_models = True
+        try:
+            for tag in self._visible_model_tags():
+                check = self._model_checks.get(tag)
+                if check is not None and check.get_active() != active:
+                    check.set_active(active)
+                    changed = True
+        finally:
+            self._batching_models = False
+        if changed:
+            self._on_model_toggled(None)
+
     def _on_models_select_all(self, *_args: typing.Any) -> None:
-        for tag in self._visible_model_tags():
-            check = self._model_checks.get(tag)
-            if check is not None and not check.get_active():
-                check.set_active(True)
+        self._set_visible_models_active(True)
 
     def _on_models_clear(self, *_args: typing.Any) -> None:
-        for tag in self._visible_model_tags():
-            check = self._model_checks.get(tag)
-            if check is not None and check.get_active():
-                check.set_active(False)
+        self._set_visible_models_active(False)
 
     def _open_models_dialog(self, *_args: typing.Any) -> None:
         if not self._stem_pair_chosen():
@@ -1457,7 +1507,7 @@ class EnsemblePage:
         search = getattr(self, "models_search", None)
         if search is not None:
             search.set_text("")
-        self._reconcile_member_list(self._model_members_for_rebuild())
+        self._ensure_member_list()
         present_modal_dialog(self.models_dialog, self.window)
 
     def _open_member_model_options(self, *_args: typing.Any) -> None:
@@ -1478,7 +1528,9 @@ class EnsemblePage:
         models = len(self._selected_model_tags())
         debug("ui", f"ensemble models selected count={models} stem={stem}")
 
-    def _on_model_toggled(self, _check: Gtk.CheckButton) -> None:
+    def _on_model_toggled(self, _check: Gtk.CheckButton | None) -> None:
+        if getattr(self, "_batching_models", False):
+            return
         # Changing the member set detaches the run from any saved ensemble.
         self.settings.ensemble.chosen_ensemble = CHOOSE_ENSEMBLE_OPTION
         if not self._loading:
@@ -1489,6 +1541,7 @@ class EnsemblePage:
         self._ensemble_validation_warnings = ()
         self._ensemble_member_warnings = ()
         self._persist_selected_models()
+        self._member_list_state = self._current_member_list_state()
         self._update_models_dialog_status()
         self._update_models_summary()
         self._rebuild_stem_only_toggles()
@@ -1498,43 +1551,34 @@ class EnsemblePage:
     def refresh_models(self) -> None:
         """The installed model set changed.
 
-        The splitter row is refreshed now -- it is cheap and it has no
-        activation hook of its own. The member checklist rebuilds immediately
-        only when its dialog is mapped: rebuilding resolves
-        ``ensemble_model_list`` (which hashes checkpoints), so a page nobody is
-        looking at is just marked dirty and ``on_activated`` consumes the flag.
+        The splitter row receives its own invalidation. Pair choices and the
+        member checklist rebuild while the page or dialog is visible; hidden
+        pages keep dirty flags until activation. Eligibility may hash models.
         Either way the member write gate preserves stored members that are no
         longer eligible instead of silently pruning a saved preset.
         """
         self.vocal_split_row.refresh_models()
-        if hasattr(self, "main_stem_row") and hasattr(self, "context"):
-            self._refresh_pair_choices()
-        # getattr: a refresh can arrive before the page finishes building.
+        self._pairs_dirty = True
+        self._models_dirty = True
         dialog = getattr(self, "models_dialog", None)
-        if dialog is not None and dialog.get_mapped():
-            # The user is looking at the list right now; a dirty flag consumed
-            # at the next activation would leave stale labels on screen.
-            self._models_dirty = False
-            self._reconcile_member_list(self._model_members_for_rebuild())
-        else:
-            self._models_dirty = True
+        if getattr(self, "_active", False) or (dialog is not None and dialog.get_mapped()):
+            self._ensure_member_list()
 
     def on_activated(self) -> None:
         """Make the ensemble method active and refresh from shared settings.
 
         ``chosen_process_method`` flips to ``ENSEMBLE_MODE`` here (and is restored
-        by the main window on leaving this tab), so the member-model list - which
-        depends on the method for the multi-stem ensemble - is rebuilt with the
-        correct method in effect.
+        by the main window on leaving this tab). The member checklist is
+        prepared on first activation, then reused until its inputs change.
         """
+        self._active = True
         self.settings.process.method = ProcessMethod.ENSEMBLE
         self._sync_shared_from_settings()
-        self._models_dirty = False
-        self._reconcile_member_list(self._model_members_for_rebuild())
+        self._ensure_member_list()
 
     def on_deactivated(self) -> None:
         # Method restoration is owned by the main window's tab handler.
-        pass
+        self._active = False
 
     def _config_blocked_reason(self) -> Optional[str]:
         """Ensemble-configuration blocker (stem pair / member models), if any.

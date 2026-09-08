@@ -6,8 +6,12 @@ import os
 import time
 import types
 import unittest
-from typing import Any, cast
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, cast
 from unittest.mock import Mock, patch
+
+if TYPE_CHECKING:
+    from gi.repository import Gtk
 
 
 @unittest.skipUnless(
@@ -29,7 +33,7 @@ class ViewInputsTests(unittest.TestCase):
         cls.app.register()
         cls.main_context = GLib.MainContext.default()
 
-    def make_view(self):
+    def make_view(self, parent: Gtk.Window | None = None):
         from core.settings import Settings
         from ui.inputs import ViewInputs
 
@@ -56,9 +60,95 @@ class ViewInputsTests(unittest.TestCase):
             context, 'unreadable_input_paths', set(paths)
         )
         changed = Mock()
-        view = ViewInputs(None, context, changed, on_verification_changed=Mock())
-        self.addCleanup(view.window.close)
+        view = ViewInputs(parent, context, changed, on_verification_changed=Mock())
+        def cleanup() -> None:
+            if view._lifetime.disposed:
+                return
+            if view.dialog.get_root() is not None:
+                view.dialog.close()
+            else:
+                view._on_closed()
+
+        self.addCleanup(cleanup)
         return view, context, changed
+
+    def test_dialog_is_attached_and_file_picker_uses_its_host_window(self):
+        from gi.repository import Adw
+
+        parent = Adw.Window(default_width=900, default_height=700)
+        self.addCleanup(parent.close)
+        parent.present()
+        view, _context, _changed = self.make_view(parent)
+        view.present()
+        self.assertIsInstance(view.dialog, Adw.Dialog)
+        self.assertIs(parent.get_visible_dialog(), view.dialog)
+        with patch("ui.inputs.audio_open_dialog") as chooser:
+            view.add_button.emit("clicked")
+        chooser.return_value.open_multiple.assert_called_once_with(
+            parent, None, view._on_add_finished
+        )
+
+    def test_closing_attached_dialog_stops_verification_delivery(self):
+        from gi.repository import Adw
+
+        parent = Adw.Window(default_width=900, default_height=700)
+        self.addCleanup(parent.close)
+        parent.present()
+        view, _context, _changed = self.make_view(parent)
+        view.present()
+        view._verifying = True
+        view.dialog.close()
+        deadline = time.monotonic() + 3
+        while not view._lifetime.disposed and time.monotonic() < deadline:
+            self.main_context.iteration(False)
+            time.sleep(0.001)
+        self.assertTrue(view._lifetime.disposed)
+        self.assertTrue(view._verify_stop.is_set())
+        with patch.object(view._files_group, "set_title") as set_title:
+            view._apply_result("/tmp/good.wav", True, "late result", 1)
+        set_title.assert_not_called()
+
+    def test_dialog_height_tracks_files_and_verification_with_bounded_scrolling(self):
+        from gi.repository import Adw
+
+        parent = Adw.Window(default_width=900, default_height=700)
+        self.addCleanup(parent.close)
+        parent.present()
+        view, _context, _changed = self.make_view(parent)
+        view.present()
+        body = view.dialog.get_child()
+        self.assertIsNotNone(body)
+        assert body is not None
+
+        def wait_for(predicate: Callable[[], bool]) -> None:
+            deadline = time.monotonic() + 3
+            while not predicate() and time.monotonic() < deadline:
+                self.main_context.iteration(False)
+                time.sleep(0.001)
+            self.assertTrue(
+                predicate(), f"Unexpected dialog size: {body.get_width()}x{body.get_height()}"
+            )
+
+        wait_for(lambda: body.get_width() == 620 and 0 < body.get_height() < 400)
+        compact_height = body.get_height()
+        view._status = {path: (False, "Could not read this file") for path in view.paths}
+        view._rebuild_list()
+        view._sync_actions()
+        wait_for(lambda: body.get_height() > compact_height)
+        view.paths = [f"/tmp/track-{index}.wav" for index in range(30)]
+        view._status.clear()
+        view._rebuild_list()
+        view._sync_actions()
+        wait_for(lambda: body.get_height() > 500)
+        self.assertLess(body.get_height(), parent.get_height())
+        self.assertEqual(body.get_width(), 620)
+        scroll = view._input_scroll.get_vadjustment()
+        wait_for(lambda: scroll.get_upper() > scroll.get_page_size())
+        expanded_height = body.get_height()
+        view.clear_button.emit("clicked")
+        wait_for(lambda: 0 < body.get_height() < compact_height)
+        self.assertLess(body.get_height(), expanded_height)
+        self.assertEqual(body.get_width(), 620)
 
     def test_remove_button_preserves_other_file_then_clear_reaches_empty_state(self) -> None:
         from gi.repository import Gtk
@@ -75,7 +165,7 @@ class ViewInputsTests(unittest.TestCase):
         remove = next(
             w
             for w in descendants(view._rows["/tmp/bad.wav"])
-            if isinstance(w, Gtk.Button) and w.get_icon_name() == "user-trash-symbolic"
+            if isinstance(w, Gtk.Button) and w.get_icon_name() == "cross-small-symbolic"
         )
         remove.emit("clicked")
         self.assertEqual(context.settings.process.input_paths, ["/tmp/good.wav"])
@@ -144,7 +234,7 @@ class ViewInputsTests(unittest.TestCase):
         ):
             view.verify_button.emit("clicked")
             self.assertTrue(entered.wait(timeout=2))
-            view._on_close_request()
+            view._on_closed()
             context.settings.process.input_paths = ["/tmp/new.wav"]
             release.set()
             deadline = time.monotonic() + 5
@@ -159,7 +249,7 @@ class ViewInputsTests(unittest.TestCase):
 
     def test_late_file_picker_result_after_close_does_not_commit(self) -> None:
         view, context, changed = self.make_view()
-        view._on_close_request()
+        view._on_closed()
         picker = Mock()
         picker.open_multiple_finish.return_value.get_n_items.return_value = 1
         picker.open_multiple_finish.return_value.get_item.return_value.get_path.return_value = (
@@ -193,7 +283,7 @@ class ViewInputsTests(unittest.TestCase):
         view._verification_generation = context.begin_input_verification()
         verified = Mock()
         view._on_verification_changed = verified
-        view._on_close_request()
+        view._on_closed()
         with patch.object(view, '_rebuild_list') as rebuild:
             view._verify_done([], True, ['/tmp/good.wav'])
         self.assertEqual(context.unreadable_input_paths, {'/tmp/bad.wav'})
@@ -204,7 +294,7 @@ class ViewInputsTests(unittest.TestCase):
     def test_closed_old_scan_cannot_overwrite_new_scan_results(self):
         view, context, changed = self.make_view()
         view._verification_generation = context.begin_input_verification()
-        view._on_close_request()
+        view._on_closed()
         newer = context.begin_input_verification()
         context.apply_input_verification(newer, ['/tmp/good.wav'], ['/tmp/good.wav'])
         view._verify_done([], True, ['/tmp/good.wav'])

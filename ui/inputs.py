@@ -18,12 +18,13 @@ import typing
 
 from gi.repository import Adw, GLib, Gtk
 
-from bundled.constants import AUDIO_INPUT_TOTAL_TEXT, VERIFY_INPUTS_TEXT
+from bundled.constants import VERIFY_INPUTS_TEXT
 from core.audio_probe import probe_audio
 
-from .dialogs.utils import close_on_escape
+from .dialogs.utils import present_modal_dialog
 from .dispatch import idle_on_main
 from .errorlog import log_error, set_error_log
+from .gtk_narrow import root_window
 from .help_text import (
     ADD_INPUT_FILES_HINT,
     CLEAR_ALL_INPUTS_HINT,
@@ -78,7 +79,7 @@ def inspect_audio(path: str):
 class ViewInputs:
     def __init__(
         self,
-        parent: typing.Any,
+        parent: Gtk.Window | None,
         app_context: typing.Any,
         on_inputs_changed: typing.Any = None,
         on_verification_changed: typing.Callable[[], None] | None = None,
@@ -98,12 +99,8 @@ class ViewInputs:
         self._lifetime = UiLifetime()
 
         builder = load_builder("verify-inputs")
-        self.window = object_from_builder(builder, "window", Adw.Window)
-        self.window.set_title(VERIFY_INPUTS_TEXT)
-        if parent is not None:
-            self.window.set_transient_for(parent)
-        close_on_escape(self.window)
-        self.window.connect("close-request", self._on_close_request)
+        self.dialog = object_from_builder(builder, "dialog", Adw.Dialog)
+        self.dialog.connect("closed", self._on_closed)
 
         self.add_button = object_from_builder(builder, "add_button", Gtk.Button)
         set_icon_button_a11y(self.add_button, ADD_INPUT_FILES_HINT)
@@ -119,7 +116,7 @@ class ViewInputs:
         self.verify_button.set_label(f"_{VERIFY_INPUTS_TEXT}")
         self.verify_button.connect("clicked", self._on_verify)
         self.toast_overlay = object_from_builder(builder, "toast_overlay", Adw.ToastOverlay)
-        self.page = object_from_builder(builder, "page", Adw.PreferencesPage)
+        self._input_scroll = object_from_builder(builder, "input_scroll", Gtk.ScrolledWindow)
         self._files_group = object_from_builder(builder, "files_group", Adw.PreferencesGroup)
         self._files_group.set_title(self._total_text())
 
@@ -132,7 +129,21 @@ class ViewInputs:
         self._sync_actions()
 
     def present(self) -> None:
-        self.window.present()
+        self._resize_to_content()
+        present_modal_dialog(self.dialog, self.parent)
+
+    def _resize_to_content(self) -> None:
+        if self._lifetime.disposed:
+            return
+        parent_height = self.parent.get_height() if self.parent is not None else 0
+        if parent_height <= 0 and self.parent is not None:
+            parent_height = self.parent.get_default_size()[1]
+        if parent_height <= 0:
+            parent_height = 700
+        self._input_scroll.set_max_content_height(min(460, max(120, parent_height - 240)))
+        # Adw.Dialog resolves -1 once, so remeasure after content changes while
+        # retaining the requested desktop width.
+        self.dialog.set_content_height(-1)
 
     # -- List management --------------------------------------------------------
 
@@ -141,7 +152,7 @@ class ViewInputs:
 
     def _total_text(self) -> str:
         n = len(self.paths)
-        base = f"{AUDIO_INPUT_TOTAL_TEXT}: {n}"
+        base = f"{n} file" if n == 1 else f"{n} files"
         failed = len(self._failed_paths())
         if failed:
             return f"{base} · {failed} unreadable"
@@ -168,14 +179,15 @@ class ViewInputs:
             builder = load_builder("verify-inputs-row")
             row = object_from_builder(builder, "row", Adw.ActionRow)
             set_row_title(row, os.path.basename(path))
+            row.set_tooltip_text(path)
             status = self._status.get(path)
             if status is None:
-                set_row_subtitle(row, path)
+                set_row_subtitle(row, os.path.dirname(path))
                 set_row_icon(row, None)
             else:
                 is_valid, info = status
                 set_row_icon(row, _STATUS_OK if is_valid else _STATUS_BAD)
-                set_row_subtitle(row, f"{path}\n{info}")
+                set_row_subtitle(row, f"{os.path.dirname(path)}\n{info}")
             remove_button = object_from_builder(builder, "remove_button", Gtk.Button)
             set_icon_button_a11y(remove_button, REMOVE_INPUT_HINT)
             remove_button.connect("clicked", lambda _b, p=path: self._remove_path(p))
@@ -199,6 +211,7 @@ class ViewInputs:
             self.verify_button.set_label(f"_{VERIFY_INPUTS_TEXT}")
             self.verify_button.remove_css_class("destructive-action")
             self.verify_button.add_css_class("suggested-action")
+        self._resize_to_content()
 
     def _commit_paths(self) -> None:
         self.settings.process.input_paths = list(self.paths)
@@ -251,7 +264,7 @@ class ViewInputs:
             accept_any=bool(self.settings.process.accept_any_input),
             initial=initial,
         )
-        dialog.open_multiple(self.window, None, self._on_add_finished)
+        dialog.open_multiple(root_window(self.dialog), None, self._on_add_finished)
 
     def _on_add_finished(self, dialog: typing.Any, result: typing.Any) -> None:
         try:
@@ -282,11 +295,10 @@ class ViewInputs:
 
     # -- Verification -----------------------------------------------------------
 
-    def _on_close_request(self, *_args: typing.Any) -> bool:
+    def _on_closed(self, *_args: typing.Any) -> None:
         self._lifetime.dispose()
         if self._verifying:
             self._verify_stop.set()
-        return False
 
     def _on_verify(self, _button: typing.Any) -> None:
         if self._verifying:
@@ -342,8 +354,9 @@ class ViewInputs:
         if row is None:
             return
         set_row_icon(row, _STATUS_OK if is_valid else _STATUS_BAD)
-        set_row_subtitle(row, f"{path}\n{info}")
+        set_row_subtitle(row, f"{os.path.dirname(path)}\n{info}")
         self._files_group.set_title(self._total_text())
+        self._resize_to_content()
 
     def _verify_done(
         self,

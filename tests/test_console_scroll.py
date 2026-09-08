@@ -38,6 +38,54 @@ class ConsoleScrollTests(unittest.TestCase):
             if not ctx.iteration(False):
                 break
 
+    def test_long_unbroken_unicode_output_retains_bounded_recent_tail(self) -> None:
+        from ui.widgets.console import ConsoleView
+
+        console = ConsoleView()
+        with mock.patch("ui.widgets.console._CONSOLE_CHAR_CAP", 16, create=True):
+            console.append("😀" * 20)
+            console.append("latest")
+        self.assertEqual(console.get_text(), "😀" * 10 + "latest")
+
+    def test_fragments_spelling_done_remain_ordinary_text(self) -> None:
+        from bundled.constants import DONE
+        from ui.dispatch import gtk_job_callbacks
+        from ui.widgets.console import ConsoleView
+
+        console = ConsoleView()
+        pending = []
+        with mock.patch(
+            "ui.dispatch.GLib.idle_add",
+            side_effect=lambda func: pending.append(func) or len(pending),
+        ):
+            callbacks = gtk_job_callbacks(on_console=console.append)
+            callbacks.console(DONE[:2])
+            callbacks.console(DONE[2:])
+            while pending:
+                pending.pop(0)()
+        self.assertEqual(console.get_text(), DONE)
+
+    def test_batched_done_keeps_open_line_semantics(self) -> None:
+        from bundled.constants import DONE
+        from ui.dispatch import gtk_job_callbacks
+        from ui.widgets.console import ConsoleView
+
+        console = ConsoleView()
+        pending = []
+        with mock.patch(
+            "ui.dispatch.GLib.idle_add",
+            side_effect=lambda func: pending.append(func) or len(pending),
+        ):
+            callbacks = gtk_job_callbacks(on_console=console.append)
+            callbacks.console(DONE)
+            callbacks.console("finished\n")
+            callbacks.console(DONE)
+            callbacks.console("working")
+            callbacks.console(DONE)
+            while pending:
+                pending.pop(0)()
+        self.assertEqual(console.get_text(), "finished\nworking" + DONE)
+
     def test_unmapped_append_does_not_spin_idle(self) -> None:
         from ui.widgets.console import ConsoleView
 
@@ -141,7 +189,9 @@ class ConsoleScrollTests(unittest.TestCase):
         orig_get_text = Gtk.TextBuffer.get_text
         spans: list[int] = []
 
-        def spy_get_text(buf: Gtk.TextBuffer, start: Gtk.TextIter, end: Gtk.TextIter, include_hidden: bool) -> str:
+        def spy_get_text(
+            buf: Gtk.TextBuffer, start: Gtk.TextIter, end: Gtk.TextIter, include_hidden: bool
+        ) -> str:
             spans.append(end.get_offset() - start.get_offset())
             return orig_get_text(buf, start, end, include_hidden)
 
@@ -152,8 +202,7 @@ class ConsoleScrollTests(unittest.TestCase):
             console.append(DONE)
             max_span = max(spans) if spans else 0
             self.assertLessEqual(
-                max_span, 1,
-                f"append() copied {max_span} chars for the DONE check; expected <= 1"
+                max_span, 1, f"append() copied {max_span} chars for the DONE check; expected <= 1"
             )
         finally:
             Gtk.TextBuffer.get_text = orig_get_text  # type: ignore[method-assign]

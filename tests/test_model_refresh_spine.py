@@ -26,6 +26,7 @@ def _window() -> Any:
     window._ensemble_page = mock.MagicMock(name="ensemble")
     window._audio_tools_page = mock.MagicMock(name="audio_tools")
     window.vocal_split_row = mock.MagicMock(name="vocal_split_row")
+    window._model_picker = mock.MagicMock(name="model_picker")
     for view in window._views:
         view.list_models.return_value = []
     return window
@@ -42,6 +43,7 @@ class ConsumerRegistryTests(unittest.TestCase):
         window._ensemble_page.refresh_models.assert_called_once_with()
         window._audio_tools_page.refresh_models.assert_called_once_with()
         window.vocal_split_row.refresh_models.assert_called_once_with()
+        window._model_picker.refresh_models.assert_called_once_with()
 
     def test_repaint_does_not_reinvalidate_the_repository(self) -> None:
         """A repository notification must not schedule itself forever."""

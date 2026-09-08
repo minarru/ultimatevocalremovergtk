@@ -14,6 +14,7 @@ with *Copy All Text* and *Report Issue* buttons. This module reproduces that:
 
 from __future__ import annotations
 
+import threading
 import typing
 import weakref
 from typing import Callable, Optional
@@ -140,22 +141,36 @@ class ErrorLogViewSink:
     def __init__(self, buffer: Gtk.TextBuffer) -> None:
         self._buffer: Gtk.TextBuffer | None = buffer
         self._closed = False
+        self._pending = False
+        self._lock = threading.RLock()
         sink_ref = weakref.ref(self)
 
         def on_changed() -> None:
-            GLib.idle_add(_refresh_error_log_sink, sink_ref)
+            sink = sink_ref()
+            if sink is not None:
+                sink._schedule_refresh()
 
         self._unsubscribe = subscribe_error_log(on_changed)
         self.refresh()
 
+    def _schedule_refresh(self) -> None:
+        with self._lock:
+            if self._closed or self._pending:
+                return
+            self._pending = True
+            GLib.idle_add(_refresh_error_log_sink, weakref.ref(self))
+
     def refresh(self) -> None:
-        if not self._closed and self._buffer is not None:
-            self._buffer.set_text(get_error_log() or "No errors have been logged.")
+        with self._lock:
+            self._pending = False
+            if not self._closed and self._buffer is not None:
+                self._buffer.set_text(get_error_log() or "No errors have been logged.")
 
     def close(self) -> None:
-        self._closed = True
+        with self._lock:
+            self._closed = True
+            self._buffer = None
         self._unsubscribe()
-        self._buffer = None
 
 
 def _refresh_error_log_sink(sink_ref: weakref.ReferenceType[ErrorLogViewSink]) -> bool:
