@@ -83,7 +83,7 @@ class AutocastRowSensitivityTests(unittest.TestCase):
                 )
                 self.assertTrue(window.autocast_row.get_active())
 
-    def test_device_detection_preserves_disabled_explanation_and_selection(self):
+    def test_device_detection_preserves_selection_while_gpu_processing_is_off(self):
         from gi.repository import Adw
 
         from core.settings import Settings
@@ -104,10 +104,10 @@ class AutocastRowSensitivityTests(unittest.TestCase):
         before = dialog.settings.to_json_dict()
         dialog._device_detection_subtitle = "Detecting…"
         dialog._sync_gpu_device_row()
-        self.assertFalse(dialog.device_row.get_sensitive())
+        self.assertTrue(dialog.device_row.get_sensitive())
         self.assertEqual(
             dialog.device_row.get_subtitle(),
-            "Enable GPU conversion on Separation or Ensemble to choose a device.\nDetecting…",
+            "Detecting…",
         )
         for devices, detection in (
             ([("0", "Test GPU")], "Detected: 0: Test GPU"),
@@ -117,8 +117,7 @@ class AutocastRowSensitivityTests(unittest.TestCase):
                 dialog._apply_gpu_devices(devices)
                 self.assertEqual(
                     dialog.device_row.get_subtitle(),
-                    "Enable GPU conversion on Separation or Ensemble to choose a device.\n"
-                    + detection,
+                    detection,
                 )
                 self.assertEqual(get_combo_value(dialog.device_row), "0")
                 self.assertEqual(dialog.settings.to_json_dict(), before)

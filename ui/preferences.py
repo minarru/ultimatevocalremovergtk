@@ -1,32 +1,7 @@
-"""Settings UI as an ``Adw.PreferencesDialog``.
+"""Searchable General, Processing, Output and Maintenance preferences.
 
-This is the GTK4 / libadwaita port of ``UVR.py``'s ``menu_settings`` window
-(tabs 1 and 2 - general + additional/audio-format/process settings). It exposes
-the same options the Tkinter settings window does and binds every control to the
-shared typed :class:`core.settings.Settings` through
-:class:`ui.context.AppContext`.
-
-Covered (Phase 2):
-
-* General: help-hints toggle, reset-to-default (with confirmation) and
-  saved-settings profiles (save / load / remove).
-* Output format and its quality sub-option live on the Separation / Ensemble /
-  Audio Tools pages (``ui/widgets/format_row.py``), not here — this dialog only
-  holds settings with no per-run meaning.
-* General process settings: test-mode / model-name / model-folder / accept-any-
-  input / notification-chimes / normalization toggles.
-* Hardware: CUDA device selection (gated on GPU conversion, set on the
-  processing pages) + Windows DirectML toggle.
-* Sample mode + sample-clip duration.
-
-Saved-settings profiles mirror ``UVR.py``: each profile is a JSON file under
-``profiles/`` named after the (space->underscore) profile name and
-containing the full settings dict (the same files the Tk app reads/writes), so
-profiles are interchangeable between the two front ends.
-
-Anything advanced/per-method (secondary models, vocal splitter, change-model
-defaults, deverb, the download center, ...) is intentionally left to later
-phases.
+Controls bind to shared typed settings. Profiles preserve the full settings
+snapshot, while per-run choices stay on their processing pages.
 """
 
 import os
@@ -42,7 +17,6 @@ from bundled.constants import (
     GPU_DEVICE_NUM_OPTS,
     IS_CUDA_SELECT_HELP,
     REG_SAVE_INPUT,
-    SAMPLE_MODE_CHECKBOX,
 )
 from core.export_naming import preview_output_name
 from core.json_store import read_json_object, safe_json_path, write_json_atomic
@@ -65,7 +39,6 @@ from .help_text import (
 )
 from .hints import set_icon_button_a11y, set_tooltip
 from .settings_bind import enum_value, get_flat, set_flat
-from .shared_settings import gpu_dependent_enabled
 from .template import load_builder, object_from_builder
 from .widgets.rows import (
     configure_combo_row,
@@ -247,19 +220,48 @@ class PreferencesDialog(Adw.PreferencesDialog):
         self._persist_timeout_id = 0
         self._catalogue_refresh_generation = 0
 
-        self.set_title("Settings")
-
-        builder = load_builder("preferences")
-        self.add(self._build_general_page(builder))
-        self.add(self._build_processing_page(builder))
-
-        self._reload_widgets()
         from .lifetime import UiLifetime
 
         self._lifetime = UiLifetime()
+        self._process_switches: dict[str, Adw.SwitchRow] = {}
+        self.set_title("Settings")
+        self.set_search_enabled(True)
+        self.set_content_width(round(Adw.length_unit_to_px(Adw.LengthUnit.SP, 700, self.get_settings())))
+
+        builder = load_builder("preferences")
+        for page in (
+            self._build_general_page(builder),
+            self._build_processing_page(builder),
+            self._build_output_page(builder),
+            self._build_maintenance_page(builder),
+        ):
+            self._configure_page_clamp(page)
+            self.add(page)
+
+        self._reload_widgets()
         self.connect("closed", self._on_dialog_closed)
 
     # -- Page construction ------------------------------------------------------
+
+    @staticmethod
+    def _configure_page_clamp(page: Adw.PreferencesPage) -> None:
+        # PreferencesPage owns this clamp but exposes no sizing API. Find it
+        # by type, leaving libadwaita's defaults if its internal layout changes.
+        # Do not descend into application-owned groups and resize their clamps.
+        pending: list[Gtk.Widget] = [page]
+        while pending:
+            widget = pending.pop()
+            if isinstance(widget, Adw.Clamp):
+                widget.set_unit(Adw.LengthUnit.SP)
+                widget.set_maximum_size(640)
+                widget.set_tightening_threshold(600)
+                return
+            if isinstance(widget, Adw.PreferencesGroup):
+                continue
+            child = widget.get_first_child()
+            while child is not None:
+                pending.append(child)
+                child = child.get_next_sibling()
 
     def _build_general_page(self, builder: Gtk.Builder) -> Adw.PreferencesPage:
         page = object_from_builder(builder, "general_page", Adw.PreferencesPage)
@@ -269,18 +271,6 @@ class PreferencesDialog(Adw.PreferencesDialog):
             [label for label, _value in _COLOR_SCHEME_OPTIONS],
         )
         self.color_scheme_row.connect("notify::selected", self._on_color_scheme_changed)
-
-        self.diagnostic_level_row = configure_combo_row(
-            object_from_builder(builder, "diagnostic_level_row", Adw.ComboRow),
-            [label for label, _value in _DIAGNOSTIC_LEVEL_OPTIONS],
-        )
-        self.diagnostic_level_row.connect("notify::selected", self._on_diagnostic_level_changed)
-        self.diagnostic_sensitive_row = configure_switch_row(
-            object_from_builder(builder, "diagnostic_sensitive_row", Adw.SwitchRow)
-        )
-        self.diagnostic_sensitive_row.connect(
-            "notify::active", self._on_diagnostic_sensitive_changed
-        )
 
         self.profile_combo = configure_combo_row(
             object_from_builder(builder, "profile_combo", Adw.ComboRow),
@@ -293,10 +283,19 @@ class PreferencesDialog(Adw.PreferencesDialog):
         remove_button.connect("clicked", self._on_remove_profile)
 
         self.profile_name_row = object_from_builder(builder, "profile_name_row", Adw.EntryRow)
-        self.profile_name_row.connect("apply", self._on_save_profile)
-
-        reset_button = object_from_builder(builder, "reset_button", Gtk.Button)
-        reset_button.connect("clicked", self._on_reset_clicked)
+        self.save_profile_dialog = object_from_builder(builder, "save_profile_dialog", Adw.AlertDialog)
+        self.profile_name_error = object_from_builder(builder, "profile_name_error", Gtk.Label)
+        self.save_profile_dialog.add_response("cancel", "Cancel")
+        self.save_profile_dialog.add_response("save", "Save")
+        self.save_profile_dialog.set_response_appearance("save", Adw.ResponseAppearance.SUGGESTED)
+        self.save_profile_dialog.set_default_response("save")
+        self.save_profile_dialog.set_close_response("cancel")
+        self.save_profile_dialog.connect("response", self._on_save_profile_response)
+        self.profile_name_row.connect("changed", self._validate_profile_name)
+        self.profile_name_row.connect("entry-activated", self._activate_profile_save)
+        self._validate_profile_name()
+        save_row = object_from_builder(builder, "save_profile_row", Adw.ActionRow)
+        save_row.connect("activated", self._on_save_profile_requested)
 
         self._notification_switches: dict[str, Adw.SwitchRow] = {
             key: configure_switch_row(object_from_builder(builder, f"{key}_row", Adw.SwitchRow))
@@ -310,48 +309,13 @@ class PreferencesDialog(Adw.PreferencesDialog):
         for key, row in self._notification_switches.items():
             row.connect("notify::active", self._on_bool_changed, key)
 
-        self.confirm_processing_plan_row = configure_switch_row(
-            object_from_builder(builder, "confirm_processing_plan_row", Adw.SwitchRow)
-        )
-        self.confirm_processing_plan_row.connect(
-            "notify::active", self._on_bool_changed, "confirm_processing_plan"
-        )
-
         return page
 
     def _build_processing_page(self, builder: Gtk.Builder) -> Adw.PreferencesPage:
         page = object_from_builder(builder, "processing_page", Adw.PreferencesPage)
 
-        self._process_switches: dict[str, Adw.SwitchRow] = {
-            key: configure_switch_row(object_from_builder(builder, f"{key}_row", Adw.SwitchRow))
-            for key in (
-                "is_testing_audio",
-                "is_add_model_name",
-                "is_create_model_folder",
-                "is_accept_any_input",
-                "is_normalization",
-                "is_match_mix_level",
-                "is_prevent_export_clipping",
-            )
-        }
-        for key, row in self._process_switches.items():
-            row.connect("notify::active", self._on_bool_changed, key)
-        set_tooltip(self._process_switches["is_add_model_name"], IS_MODEL_TESTING_AUDIO_HELP)
-        set_tooltip(self._process_switches["is_create_model_folder"], IS_CREATE_MODEL_FOLDER_HELP)
+        self._bind_process_switches(builder, ("is_accept_any_input",))
         set_tooltip(self._process_switches["is_accept_any_input"], IS_ACCEPT_ANY_INPUT_HELP)
-        set_tooltip(self._process_switches["is_normalization"], IS_NORMALIZATION_HELP)
-        set_tooltip(self._process_switches["is_match_mix_level"], IS_MATCH_MIX_LEVEL_HELP)
-        set_tooltip(
-            self._process_switches["is_prevent_export_clipping"],
-            IS_PREVENT_EXPORT_CLIPPING_HELP,
-        )
-
-        self.amplification_row = object_from_builder(builder, "amplification_row", Adw.SpinRow)
-        set_tooltip(self.amplification_row, AMPLIFICATION_THRESHOLD_HELP)
-        self.amplification_row.connect("notify::value", self._on_amplification_changed)
-        self.output_name_preview_row = object_from_builder(
-            builder, "output_name_preview_row", Adw.ActionRow
-        )
 
         # Populate asynchronously — ``nvidia-smi`` can take up to ~2s.
         cached = getattr(self.context, "gpu_devices", None)
@@ -380,20 +344,80 @@ class PreferencesDialog(Adw.PreferencesDialog):
             hardware_group = object_from_builder(builder, "hardware_group", Adw.PreferencesGroup)
             hardware_group.remove(self.directml_row)
 
-        self.sample_mode_row = configure_switch_row(
-            object_from_builder(builder, "sample_mode_row", Adw.SwitchRow)
-        )
-        self.sample_mode_row.connect("notify::active", self._on_bool_changed, "model_sample_mode")
         self.sample_duration_row = object_from_builder(builder, "sample_duration_row", Adw.SpinRow)
         self.sample_duration_row.connect("notify::value", self._on_duration_changed)
         self.long_chunk_row = object_from_builder(builder, "long_chunk_row", Adw.SpinRow)
         set_tooltip(self.long_chunk_row, LONG_FILE_CHUNK_HELP)
         self.long_chunk_row.connect("notify::value", self._on_long_chunk_changed)
+        self.long_chunk_row.connect("output", self._format_chunk_duration)
         self.long_chunk_overlap_row = object_from_builder(
             builder, "long_chunk_overlap_row", Adw.SpinRow
         )
         set_tooltip(self.long_chunk_overlap_row, LONG_FILE_CHUNK_OVERLAP_HELP)
         self.long_chunk_overlap_row.connect("notify::value", self._on_long_chunk_overlap_changed)
+        self.confirm_processing_plan_row = configure_switch_row(
+            object_from_builder(builder, "confirm_processing_plan_row", Adw.SwitchRow)
+        )
+        self.confirm_processing_plan_row.connect(
+            "notify::active", self._on_bool_changed, "confirm_processing_plan"
+        )
+
+        return page
+
+    def _bind_process_switches(self, builder: Gtk.Builder, keys: tuple[str, ...]) -> None:
+        for key in keys:
+            row = configure_switch_row(object_from_builder(builder, f"{key}_row", Adw.SwitchRow))
+            row.connect("notify::active", self._on_bool_changed, key)
+            self._process_switches[key] = row
+
+    def _build_output_page(self, builder: Gtk.Builder) -> Adw.PreferencesPage:
+        page = object_from_builder(builder, "output_page", Adw.PreferencesPage)
+        self._bind_process_switches(
+            builder,
+            (
+                "is_testing_audio",
+                "is_add_model_name",
+                "is_create_model_folder",
+                "is_normalization",
+                "is_match_mix_level",
+                "is_prevent_export_clipping",
+            ),
+        )
+        set_tooltip(self._process_switches["is_add_model_name"], IS_MODEL_TESTING_AUDIO_HELP)
+        set_tooltip(self._process_switches["is_create_model_folder"], IS_CREATE_MODEL_FOLDER_HELP)
+        set_tooltip(self._process_switches["is_normalization"], IS_NORMALIZATION_HELP)
+        set_tooltip(self._process_switches["is_match_mix_level"], IS_MATCH_MIX_LEVEL_HELP)
+        set_tooltip(
+            self._process_switches["is_prevent_export_clipping"],
+            IS_PREVENT_EXPORT_CLIPPING_HELP,
+        )
+
+        self.amplification_row = object_from_builder(builder, "amplification_row", Adw.SpinRow)
+        set_tooltip(self.amplification_row, AMPLIFICATION_THRESHOLD_HELP)
+        self.amplification_row.connect("notify::value", self._on_amplification_changed)
+        self.output_name_preview_row = object_from_builder(
+            builder, "output_name_preview_row", Adw.ActionRow
+        )
+
+        return page
+
+    def _build_maintenance_page(self, builder: Gtk.Builder) -> Adw.PreferencesPage:
+        page = object_from_builder(builder, "maintenance_page", Adw.PreferencesPage)
+        self.diagnostic_level_row = configure_combo_row(
+            object_from_builder(builder, "diagnostic_level_row", Adw.ComboRow),
+            [label for label, _value in _DIAGNOSTIC_LEVEL_OPTIONS],
+        )
+        self.diagnostic_level_row.connect("notify::selected", self._on_diagnostic_level_changed)
+        self.diagnostic_sensitive_row = configure_switch_row(
+            object_from_builder(builder, "diagnostic_sensitive_row", Adw.SwitchRow)
+        )
+        self.diagnostic_sensitive_row.connect(
+            "notify::active", self._on_diagnostic_sensitive_changed
+        )
+
+        reset_button = object_from_builder(builder, "reset_button", Gtk.Button)
+        reset_button.connect("clicked", self._on_reset_clicked)
+
         self.cleanup_ensemble_temps_row = configure_switch_row(
             object_from_builder(builder, "cleanup_ensemble_temps_row", Adw.SwitchRow)
         )
@@ -573,7 +597,6 @@ class PreferencesDialog(Adw.PreferencesDialog):
 
             self._sync_gpu_device_row()
 
-            self.sample_mode_row.set_active(bool(self.settings.process.sample_mode))
             self.cleanup_ensemble_temps_row.set_active(bool(self.settings.ensemble.cleanup_temps))
             self.auto_update_model_params_row.set_active(
                 bool(self.settings.process.auto_update_model_params)
@@ -584,7 +607,6 @@ class PreferencesDialog(Adw.PreferencesDialog):
             except (TypeError, ValueError):
                 duration = 30.0
             self.sample_duration_row.set_value(duration)
-            self._update_sample_duration_subtitle(duration)
 
             try:
                 long_chunk = float(self.settings.process.long_file_chunk_seconds or 0)
@@ -596,6 +618,8 @@ class PreferencesDialog(Adw.PreferencesDialog):
             except (TypeError, ValueError):
                 long_overlap = 2.0
             self.long_chunk_overlap_row.set_value(max(0.0, min(30.0, long_overlap)))
+            self._sync_long_chunk_state()
+            self._format_chunk_duration(self.long_chunk_row)
 
             self._refresh_profile_list()
         finally:
@@ -613,8 +637,15 @@ class PreferencesDialog(Adw.PreferencesDialog):
         if select and select in profiles:
             set_combo_value(self.profile_combo, select)
 
-    def _update_sample_duration_subtitle(self, duration: typing.Any) -> None:
-        self.sample_duration_row.set_subtitle(SAMPLE_MODE_CHECKBOX(int(duration)))
+    @staticmethod
+    def _format_chunk_duration(row: Adw.SpinRow) -> bool:
+        if row.get_value() == 0:
+            row.set_text("Off")
+            return True
+        return False
+
+    def _sync_long_chunk_state(self) -> None:
+        self.long_chunk_overlap_row.set_sensitive(self.long_chunk_row.get_value() > 0)
 
     # -- Change handlers --------------------------------------------------------
 
@@ -639,6 +670,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
         # The row is digits=0, so this is already whole; store it as the float
         # the field declares so CLI-set fractional values survive a reload too.
         self.settings.process.long_file_chunk_seconds = float(row.get_value())
+        self._sync_long_chunk_state()
         self._persist()
 
     def _on_long_chunk_overlap_changed(self, row: typing.Any, _pspec: typing.Any) -> None:
@@ -719,7 +751,6 @@ class PreferencesDialog(Adw.PreferencesDialog):
             return
         value = int(row.get_value())
         self.settings.process.sample_mode_duration = value
-        self._update_sample_duration_subtitle(value)
         self._persist()
 
     def _persist(self) -> None:
@@ -758,14 +789,8 @@ class PreferencesDialog(Adw.PreferencesDialog):
         return opts, subtitle
 
     def _sync_gpu_device_row(self) -> None:
-        enabled = gpu_dependent_enabled(self.settings.process.use_gpu)
-        self.device_row.set_sensitive(enabled)
-        subtitle = self._device_detection_subtitle
-        if not enabled:
-            subtitle = (
-                "Enable GPU conversion on Separation or Ensemble to choose a device.\n" + subtitle
-            )
-        self.device_row.set_subtitle(subtitle)
+        self.device_row.set_sensitive(True)
+        self.device_row.set_subtitle(self._device_detection_subtitle)
 
     def _probe_gpu_devices(self) -> None:
         from core.gpu import list_gpu_devices
@@ -794,6 +819,26 @@ class PreferencesDialog(Adw.PreferencesDialog):
             self._loading = False
 
     # -- Profiles ---------------------------------------------------------------
+
+    def _on_save_profile_requested(self, _row: Adw.ActionRow) -> None:
+        self._validate_profile_name()
+        self.save_profile_dialog.present(self)
+        self.profile_name_row.grab_focus()
+
+    def _validate_profile_name(self, *_args: typing.Any) -> None:
+        name = self.profile_name_row.get_text().strip()
+        valid = _is_valid_profile_name(name)
+        self.save_profile_dialog.set_response_enabled("save", valid)
+        self.profile_name_error.set_label("Use up to 25 letters, numbers, spaces or dashes")
+        self.profile_name_error.set_visible(bool(name) and not valid)
+
+    def _activate_profile_save(self, _row: Adw.EntryRow) -> None:
+        if self.save_profile_dialog.get_response_enabled("save"):
+            self.save_profile_dialog.activate_default()
+
+    def _on_save_profile_response(self, _dialog: Adw.AlertDialog, response: str) -> None:
+        if response == "save":
+            self._on_save_profile(self.profile_name_row)
 
     def _on_save_profile(self, entry_row: typing.Any) -> None:
         name = entry_row.get_text().strip()
