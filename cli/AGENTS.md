@@ -20,6 +20,9 @@ The command-line front end. A presentation layer, exactly like `ui/`.
 - **Diagnostics never own stdout.** Route structured diagnostics through
   `core.debug_log`; JSON/JSONL stdout remains machine-readable. `--verbose`
   prints the effective plan and is independent from `--debug` / `--trace`.
+- **Progress metadata is extensible.** `reporting.make_progress_printer` accepts
+  keyword metadata and forwards it to JSONL, including stable processing-phase
+  IDs. Keep human labels and console formatting separate from machine events.
 - **Ctrl-C is cooperative then forced.** `cli.execution.run_runner_cli` owns
   signal installation and restores previous SIGINT/SIGTERM handlers in `finally`.
   `core.blocking_runner.run_blocking` captures runner exceptions and interruptions.

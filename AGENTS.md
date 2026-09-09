@@ -75,7 +75,8 @@ aliases or `__all__` instead of a blanket unused-import exception.
 Other:
 
 ```bash
-./resources/compile_resources.sh   # rebuild ui/data/uvr.gresource after touching resources/icons or style.css
+./resources/compile_resources.sh   # rebuild after changing resources/ui/*.blp, icons, or style.css
+./resources/compile_resources.sh --check   # read-only check that the bundle matches its sources
 ./uvr separate song.wav -o /tmp/out --model mdx:Model --stems both
 ./uvr separate song.wav -o /tmp/out --profile gui --accept-inherited
 ./uvr ensemble song.wav -o /tmp/out --ensemble "Curated: Vocal Clean"
@@ -107,8 +108,18 @@ the responsibility boundaries, settings, identity, export and run invariants.
 Canonical model IDs are `family:basename`; display labels never recover identity.
 Use typed settings and preserve per-page edited-field commits and active-tab guards.
 
-For module work, also read [ui/AGENTS.md](ui/AGENTS.md),
+For module work, also read [ui/AGENTS.md](ui/AGENTS.md) (including work on
+`resources/ui/*.blp` or `resources/style.css`),
 [cli/AGENTS.md](cli/AGENTS.md), or [scripts/AGENTS.md](scripts/AGENTS.md) as applicable.
+
+**Report operations explicitly.** Workers call `JobCallbacks.report_phase` with
+`core.processing_phase.ProcessingPhase` before blocking work. Engines receive the
+optional `ProcessData.report_phase` callback; scientific helpers may use neutral
+stage callbacks mapped by core. Later numeric ticks retain the current phase so
+GTK coalescing cannot erase it. Preserve overall progress and pass/output metadata;
+do not infer new phase labels from percentage ranges or parse console text. Use
+`Collecting outputs` for buffered stems and `Saving outputs` for disk exports.
+Tests should observe phases at the actual operation boundary and through dispatch.
 
 ## Repository workflow
 

@@ -1,6 +1,6 @@
 # UI layer (GTK4 / libadwaita)
 
-Loaded when working under `ui/`. Layer rules, invariants and repo workflow live in the root [AGENTS.md](../AGENTS.md).
+Applies to `ui/`, `resources/ui/*.blp`, and `resources/style.css`. Layer rules, invariants and repo workflow live in the root [AGENTS.md](../AGENTS.md).
 
 ## Blueprint layouts
 
@@ -8,18 +8,38 @@ Loaded when working under `ui/`. Layer rules, invariants and repo workflow live 
   sources and rebuild with `./resources/compile_resources.sh`. Generated `.ui`
   files are not editable sources. Keep the tracked bundle with its matching
   Blueprint changes.
+- Prefer the installed native `blueprint-compiler` from `PATH`; inspect its
+  version with `blueprint-compiler --version`. `BLUEPRINT_COMPILER` is an override
+  for a specific compiler, not a requirement to use a Flatpak or temporary checkout.
+  Run `blueprint-compiler lint resources/ui/<name>.blp` on changed layouts and
+  review its diagnostics; lint suggestions are not authorization for unrelated
+  redesigns. Compilation and `./resources/compile_resources.sh --check` remain
+  separate required resource checks. The latter compares resource contents,
+  tolerating XML formatting differences between compiler versions.
 - Use typed `Gtk.Template.Child` descriptors or `ui.template.object_from_builder`.
   Validate the exact resource before a template decorator; registration must stay
   display-independent. Builder loading initializes libadwaita at construction time.
   Templates with Adw child types must initialize libadwaita before template
   expansion in their constructor, as `VocalSplitRow` does; a prior application
   or widget constructor must not be required to register those types.
+- Never call `Gtk.init()` or `Adw.init()` at module scope to satisfy a template.
+  The no-display import test must clear host display endpoints in its subprocess;
+  checking `Gdk.Display.get_default()` before import alone does not isolate it.
 - Keep runtime collections, settings, signal order, and lifecycle in Python.
   Configure existing declarative controls without triggering persistence during
   model loading. A fixed page should own its rows declaratively even when its
   row models are populated later.
 - Keep optional newer Adw types out of baseline resources. Select compatible
   switchers in Python and preserve existing fallback behavior.
+- Put fixed margins, spacing, alignment, and size requests in Blueprint. Keep
+  colors, radii, and visual transitions in CSS; runtime measurements belong in
+  Python. Use `unit: sp` for application-owned `Adw.Clamp`s and `sp` breakpoint
+  lengths. Do not append units to ordinary integer GTK margin properties.
+  PreferencesPage's internal clamp is configured by
+  `PreferencesDialog._configure_page_clamp` (640 maximum, 600 tightening, in sp);
+  its guarded traversal deliberately avoids application-owned groups.
+- `UVR_DEV_CSS=1 ./run_uvr.sh` enables live stylesheet reload. Blueprint edits
+  still need compilation and a restart; rebuild the bundle before committing CSS.
 
 ## Widget behaviour and diagnosis
 
@@ -55,6 +75,33 @@ Rules for new UI:
 - **Anti-pattern:** calling `save_stems.persist_to_settings()` from `save_options()` or any path that runs when `include_stem_only=False` (Demucs/MDX regression: inactive Demucs `quick_all` cleared MDX Instrumental focus before plan review).
 
 ## Presentation and lifecycle ownership
+
+### Floating processing log
+
+- `LogPanel` owns presentation; `RunController` and `RunHost` own run state and
+  readiness. Incomplete settings disable Start with a visible reason. Stop stays
+  visible but insensitive when unavailable. Preserve terminal summaries while
+  hiding stopped/failed progress; a full bar alone does not establish success.
+- Keep explicit phases flowing through `JobCallbacks`, `gtk_job_callbacks`, and
+  `RunProgressPresenter`. The latter and `ProgressEtaTracker` own labels, throttling,
+  and ETA; widgets must not reconstruct phases. Phase changes must survive latest
+  progress coalescing and bypass throttling even within the same ETA category.
+- `ConsoleView` follows new output only when already at the bottom. Reopening the
+  log preserves reading position. `ui.auto_expand_log` controls expansion at run
+  start and defaults to false; it is not a scroll-follow preference.
+- Width is state-driven: 400 sp collapsed or expanded-empty, 560 sp expanded with
+  output, constrained by available space. `PanelLayout` responds to allocations;
+  `StableLogLayout` keeps text wrapping at the expanded width during transitions.
+  Preserve this split instead of polling every frame or sizing from log text.
+- The overlay fills available space, but `LogPanel.do_contains` targets only the
+  visible card, including its padding. Keep ancestors targetable: disabling them
+  can block mouse input to descendants while keyboard navigation still works.
+  Check buttons, text selection, padding, and click-through outside the card.
+- Keep console messages grouped through `core.console_text`. Standalone headings
+  end in a newline; an operation's `...` and `Done!` deliberately share a line.
+  Avoid repeating file/model headings on every message or adding timestamps.
+
+### Other surfaces
 
 - Download Center renders `CatalogueBrowserState` rows and keeps its ordered
   `(arch, name)` selection and public pinned snapshot there. Display search and
