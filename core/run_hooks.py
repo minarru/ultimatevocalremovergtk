@@ -13,6 +13,7 @@ import time
 from typing import Any, List, cast
 
 from bundled.constants import WAV
+from core.processing_phase import ProcessingPhase
 
 from .audio_io import resolve_wav_type_set
 from .debug_log import debug_elapsed
@@ -81,6 +82,7 @@ class _SingleRunHooks:
 
     def export_and_base(self, runner: Any, state: FileState, model: Any) -> tuple[str, str]:
         model_label = _model_output_label(model)
+        state.callbacks.console(f"Model: {model_label}\n")
         naming = runner._naming_for_file(
             state.audio_file,
             export_path=self.export_path,
@@ -121,10 +123,12 @@ class _SingleRunHooks:
         parts = state.scratch.get("stem_parts") or {}
         if not (state.chunked and parts):
             return
+        state.callbacks.report_phase(ProcessingPhase.JOINING)
         final_stems = {
             stem: concat_stems(chunk_parts, overlap_samples=state.ov_samples)
             for stem, chunk_parts in parts.items()
         }
+        state.callbacks.report_phase(ProcessingPhase.SAVING)
         _write_captured_stems(
             final_stems,
             state.scratch["stem_paths"],
@@ -170,8 +174,7 @@ class _EnsembleRunHooks:
     def export_and_base(self, runner: Any, state: FileState, model: Any) -> tuple[str, str]:
         model_label = _model_output_label(model)
         state.callbacks.console(
-            f"Ensemble Mode - {model_label} - "
-            f"Model {state.progress_ctx['model_num']}/{state.model_count}\n"
+            f"\nModel {state.progress_ctx['model_num']}/{state.model_count} — {model_label}\n"
         )
         member_naming = runner._ensemble_member_naming_for_file(
             state.audio_file,
@@ -248,11 +251,13 @@ class _EnsembleRunHooks:
         scratch = state.scratch
         salvage_arrays: dict = {}
         if state.chunked:
+            state.callbacks.report_phase(ProcessingPhase.JOINING)
             for collected, parts in scratch["member_stem_parts"].items():
                 concat = concat_stems(parts, overlap_samples=state.ov_samples)
                 scratch["ensemble_stem_arrays"].setdefault(collected.group_key, []).append(concat)
                 salvage_arrays[collected.group_key] = concat
             if runner.settings.ensemble.save_all_outputs and salvage_arrays:
+                state.callbacks.report_phase(ProcessingPhase.SAVING)
                 _write_captured_stems(
                     salvage_arrays,
                     scratch["member_paths"],
@@ -282,11 +287,11 @@ class _EnsembleRunHooks:
                 "model_label": scratch["model_label"],
             }
         )
-        state.callbacks.console("\n")
 
     def after_file(self, runner: Any, state: FileState) -> None:
         callbacks = state.callbacks
-        callbacks.console(state.base_text + "Ensembling outputs...\n")
+        callbacks.report_phase(ProcessingPhase.COMBINING)
+        callbacks.console("\nEnsembling outputs...")
         combine_started = time.perf_counter()
         ensemble_stem_arrays = state.scratch["ensemble_stem_arrays"]
         ensemble_stem_paths = state.scratch.get("ensemble_stem_paths", {})
@@ -359,8 +364,21 @@ class _EnsembleRunHooks:
         combine_total = max(1, len(combine_steps))
         combine_start = state.progress_sink.fraction
         combine_end = state.file_num / max(1, state.total_files)
+        total_count = max(1, runner.true_model_count * state.total_files)
         for combine_idx, (stem_name, payload) in enumerate(combine_steps):
+            # Publish the current output before blocking combine/export work.
+            callbacks.progress(
+                state.progress_sink.fraction,
+                local_step=combine_progress_local_step(combine_idx, combine_total),
+                pass_index=total_count,
+                pass_total=total_count,
+                combine_index=combine_idx + 1,
+                combine_total=combine_total,
+                detail=f"Combining {combine_idx + 1}/{combine_total}",
+                phase=ProcessingPhase.SAVING if plan is not None else ProcessingPhase.COMBINING,
+            )
             if plan is not None:
+                callbacks.report_phase(ProcessingPhase.SAVING)
                 self.ensemble.write_stem_waveform(ensemble_final_base, stem_name, payload)
             else:
                 self.ensemble.ensemble_outputs(
@@ -370,13 +388,13 @@ class _EnsembleRunHooks:
                     stem_arrays=ensemble_stem_arrays,
                     stem_paths=ensemble_stem_paths,
                     is_multi_stem=self.is_multi_stem,
+                    report_phase=callbacks.report_phase,
                     **payload,
                 )
             span = max(combine_end - combine_start, 0.0)
             fraction = combine_start + span * ((combine_idx + 1) / combine_total)
             local_step = combine_progress_local_step(combine_idx, combine_total)
             state.progress_sink.fraction = fraction
-            total_count = max(1, runner.true_model_count * state.total_files)
             callbacks.progress(
                 fraction,
                 local_step=local_step,
@@ -399,4 +417,4 @@ class _EnsembleRunHooks:
             self.ensemble.publish_member_files(published)
 
         debug_elapsed("worker", "ensemble combine", combine_started)
-        callbacks.console("Done\n")
+        callbacks.console(" Done!\n")

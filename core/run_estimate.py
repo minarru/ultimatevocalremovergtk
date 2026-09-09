@@ -19,6 +19,8 @@ from bundled.constants import (
 )
 from core.stem_pairs import normalize_stem_pair_id
 
+from .processing_phase import ProcessingPhase
+
 if TYPE_CHECKING:
     from .settings import Settings
 
@@ -542,6 +544,7 @@ class ProgressEtaTracker:
     a short infer-clock gate. The inference clock pauses outside that phase.
     """
 
+    _reported_phase: ProcessingPhase | None = None
     _smoothed_remaining: Optional[float] = None
     _local_step: Optional[float] = None
     _pass_index: Optional[int] = None
@@ -559,6 +562,7 @@ class ProgressEtaTracker:
     _infer_elapsed_total: float = 0.0
 
     def reset(self) -> None:
+        self._reported_phase = None
         self._smoothed_remaining = None
         self._local_step = None
         self._pass_index = None
@@ -590,7 +594,10 @@ class ProgressEtaTracker:
         detail: Optional[str] = None,
         combine_index: Optional[int] = None,
         combine_total: Optional[int] = None,
+        phase: ProcessingPhase | None = None,
     ) -> None:
+        if phase is not None:
+            self._reported_phase = phase
         fraction = max(0.0, min(1.0, fraction))
         if detail is not None:
             self._detail = detail or None
@@ -613,20 +620,26 @@ class ProgressEtaTracker:
             self._held_display = 1.0
             return
 
-        phase = self.phase(fraction)
-        if phase == "inference":
+        category = self.phase(fraction)
+        if category == "inference":
             self._resume_infer_clock(now)
         else:
             self._pause_infer_clock(now)
 
-        if phase == "combining":
+        if category == "combining":
             if self._combine_step_started is None:
                 self._combine_step_started = now
-        elif self._combine_step_started is not None and self._last_combine_index is not None:
+        elif (
+            self._combine_step_started is not None
+            and self._last_combine_index is not None
+            and self._reported_phase is not ProcessingPhase.SAVING
+        ):
+            # Export belongs to the current ensemble output. Keep its clock
+            # until the next output begins, so the ETA includes writing too.
             # Left combining without a step bump (run finished).
             self._combine_step_started = None
 
-        if phase != "inference":
+        if category != "inference":
             return
 
         display = self.inference_display_fraction(fraction)
@@ -667,6 +680,8 @@ class ProgressEtaTracker:
 
     def phase(self, fraction: float) -> str:
         """Return loading / inference / saving / combining for the latest step."""
+        if self._reported_phase is not None:
+            return self._reported_phase.timing_category
         local = self._local_step
         if local is not None:
             if local >= _LOCAL_COMBINE_START:
@@ -700,6 +715,8 @@ class ProgressEtaTracker:
             return 1.0
         if self.is_indeterminate(fraction):
             return None
+        if self._reported_phase is not None and self._local_step is None:
+            return fraction
         local_infer = _local_infer_progress(self._local_step)
         total = self._pass_total or 1
         index = self._pass_index or 1
@@ -777,15 +794,15 @@ class ProgressEtaTracker:
                 parts.append(compact)
             return " · ".join(parts)
 
+        reported_label = self._reported_phase.label if self._reported_phase is not None else None
         if phase == "loading":
-            return _with_detail("Loading model")
+            return _with_detail(reported_label or "Loading model")
         if phase == "saving":
-            return _with_detail("Saving stems")
+            return _with_detail(reported_label or "Saving stems")
         if phase == "combining":
+            label = reported_label or "Combining ensemble"
             if self._combine_index and self._combine_total:
-                label = f"Combining ensemble ({self._combine_index}/{self._combine_total})"
-            else:
-                label = "Combining ensemble"
+                label += f" ({self._combine_index}/{self._combine_total})"
             parts = [elapsed_part, label]
             raw = self._raw_remaining(fraction, clock)
             smoothed = self._smooth_remaining(raw)
@@ -796,11 +813,15 @@ class ProgressEtaTracker:
         display = self.inference_display_fraction(fraction)
         if display is None:
             display = self._held_display
-        percent = int(round(display * 100))
+        percent = int(round((fraction if self._reported_phase is not None else display) * 100))
         parts = [f"{percent}%", elapsed_part]
         compact = overlay_progress_detail(self._detail)
         if compact:
             parts.append(compact)
+        # Inference can finish before export does. Its zero remainder is not a
+        # zero remainder for the whole job, so omit that estimate at the boundary.
+        if self._reported_phase is not None and display >= 1.0:
+            return " · ".join(parts)
         raw = self._raw_remaining(fraction, clock)
         smoothed = self._smooth_remaining(raw)
         if smoothed is not None:

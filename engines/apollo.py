@@ -14,6 +14,7 @@ import numpy as np
 import torch
 
 import ml.apollo_model_data as models
+from core.processing_phase import ProcessingPhase
 from ml.apollo_inference import restore_audio
 
 from .model_weight_cache import ModelWeightCache, materialize_module, weight_cache_key
@@ -71,6 +72,7 @@ def restore_process(
     extracted_params: dict[str, Any] | None = None,
     config: Any = None,
     settings: Any = None,
+    on_phase: Callable[[ProcessingPhase], None] | None = None,
 ) -> np.ndarray:
 
     from .model_weight_cache import get_weight_cache
@@ -78,6 +80,8 @@ def restore_process(
     if device is None:
         device = "cpu"
     progress_value = 0
+    if on_phase is not None:
+        on_phase(ProcessingPhase.LOADING_MODEL)
     model = acquire_apollo_model(
         ckpt_path, device, extracted_params, config, cache=get_weight_cache()
     )
@@ -104,7 +108,11 @@ def restore_process(
         if set_progress_bar is not None:
             set_progress_bar(0.1, iter_val)
 
+    if on_phase is not None:
+        on_phase(ProcessingPhase.READING_AUDIO)
     audio_data, samplerate = load_audio(input_wav)
+    if on_phase is not None:
+        on_phase(ProcessingPhase.RESTORING)
     final_output = restore_audio(
         audio_data,
         samplerate,

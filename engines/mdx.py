@@ -74,6 +74,19 @@ class SeperateMDX(SeperateAttributes):
                 "separate", "seperate", engine="SeperateMDX", model=self.model_display_label
             ):
                 self.start_inference_console_write()
+                use_ort = (
+                    not self.is_mdx_ckpt
+                    and self.mdx_segment_size == self.dim_t
+                    and not self.is_other_gpu
+                )
+                if use_ort:
+                    from engines.amp_runtime import autocast_enabled
+
+                    if autocast_enabled(self.settings):
+                        self.write_to_console(
+                            "Note: FP16 autocast has no effect on this ONNX Runtime "
+                            "model; it only accelerates PyTorch-based models.\n"
+                        )
                 self.write_to_console(LOADING_MODEL)
 
                 from engines.model_weight_cache import (
@@ -104,15 +117,6 @@ class SeperateMDX(SeperateAttributes):
                         )
                         self._weight_cache_meta = {"dim_c": self.dim_c, "hop": self.hop}
                 else:
-                    use_ort = self.mdx_segment_size == self.dim_t and not self.is_other_gpu
-                    if use_ort:
-                        from engines.amp_runtime import autocast_enabled
-
-                        if autocast_enabled(self.settings):
-                            self.write_to_console(
-                                "Note: FP16 autocast has no effect on this ONNX Runtime "
-                                "model; it only accelerates PyTorch-based models.\n"
-                            )
                     key = weight_cache_key(
                         "mdx_ort" if use_ort else "mdx_convert",
                         self.model_path,

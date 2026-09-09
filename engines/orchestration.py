@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 from bundled.constants import *
 from core.debug_log import trace_phase
+from core.processing_phase import ProcessingPhase
 from ml import spec_utils
 
 from . import separator_factory
@@ -45,6 +46,10 @@ def process_secondary_model(
             process_iteration = process_data.process_iteration
             process_iteration()
 
+        if getattr(process_data, "report_phase", None) is not None:
+            process_data.report_phase(
+                ProcessingPhase.LOADING_PREPROCESS if is_pre_proc_model else ProcessingPhase.LOADING_SECONDARY
+            )
         seperator = separator_factory.build_seperator(
             secondary_model,
             process_data,
@@ -88,6 +93,8 @@ def process_chain_model(
         vocal_base = "audio"
     vocal_stem_path = [vocal_source, vocal_base]
 
+    if getattr(process_data, "report_phase", None) is not None:
+        process_data.report_phase(ProcessingPhase.LOADING_SPLITTER)
     seperator = separator_factory.build_seperator(
         secondary_model,
         process_data,

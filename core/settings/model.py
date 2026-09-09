@@ -254,6 +254,7 @@ class UiSettings:
     notify_download_complete: bool = True
     notify_download_failed: bool = True
     confirm_processing_plan: bool = True
+    auto_expand_log: bool = False
 
 
 @dataclass

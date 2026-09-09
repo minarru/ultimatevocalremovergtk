@@ -68,14 +68,20 @@ class GtkRunHost:
     def clear_console(self) -> None:
         self.window.console.clear()
 
-    def set_progress_text(self, text: str) -> None:
-        self.window.log_panel.set_progress_text(text)
+    def set_progress_text(self, text: str, *, title: str | None = None) -> None:
+        self.window.log_panel.set_progress_text(text, title=title)
+
+    def set_preparing(self, preparing: bool) -> None:
+        self.window.log_panel.set_preparing(preparing)
 
     def set_progress_fraction(self, fraction: float) -> None:
         self.window.log_panel.set_progress_fraction(fraction)
 
     def clear_progress(self) -> None:
         self.window.log_panel.clear_progress()
+
+    def set_run_result(self, text: str, *, error: bool = False) -> None:
+        self.window.log_panel.set_run_result(text, error=error)
 
     def set_run_label(self, label: str) -> None:
         self.window.log_panel.set_run_label(label)
@@ -114,13 +120,7 @@ class GtkRunHost:
         )
 
     def set_start_blocked_reason(self, reason: str | None) -> None:
-        button = self.window.start_button
-        if reason:
-            button.remove_css_class("suggested-action")
-            button.add_css_class("dim-label")
-        else:
-            button.remove_css_class("dim-label")
-            button.add_css_class("suggested-action")
+        self.window.log_panel.set_start_blocked_reason(reason)
 
     def refresh_readiness(self) -> None:
         self.window._refresh_start_readiness()

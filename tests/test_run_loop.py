@@ -13,6 +13,7 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 
+from core.job_callbacks import JobCallbacks
 from core.run_loop import _progress_detail, run_models_on_files
 
 _REPO = Path(__file__).resolve().parents[1]
@@ -86,9 +87,9 @@ def _runner(*, true_model_count: int = 1) -> SimpleNamespace:
     )
 
 
-def _callbacks() -> tuple[SimpleNamespace, list[str]]:
+def _callbacks() -> tuple[JobCallbacks, list[str]]:
     console: list[str] = []
-    return SimpleNamespace(console=console.append, progress=lambda *a, **k: None), console
+    return JobCallbacks(on_console=console.append), console
 
 
 class ProgressDetailDisplayTests(unittest.TestCase):

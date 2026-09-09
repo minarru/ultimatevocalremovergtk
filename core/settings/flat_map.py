@@ -148,6 +148,7 @@ FLAT_TO_PATH: dict[str, tuple[str, str]] = {
     "notify_process_complete": ("ui", "notify_process_complete"),
     "notify_process_failed": ("ui", "notify_process_failed"),
     "confirm_processing_plan": ("ui", "confirm_processing_plan"),
+    "auto_expand_log": ("ui", "auto_expand_log"),
     "notify_download_complete": ("ui", "notify_download_complete"),
     "notify_download_failed": ("ui", "notify_download_failed"),
 }

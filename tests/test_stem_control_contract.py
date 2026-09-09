@@ -477,6 +477,8 @@ class RawAndAdditionalOutputContractTests(unittest.TestCase):
         sep = SimpleNamespace(
             is_deverb_vocals=True,
             deverb_vocal_opt="ALL",
+            is_ensemble_mode=False,
+            is_vocal_split_model=False,
             write_to_console=Mock(),
         )
         for bucket, nonensemble, enabled in (

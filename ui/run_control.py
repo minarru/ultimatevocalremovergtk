@@ -31,6 +31,7 @@ from core.debug_log import (
     operation,
     set_operation_id,
 )
+from core.processing_phase import ProcessingPhase
 from core.separate_import import engines_imported, warm_status
 
 from .dispatch import gtk_job_callbacks, idle_on_main, reset_progress_log
@@ -253,6 +254,7 @@ class RunController:
 
     def _set_preflight_busy(self, busy: bool) -> None:
         self._preflight_in_progress = busy
+        self._host.set_preparing(busy)
         if busy:
             self._preflight_start_label = self._host.start_label()
             self._host.set_start_label("Preparing…")
@@ -505,9 +507,10 @@ class RunController:
         self._host.set_progress_text(_starting_progress_text())
         self._host.set_pulse(True)
         self._set_running(True)
-        self._host.reveal_log()
+        if self._host.settings.ui.auto_expand_log:
+            self._host.reveal_log()
         self._host.prepare_log()
-        debug("ui", "begin_run UI ready (log revealed, prepare_for_run done)")
+        debug("ui", "begin_run UI ready (log prepared)")
 
     def _ensure_operation(self) -> str:
         operation_id = getattr(self, "_operation_id", None)
@@ -530,7 +533,7 @@ class RunController:
         self._host.set_pulse(False)
         failed_target = self._running_target or self._host.target
         self._restore_idle_controls()
-        self._host.set_progress_text("Failed")
+        self._host.set_run_result("Processing failed", error=True)
         self._host.append_console(f"\n{message}\n")
         self._report_error(message, exc, target=failed_target)
 
@@ -794,7 +797,7 @@ class RunController:
             self._schedule_release_inference_memory(wait_for_stop=0.5)
         self._host.set_pulse(False)
         self._restore_idle_controls()
-        self._host.clear_progress()
+        self._host.set_run_result("Run stopped" if stopped else "Ready to process")
         clear_run_start()
         if stopped:
             self._finish_operation("run_stopped", reason="user")
@@ -850,7 +853,7 @@ class RunController:
         self._host.enable_start(False)
         self._host.enable_stop(False)
         self._host.set_pulse(False)
-        self._host.set_progress_text("Unable to stop — restart required")
+        self._host.set_run_result("Unable to stop — restart required", error=True)
         self._host.append_console(
             "\nProcessing has not stopped. Wait longer or quit and restart the app.\n"
         )
@@ -931,7 +934,7 @@ class RunController:
         self._host.set_pulse(False)
         failed_target = self._running_target or self._host.target
         self._restore_idle_controls()
-        self._host.set_progress_text("Failed")
+        self._host.set_run_result("Processing failed", error=True)
         message = f"Process failed: {exc}"
         self._host.append_console(f"\n{message}\n")
         self._report_error(message, exc, target=failed_target)
@@ -994,16 +997,17 @@ class RunController:
         detail: Optional[str] = None,
         combine_index: Optional[int] = None,
         combine_total: Optional[int] = None,
+        phase: ProcessingPhase | None = None,
         **_extra: typing.Any,
     ) -> None:
         presentation = self.progress.update(
             fraction, time.monotonic(), suspended=self._run_ui_suspended,
             local_step=local_step, pass_index=pass_index, pass_total=pass_total,
-            detail=detail, combine_index=combine_index, combine_total=combine_total,
+            detail=detail, combine_index=combine_index, combine_total=combine_total, phase=phase,
         )
         if presentation is None:
             return
-        self._host.set_progress_text(presentation.text)
+        self._host.set_progress_text(presentation.text, title=presentation.title)
         if presentation.pulse == "start":
             self._host.set_pulse(True)
         else:
@@ -1070,7 +1074,7 @@ class RunController:
         return self._host.active_download_count()
 
     def refresh_start_readiness(self) -> Optional[str]:
-        """Allow idle activation to explain readiness; disable Start only while busy."""
+        """Disable Start until the active target is ready and show its reason."""
         if (
             self._closing
             or self._running_target is not None
@@ -1082,7 +1086,7 @@ class RunController:
             return None
         target = self._host.target
         reason = target_blocked_reason(target)
-        self._host.enable_start(True)
+        self._host.enable_start(reason is None)
         description = reason or "Start processing"
         self._host.describe_start(description)
         self._host.set_start_blocked_reason(reason)

@@ -43,10 +43,18 @@ class ConsoleView(Gtk.ScrolledWindow):
         self._viewport_idle_id: Optional[int] = None
         self._map_handler_id: Optional[int] = None
         self._defer_scroll = False
+        self._follow_tail = True
+        self._scrolling = False
 
         vadj = self.get_vadjustment()
+        vadj.connect("value-changed", self._on_scroll_changed)
         vadj.connect("notify::upper", self._on_viewport_changed)
         vadj.connect("notify::page-size", self._on_viewport_changed)
+
+    def _on_scroll_changed(self, adj: Gtk.Adjustment) -> None:
+        if self._scrolling or self._viewport_idle_id is not None or not self.get_mapped():
+            return
+        self._follow_tail = adj.get_value() >= adj.get_upper() - adj.get_page_size() - 2
 
     def _on_viewport_changed(self, _adj: Gtk.Adjustment, _pspec: typing.Any) -> None:
         if not self.get_mapped():
@@ -65,6 +73,8 @@ class ConsoleView(Gtk.ScrolledWindow):
         if upper <= page + 0.5 or self._defer_scroll:
             if vadj.get_value() != vadj.get_lower():
                 vadj.set_value(vadj.get_lower())
+        if self._follow_tail and not self._defer_scroll:
+            self._scroll_to_end()
         return GLib.SOURCE_REMOVE
 
     def defer_scroll_until_settled(self) -> None:
@@ -72,7 +82,6 @@ class ConsoleView(Gtk.ScrolledWindow):
 
     def resume_scroll(self) -> None:
         self._defer_scroll = False
-        self._reset_scroll()
 
     def append(self, text: str) -> None:
         # ``DONE`` completes the current in-progress line (no trailing newline).
@@ -121,6 +130,7 @@ class ConsoleView(Gtk.ScrolledWindow):
         self._buffer.delete(start, end)
 
     def clear(self) -> None:
+        self._follow_tail = True
         self._buffer.set_text("")
         self._reset_scroll()
         self._notify_changed()
@@ -155,7 +165,7 @@ class ConsoleView(Gtk.ScrolledWindow):
         self._reconcile_scroll_id = GLib.timeout_add(self._LAYOUT_SETTLE_MS, self._reconcile_scroll)
 
     def _scroll_to_end(self) -> None:
-        if self._defer_scroll:
+        if self._defer_scroll or not self._follow_tail:
             return
         # Already parked on the next map — do not schedule another idle that
         # would only discover we are still unmapped and return.
@@ -197,6 +207,9 @@ class ConsoleView(Gtk.ScrolledWindow):
         return GLib.SOURCE_REMOVE
 
     def _scroll_view_to_end(self) -> None:
+        if not self._follow_tail:
+            return
+        self._scrolling = True
         vadj = self.get_vadjustment()
 
         upper = vadj.get_upper()
@@ -210,3 +223,4 @@ class ConsoleView(Gtk.ScrolledWindow):
         else:
             vadj.set_value(upper - page)
         self._reset_horizontal_scroll()
+        self._scrolling = False

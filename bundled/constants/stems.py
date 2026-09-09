@@ -151,7 +151,7 @@ DEMUCS_4_STEM_OPTIONS = (ALL_STEMS, VOCAL_STEM, OTHER_STEM, BASS_STEM, DRUM_STEM
 
 DEMUCS_6_STEM_OPTIONS = (ALL_STEMS, VOCAL_STEM, OTHER_STEM, BASS_STEM, DRUM_STEM, GUITAR_STEM, PIANO_STEM)
 
-SAVING_STEM = 'Saving ', ' stem...'
+SAVING_STEM = 'Saving ', '...'
 
 def secondary_stem(stem:str):
     """Determines secondary stem.

@@ -26,6 +26,7 @@ from .audio_io import resolve_wav_type_set
 from .debug_log import debug
 from .export_naming import format_stem_basename, sanitize_filename_component
 from .model_stem_manifest import load_bundled_stem_semantics
+from .processing_phase import ProcessingPhase
 from .settings import Settings
 from .stem_pairs import normalize_stem_pair_id, stem_pair_definition
 from .stem_roles import StemLiteral, StemRoleId
@@ -370,6 +371,7 @@ class Ensembler:
         stem: CollectedStem,
         *,
         is_multi_stem: bool = False,
+        report_phase: typing.Callable[[ProcessingPhase], None] | None = None,
         stem_arrays: typing.Mapping[tuple[object, ...], list[typing.Any]] | None = None,
         stem_paths: typing.Mapping[tuple[object, ...], list[str]] | None = None,
     ) -> str:
@@ -388,12 +390,16 @@ class Ensembler:
         stem_outputs = self._collect_member_files(stem, audio_file_base, export_path, stem_paths)
 
         if len(array_inputs) > 1 or len(stem_outputs) > 1:
+            if report_phase is not None:
+                report_phase(ProcessingPhase.COMBINING)
             wave = self.combine_stem_waveforms(
                 stem,
                 is_multi_stem=is_multi_stem,
                 stem_arrays=stem_arrays,
                 stem_paths={stem.group_key: stem_outputs} if stem_outputs else (stem_paths or {}),
             )
+            if report_phase is not None:
+                report_phase(ProcessingPhase.SAVING)
             final_path = self.write_stem_waveform(audio_file_base, stem, wave)
         else:
             raise RuntimeError(

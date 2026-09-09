@@ -20,6 +20,14 @@ class TypedSettingsTests(unittest.TestCase):
         self.assertEqual(restored.ensemble.type, settings.ensemble.type)
         self.assertEqual(json.loads(json.dumps(payload)), payload)
 
+    def test_log_auto_open_defaults_off_and_round_trips(self):
+        settings = Settings.from_json_dict({"ui": {}})
+        self.assertFalse(settings.ui.auto_expand_log)
+        settings.ui.auto_expand_log = True
+        restored = Settings.from_json_dict(json.loads(json.dumps(settings.to_json_dict())))
+        self.assertTrue(restored.ui.auto_expand_log)
+        self.assertFalse(coerce_field("ui", "auto_expand_log", "false"))
+
     def test_export_defaults_to_flac_16bit(self):
         settings = Settings.defaults()
         self.assertIs(settings.process.save_format, SaveFormat.FLAC)

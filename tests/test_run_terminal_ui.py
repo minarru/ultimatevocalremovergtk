@@ -83,6 +83,21 @@ class RunTerminalUiTests(unittest.TestCase):
         self.assertFalse(self.window.start_button.get_sensitive())
         self.assertTrue(all(not p.get_sensitive() for p in self.window._options_pages))
 
+    def test_start_preserves_log_state_unless_auto_open_is_enabled(self):
+        panel = self.window.log_panel
+        for auto_open, initially_open, expected_open in (
+            (False, False, False),
+            (False, True, True),
+            (True, False, True),
+            (True, True, True),
+        ):
+            with self.subTest(auto_open=auto_open, initially_open=initially_open):
+                self.window.settings.ui.auto_expand_log = auto_open
+                panel.set_expanded(initially_open)
+                self._begin()
+                self.assertEqual(panel.get_expanded(), expected_open)
+                self.controller._on_stopped()
+
     def _finish(self, outcome: str) -> None:
         if outcome == "complete":
             self.controller._on_complete()
@@ -128,8 +143,7 @@ class RunTerminalUiTests(unittest.TestCase):
         self.assertIsNone(self.controller._running_target)
         self.assertFalse(self.controller.is_running())
         self.assertFalse(self.window.stop_button.get_sensitive())
-        self.assertTrue(self.window.start_button.get_sensitive())
-        self.assertEqual(self.window.start_button.has_css_class("dim-label"), reason is not None)
+        self.assertEqual(self.window.start_button.get_sensitive(), reason is None)
         self.assertTrue(all(p.get_sensitive() for p in self.window._options_pages))
         for name in ("settings", "view_inputs", "download"):
             self.assertTrue(self.window.lookup_action(name).get_enabled())
@@ -142,7 +156,8 @@ class RunTerminalUiTests(unittest.TestCase):
             self.assertNotEqual(status, "Done")
             self.complete_toast.assert_not_called()
             if outcome == "error":
-                self.assertEqual(status, "Failed")
+                self.assertEqual(self.window.log_panel._progress_label.get_text(), "Processing failed")
+                self.assertFalse(self.window.log_panel._progress_revealer.get_reveal_child())
         self.target.start_blocked_reason.return_value = None
         self.controller.refresh_start_readiness()
         self.assertTrue(self.window.start_button.get_sensitive())
@@ -234,31 +249,16 @@ class RunTerminalUiTests(unittest.TestCase):
         self.assertFalse(self.window.stop_button.get_sensitive())
         self.assertTrue(all(p.get_sensitive() for p in self.window._options_pages))
 
-    def test_blocked_start_is_muted_and_clickable_without_inline_hint(self):
+    def test_blocked_start_is_disabled_with_visible_reason(self):
         panel = self.window.log_panel
-        self.controller.refresh_start_readiness()
-        base = panel.options_overlay_clearance()
         self.target.start_blocked_reason.return_value = 'Choose an input file'
         self.controller.refresh_start_readiness()
+        self.assertFalse(self.window.start_button.get_sensitive())
+        self.assertEqual(panel._progress_label.get_text(), 'Choose an input file')
+        self.assertTrue(panel._progress_label.get_visible())
+        self.target.start_blocked_reason.return_value = None
+        self.controller.refresh_start_readiness()
         self.assertTrue(self.window.start_button.get_sensitive())
-        self.assertTrue(self.window.start_button.has_css_class('dim-label'))
-        self.assertFalse(self.window.start_button.has_css_class('suggested-action'))
-        self.assertEqual(panel.options_overlay_clearance(), base)
-        with (
-            mock.patch.object(
-                self.window.toast_overlay, 'add_toast', wraps=self.window.toast_overlay.add_toast
-            ) as toast,
-            mock.patch.object(self.controller, '_begin_preflight') as begin,
-        ):
-            self.window.start_button.emit('clicked')
-            toast.assert_called_once()
-            notification = toast.call_args.args[0]
-            self.assertEqual(notification.get_title(), 'Choose an input file')
-            self.addCleanup(notification.dismiss)
-            begin.assert_not_called()
-            self.target.start_blocked_reason.return_value = None
-            self.controller.refresh_start_readiness()
-            self.assertFalse(self.window.start_button.has_css_class('dim-label'))
-            self.assertTrue(self.window.start_button.has_css_class('suggested-action'))
+        with mock.patch.object(self.controller, '_begin_preflight') as begin:
             self.window.start_button.emit('clicked')
             begin.assert_called_once_with(self.target)

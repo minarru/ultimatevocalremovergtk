@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable, Protocol
 
+from .processing_phase import ProcessingPhase
+
 if TYPE_CHECKING:
     import numpy as np
 
@@ -57,3 +59,4 @@ class ProcessData:
     is_4_stem_ensemble: bool = False
     capture_stems_only: bool = False
     is_save_all_outputs_ensemble: bool = False
+    report_phase: Callable[[ProcessingPhase], None] | None = None

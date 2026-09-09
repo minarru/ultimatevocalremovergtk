@@ -19,7 +19,7 @@ import os
 import time
 import typing
 from pathlib import Path
-from typing import Callable, List, Optional, Sequence, Tuple
+from typing import Callable, List, Literal, Optional, Sequence, Tuple
 
 from bundled.constants import (
     ALIGN_INPUTS,
@@ -38,10 +38,12 @@ from bundled.constants import (
 )
 
 from .audio_io import resolve_wav_type_set, save_format
+from .console_text import file_heading, run_summary
 from .error_context import snapshot_worker_file
 from .export_naming import sanitize_filename_component
 from .inference_cleanup import release_inference_memory as _release_inference_resources
 from .job_callbacks import JobCallbacks
+from .processing_phase import ProcessingPhase
 from .run_control import ProcessStopped, check_stopped, pausable_callback
 from .settings import Settings
 from .settings.coerce import enum_value
@@ -65,7 +67,9 @@ class AudioTools:
         settings: Settings,
         *,
         apollo_backend_name: str | None = None,
+        on_phase: Callable[[ProcessingPhase], None] | None = None,
     ):
+        self._on_phase = on_phase
         self.settings = settings
         time_stamp = round(time.time())
         process = settings.process
@@ -117,6 +121,25 @@ class AudioTools:
         device_set = process.device or DEFAULT
         self.device_set = device_set.split(":")[-1].strip() if ":" in device_set else device_set
 
+    def _report_phase(self, phase: ProcessingPhase) -> None:
+        if self._on_phase is not None:
+            self._on_phase(phase)
+
+    def _operation_phases(
+        self, processing: ProcessingPhase,
+    ) -> Callable[[Literal["reading", "processing", "saving"]], None]:
+        """Translate scientific operation boundaries into presentation identities."""
+        phases = {
+            "reading": ProcessingPhase.READING_AUDIO,
+            "processing": processing,
+            "saving": ProcessingPhase.SAVING,
+        }
+
+        def report(stage: Literal["reading", "processing", "saving"]) -> None:
+            self._report_phase(phases[stage])
+
+        return report
+
     # -- save_format helper bound to the current settings ----------------------
 
     def _save_format(self, save_path: str) -> None:
@@ -155,6 +178,7 @@ class AudioTools:
             is_wave=self.is_wav_ensemble,
             min_peak=self.amplification_threshold,
             on_progress=on_progress,
+            on_phase=self._operation_phases(ProcessingPhase.COMBINING),
         )
         self._save_format(stem_save_path)
 
@@ -173,6 +197,7 @@ class AudioTools:
             self.wav_type_set,
             save_format=self._save_format,
             on_progress=on_progress,
+            on_phase=self._operation_phases(ProcessingPhase.COMBINING),
         )
 
     # -- Time-stretch / pitch shift (port of ``pitch_or_time_shift``) ----------
@@ -206,6 +231,9 @@ class AudioTools:
             is_pitch=is_pitch,
             is_time_correction=is_time_correction,
             min_peak=self.amplification_threshold,
+            on_phase=self._operation_phases(
+                ProcessingPhase.CHANGING_PITCH if is_pitch else ProcessingPhase.STRETCHING_TIME
+            ),
         )
 
     # -- Align (port of ``AudioTools.align_inputs``) ---------------------------
@@ -243,6 +271,7 @@ class AudioTools:
             phase_shifts=self.phase_shifts,
             is_match_silence=self.is_match_silence,
             is_spec_match=self.is_spec_match,
+            on_phase=self._operation_phases(ProcessingPhase.ALIGNING),
         )
 
     # -- Matchering (port of ``AudioTools.match_inputs``) ----------------------
@@ -253,10 +282,11 @@ class AudioTools:
         audio_file_base: str,
         command_text: Callable[[str], None],
     ) -> None:
+        self._report_phase(ProcessingPhase.MATCHING)
         import matchering as match
 
         target, reference = audio_inputs[0], audio_inputs[1]
-        command_text("Processing...\n")
+        command_text("Matching audio...\n")
         track = sanitize_filename_component(audio_file_base) or "audio"
         save_path = os.path.join(
             f"{self.main_export_path}",
@@ -267,6 +297,7 @@ class AudioTools:
             reference=reference,
             results=[match.save_audiofile(save_path, wav_set=self.wav_type_set)],
         )
+        self._report_phase(ProcessingPhase.SAVING)
         self._save_format(save_path)
 
     # -- Apollo restore (port of ``AudioTools.apollo_process``) ----------------
@@ -283,6 +314,7 @@ class AudioTools:
             raise ValueError(
                 "A resolved Apollo backend checkpoint is required for inference."
             )
+        self._report_phase(ProcessingPhase.LOADING_MODEL)
         import soundfile as sf
 
         from core.gpu_backend import clear_torch_cache, resolve_inference_backend
@@ -313,10 +345,12 @@ class AudioTools:
             extracted_params=extracted_params,
             config=config,
             settings=self.settings,
+            on_phase=self._report_phase,
         )
 
         clear_torch_cache(is_macos=self.is_macos, backend_name=backend.backend_name)
 
+        self._report_phase(ProcessingPhase.SAVING)
         sf.write(save_path, restored_audio.T, 44100, subtype=self.wav_type_set)
         self._save_format(save_path)
 
@@ -461,8 +495,6 @@ class AudioToolRunner:
         set_operation_id(operation_id)
         log_event("audio", "audio_worker_entered", tool=tool)
         stime = time.perf_counter()
-        def time_elapsed() -> str:
-            return f'Time Elapsed: {time.strftime("%H:%M:%S", time.gmtime(int(time.perf_counter() - stime)))}'
 
         try:
             export_path = self.settings.process.export_path
@@ -472,6 +504,7 @@ class AudioToolRunner:
             audio_tool = AudioTools(
                 self.settings,
                 apollo_backend_name=self.apollo_backend_name,
+                on_phase=pausable_callback(self, callbacks.report_phase),
             )
 
             if tool == MANUAL_ENSEMBLE:
@@ -485,8 +518,9 @@ class AudioToolRunner:
             else:
                 raise NotImplementedError(f"audio tool '{tool}' is not implemented")
 
+            callbacks.report_phase(ProcessingPhase.FINISHING)
             callbacks.progress(1.0)
-            callbacks.console(f"\nProcess complete\n{time_elapsed()}\n")
+            callbacks.console(run_summary("complete", time.perf_counter() - stime))
             callbacks.complete()
             log_event("audio", "audio_worker_completed", tool=tool)
         except ProcessStopped:
@@ -511,7 +545,7 @@ class AudioToolRunner:
                 error=str(exc),
             )
             self._finish_active_unit(callbacks, exc)
-            callbacks.console(f"\nProcess failed\n{time_elapsed()}\n")
+            callbacks.console(run_summary("failed", time.perf_counter() - stime))
             callbacks.error(exc)
             _release_inference_resources(self, park_weights=True)
         else:
@@ -551,21 +585,25 @@ class AudioToolRunner:
 
         audio_file_base = getattr(self, "_output_name", None) or _basename_no_ext(inputs[0])
         snapshot_worker_file(inputs[0])
+        callbacks.console(f"\nManual ensemble — {len(inputs)} inputs\n")
         for num, path in enumerate(inputs, start=1):
-            callbacks.console(f'File {num} "{os.path.basename(path)}"\n')
-        callbacks.console("\nProcessing...\n")
+            callbacks.console(f"  {num}. {os.path.basename(path)}\n")
         callbacks.progress(0.0)
 
         def on_progress(fraction: float) -> None:
+            check_stopped(self)
             callbacks.progress(max(0.0, min(1.0, float(fraction))))
 
+        callbacks.report_phase(ProcessingPhase.COMBINING)
         algorithm = self.settings.audio_tools.choose_algorithm
         if algorithm == COMBINE_INPUTS:
+            callbacks.console("Combining inputs...")
             audio_tool.combine_audio(inputs, audio_file_base, on_progress=on_progress)
         else:
+            callbacks.console(f"Ensembling inputs ({enum_value(algorithm)})...")
             audio_tool.ensemble_manual(inputs, audio_file_base, on_progress=on_progress)
         callbacks.progress(1.0)
-        callbacks.console("Done\n")
+        callbacks.console(" Done!\n")
         self._finish_active_unit(callbacks, output=audio_tool.main_export_path)
 
     def _run_pitch_time(self, audio_tool: typing.Any, tool: typing.Any, inputs: typing.Any, callbacks: typing.Any) -> None:
@@ -575,21 +613,24 @@ class AudioToolRunner:
         for file_num, audio_file in enumerate(inputs, start=1):
             check_stopped(self)
             snapshot_worker_file(audio_file)
-            base_text = f"File {file_num}/{total} "
+            callbacks.console(file_heading(audio_file, file_num, total))
             if not os.path.isfile(audio_file):
                 error = FileNotFoundError(audio_file)
                 callbacks.input_started((audio_file,))
                 callbacks.input_finished((audio_file,), (), error)
-                callbacks.console(f'\n{base_text}"{os.path.basename(audio_file)}" was not found.\n')
+                callbacks.console("Input file was not found; skipping.\n")
                 continue
             self._start_unit(callbacks, (audio_file,), audio_tool.main_export_path)
-            callbacks.console(f'\n{base_text}"{os.path.basename(audio_file)}".\n')
-            callbacks.console(f"{base_text}Processing...\n")
+            operation = "Changing pitch" if tool == CHANGE_PITCH else "Stretching time"
+            callbacks.console(f"{operation}...")
             callbacks.progress((file_num - 1) / total)
             audio_file_base = _basename_no_ext(audio_file)
+            callbacks.report_phase(
+                ProcessingPhase.CHANGING_PITCH if tool == CHANGE_PITCH else ProcessingPhase.STRETCHING_TIME
+            )
             audio_tool.pitch_or_time_shift(tool, audio_file, audio_file_base)
             callbacks.progress(file_num / total)
-            callbacks.console(f"{base_text}Done\n")
+            callbacks.console(" Done!\n")
             self._finish_active_unit(callbacks, output=audio_tool.main_export_path)
 
     def _run_apollo(self, audio_tool: typing.Any, inputs: typing.Any, callbacks: typing.Any) -> None:
@@ -607,22 +648,23 @@ class AudioToolRunner:
         for file_num, audio_file in enumerate(inputs, start=1):
             check_stopped(self)
             snapshot_worker_file(audio_file)
-            base_text = f"File {file_num}/{total} "
+            callbacks.console(file_heading(audio_file, file_num, total))
             if not os.path.isfile(audio_file):
                 error = FileNotFoundError(audio_file)
                 callbacks.input_started((audio_file,))
                 callbacks.input_finished((audio_file,), (), error)
-                callbacks.console(f'\n{base_text}"{os.path.basename(audio_file)}" was not found.\n')
+                callbacks.console("Input file was not found; skipping.\n")
                 continue
             self._start_unit(callbacks, (audio_file,), audio_tool.main_export_path)
-            callbacks.console(f'\n{base_text}"{os.path.basename(audio_file)}".\n')
-            callbacks.console(f"{base_text}Restoring...\n")
+            callbacks.console("Restoring audio...")
             audio_file_base = _basename_no_ext(audio_file)
 
             def set_progress_bar(step: typing.Any, inference_iterations: typing.Any=0, _file_num: typing.Any=file_num):
                 fraction = (_file_num - 1 + min(1.0, step + inference_iterations)) / total
                 callbacks.progress(fraction)
 
+            callbacks.progress((file_num - 1) / total)
+            callbacks.report_phase(ProcessingPhase.LOADING_MODEL)
             audio_tool.apollo_process(
                 audio_file,
                 audio_file_base,
@@ -631,7 +673,7 @@ class AudioToolRunner:
                 pausable_callback(self, set_progress_bar),
             )
             callbacks.progress(file_num / total)
-            callbacks.console(f"{base_text}Done\n")
+            callbacks.console(" Done!\n")
             self._finish_active_unit(callbacks, output=audio_tool.main_export_path)
 
     def _run_dual(self, audio_tool: typing.Any, tool: typing.Any, dual_pairs: typing.Any, callbacks: typing.Any) -> None:
@@ -644,31 +686,30 @@ class AudioToolRunner:
             check_stopped(self)
             file_one, file_two = pair[0], pair[1]
             snapshot_worker_file(file_one)
-            base_text = f"Pair {file_num}/{total} "
+            callbacks.console(
+                f"\nPair {file_num}/{total}\n"
+                f"{text_labels[0]}: {os.path.basename(file_one)}\n"
+                f"{text_labels[1]}: {os.path.basename(file_two)}\n"
+            )
 
             if not os.path.isfile(file_one) or not os.path.isfile(file_two):
                 error = FileNotFoundError(file_one if not os.path.isfile(file_one) else file_two)
                 callbacks.input_started((file_one, file_two))
                 callbacks.input_finished((file_one, file_two), (), error)
-                callbacks.console(f"\n{base_text}One or both files were not found.\n")
+                callbacks.console("One or both files were not found; skipping.\n")
                 continue
             if file_one == file_two:
                 error = ValueError("input pair uses the same file twice")
                 callbacks.input_started((file_one, file_two))
                 callbacks.input_finished((file_one, file_two), (), error)
-                callbacks.console(f"\n{base_text}{text_labels[0]} & {text_labels[1]} are the same; skipping.\n")
+                callbacks.console(f"{text_labels[0]} & {text_labels[1]} are the same; skipping.\n")
                 continue
 
             self._start_unit(
                 callbacks, (file_one, file_two), audio_tool.main_export_path
             )
 
-            callbacks.console(f'\n{base_text}{text_labels[0]}:  "{os.path.basename(file_one)}"\n')
-            callbacks.console(f'{base_text}{text_labels[1]}:  "{os.path.basename(file_two)}"\n')
-
-            command_text = pausable_callback(
-                self, lambda text, base=base_text: callbacks.console(base + text)
-            )
+            command_text = pausable_callback(self, callbacks.console)
 
             def set_progress_bar(step: typing.Any, inference_iterations: typing.Any=0, _file_num: typing.Any=file_num):
                 fraction = (_file_num - 1 + min(1.0, step + inference_iterations)) / total
@@ -677,11 +718,14 @@ class AudioToolRunner:
             audio_file_base = _basename_no_ext(file_one)
             audio_file_2_base = _basename_no_ext(file_two)
 
+            callbacks.progress((file_num - 1) / total)
+            callbacks.report_phase(
+                ProcessingPhase.MATCHING if tool == MATCH_INPUTS else ProcessingPhase.ALIGNING
+            )
             if tool == MATCH_INPUTS:
-                callbacks.progress((file_num - 1) / total)
                 audio_tool.match_inputs(pair, audio_file_base, command_text)
             else:
-                command_text("Starting...\n")
+                command_text("Aligning audio...\n")
                 audio_tool.align_inputs(
                     pair,
                     audio_file_base,
@@ -690,5 +734,5 @@ class AudioToolRunner:
                     pausable_callback(self, set_progress_bar),
                 )
             callbacks.progress(file_num / total)
-            callbacks.console(f"{base_text}Done\n")
+            callbacks.console("Done!\n")
             self._finish_active_unit(callbacks, output=audio_tool.main_export_path)

@@ -8,33 +8,19 @@ arrow button (no drag gestures).
 import typing
 from typing import Callable, Optional
 
-from gi.repository import GLib, Gtk
+from gi.repository import Adw, GLib, Gtk
 
 from core.debug_log import debug
 
 from ..hints import set_icon_button_a11y
 from ..resources import RESOURCE_PREFIX, require_resource_bundle
 from .console import ConsoleView
+from .log_layout import PanelLayout, StableLogLayout
 
-# Layout constants mirror ``resources/ui/log_panel.blp`` and its CSS border.
-# Used when the panel has
-# not been allocated yet and :meth:`Gtk.Widget.measure` is not meaningful.
-#: Log stack height request and fixed-height console.
+# Fallback before the overlay's first allocation. Actual clearance is measured
+# at the target width before starting the animation.
 _LOG_BODY_HEIGHT = 200
-#: Log metadata row: height request 32 + bottom margin 8.
-_LOG_META_ROW_RESERVE = 40
-#: Log stack bottom margin.
-_LOG_BODY_WRAP_RESERVE = 12
-#: Overlay bottom gap ↔ ``MainWindow`` ``set_margin_bottom`` on the log panel.
 OVERLAY_MARGIN_BOTTOM = 12
-#: Run controls vertical inset (top and bottom margins, 12 + 12).
-_RUN_CONTROLS_PADDING_Y = 24
-#: Run actions row height request.
-_RUN_ACTIONS_MIN_HEIGHT = 36
-#: Progress bar block ↔ progress section/label margins in ``log_panel.blp``.
-_PROGRESS_SECTION_RESERVE = 34
-#: Card border in ``.uvr-log-panel``.
-_PANEL_BORDER_RESERVE = 2
 
 _PROGRESS_DONE_LABEL = "Done"
 #: Delay before a finished run's 100% / "Done" bar collapses on its own.
@@ -47,6 +33,13 @@ require_resource_bundle(_TEMPLATE_RESOURCE)
 class LogPanel(Gtk.Box):
     __gtype_name__ = "LogPanel"
 
+    _panel_clamp: Adw.Clamp = Gtk.Template.Child("panel_clamp")
+    _run_actions: Gtk.CenterBox = Gtk.Template.Child("run_actions")
+    _control_content: Gtk.Box = Gtk.Template.Child("control_content")
+    _log_content: Gtk.Box = Gtk.Template.Child("log_content")
+    _log_viewport: Gtk.Box = Gtk.Template.Child("log_viewport")
+    _detail_label: Gtk.Label = Gtk.Template.Child("detail_label")
+    _percentage: Gtk.Label = Gtk.Template.Child("percentage")
     _progress_section: Gtk.Box = Gtk.Template.Child("progress_section")
     _progress_label: Gtk.Label = Gtk.Template.Child("progress_label")
     _progressbar: Gtk.ProgressBar = Gtk.Template.Child("progressbar")
@@ -69,6 +62,7 @@ class LogPanel(Gtk.Box):
         on_console_changed: Optional[Callable[[bool], None]] = None,
         on_expanded_changed: Optional[Callable[[bool], None]] = None,
     ):
+        Adw.init()
         super().__init__()
 
         self._on_console_changed = on_console_changed
@@ -76,7 +70,19 @@ class LogPanel(Gtk.Box):
         self._syncing_expand = False
         self._pulse_source_id: Optional[int] = None
         self._done_collapse_id: Optional[int] = None
+        self._available_size = (0, 0)
+        self._geometry_idle: int | None = None
+        self._geometry_key: tuple[object, ...] | None = None
+        self._width_target = 400
+        self._width_animation: Adw.TimedAnimation | None = None
+        self._clearance = self.default_bottom_inset()
+        self._on_layout_changed: Callable[[], None] | None = None
+        self._log_height = _LOG_BODY_HEIGHT
         self._run_label = ""
+        self._preparing = False
+        self._progress_title: str | None = None
+        self._result_status = ""
+        self._blocked_reason: str | None = None
         self._progress_status = ""
 
         self._log_revealer.connect("notify::child-revealed", self._on_log_revealed)
@@ -85,7 +91,14 @@ class LogPanel(Gtk.Box):
         self.console.add_css_class("uvr-log-console")
         self.console.set_min_content_height(_LOG_BODY_HEIGHT)
         self.console.set_max_content_height(_LOG_BODY_HEIGHT)
-        self._log_stack.add_named(self.console, "console")
+        self._stable_layout = StableLogLayout()
+        self._log_viewport.set_layout_manager(self._stable_layout)
+        self._log_viewport.append(self.console)
+        self.set_layout_manager(PanelLayout(self._queue_geometry))
+        self.connect("notify::scale-factor", lambda *_: self._update_geometry())
+        self.get_settings().connect_object(
+            "notify::gtk-xft-dpi", lambda panel, *_: panel._update_geometry(), self
+        )
         self._sync_expand_button_a11y(False)
         self.expand_button.connect("toggled", self._on_expand_toggled)
 
@@ -94,33 +107,127 @@ class LogPanel(Gtk.Box):
 
         self._handle_console_changed(self.console.is_empty())
 
+    def do_contains(self, x: float, y: float) -> bool:
+        """Target the visible card, not the full-size overlay allocation.
+
+        Keeping the ancestors targetable allows buttons and the text view to
+        receive pointer events. The card's padding also blocks clicks through
+        to options behind it, while space outside the card stays interactive.
+        """
+        surface = self._panel_clamp.get_child()
+        if surface is None:
+            return False
+        valid, bounds = surface.compute_bounds(self)
+        return bool(
+            valid
+            and bounds.get_x() <= x < bounds.get_x() + bounds.get_width()
+            and bounds.get_y() <= y < bounds.get_y() + bounds.get_height()
+        )
+
     @property
     def progressbar(self) -> Gtk.ProgressBar:
         """Raw progress bar (prefer :meth:`set_progress_fraction` / :meth:`set_progress_text`)."""
         return self._progressbar
 
     @classmethod
-    def _collapsed_body_height(cls, *, include_progress: bool = True) -> int:
-        height = _RUN_CONTROLS_PADDING_Y + _RUN_ACTIONS_MIN_HEIGHT + _PANEL_BORDER_RESERVE
-        if include_progress:
-            height += _PROGRESS_SECTION_RESERVE
-        return height
-
-    @classmethod
     def default_bottom_inset(cls) -> int:
-        """Scroll padding so option columns clear the collapsed floating panel."""
-        # Progress is hidden until a run starts; reserve it only when visible
-        # (see :meth:`options_overlay_clearance`).
-        return cls._collapsed_body_height(include_progress=False) + OVERLAY_MARGIN_BOTTOM
+        """Initial reserve before the target layout can be measured."""
+        return 112
 
     def options_overlay_clearance(self) -> int:
         """Bottom inset for the options scroller to clear the floating log panel."""
-        height = self._collapsed_body_height(include_progress=False)
+        return self._clearance
+
+    def set_layout_changed_callback(self, callback: Callable[[], None]) -> None:
+        self._on_layout_changed = callback
+
+    def _queue_geometry(self, width: int, height: int) -> None:
+        if (width, height) == self._available_size:
+            return
+        self._available_size = (width, height)
+        if self._geometry_idle is None:
+            self._geometry_idle = GLib.idle_add(self._apply_geometry)
+
+    def _apply_geometry(self) -> bool:
+        self._geometry_idle = None
+        self._update_geometry()
+        return GLib.SOURCE_REMOVE
+
+    def _update_geometry(self) -> None:
+        available_width, available_height = self._available_size
+        if not available_width or not available_height:
+            return
+        scale = Adw.length_unit_to_px(Adw.LengthUnit.SP, 1, self.get_settings())
+        width = max(1, round(min(self._width_target * scale, available_width - 48)) - 2)
+        self._stable_layout.set_text_width(
+            max(1, round(min(560 * scale, available_width - 48)) - 30)
+        )
+        key = (
+            self._available_size,
+            scale,
+            self._width_target,
+            self._progress_label.get_text(),
+            self._detail_label.get_visible(),
+            self._percentage.get_visible(),
+            self._progress_revealer.get_reveal_child(),
+            self.get_expanded(),
+        )
+        if key == self._geometry_key:
+            return
+        self._geometry_key = key
+        # Measure the final child composition, never an intermediate revealer
+        # allocation. No work remains scheduled once allocation settles.
+        status = self._progress_section.measure(Gtk.Orientation.VERTICAL, max(1, width - 16))[0]
+        actions = self._run_actions.measure(Gtk.Orientation.VERTICAL, max(1, width - 16))[0]
+        controls = 16 + status + actions
         if self._progress_revealer.get_reveal_child():
-            height += _PROGRESS_SECTION_RESERVE
-        if self._log_revealer.get_reveal_child():
-            height += _LOG_META_ROW_RESERVE + _LOG_BODY_HEIGHT + _LOG_BODY_WRAP_RESERVE
-        return height + OVERLAY_MARGIN_BOTTOM
+            controls += self._progressbar.measure(Gtk.Orientation.VERTICAL, width)[0]
+        log_content = self._log_content.measure(Gtk.Orientation.VERTICAL, width)[0]
+        stack = self._log_stack.measure(Gtk.Orientation.VERTICAL, max(1, width - 16))[0]
+        overhead = controls + log_content - stack + 2
+        if not self._progress_revealer.get_reveal_child():
+            overhead += self._progressbar.measure(Gtk.Orientation.VERTICAL, width)[0]
+        height = round(min(360 * scale, max(80, available_height * 0.65 - overhead)))
+        if height != self._log_height:
+            self._log_height = height
+            if height > self.console.get_max_content_height():
+                self.console.set_max_content_height(height)
+                self.console.set_min_content_height(height)
+            else:
+                self.console.set_min_content_height(height)
+                self.console.set_max_content_height(height)
+            self._log_stack.set_size_request(-1, height)
+        clearance = controls + 2 + OVERLAY_MARGIN_BOTTOM
+        if self.get_expanded():
+            clearance += log_content - stack + height
+        if clearance != self._clearance:
+            self._clearance = clearance
+            if self._on_layout_changed is not None:
+                self._on_layout_changed()
+
+    def _sync_width(self) -> None:
+        target = 560 if self.get_expanded() and not self.console.is_empty() else 400
+        if target == self._width_target:
+            self._update_geometry()
+            return
+        self._width_target = target
+        if self._width_animation is not None:
+            self._width_animation.pause()
+        self._update_geometry()
+        self._width_animation = Adw.TimedAnimation.new(
+            self,
+            self._panel_clamp.get_maximum_size(),
+            target,
+            220,
+            Adw.CallbackAnimationTarget.new(self._set_panel_width),
+        )
+        self._width_animation.set_easing(Adw.Easing.EASE_OUT_CUBIC)
+        self._width_animation.play()
+
+    def _set_panel_width(self, value: float) -> None:
+        width = round(value)
+        self._panel_clamp.set_maximum_size(width)
+        self._panel_clamp.set_tightening_threshold(width)
 
     def collapsed_overlay_height(self) -> int:
         """Alias for :meth:`options_overlay_clearance`."""
@@ -138,14 +245,59 @@ class LogPanel(Gtk.Box):
         self._progressbar.set_fraction(fraction)
         self._sync_progress_section_visible()
 
-    def set_progress_text(self, text: str) -> None:
+    def set_progress_text(self, text: str, *, title: str | None = None) -> None:
+        self._progress_title = title
         self._progress_status = text or ""
-        display = self._progress_status
-        if display and self._run_label:
-            display = f"{self._run_label} — {display}"
-        self._progress_label.set_text(display)
-        self._progress_label.set_visible(bool(display))
+        if text:
+            self._result_status = ""
+            self._progress_label.remove_css_class("error")
+        self._render_status()
         self._sync_progress_section_visible()
+
+    def set_preparing(self, preparing: bool) -> None:
+        self._preparing = preparing
+        self._render_status()
+        self._update_geometry()
+
+    def set_start_blocked_reason(self, reason: str | None) -> None:
+        self._blocked_reason = reason
+        self._render_status()
+        self._update_geometry()
+
+    def set_run_result(self, text: str, *, error: bool = False) -> None:
+        """Retain a terminal result without suggesting that progress is live."""
+        self._cancel_done_collapse()
+        self._result_status = text
+        self.stop_progress_pulse()
+        self._progress_status = ""
+        self._render_status()
+        self._sync_progress_section_visible()
+        if error:
+            self._progress_label.add_css_class("error")
+        else:
+            self._progress_label.remove_css_class("error")
+
+    def _render_status(self) -> None:
+        if self._preparing:
+            title = "Preparing…"
+            detail = "Checking model configuration and output options"
+        elif self._progress_status:
+            title = self._progress_title or self._progress_status
+            detail = self._progress_status if self._progress_title else ""
+            # The dedicated numeric label already displays the percentage.
+            first, separator, rest = detail.partition(" · ")
+            if separator and first.endswith("%") and first[:-1].isdigit():
+                detail = rest
+            if self._run_label:
+                title = f"{self._run_label} — {title}"
+        else:
+            title = self._result_status or self._blocked_reason or "Ready to process"
+            detail = self._blocked_reason if self._result_status and self._blocked_reason else ""
+        self._progress_label.set_label(title)
+        self._progress_label.set_visible(True)
+        self._detail_label.set_label(detail or "")
+        self._detail_label.set_tooltip_text(detail or None)
+        self._detail_label.set_visible(bool(detail))
 
     def start_progress_pulse(self, interval_ms: int) -> None:
         if self._pulse_source_id is not None:
@@ -161,27 +313,21 @@ class LogPanel(Gtk.Box):
         self._sync_progress_section_visible()
 
     def clear_progress(self) -> None:
-        """Reset the progress bar and collapse the progress revealer."""
+        """Reset the progress track while retaining the terminal or readiness status."""
         self.stop_progress_pulse()
         self._progressbar.set_fraction(0.0)
         self._progress_status = ""
-        self._progress_label.set_text("")
-        self._progress_label.set_visible(False)
+        self._render_status()
         self._sync_progress_section_visible()
 
     def mark_run_complete(self) -> None:
-        """Collapse the finished progress block after a short grace period.
-
-        The completion toast and the log both persist the result, so the 100% /
-        "Done" bar only needs to be visible long enough to be read. Collapsing
-        it also returns ``_PROGRESS_SECTION_RESERVE`` px of scroll clearance to
-        the option columns (see :meth:`options_overlay_clearance`).
-        """
+        """Dismiss the finished progress track after five seconds, retaining its result."""
         self._cancel_done_collapse()
         self._done_collapse_id = GLib.timeout_add(_DONE_COLLAPSE_MS, self._on_done_collapse)
 
     def _on_done_collapse(self) -> bool:
         self._done_collapse_id = None
+        self._result_status = f"{self._run_label or 'Processing'} complete"
         self.clear_progress()
         return GLib.SOURCE_REMOVE
 
@@ -201,7 +347,8 @@ class LogPanel(Gtk.Box):
             and self._progressbar.get_fraction() >= 1.0
             and self._progress_status == _PROGRESS_DONE_LABEL
         ):
-            self.clear_progress()
+            self._cancel_done_collapse()
+            self._on_done_collapse()
 
     def prepare_for_run(self) -> None:
         """Show the console and reset scroll before worker output arrives."""
@@ -209,7 +356,6 @@ class LogPanel(Gtk.Box):
         revealed = self._log_revealer.get_child_revealed()
         debug("ui", f"log_panel.prepare_for_run child_revealed={revealed}")
         self._log_stack.set_visible_child_name("console")
-        self.console._reset_scroll()
         if self._log_revealer.get_child_revealed():
             self.console.resume_scroll()
             self.console.scroll_to_end_stable()
@@ -228,6 +374,7 @@ class LogPanel(Gtk.Box):
         self.expand_button.set_active(expanded)
         self._log_revealer.set_reveal_child(expanded)
         self._sync_expand_button_a11y(expanded)
+        self._sync_width()
         self._notify_expanded_changed(expanded)
         self._syncing_expand = False
 
@@ -236,12 +383,15 @@ class LogPanel(Gtk.Box):
         return GLib.SOURCE_CONTINUE
 
     def _sync_progress_section_visible(self) -> None:
-        busy = (
-            self._progress_label.get_visible()
+        busy = not self._result_status and (
+            bool(self._progress_status)
             or self._progressbar.get_fraction() > 0.0
             or self._pulse_source_id is not None
         )
         self._progress_revealer.set_reveal_child(busy)
+        self._percentage.set_label(f"{round(self._progressbar.get_fraction() * 100)}%")
+        self._percentage.set_visible(busy and self._pulse_source_id is None)
+        self._update_geometry()
 
     def _notify_expanded_changed(self, expanded: bool) -> None:
         if self._on_expanded_changed is not None:
@@ -257,6 +407,7 @@ class LogPanel(Gtk.Box):
         expanded = button.get_active()
         self._log_revealer.set_reveal_child(expanded)
         self._sync_expand_button_a11y(expanded)
+        self._sync_width()
         self._notify_expanded_changed(expanded)
 
     def _on_log_revealed(self, revealer: Gtk.Revealer, _pspec: typing.Any) -> None:
@@ -272,6 +423,7 @@ class LogPanel(Gtk.Box):
 
     def _handle_console_changed(self, is_empty: bool) -> None:
         self._log_stack.set_visible_child_name("empty" if is_empty else "console")
+        self._sync_width()
         self.log_clear_button.set_sensitive(not is_empty)
         self.log_copy_button.set_sensitive(not is_empty)
         if self._on_console_changed is not None:

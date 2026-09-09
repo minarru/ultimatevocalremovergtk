@@ -26,12 +26,14 @@ from .audio_chunking import (
     overlaps_for_chunks,
     slice_mix,
 )
+from .console_text import file_heading, run_summary
 from .debug_log import debug
 from .error_context import snapshot_worker_file
 from .inference_cleanup import release_inference_memory as _release_inference_resources
 from .model_display import display_name_for_model
 from .model_stem_semantics import stem_semantics_projection
 from .process_data import ProcessData
+from .processing_phase import ProcessingPhase
 from .run_control import ProcessStopped, check_stopped, pausable_callback
 from .separator_run import run_separator
 from .settings import Settings
@@ -271,16 +273,11 @@ def with_worker_lifecycle(
     """Run ``body`` and map stop/error/success onto job callbacks."""
     stime = time.perf_counter()
 
-    def time_elapsed() -> str:
-        return (
-            "Time Elapsed: "
-            f"{time.strftime('%H:%M:%S', time.gmtime(int(time.perf_counter() - stime)))}"
-        )
-
     try:
         body()
+        callbacks.report_phase(ProcessingPhase.FINISHING)
         callbacks.progress(1.0)
-        callbacks.console(f"\nProcess complete\n{time_elapsed()}\n")
+        callbacks.console(run_summary("complete", time.perf_counter() - stime))
         callbacks.complete()
     except ProcessStopped:
         debug("worker", f"{label} ProcessStopped")
@@ -295,7 +292,7 @@ def with_worker_lifecycle(
             _release_inference_resources(runner)
             return
         debug("worker", f"{label} failed {type(exc).__name__}: {exc}")
-        callbacks.console(f"\nProcess failed\n{time_elapsed()}\n")
+        callbacks.console(run_summary("failed", time.perf_counter() - stime))
         callbacks.error(exc)
         # Park GPU-resident weights so a retry is not blocked by VRAM from
         # the failed attempt (common after CUDA OOM).
@@ -343,16 +340,18 @@ def run_models_on_files(
     for file_num, plan in enumerate(file_plans, start=1):
         check_stopped(runner)
         runner._cached_sources_clear()
-        base_text = f"File {file_num}/{total_files} "
+        base_text = ""
+        callbacks.console(file_heading(input_paths[file_num - 1], file_num, total_files))
         progress_ctx["file_num"] = file_num
 
         if plan is None:
             audio_file = input_paths[file_num - 1]
-            callbacks.console(f'\n{base_text}"{os.path.basename(audio_file)}" was not found.\n')
+            callbacks.console("Input file was not found; skipping.\n")
             runner.iteration += runner.true_model_count
             continue
 
         audio_file, estimated_chunks = plan
+        callbacks.report_phase(ProcessingPhase.READING_AUDIO)
         decoded_mix = _decoded_mix_for_process(audio_file)
         chunks = slice_mix(
             decoded_mix,
@@ -367,7 +366,7 @@ def run_models_on_files(
         chunked = n_chunks > 1
         if chunked:
             callbacks.console(
-                f"{base_text}Long-file chunking: {n_chunks} chunks "
+                f"Long-file chunking: {n_chunks} chunks "
                 f"({chunk_seconds:g}s, overlap {overlap_seconds:g}s)\n"
             )
         ov_samples = overlaps_for_chunks(chunks) if chunked else []
@@ -406,7 +405,7 @@ def run_models_on_files(
             progress_ctx["model_num"] = model_num
             write_to_console = pausable_callback(
                 runner,
-                lambda text, base_text=base_text: callbacks.console(base_text + text),
+                lambda text, base_text="": callbacks.console(base_text + text),
             )
             audio_file_base, export_path = hooks.export_and_base(runner, state, current_model)
             extra = hooks.extra_process_data(runner, state, current_model)
@@ -417,6 +416,7 @@ def run_models_on_files(
                 runner._process_iteration()
                 progress_ctx["chunk_num"] = chunk_num
                 if chunked:
+                    callbacks.console(f"\nChunk {chunk_num}/{n_chunks}\n")
                     # Avoid cache hits from a prior chunk for the same model.
                     runner._cached_sources_clear()
 
@@ -426,6 +426,7 @@ def run_models_on_files(
                     audio_file=mix_slice if chunked else decoded_mix,
                     set_progress_bar=set_progress_bar,
                     write_to_console=write_to_console,
+                    report_phase=pausable_callback(runner, callbacks.report_phase),
                     process_iteration=pausable_callback(runner, runner._process_iteration),
                     check_run_control=pausable_callback(runner, lambda: check_stopped(runner)),
                     cached_source_callback=runner._cached_source_callback,
@@ -436,6 +437,7 @@ def run_models_on_files(
                 )
 
                 def _rebuild(model: Any = current_model, pdata: ProcessData = process_data) -> Any:
+                    callbacks.report_phase(ProcessingPhase.LOADING_MODEL)
                     return runner._build_separator(model, pdata)
 
                 seperator = _rebuild()

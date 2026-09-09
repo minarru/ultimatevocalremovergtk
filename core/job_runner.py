@@ -51,6 +51,7 @@ from .job_plan import PlannedInput, ResolvedJob
 from .model_config import ModelConfig, assemble_model
 from .model_repository import ModelRepository
 from .process_data import ProcessData
+from .processing_phase import ProcessingPhase
 from .run_estimate import count_inference_passes_from_models
 from .run_loop import (
     run_models_on_files,
@@ -528,6 +529,7 @@ class JobRunner:
     ) -> List[str]:
         """Build sample clips on the worker thread and report any fallbacks."""
         if self.settings.process.sample_mode:
+            callbacks.report_phase(ProcessingPhase.PREPARING_SAMPLES)
             callbacks.console("Preparing sample clips...\n")
             callbacks.progress(0.0, detail="Preparing sample clips")
 

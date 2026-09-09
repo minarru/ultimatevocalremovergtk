@@ -13,6 +13,7 @@ from typing import Any, Callable, Optional
 
 from .debug_log import log_event, next_seq, preview_text, set_correlation_seq
 from .oom_choice import OOM_CHOICE_AUTO, OOM_CHOICE_STOP, OomChoiceRequest
+from .processing_phase import ProcessingPhase
 from .progress_trace import ProgressTraceSampler
 from .run_control import check_stopped
 
@@ -23,7 +24,7 @@ class JobCallbacks:
 
     ``on_progress`` receives a float in ``[0.0, 1.0]`` plus optional keyword
     metadata (``local_step``, ``pass_index``, ``pass_total``, ``detail``,
-    ``combine_index``, ``combine_total``). ``on_console`` receives text chunks;
+    ``combine_index``, ``combine_total``, ``phase``). ``on_console`` receives text chunks;
     ``on_complete`` fires once on success; ``on_error`` receives the raised
     exception. ``on_oom_choice`` receives an :class:`OomChoiceRequest` on the
     main loop; the worker blocks until ``request.respond`` is called. The GTK
@@ -46,6 +47,18 @@ class JobCallbacks:
         repr=False,
     )
 
+    _phase: ProcessingPhase | None = field(default=None, init=False, repr=False)
+    _fraction: float = field(default=0.0, init=False, repr=False)
+    _progress_metadata: dict[str, Any] = field(default_factory=dict, init=False, repr=False)
+
+    def report_phase(self, phase: ProcessingPhase) -> None:
+        """Publish a stage immediately, carrying the last progress snapshot.
+
+        Later numeric ticks retain the stage so a coalescing consumer cannot
+        drop a transition by replacing it with a phase-less fraction update.
+        """
+        self.progress(self._fraction, **self._progress_metadata, phase=phase)
+
     def progress(
         self,
         fraction: float,
@@ -56,11 +69,20 @@ class JobCallbacks:
         detail: Optional[str] = None,
         combine_index: Optional[int] = None,
         combine_total: Optional[int] = None,
+        phase: ProcessingPhase | None = None,
     ) -> None:
+        clamped = max(0.0, min(1.0, fraction))
+        if phase is not None:
+            self._phase = phase
+        self._fraction = clamped
+        self._progress_metadata = dict(
+            local_step=local_step, pass_index=pass_index, pass_total=pass_total,
+            detail=detail, combine_index=combine_index, combine_total=combine_total,
+        )
         if not self.on_progress:
             return
-        clamped = max(0.0, min(1.0, fraction))
-        trace_context = (pass_index, pass_total, detail, combine_index, combine_total)
+        phase_metadata = {"phase": self._phase} if self._phase is not None else {}
+        trace_context = (pass_index, pass_total, detail, combine_index, combine_total, self._phase)
         if self._progress_trace.should_emit(clamped, context=trace_context):
             log_event(
                 "worker",
@@ -73,6 +95,7 @@ class JobCallbacks:
                 detail=detail,
                 combine_index=combine_index,
                 combine_total=combine_total,
+                **phase_metadata,
             )
         self.on_progress(
             clamped,
@@ -82,6 +105,7 @@ class JobCallbacks:
             detail=detail,
             combine_index=combine_index,
             combine_total=combine_total,
+            **phase_metadata,
         )
 
     def input_started(self, paths: typing.Sequence[str]) -> None:

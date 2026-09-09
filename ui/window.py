@@ -285,14 +285,7 @@ class MainWindow(Adw.ApplicationWindow):
         self.stop_button.connect("clicked", self._on_stop)
         self.log_copy_button.connect("clicked", self._on_log_copy)
         self.log_clear_button.connect("clicked", self._on_log_clear)
-        # Clearance uses the requested reveal state, so update it once when
-        # that state changes, not again when the animation finishes.
-        self.log_panel._progress_revealer.connect(
-            "notify::reveal-child", lambda *_: self._sync_options_bottom_clearance()
-        )
-        self.log_panel._log_revealer.connect(
-            "notify::reveal-child", lambda *_: self._sync_options_bottom_clearance()
-        )
+        self.log_panel.set_layout_changed_callback(lambda: self._sync_options_bottom_clearance())
 
         shell = load_builder("main-window")
         root = object_from_builder(shell, "root", Gtk.Overlay)
@@ -301,8 +294,8 @@ class MainWindow(Adw.ApplicationWindow):
         window_drop = Gtk.DropTarget.new(Gdk.FileList, Gdk.DragAction.COPY)
         window_drop.connect("drop", self._on_window_drop)
         root.add_controller(window_drop)
-        self.log_panel.set_halign(Gtk.Align.CENTER)
-        self.log_panel.set_valign(Gtk.Align.END)
+        self.log_panel.set_halign(Gtk.Align.FILL)
+        self.log_panel.set_valign(Gtk.Align.FILL)
         self.log_panel.set_margin_bottom(OVERLAY_MARGIN_BOTTOM)
 
         from .download import DownloadQueueUiBinding

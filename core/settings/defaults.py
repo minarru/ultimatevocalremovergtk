@@ -192,6 +192,7 @@ def default_ui() -> dict:
         "notify_download_complete": True,
         "notify_download_failed": True,
         "confirm_processing_plan": True,
+        "auto_expand_log": False,
     }
 
 

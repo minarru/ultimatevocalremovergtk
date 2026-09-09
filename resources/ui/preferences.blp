@@ -15,6 +15,15 @@ Adw.PreferencesPage general_page {
   }
 
   Adw.PreferencesGroup {
+    title: "Processing log";
+
+    Adw.SwitchRow auto_expand_log_row {
+      title: "Open log when processing starts";
+      subtitle: "When off, keep the log expanded or collapsed as you left it";
+    }
+  }
+
+  Adw.PreferencesGroup {
     title: "Desktop notifications";
     description: "System notifications when tasks finish in the background";
 

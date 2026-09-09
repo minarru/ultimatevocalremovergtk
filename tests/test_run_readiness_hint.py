@@ -13,7 +13,7 @@ class ReadinessToastTests(unittest.TestCase):
     def test_blocked_and_ready(self):
         self.controller.refresh_start_readiness()
         self.host.set_start_blocked_reason.assert_called_with('Choose a model')
-        self.host.enable_start.assert_called_with(True)
+        self.host.enable_start.assert_called_with(False)
         self.host.target.start_blocked_reason.return_value = None
         self.controller.refresh_start_readiness()
         self.host.set_start_blocked_reason.assert_called_with(None)

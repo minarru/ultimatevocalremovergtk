@@ -5,7 +5,7 @@ import math
 import platform
 import traceback
 from collections.abc import Callable, Mapping, Sequence
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import audioread
 import librosa
@@ -33,6 +33,7 @@ SaveFormatFn = Callable[[str], None]
 ProgressBarFn = Callable[[int], None]
 SetProgressBarFn = Callable[[float, float], None]
 CommandTextFn = Callable[[str], None]
+AudioPhaseFn = Callable[[Literal["reading", "processing", "saving"]], None]
 
 OPERATING_SYSTEM = platform.system()
 SYSTEM_ARCH = platform.platform()
@@ -766,12 +767,15 @@ def ensemble_inputs(
     is_array: bool = False,
     min_peak: float = 0.0,
     on_progress: Callable[[float], None] | None = None,
+    on_phase: AudioPhaseFn | None = None,
 ) -> None:
 
     def _tick(fraction: float) -> None:
         if on_progress is not None:
             on_progress(max(0.0, min(1.0, float(fraction))))
 
+    if on_phase is not None:
+        on_phase("processing")
     output, samplerate = combine_ensemble_waveforms(
         audio_input,
         algorithm,
@@ -779,6 +783,8 @@ def ensemble_inputs(
         is_array=is_array,
         on_progress=on_progress,
     )
+    if on_phase is not None:
+        on_phase("saving")
     sf.write(
         save_path,
         cast(Any, normalize(output.T, is_normalization, min_peak=min_peak)),
@@ -935,13 +941,18 @@ def augment_audio(
     is_pitch: bool = False,
     is_time_correction: bool = True,
     min_peak: float = 0.0,
+    on_phase: AudioPhaseFn | None = None,
 ) -> None:
 
+    if on_phase is not None:
+        on_phase("reading")
     wav, sr = librosa.load(audio_file, sr=44100, mono=False)
 
     if wav.ndim == 1:
         wav = np.asfortranarray([wav,wav])
 
+    if on_phase is not None:
+        on_phase("processing")
     if not is_time_correction:
         wav_mix = change_pitch_semitones(wav, 44100, semitone_shift=-rate)[0]
     else:
@@ -959,6 +970,8 @@ def augment_audio(
             
         wav_mix = np.asfortranarray([wav_1, wav_2])
     
+    if on_phase is not None:
+        on_phase("saving")
     sf.write(
         export_path,
         cast(Any, normalize(wav_mix.T, is_normalization, min_peak=min_peak)),
@@ -1047,19 +1060,26 @@ def combine_audio(
     wav_type_set: str = 'FLOAT',
     save_format: SaveFormatFn | None = None,
     on_progress: Callable[[float], None] | None = None,
+    on_phase: AudioPhaseFn | None = None,
 ) -> None:
     def _tick(fraction: float) -> None:
         if on_progress is not None:
             on_progress(max(0.0, min(1.0, float(fraction))))
 
+    if on_phase is not None:
+        on_phase("reading")
     loaded = []
     total = max(1, len(paths))
     for index, path in enumerate(paths, start=1):
         loaded.append(load_audio(path))
         _tick(0.7 * index / total)
+    if on_phase is not None:
+        on_phase("processing")
     source = combine_arrarys(loaded)
     _tick(0.9)
     save_path = f"{audio_file_base} combined.wav"
+    if on_phase is not None:
+        on_phase("saving")
     sf.write(save_path, source.T, 44100, subtype=wav_type_set)
     if save_format is not None:
         save_format(save_path)
@@ -1119,7 +1139,8 @@ def align_audio(file1: str,
                 phase_option: str,
                 phase_shifts: int,
                 is_match_silence: bool,
-                is_spec_match: bool) -> None:
+                is_spec_match: bool,
+                on_phase: AudioPhaseFn | None = None) -> None:
     
     global progress_value
     progress_value = 0
@@ -1141,6 +1162,8 @@ def align_audio(file1: str,
         set_progress_bar(0.1, (0.9/length*progress_value))
     
     # read tracks
+    if on_phase is not None:
+        on_phase("reading")
     
     if file1.endswith(".mp3") and is_macos:
         length1 = rerun_mp3(file1)
@@ -1153,6 +1176,9 @@ def align_audio(file1: str,
         wav2, _sr2 = librosa.load(file2, duration=length2, sr=44100, mono=False)
     else:
         wav2, _sr2 = librosa.load(file2, sr=44100, mono=False)
+
+    if on_phase is not None:
+        on_phase("processing")
 
     if wav1.ndim == 1 and wav2.ndim == 1:
          is_mono = True
@@ -1270,9 +1296,13 @@ def align_audio(file1: str,
             wav_sub = wav1 - wav2_aligned
         
         if is_save_aligned:
+            if on_phase is not None:
+                on_phase("saving")
             sf.write(file2_aligned, wav2_aligned, int(sr1), subtype=wav_type_set)
             save_format(file2_aligned)
 
+    if on_phase is not None:
+        on_phase("saving")
     sf.write(file_subtracted, wav_sub, int(sr1), subtype=wav_type_set)
     save_format(file_subtracted)
 

@@ -301,7 +301,7 @@ class ReviewedContractTests(unittest.TestCase):
                 host.target.start_blocked_reason.reset_mock()
                 self.assertEqual(controller.refresh_start_readiness(), reason)
                 host.target.start_blocked_reason.assert_called_once_with()
-                host.enable_start.assert_called_with(True)
+                host.enable_start.assert_called_with(reason is None)
                 host.describe_start.assert_called_with(reason or 'Start processing')
 
     def test_live_counts_and_empty_state_survive_pinned_incremental_removal(self):

@@ -63,6 +63,17 @@ class PreferencesDesignTests(unittest.TestCase):
         dialog.context.try_save_settings.assert_not_called()
         self.persist.assert_not_called()
 
+    def test_log_auto_open_switch_writes_and_reloads(self):
+        dialog = self.dialog()
+        self.assertFalse(dialog.auto_expand_log_row.get_active())
+        dialog.auto_expand_log_row.set_active(True)
+        self.assertTrue(dialog.settings.ui.auto_expand_log)
+        dialog.settings.ui.auto_expand_log = False
+        self.persist.reset_mock()
+        dialog._reload_widgets()
+        self.assertFalse(dialog.auto_expand_log_row.get_active())
+        self.persist.assert_not_called()
+
     def test_chunking_off_preserves_overlap_and_shows_off(self):
         dialog = self.dialog()
         self.assertEqual(dialog.long_chunk_row.get_text(), "Off")

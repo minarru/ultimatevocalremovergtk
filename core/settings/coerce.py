@@ -245,6 +245,7 @@ _BOOL_FIELDS: frozenset[tuple[str, str]] = frozenset(
         ("ensemble", "derive_complement_from_mix"),
         ("audio_tools", "is_time_correction"),
         ("ui", "window_maximized"),
+        ("ui", "auto_expand_log"),
         ("ui", "notify_process_complete"),
         ("ui", "notify_process_failed"),
         ("ui", "notify_download_complete"),

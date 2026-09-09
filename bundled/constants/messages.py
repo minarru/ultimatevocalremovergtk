@@ -73,13 +73,13 @@ INFERENCE_STEP_1_PRE = 'Running inference (pre-process model)...'
 INFERENCE_STEP_1_VOC_S = 'Splitting vocals...'
 
 def INFERENCE_STEP_2_PRE(pm: object, m: object) -> str:
-    return f'Loading pre-process model ({pm}: {m})...'
+    return f'\nPre-process model: {m}\n'
 
 def INFERENCE_STEP_2_SEC(pm: object, m: object) -> str:
-    return f'Loading secondary model ({pm}: {m})...'
+    return f'\nSecondary model: {m}\n'
 
 def INFERENCE_STEP_2_VOC_S(pm: object, m: object) -> str:
-    return f'Loading vocal splitter model ({pm}: {m})...'
+    return f'\nVocal splitter: {m}\n'
 
 def INFERENCE_STEP_2_SEC_CACHED_MODOEL(pm: object, m: object) -> str:
     return f'Secondary model ({pm}: {m}) cache loaded.\n'

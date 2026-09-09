@@ -10,11 +10,13 @@ from bundled.error_handling import *
 from core.debug_log import debug, trace_phase
 from core.export_naming import stem_wav_path
 from core.gpu_backend import resolve_inference_backend
+from core.processing_phase import ProcessingPhase
 from core.run_estimate import save_progress_local_step
 from core.stems import StemBucket, StemLiteral, StemRoute, export_stem_key, filename_tag
 from ml import spec_utils
 
 from .orchestration import process_chain_model
+from .phase import report_phase
 from .runtime import EngineInvocation, EngineRunContext, EngineState
 from .runtime_compat import EngineLegacyOptions
 
@@ -261,6 +263,14 @@ class SeperateAttributes(EngineLegacyOptions):
             }
 
     def start_inference_console_write(self) -> None:
+        phase = ProcessingPhase.LOADING_MODEL
+        if self.is_vocal_split_model:
+            phase = ProcessingPhase.LOADING_SPLITTER
+        elif self.is_pre_proc_model:
+            phase = ProcessingPhase.LOADING_PREPROCESS
+        elif self.is_secondary_model:
+            phase = ProcessingPhase.LOADING_SECONDARY
+        report_phase(self, phase)
         if self.is_secondary_model and not self.is_pre_proc_model and not self.is_vocal_split_model:
             self.write_to_console(
                 INFERENCE_STEP_2_SEC(self.process_method, self.model_display_label)
@@ -293,12 +303,16 @@ class SeperateAttributes(EngineLegacyOptions):
         self.set_progress_bar(0.05) if not is_no_write else None
 
         if self.is_secondary_model and not self.is_pre_proc_model and not self.is_vocal_split_model:
+            report_phase(self, ProcessingPhase.SEPARATING_SECONDARY)
             self.write_to_console(INFERENCE_STEP_1_SEC)
         elif self.is_pre_proc_model:
+            report_phase(self, ProcessingPhase.PREPROCESSING)
             self.write_to_console(INFERENCE_STEP_1_PRE)
         elif self.is_vocal_split_model:
+            report_phase(self, ProcessingPhase.SPLITTING_VOCALS)
             self.write_to_console(INFERENCE_STEP_1_VOC_S)
         else:
+            report_phase(self, ProcessingPhase.SEPARATING)
             self.write_to_console(INFERENCE_STEP_1)
 
     def report_inference_unit(self) -> None:
@@ -324,6 +338,8 @@ class SeperateAttributes(EngineLegacyOptions):
     def denoise_progress_callback(self) -> Any:
         """Continue through 0.80–0.89 across ``vr_denoiser`` patch batches."""
 
+        report_phase(self, ProcessingPhase.DENOISING)
+
         def on_batch(_done: int, total: int) -> None:
             frac = self._infer_progress.extra(max(1, int(total)))
             self.set_progress_bar(0.1, frac - 0.1)
@@ -344,6 +360,7 @@ class SeperateAttributes(EngineLegacyOptions):
         return on_batch
 
     def load_cached_sources(self) -> None:
+        report_phase(self, ProcessingPhase.CACHED)
 
         if self.is_secondary_model and not self.is_pre_proc_model:
             self.write_to_console(

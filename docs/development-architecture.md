@@ -100,6 +100,14 @@ Demucs native subsets persist exact source keys in `demucs.stems_selected`; an e
 
 **Run payloads are typed.** `ProcessData` carries callbacks, routing flags, and source-cache state into engines. Engines reuse already-computed stems within one input file via its `cached_source_callback` / `cached_model_source_holder` fields; the runner clears the cache per input file (`_cached_sources_clear`). `_build_all_models` supplies `list_all_models`, which engines use to decide whether a referenced primary/secondary model actually participates in this run.
 
+**Processing phases are explicit.** Workers call `JobCallbacks.report_phase` with a
+`ProcessingPhase` before blocking operations. `ProcessData.report_phase` carries
+that optional callback into engines. Every later progress tick carries the current
+phase, so GTK coalescing cannot erase a transition. Percentages describe completed
+work; they do not identify the operation. The presenter retains percentage-based
+phase detection only for legacy callers without phase metadata.
+
+
 ### UI structure
 
 `UVRApplication` ([ui/application.py](../ui/application.py)) → `MainWindow` ([ui/window.py](../ui/window.py)), with one `AppContext` ([ui/context.py](../ui/context.py)) holding the shared `Settings` and lazily-built repository/runner. Per-method option panels are `MethodView` subclasses in [ui/views/](../ui/views/) registered in `METHOD_VIEWS` — add a method there rather than editing the window assembly. Options shared across Separation/Ensemble/Audio Tools live in [ui/shared_settings.py](../ui/shared_settings.py).

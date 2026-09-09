@@ -78,6 +78,7 @@ def _run_final_ensemble_combine(
             "ensemble_stems": collected,
         },
         callbacks=SimpleNamespace(
+            report_phase=lambda _phase: None,
             console=lambda *_args, **_kwargs: None,
             progress=lambda *_args, **_kwargs: None,
         ),
@@ -197,6 +198,7 @@ def _run_recorded_after_file(
         scratch=scratch,
         decoded_mix=decoded_mix,
         callbacks=SimpleNamespace(
+            report_phase=lambda _phase: None,
             console=lambda *_args, **_kwargs: None,
             progress=lambda *_args, **_kwargs: None,
         ),

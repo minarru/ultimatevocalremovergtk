@@ -172,9 +172,10 @@ def infer_demucs_native(
                 inst_source = self.demix_demucs(inst_mix)
                 self.process_iteration()
 
-            self.running_inference_console_write(
-                is_no_write=is_no_write
-            ) if not self.pre_proc_model else None
+            # A configured pre-process model can be bypassed for a vocal pair.
+            # Only skip this message when pre-processing actually started it.
+            if not is_no_write:
+                self.running_inference_console_write()
 
             if (
                 self.primary_model_name == self.model_cache_key
