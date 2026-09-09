@@ -2,12 +2,11 @@
  *
  * Spacing convention:
  *   - CSS: component padding, colors, radius, min-heights
- *   - ui/spacing.py: static GtkWidget margins (dialogs, labels, layout shells)
+ *   - Blueprint: static widget margins and box spacing
+ *   - ui/spacing.py: margins for widgets constructed in Python
  *   - Python: dynamic layout (overlay clearance, progress-dependent height)
  *   - SYNC comments link CSS values to Python measure constants when needed
  */
-
-/* --- Spacing utilities: see ui/spacing.py (Gtk margin API) --- */
 
 /* Apollo empty-state banner (class app-banner): inset and rounded rather than
    spanning edge-to-edge. The accent background lives on the banner's inner
@@ -24,7 +23,6 @@
 }
 
 .uvr-log-panel {
-    min-width: 360px;
     border-radius: 16px 16px 12px 12px;
     background-image: none;
     background-color: @window_bg_color;
@@ -45,36 +43,15 @@
     -gtk-icon-transform: rotate(180deg);
 }
 
-.uvr-run-controls {
-    padding: 12px 12px 12px; /* SYNC: _RUN_CONTROLS_PADDING_Y in log_panel.py */
-}
-
-.uvr-progress-section {
-    margin-bottom: 4px;
+.uvr-log-empty-description {
+    opacity: 0.75;
 }
 
 .uvr-progress-label {
-    margin-top: 4px;
-    margin-bottom: 8px;
     opacity: 0.85;
 }
 
-.uvr-log-meta {
-    padding: 0 0 8px;
-    min-height: 32px;
-}
-
-.uvr-log-body-wrap {
-    padding: 0 0 12px;
-}
-
-.uvr-run-actions {
-    min-height: 36px; /* SYNC: _RUN_ACTIONS_MIN_HEIGHT in log_panel.py */
-}
-
-/* Keep min-height in sync with _LOG_BODY_HEIGHT in ui/widgets/log_panel.py */
 .uvr-log-body {
-    min-height: 200px;
     border-radius: 8px;
     background-color: alpha(@window_fg_color, 0.04);
 }
@@ -85,14 +62,6 @@
 
 .uvr-log-console viewport {
     border-radius: 8px;
-}
-
-.uvr-log-empty {
-    padding: 20px 16px;
-}
-
-.uvr-log-empty .dim-label {
-    opacity: 0.75;
 }
 
 /* MenuButton shell is transparent; keep chip height within the header bar. */

@@ -49,16 +49,18 @@ class LogPanelLayoutTests(unittest.TestCase):
         window.present()
         try:
             self.settle(lambda: panel._log_stack.get_width() > 0)
-            outer = panel._log_stack.get_child_by_name('empty')
-            assert outer is not None
-            inner = outer.get_first_child()
-            assert inner is not None
-            bounds = inner.compute_bounds(outer)[1]
+            empty = panel._log_stack.get_child_by_name('empty')
+            assert empty is not None
+            bounds = empty.compute_bounds(panel._log_stack)[1]
             self.assertAlmostEqual(
-                bounds.get_x() + bounds.get_width() / 2, outer.get_width() / 2, delta=1
+                bounds.get_x() + bounds.get_width() / 2,
+                panel._log_stack.get_width() / 2,
+                delta=1,
             )
             self.assertAlmostEqual(
-                bounds.get_y() + bounds.get_height() / 2, outer.get_height() / 2, delta=1
+                bounds.get_y() + bounds.get_height() / 2,
+                panel._log_stack.get_height() / 2,
+                delta=1,
             )
         finally:
             window.set_visible(False)

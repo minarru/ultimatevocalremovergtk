@@ -16,21 +16,22 @@ from ..hints import set_icon_button_a11y
 from ..resources import RESOURCE_PREFIX, require_resource_bundle
 from .console import ConsoleView
 
-# Layout constants below mirror ``resources/style.css``. Used when the panel has
+# Layout constants mirror ``resources/ui/log_panel.blp`` and its CSS border.
+# Used when the panel has
 # not been allocated yet and :meth:`Gtk.Widget.measure` is not meaningful.
-#: Log body height ↔ ``.uvr-log-body { min-height }``.
+#: Log stack height request and fixed-height console.
 _LOG_BODY_HEIGHT = 200
-#: Meta row ↔ ``.uvr-log-meta`` min-height 32 + padding-bottom 8.
+#: Log metadata row: height request 32 + bottom margin 8.
 _LOG_META_ROW_RESERVE = 40
-#: Log body wrap ↔ ``.uvr-log-body-wrap`` padding-bottom.
+#: Log stack bottom margin.
 _LOG_BODY_WRAP_RESERVE = 12
 #: Overlay bottom gap ↔ ``MainWindow`` ``set_margin_bottom`` on the log panel.
 OVERLAY_MARGIN_BOTTOM = 12
-#: Run controls vertical padding ↔ ``.uvr-run-controls { padding }`` (12 + 12).
+#: Run controls vertical inset (top and bottom margins, 12 + 12).
 _RUN_CONTROLS_PADDING_Y = 24
-#: Action row height ↔ ``.uvr-run-actions { min-height }``.
+#: Run actions row height request.
 _RUN_ACTIONS_MIN_HEIGHT = 36
-#: Progress bar block ↔ ``.uvr-progress-section`` + ``.uvr-progress-label`` margins.
+#: Progress bar block ↔ progress section/label margins in ``log_panel.blp``.
 _PROGRESS_SECTION_RESERVE = 34
 #: Card border in ``.uvr-log-panel``.
 _PANEL_BORDER_RESERVE = 2
@@ -78,8 +79,6 @@ class LogPanel(Gtk.Box):
         self._run_label = ""
         self._progress_status = ""
 
-        set_icon_button_a11y(self.log_copy_button, "Copy full log")
-        set_icon_button_a11y(self.log_clear_button, "Clear the log")
         self._log_revealer.connect("notify::child-revealed", self._on_log_revealed)
 
         self.console = ConsoleView(on_changed=self._handle_console_changed)
@@ -89,7 +88,6 @@ class LogPanel(Gtk.Box):
         self._log_stack.add_named(self.console, "console")
         self._sync_expand_button_a11y(False)
         self.expand_button.connect("toggled", self._on_expand_toggled)
-        set_icon_button_a11y(self._stop_button, "Stop processing")
 
         self.start_button = self._start_button
         self.stop_button = self._stop_button
