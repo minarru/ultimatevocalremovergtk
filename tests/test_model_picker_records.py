@@ -355,6 +355,7 @@ class EnsemblePickerTests(unittest.TestCase):
         page._persist_selected_models = lambda: None
         page._update_models_dialog_status = lambda: None
         page._update_models_summary = lambda: None
+        page._rebuild_stem_only_toggles = lambda: None
 
         with (
             mock.patch("core.model_identity.ModelIdentityService.records", return_value=()),
@@ -389,6 +390,7 @@ class EnsemblePickerTests(unittest.TestCase):
         page._persist_selected_models = lambda: None
         page._update_models_dialog_status = lambda: None
         page._update_models_summary = lambda: None
+        page._rebuild_stem_only_toggles = lambda: None
 
         emitted: list[str] = []
         old_domains = debug_log._DOMAINS
@@ -451,6 +453,7 @@ class EnsemblePickerTests(unittest.TestCase):
         page._update_models_dialog_status = lambda: None
         page._update_models_summary = lambda: None
         page._rebuild_stem_only_toggles = lambda: None
+        page._rebuild_stem_only_toggles = lambda: None
 
         EnsemblePage._persist_selected_models(page)
 
@@ -481,6 +484,7 @@ class EnsemblePickerTests(unittest.TestCase):
         page._ensemble_pair = lambda: "pair.vocals_instrumental"
         page._update_models_dialog_status = lambda: None
         page._update_models_summary = lambda: None
+        page._rebuild_stem_only_toggles = lambda: None
         record = _record("mdx:installed", "Installed")
 
         try:
@@ -516,6 +520,7 @@ class EnsemblePickerTests(unittest.TestCase):
         page._ensemble_pair = lambda: "pair.vocals_instrumental"
         page._update_models_dialog_status = lambda: None
         page._update_models_summary = lambda: None
+        page._rebuild_stem_only_toggles = lambda: None
         page._sync_shared_from_settings = lambda: None
         record = _record("mdx:installed", "Installed")
 
@@ -553,6 +558,7 @@ class EnsemblePickerTests(unittest.TestCase):
         page._ensemble_pair = lambda: "pair.vocals_instrumental"
         page._update_models_dialog_status = lambda: None
         page._update_models_summary = lambda: None
+        page._rebuild_stem_only_toggles = lambda: None
         page.models_dialog = object()
         page.window = object()
         record = _record("mdx:installed", "Installed")
@@ -596,6 +602,7 @@ class EnsemblePickerTests(unittest.TestCase):
         page._ensemble_pair = lambda: "pair.vocals_instrumental"
         page._update_models_dialog_status = lambda: None
         page._update_models_summary = lambda: None
+        page._rebuild_stem_only_toggles = lambda: None
         records = tuple(_record(model_id, model_id) for model_id in stored)
 
         with (
@@ -634,6 +641,7 @@ class EnsemblePickerTests(unittest.TestCase):
         page._ensemble_pair = lambda: "pair.vocals_instrumental"
         page._update_models_dialog_status = lambda: None
         page._update_models_summary = lambda: None
+        page._rebuild_stem_only_toggles = lambda: None
 
         with (
             mock.patch(

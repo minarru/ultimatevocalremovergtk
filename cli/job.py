@@ -29,6 +29,20 @@ from .profiles import (
 )
 
 
+def _apply_stem_argument(settings: Settings, sources: dict[str, str], stems: str | None) -> None:
+    if stems is not None:
+        apply_stem_selection(settings, stems)
+        for path in (
+            "process.stem_focus",
+            "mdx.stems",
+            "mdx.stems_selected",
+            "demucs.stems",
+            "demucs.stems_selected",
+            "ensemble.stems_selected",
+        ):
+            sources[path] = "cli"
+
+
 def _resolved_settings(
     base: Settings,
     *,
@@ -50,16 +64,7 @@ def _resolved_settings(
     if model is not None:
         getattr(settings, model.family).model = model.id
         sources[f"{model.family}.model"] = model_source or "derived"
-    if stems is not None:
-        apply_stem_selection(settings, stems)
-        for path in (
-            "process.stem_focus",
-            "mdx.stems",
-            "mdx.stems_selected",
-            "demucs.stems",
-            "demucs.stems_selected",
-        ):
-            sources[path] = "cli"
+    _apply_stem_argument(settings, sources, stems)
     if long_chunk_seconds is not None:
         settings.process.long_file_chunk_seconds = float(long_chunk_seconds)
         sources["process.long_file_chunk_seconds"] = "cli"
@@ -405,7 +410,7 @@ def resolve_ensemble_job(args: argparse.Namespace, *, validation_level: Any = No
         base,
         output=output,
         method="ensemble",
-        stems=args.stems,
+        stems=None,
         long_chunk_seconds=args.long_chunk_seconds,
         long_chunk_overlap=args.long_chunk_overlap,
         base_provenance=_profile_provenance(base, profile),
@@ -426,6 +431,8 @@ def resolve_ensemble_job(args: argparse.Namespace, *, validation_level: Any = No
                 "ensemble.wav_ensemble",
                 "ensemble.save_all_outputs",
                 "ensemble.derive_complement_from_mix",
+                "ensemble.stems_selected",
+                "process.stem_focus",
             }
         )
         sources.update({path: "preset" for path in preset_paths})
@@ -464,6 +471,7 @@ def resolve_ensemble_job(args: argparse.Namespace, *, validation_level: Any = No
     if args.save_all_outputs is not None:
         settings.ensemble.save_all_outputs = bool(args.save_all_outputs)
         sources["ensemble.save_all_outputs"] = "cli"
+    _apply_stem_argument(settings, sources, args.stems)
     overrides = collect_overrides(args)
     _validate_job_overrides(overrides)
     device_pairs, device_explicit = _device_pairs(args, profile)

@@ -5,14 +5,16 @@ template $LogPanel: Gtk.Box {
   overflow: hidden;
   halign: fill;
   valign: fill;
-  Adw.Clamp panel_clamp {
-    maximum-size: 400;
-    tightening-threshold: 400;
-    unit: sp;
+  $UvrPanelClamp panel_clamp {
+    layout-manager: Adw.ClampLayout {
+      maximum-size: 400;
+      tightening-threshold: 400;
+      unit: sp;
+    };
     valign: end;
     margin-start: 24;
     margin-end: 24;
-    child: Gtk.Box {
+    Gtk.Box {
       orientation: vertical;
       overflow: hidden;
       styles ["uvr-log-panel"]
@@ -65,8 +67,8 @@ template $LogPanel: Gtk.Box {
                   pixel-size: 28;
                   styles ["dim-label"]
                 }
-                Gtk.Label { label: "No activity yet"; styles ["heading"] }
-                Gtk.Label {
+                Gtk.Label empty_title { label: "No activity yet"; styles ["heading"] }
+                Gtk.Label empty_body {
                   label: "Start processing to see the log here.";
                   wrap: true;
                   justify: center;
@@ -159,6 +161,6 @@ template $LogPanel: Gtk.Box {
           };
         }
       }
-    };
+    }
   }
 }

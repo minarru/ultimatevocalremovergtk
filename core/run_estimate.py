@@ -17,7 +17,7 @@ from bundled.constants import (
     VR_ARCH_PM,
     VR_ARCH_TYPE,
 )
-from core.stem_pairs import normalize_stem_pair_id
+from core.stem_pairs import is_stem_mode, normalize_stem_pair_id
 
 from .processing_phase import ProcessingPhase
 
@@ -388,6 +388,12 @@ def count_expected_outputs(
             base = _multi_stem_base_outputs(settings, repo)
         elif save_stems is not None and getattr(save_stems, "mode", None) != "hidden":
             base = int(save_stems.expected_output_count())
+        if (
+            is_stem_mode(pair_id)
+            and settings.ensemble.stems_selected
+            and not settings.process.stem_focus
+        ):
+            base = len(settings.ensemble.stems_selected)
         if settings.ensemble.save_all_outputs:
             base += len(settings.ensemble.selected_models or [])
         return base

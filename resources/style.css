@@ -51,6 +51,19 @@
 
 .uvr-log-console text { background-color: transparent; }
 
+.uvr-error-log-text {
+    background-color: @view_bg_color;
+    border: none;
+    border-radius: 12px;
+    box-shadow: none;
+}
+
+.uvr-error-log-text textview,
+.uvr-error-log-text textview text {
+    background-color: transparent;
+}
+
+
 /* MenuButton shell is transparent; keep chip height within the header bar. */
 menubutton.uvr-download-queue-chip {
     padding: 0;

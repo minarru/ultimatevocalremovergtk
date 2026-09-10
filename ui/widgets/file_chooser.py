@@ -17,11 +17,10 @@ from core.audio_formats import expand_audio_paths
 from ..gtk_narrow import file_paths, root_window
 from ..help_text import (
     CLEAR_INPUT_FILES_HINT,
-    REMOVE_FROM_LIST_HINT,
     SELECT_OUTPUT_FOLDER_HINT,
 )
 from ..hints import set_icon_button_a11y
-from ..markup import set_row_subtitle, set_row_title
+from ..markup import set_row_subtitle
 from ..resources import RESOURCE_PREFIX, require_resource_bundle
 from ..shared_settings import (
     INPUT_FILES_WARN,
@@ -30,7 +29,6 @@ from ..shared_settings import (
     input_paths_blocked_reason,
     sanitize_input_paths,
 )
-from ..template import load_builder, object_from_builder
 from .file_dialogs import (
     audio_open_dialog,
     folder_dialog,
@@ -47,18 +45,6 @@ def merge_input_paths(existing: Sequence[str], added: Sequence[str]) -> List[str
             seen.add(path)
             merged.append(path)
     return merged
-
-
-def expander_state(path_count: int, *, was_expanded: bool, preserve: bool) -> tuple[bool, bool]:
-    """Return ``(enable_expansion, expanded)`` for a ``path_count``-file selection.
-
-    One file is fully summarized by the header, so expansion is disabled below
-    two files. ``preserve`` keeps an already-open list open — set when the list
-    is being edited in place (removing a file) rather than replaced wholesale.
-    """
-    if path_count <= 1:
-        return False, False
-    return True, (was_expanded if preserve else False)
 
 
 def output_subtitle(path: str, reason: Optional[str]) -> tuple[str, bool]:
@@ -82,12 +68,10 @@ require_resource_bundle(_OUTPUT_TEMPLATE_RESOURCE)
 
 
 @Gtk.Template(resource_path=_INPUT_TEMPLATE_RESOURCE)
-class InputFilesRow(Adw.ExpanderRow):
-    """Expandable row listing the selected input audio file(s) with drop support.
+class InputFilesRow(Adw.ActionRow):
+    """Input summary with browse, clear, and drop support.
 
-    The header keeps the summary subtitle and the browse / clear-all affordances;
-    expanding reveals one child row per file (basename + full path) with a remove
-    button, so individual files can be dropped without re-picking everything.
+    Per-file management and verification live in the Verify Inputs dialog.
     """
 
     __gtype_name__ = "InputFilesRow"
@@ -111,7 +95,6 @@ class InputFilesRow(Adw.ExpanderRow):
         self._accept_any_getter = accept_any_getter
         self._initial_folder_getter = initial_folder_getter
         self.paths: List[str] = []
-        self._file_rows: List[Gtk.Widget] = []
 
         set_icon_button_a11y(self._clear_button, CLEAR_INPUT_FILES_HINT)
         self._clear_button.connect("clicked", self._on_clear_clicked)
@@ -156,12 +139,10 @@ class InputFilesRow(Adw.ExpanderRow):
         self,
         paths: Sequence[str],
         notify: bool = True,
-        *,
-        preserve_expansion: bool = False,
     ) -> None:
         cleaned, result = sanitize_input_paths(paths)
         self.paths = cleaned
-        self._refresh(preserve_expansion=preserve_expansion)
+        self._refresh()
         if notify:
             from core.debug_log import debug
 
@@ -184,16 +165,9 @@ class InputFilesRow(Adw.ExpanderRow):
         if self._on_toast is not None:
             self._on_toast(message)
 
-    def _refresh(self, *, preserve_expansion: bool = False) -> None:
-        was_expanded = self.get_expanded()
+    def _refresh(self) -> None:
         self._refresh_subtitle()
-        self._rebuild_file_rows()
         self._clear_button.set_sensitive(bool(self.paths))
-        enable, expanded = expander_state(
-            len(self.paths), was_expanded=was_expanded, preserve=preserve_expansion
-        )
-        self.set_enable_expansion(enable)
-        self.set_expanded(expanded)
 
     def _refresh_subtitle(self) -> None:
         if not self.paths:
@@ -210,29 +184,6 @@ class InputFilesRow(Adw.ExpanderRow):
                 subtitle = f"{subtitle} (large batch)"
             set_row_subtitle(self, subtitle)
             self.set_tooltip_text(None)
-
-    def _rebuild_file_rows(self) -> None:
-        for row in self._file_rows:
-            self.remove(row)
-        self._file_rows = []
-        # A single selection already shows the path on the expander; skip the
-        # duplicate child row that previously stacked the same path twice.
-        if len(self.paths) <= 1:
-            return
-        for path in self.paths:
-            builder = load_builder("input_file_row")
-            row = object_from_builder(builder, "input_file_row", Adw.ActionRow)
-            remove = object_from_builder(builder, "remove_button", Gtk.Button)
-            set_row_title(row, os.path.basename(path))
-            set_row_subtitle(row, path)
-            row.set_tooltip_text(path)
-            set_icon_button_a11y(remove, f"{REMOVE_FROM_LIST_HINT}: {os.path.basename(path)}")
-            remove.connect("clicked", self._on_remove_clicked, path)
-            self.add_row(row)
-            self._file_rows.append(row)
-
-    def _on_remove_clicked(self, _button: Gtk.Button, path: str) -> None:
-        self.set_paths([p for p in self.paths if p != path], preserve_expansion=True)
 
     def _on_clear_clicked(self, _button: Gtk.Button) -> None:
         if self.paths:

@@ -140,6 +140,8 @@ class EnsembleFlushSettingsTests(unittest.TestCase):
         )
 
         class SaveStemsStub:
+            controls = None
+
             def persist_to_settings(self) -> None:
                 state.write(settings, ExclusiveView(choice=INST_STEM))
 

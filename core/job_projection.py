@@ -126,6 +126,11 @@ def select_output_routes(
 
     if command == "ensemble":
         routes = evidence.routes
+        if not focus and settings.ensemble.stems_selected:
+            from .ensemble_selection import select_ensemble_subset
+
+            selected, _missing = select_ensemble_subset(routes, settings.ensemble.stems_selected)
+            return OutputRouteProjection(selected, focus, positional, "ensemble-subset")
         if positional:
             selected = tuple(routes)
             if not evidence.ensemble_multi:

@@ -96,6 +96,15 @@ Demucs native subsets persist exact source keys in `demucs.stems_selected`; an e
 
 **Stem focus is validated at plan time, and severity follows provenance.** `stem_focus_diagnostics` ([core/job_diagnostics.py](../core/job_diagnostics.py)) makes an unavailable stem an `error` when it came from the CLI and a `warning` (fall back to every viable output) when inherited from a GUI profile. For 4-stem and multi-stem ensembles focus filters only the **final** combined outputs — members must still emit their complete stem set for aggregation — and `select_ensemble_stem_routes` reports `INSUFFICIENT_MEMBERS` separately from unmatched when fewer than two members contribute.
 
+Final four-stem and multi-stem ensemble subsets persist reviewed role IDs in
+`ensemble.stems_selected`; an empty list means All. `core/ensemble_selection.py`
+filters only the final combined outputs. Members still emit every aggregation
+input. Planning blocks unavailable selected roles, and finalization checks again
+against actual contributors. Explicit CLI stem choices clear an inherited subset.
+The Ensemble page reuses the output-stem dialog with its own selection controller;
+its checkbox edits never write MDX or Demucs subsets. Saved ensembles retain both
+this subset and the pair-mode `process.stem_focus` selection.
+
 **Semantic review and catalogue evidence availability are independent.** Reviewed/waived/raw stem status comes only from the unified manifest; `ready`, `pending`, `unavailable`, `stale`, and `not_applicable` describe whether exact catalogue/config evidence can currently be validated. A timeout, cold cache, or stale last-known-good entry must not downgrade a reviewed declaration to raw, and successful parsed evidence may report drift but must never invent semantics.
 
 **Run payloads are typed.** `ProcessData` carries callbacks, routing flags, and source-cache state into engines. Engines reuse already-computed stems within one input file via its `cached_source_callback` / `cached_model_source_holder` fields; the runner clears the cache per input file (`_cached_sources_clear`). `_build_all_models` supplies `list_all_models`, which engines use to decide whether a referenced primary/secondary model actually participates in this run.

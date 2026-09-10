@@ -28,7 +28,7 @@ OPEN_OUTPUT_FOLDER_ACTION = "app.open-output-folder"
 _OPEN_FOLDER_LABEL = "Open Folder"
 
 _NOTIFY_ICONS = {
-    "uvr-complete": "emblem-ok-symbolic",
+    "uvr-complete": "object-select-symbolic",
     "uvr-failed": "dialog-error-symbolic",
     "uvr-download-complete": "folder-download-symbolic",
     "uvr-download-failed": "dialog-warning-symbolic",

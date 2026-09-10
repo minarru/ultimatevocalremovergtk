@@ -3,33 +3,80 @@ using Adw 1;
 
 Gtk.TextBuffer buffer {}
 Adw.Window window {
-  title: "Error Console";
-  default-width: 700;
-  default-height: 520;
-  content: Adw.ToolbarView {
-    [top]
-    Adw.HeaderBar {
-      [start]
-      Gtk.Button copy_button { label: "Copy All Text"; }
-      [start]
-      Gtk.Button clear_button { label: "Clear"; }
-      [start]
-      Gtk.Button report_button { label: "Report Issue"; }
-    }
-    content: Gtk.ScrolledWindow {
-      vexpand: true;
-      hexpand: true;
-      child: Gtk.TextView {
-        buffer: buffer;
-        editable: false;
-        cursor-visible: false;
-        monospace: true;
-        wrap-mode: word_char;
-        left-margin: 10;
-        right-margin: 10;
-        top-margin: 10;
-        bottom-margin: 10;
-        styles ["card"]
+  title: "Error Log";
+  default-width: 800;
+  default-height: 560;
+  width-request: 360;
+  height-request: 320;
+  content: Adw.ToastOverlay toasts {
+    child: Adw.ToolbarView {
+      [top]
+      Adw.HeaderBar {
+        [start]
+        Gtk.Button copy_button { label: "Copy Log"; tooltip-text: "Copy the complete error log"; }
+        [end]
+        Gtk.Button clear_button {
+          icon-name: "uvr-edit-clear-all-symbolic";
+          tooltip-text: "Clear Log";
+          action-name: "error-log.clear";
+        }
+        [end]
+        Gtk.Button report_button { icon-name: "chat-bubble-exclamation-point-symbolic"; tooltip-text: "Report Issue"; }
+      }
+      content: Gtk.Stack pages {
+        Gtk.StackPage {
+          name: "empty";
+          child: Adw.StatusPage {
+            styles ["compact"]
+            title: "No errors recorded";
+            description: "Errors from processing and other operations will appear here.";
+            icon-name: "check-round-outline-symbolic";
+          };
+        }
+        Gtk.StackPage {
+          name: "log";
+          child: Gtk.Overlay {
+            margin-start: 16;
+            margin-end: 16;
+            margin-top: 12;
+            margin-bottom: 16;
+            child: Gtk.ScrolledWindow scroll {
+              vexpand: true;
+              hexpand: true;
+              hscrollbar-policy: never;
+              has-frame: false;
+              overflow: hidden;
+              styles ["uvr-error-log-text"]
+              child: Gtk.TextView text_view {
+                buffer: buffer;
+                editable: false;
+                cursor-visible: false;
+                monospace: true;
+                wrap-mode: word_char;
+                left-margin: 16;
+                right-margin: 16;
+                top-margin: 16;
+                bottom-margin: 16;
+              };
+            };
+            [overlay]
+            Gtk.Revealer jump_revealer {
+              transition-type: crossfade;
+              transition-duration: 180;
+              reveal-child: false;
+              halign: center;
+              valign: end;
+              margin-bottom: 16;
+              child: Gtk.Button jump_button {
+                icon-name: "uvr-go-bottom-symbolic";
+                tooltip-text: "Jump to latest";
+                width-request: 40;
+                height-request: 40;
+                styles ["circular", "osd"]
+              };
+            }
+          };
+        }
       };
     };
   };

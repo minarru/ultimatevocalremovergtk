@@ -191,7 +191,7 @@ class GatedSeparationPlanTests(unittest.TestCase):
                 first.id: SimpleNamespace(get_active=lambda: True),
                 second.id: SimpleNamespace(get_active=lambda: True),
             }
-            page.save_stems = SimpleNamespace(persist_to_settings=lambda: None)
+            page.save_stems = SimpleNamespace(controls=None, persist_to_settings=lambda: None)
             page.input_row = SimpleNamespace(paths=[source.name])
             page.output_row = SimpleNamespace(path="/tmp/out")
 
@@ -231,7 +231,7 @@ class GatedEnsemblePlanTests(unittest.TestCase):
             second.id: SimpleNamespace(get_active=lambda: True),
         }
         page.vocal_split_row = SimpleNamespace(persist_to_settings=lambda _settings: None)
-        page.save_stems = SimpleNamespace(persist_to_settings=lambda: None)
+        page.save_stems = SimpleNamespace(controls=None, persist_to_settings=lambda: None)
 
         from ui.shared_settings import SharedSettingsSession, shared_settings_bindings
         page._shared_session = SharedSettingsSession(settings, shared_settings_bindings(), can_commit=lambda: True)

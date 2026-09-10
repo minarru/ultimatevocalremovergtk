@@ -22,7 +22,7 @@ require_resource_bundle(_TEMPLATE_RESOURCE)
 class DualInputsRow(Adw.ExpanderRow):
     """Expandable row summarising paired inputs with a button to open the editor.
 
-    Empty-state affordances match :class:`InputFilesRow`: expansion is disabled
+    Empty-state affordances keep the empty list compact: expansion is disabled
     until pairs exist; the pair-editor suffix remains the primary action.
     """
 

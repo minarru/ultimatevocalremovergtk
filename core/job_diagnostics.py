@@ -225,6 +225,23 @@ def stem_focus_diagnostics(
 ) -> list[Diagnostic]:
     """Observe fallback routes and assess each member before observing the next."""
     focus = str(settings.process.stem_focus or "")
+    if command == "ensemble" and not focus and settings.ensemble.stems_selected:
+        from .ensemble_selection import select_ensemble_subset
+
+        routes, _union = collect_ensemble_routes(settings, descriptors)
+        _selected, missing = select_ensemble_subset(routes, settings.ensemble.stems_selected)
+        if missing:
+            return [
+                Diagnostic(
+                    "stems.ensemble_subset_unmatched",
+                    "Selected ensemble outputs unavailable or missing two contributors: "
+                    + ", ".join(missing)
+                    + ". Review the output selection.",
+                    "error",
+                    path="ensemble.stems_selected",
+                )
+            ]
+        return []
     if not focus and command != "ensemble" and settings.demucs.stems_selected:
         from .demucs_selection import select_demucs_native_subset
 

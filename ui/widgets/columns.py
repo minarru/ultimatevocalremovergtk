@@ -17,7 +17,7 @@ from gi.repository import Adw, Gtk
 from ..template import load_builder, object_from_builder
 from .log_panel import LogPanel
 
-#: Clamp width shared by every two-column options surface.
+#: Maximum width in sp, shared by every two-column options surface.
 DEFAULT_MAX_WIDTH = 1180
 #: Breathing room between the last preference row and the floating log panel.
 _OPTIONS_CLEARANCE_GAP = 8
@@ -85,16 +85,8 @@ def wrap_options_scroller(
     clamp = object_from_builder(builder, "options_clamp", Adw.Clamp)
     clamp.set_child(columns_box)
     clamp.set_maximum_size(maximum_size)
-    # Pin the tightening threshold to the maximum size. With the default (lower)
-    # threshold, any window between the threshold and ``maximum_size`` lands in
-    # Adw.Clamp's easing region, where the child is allocated less than the
-    # available width by an amount that depends on the child's own content
-    # (natural/min) width. That makes each page's columns render at a different
-    # width based on its longest row. Raising the threshold to the maximum
-    # removes the easing band: below ``maximum_size`` the child fills the full
-    # available width (consistent across every page), and it is still clamped
-    # and centred once the window grows past ``maximum_size``.
-    clamp.set_tightening_threshold(maximum_size)
+    # Use the shared Blueprint's gradual tightening band, keeping custom caps valid.
+    clamp.set_tightening_threshold(min(maximum_size, clamp.get_tightening_threshold()))
     return page
 
 

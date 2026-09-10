@@ -64,6 +64,7 @@ from core import (
     list_saved_ensembles,
 )
 from core.ensemble_algorithms import (
+    CUSTOM_PRESET,
     PAIR_CONSISTENT_PRESET,
     algorithm_blurb,
     algorithm_row_titles,
@@ -86,11 +87,12 @@ from core.ensemble_presets import (
     list_curated_ensembles,
     resolve_member_tags,
 )
+from core.job_plan_types import ModelDescriptor
+from core.job_route_observations import collect_ensemble_routes
 from core.model_stem_manifest import load_bundled_stem_semantics
 from core.model_stem_semantics import recommended_export_note, stem_display_overrides
 from core.run_estimate import (
     compose_stem_group_tooltip,
-    ensemble_export_summary,
     estimate_workload,
     format_workload_line,
 )
@@ -131,6 +133,7 @@ from ..widget_state import fetch, stash
 from ..widgets.columns import build_columns_box, wrap_options_scroller
 from ..widgets.file_chooser import InputFilesRow, OutputFolderRow
 from ..widgets.format_row import OutputFormatRow
+from ..widgets.output_stems import OutputStemsSection
 from ..widgets.rows import (
     configure_combo_row,
     get_combo_value,
@@ -141,6 +144,7 @@ from ..widgets.rows import (
 )
 from ..widgets.stem_only import SaveStemsSection
 from ..widgets.vocal_split_row import VocalSplitRow
+from .stem_controls import EnsembleStemControls
 
 _PRIMARY_STEM_ONLY_KEY = "is_primary_stem_only"
 _SECONDARY_STEM_ONLY_KEY = "is_secondary_stem_only"
@@ -207,6 +211,7 @@ class EnsemblePage:
         self._shared_session: SharedSettingsSession | None = None
         self._loading = False
         self._syncing_preset = False
+        self._custom_algorithms = False
         self._lock_leftover_algo = False
         self._pair_consistent_leftover_label: str | None = None
         self._pair_consistent_stacked_label: str | None = None
@@ -233,14 +238,15 @@ class EnsemblePage:
         self._install_shared_session()
 
         self.columns_box, self._col_start, self._col_end = build_columns_box(
-            left_groups=(files_group, ensemble_group),
+            left_groups=(
+                files_group,
+                ensemble_group,
+                self._layout_object("combination_group", Adw.PreferencesGroup),
+            ),
             right_groups=(stems_group, output_group),
         )
 
-        # Proactive empty-state hint mirroring the Separation page: a full-width
-        # banner above the columns that surfaces the ensemble-configuration
-        # blocker (stem pair / member models) and auto-hides once the run is
-        # ready. Refreshed from ``_update_ensemble_banner`` on stem/model change.
+        # Saved-configuration warnings carry details beyond Start readiness.
         self._ensemble_banner = self._layout_object("ensemble_banner", Adw.Banner)
         self.options_page = wrap_options_scroller(self.columns_box)
         page = self._layout_object("page", Gtk.Box)
@@ -297,6 +303,9 @@ class EnsemblePage:
         self.models_trigger_row.set_subtitle(self._models_summary())
         set_tooltip(self.models_trigger_row, ENSEMBLE_LISTBOX_HELP)
         self.models_trigger_row.connect("activated", self._open_models_dialog)
+        self._layout_object("edit_models_button", Gtk.Button).connect(
+            "clicked", self._open_models_dialog
+        )
 
         self.member_options_row = self._layout_object("member_options_row", Adw.ActionRow)
         set_tooltip(self.member_options_row, ENSEMBLE_MEMBER_MODEL_OPTIONS_HINT)
@@ -364,9 +373,10 @@ class EnsemblePage:
             settings=self.settings,
             on_changed=self._on_save_stems_changed,
         )
-        self.save_stems.attach_to(group)
+        self.output_stems = OutputStemsSection(self.save_stems, group)
+        self.ensemble_stem_controls = EnsembleStemControls(self.settings)
         set_tooltip(group, SAVE_STEM_ONLY_HELP)
-        # Revealed in _rebuild_stem_only_toggles once a stem pair is chosen.
+        # The output group remains available before member models are chosen.
         self.stems_group = group
         return group
 
@@ -374,7 +384,7 @@ class EnsemblePage:
         group = self._layout_object("processing_group", Adw.PreferencesGroup)
 
         self.format_row = OutputFormatRow(self._on_format_changed)
-        group.add(self.format_row)
+        self.stems_group.add(self.format_row)
 
         self.gpu_row = self._layout_object("gpu_row", Adw.SwitchRow)
         set_tooltip(self.gpu_row, IS_GPU_CONVERSION_HELP)
@@ -400,6 +410,7 @@ class EnsemblePage:
 
         self.save_all_row = self._layout_object("save_all_row", Adw.SwitchRow)
         set_tooltip(self.save_all_row, IS_SAVE_ALL_OUTPUTS_ENSEMBLE_HELP)
+        self.stems_group.add(self.save_all_row)
         self.save_all_row.connect(
             "notify::active",
             lambda *_a: self._set_bool(
@@ -463,7 +474,6 @@ class EnsemblePage:
             )
             self._refresh_ensemble_type_values()
 
-            self._rebuild_stem_only_toggles()
             self.save_all_row.set_active(bool(self.settings.ensemble.save_all_outputs))
             self.append_name_row.set_active(bool(self.settings.ensemble.append_ensemble_name))
             self.wav_ensemble_row.set_active(bool(self.settings.ensemble.wav_ensemble))
@@ -698,7 +708,9 @@ class EnsemblePage:
             primary, secondary = parse_ensemble_type(self.settings.ensemble.type)
             set_combo_value(
                 preset_row,
-                preset_for_state(
+                CUSTOM_PRESET
+                if getattr(self, "_custom_algorithms", False)
+                else preset_for_state(
                     primary,
                     secondary,
                     derive_complement_from_mix=bool(
@@ -750,15 +762,17 @@ class EnsemblePage:
         self._describe_mix_residual = describe_mix
         set_row_title(primary_row, primary_title)
         set_row_title(secondary_row, secondary_title)
+        self._update_algorithm_visibility()
 
     def _rebuild_stem_only_toggles(self) -> None:
         primary_stem, secondary_stem = self._ensemble_stem_pair()
         has_pair = bool(primary_stem and secondary_stem)
         is_multi = self._ensemble_is_multi_or_four()
-        # Dual-stem: full Save stems toggles. 4-stem / multi-stem: summary-only.
-        # Choose stem pair: hide the group.
-        self.stems_group.set_visible(has_pair or is_multi)
+        # Pair controls retain their focus encoding; larger ensembles select final roles.
+        self.stems_group.set_visible(True)
         if has_pair:
+            self.save_stems.set_model_context(self._ensemble_pair())
+            self.output_stems.controls = self.save_stems.enable_direct_controls()
             model = self._resolve_ensemble_semantics_model()
             self.save_stems.configure_exclusive(
                 primary_stem=primary_stem,
@@ -777,9 +791,33 @@ class EnsemblePage:
             self.save_stems.sync_from_settings()
         else:
             self.save_stems.configure_hidden(has_model=False)
+            self.output_stems.controls = self.ensemble_stem_controls
+            member_routes = self._dry_resolved_member_routes() if is_multi else None
+            descriptors = (
+                tuple(
+                    ModelDescriptor(
+                        id=tag,
+                        family=tag.partition(":")[0],
+                        basename="",
+                        display="",
+                        routes=tuple(routes),
+                    )
+                    for tag, routes in zip(
+                        self._effective_selected_models(), member_routes or (), strict=True
+                    )
+                )
+                if member_routes is not None
+                else ()
+            )
+            routes, _union = (
+                collect_ensemble_routes(self.settings, descriptors) if is_multi else ((), ())
+            )
+            self.ensemble_stem_controls.configure(
+                routes, ready=member_routes is not None and len(descriptors) >= 2
+            )
         self._update_stems_group_metadata()
 
-    def _update_stems_group_metadata(self) -> None:
+    def _update_stems_group_metadata(self, *, refresh_workload: bool = True) -> None:
         if not self.stems_group.get_visible():
             self.stems_group.set_description("")
             return
@@ -787,24 +825,25 @@ class EnsemblePage:
         is_multi = self._ensemble_is_multi_or_four()
         has_run = bool(primary_stem) or is_multi
         repo = self.window.context.repo
-        if primary_stem:
-            line1 = self.save_stems.export_summary()
-            export_hint = self.save_stems.active_hint()
-        else:
-            line1 = ensemble_export_summary(self.settings, repo=repo)
-            export_hint = SAVE_STEM_ONLY_HELP
-        workload = estimate_workload(
-            self.settings,
-            method_key=ENSEMBLE_MODE,
-            save_stems=self.save_stems,
-            repo=repo,
-            has_model=has_run,
+        export_hint = self.save_stems.active_hint() if primary_stem else SAVE_STEM_ONLY_HELP
+        workload = (
+            estimate_workload(
+                self.settings,
+                method_key=ENSEMBLE_MODE,
+                save_stems=self.save_stems,
+                repo=repo,
+                has_model=has_run,
+            )
+            if refresh_workload
+            else None
         )
-        line2 = format_workload_line(workload)
-        if line1 and line2:
-            self.stems_group.set_description(f"{line1}\n{line2}")
-        else:
-            self.stems_group.set_description(line2 or line1)
+        line2 = format_workload_line(workload, include_output_count=False)
+        self.output_stems.refresh(model_name=self._ensemble_pair_label(), workload=line2)
+        if self._ensemble_is_multi_or_four():
+            self.output_stems.row.set_tooltip_text(
+                "Choose final combined stems to save. Member models still produce their full outputs."
+            )
+        self.stems_group.set_description("")
         set_tooltip(
             self.stems_group,
             compose_stem_group_tooltip(
@@ -817,8 +856,15 @@ class EnsemblePage:
     def _on_save_stems_changed(self) -> None:
         if self._loading:
             return
-        self.save_stems.persist_to_settings()
-        self._update_stems_group_metadata()
+        if not getattr(self, "_active", False):
+            return
+        if self._ensemble_is_multi_or_four():
+            self.ensemble_stem_controls.persist_to_settings()
+        else:
+            self.settings.ensemble.stems_selected = []
+            self.save_stems.persist_to_settings()
+        self._update_stems_group_metadata(refresh_workload=False)
+        self._update_ensemble_banner()
 
     # -- Saved ensembles --------------------------------------------------------
 
@@ -844,6 +890,7 @@ class EnsemblePage:
 
         try:
             preset = EnsembleService(self.context.repo).apply(self.settings, name)
+            self._custom_algorithms = False
         except ValueError:
             self._toast(f"Could not load ensemble '{name}'.")
             return
@@ -853,7 +900,6 @@ class EnsemblePage:
             self._refresh_ensemble_type_values()
         finally:
             self._loading = False
-        self._rebuild_stem_only_toggles()
         self._reconcile_member_list(list(preset.members))
         self._persist_selected_models()
         self._ensemble_validation_warnings = preset.validation_warnings
@@ -873,7 +919,6 @@ class EnsemblePage:
             self._refresh_ensemble_type_values()
         finally:
             self._loading = False
-        self._rebuild_stem_only_toggles()
         selected = list(data.get("selected_models") or [])
         if curated_id is not None:
             selected = resolve_member_tags(selected, self.context.repo)
@@ -972,6 +1017,8 @@ class EnsemblePage:
         entry.grab_focus()
 
     def _do_save_ensemble(self, name: str, selected: List[str]) -> None:
+        if not self._ensemble_is_multi_or_four():
+            self._persist_pair_stem_selection()
         try:
             canonical_name = canonical_saved_ensemble_name(name)
             from core.ensemble_service import EnsembleService
@@ -985,6 +1032,12 @@ class EnsemblePage:
                 save_all_outputs=self.settings.ensemble.save_all_outputs,
                 derive_complement_from_mix=self.settings.ensemble.derive_complement_from_mix,
                 replace=True,
+                stems_selected=self.settings.ensemble.stems_selected
+                if self._ensemble_is_multi_or_four()
+                else (),
+                stem_focus=""
+                if self._ensemble_is_multi_or_four()
+                else self.settings.process.stem_focus,
             )
         except (OSError, ValueError) as exc:
             self._toast(f"Couldn't save ensemble: {exc}")
@@ -1080,7 +1133,11 @@ class EnsemblePage:
 
             derive_row = getattr(self, "derive_complement_row", None)
             if multi:
-                self.preset_row.set_visible(False)
+                self.preset_row.set_visible(True)
+                set_combo_values(self.preset_row, [CUSTOM_PRESET, *ENSEMBLE_ALGORITHMS])
+                set_combo_value(
+                    self.preset_row, CUSTOM_PRESET if self._custom_algorithms else primary
+                )
                 self.secondary_algo_row.set_visible(False)
                 if current != primary:
                     self.settings.ensemble.type = primary
@@ -1105,6 +1162,8 @@ class EnsemblePage:
         if self._loading:
             return
         self._set_ensemble_pair(get_combo_value(self.main_stem_row))
+        self.settings.ensemble.stems_selected = []
+        self._custom_algorithms = False
         self._pair_repick_warning = ""
         self.settings.ensemble.chosen_ensemble = CHOOSE_ENSEMBLE_OPTION
         self._ensemble_validation_warnings = ()
@@ -1114,7 +1173,6 @@ class EnsemblePage:
         # toggles resolve export-semantics hints from _selected_model_tags(),
         # which otherwise still reflects the previous stem pair's checklist.
         self._reconcile_member_list(self._model_members_for_rebuild())
-        self._rebuild_stem_only_toggles()
         self._update_ensemble_options_summary()
 
     def _on_preset_changed(self, *_args: typing.Any) -> None:
@@ -1122,7 +1180,20 @@ class EnsemblePage:
             return
         preset = get_combo_value(self.preset_row)
         pair = pair_for_preset(preset)
+        self._custom_algorithms = preset == CUSTOM_PRESET
+        if self._ensemble_is_multi_or_four():
+            if preset in ENSEMBLE_ALGORITHMS:
+                self.settings.ensemble.type = preset
+                self._syncing_preset = True
+                try:
+                    set_combo_value(self.primary_algo_row, preset)
+                finally:
+                    self._syncing_preset = False
+            self._update_algorithm_visibility()
+            self._update_ensemble_options_summary()
+            return
         if pair is None:
+            self._update_algorithm_visibility()
             return
         derive = preset == PAIR_CONSISTENT_PRESET
         primary, secondary = pair
@@ -1168,7 +1239,9 @@ class EnsemblePage:
             try:
                 set_combo_value(
                     self.preset_row,
-                    preset_for_state(
+                    CUSTOM_PRESET
+                    if getattr(self, "_custom_algorithms", False)
+                    else preset_for_state(
                         primary,
                         secondary,
                         derive_complement_from_mix=bool(
@@ -1181,6 +1254,11 @@ class EnsemblePage:
                 self._syncing_preset = False
         self._update_wav_ensemble_subtitle()
         self._update_ensemble_options_summary()
+
+    def _update_algorithm_visibility(self) -> None:
+        custom = get_combo_value(self.preset_row) == CUSTOM_PRESET
+        self.primary_algo_row.set_visible(custom)
+        self.secondary_algo_row.set_visible(custom and not self._ensemble_is_multi_or_four())
 
     def _update_algo_sensitivity(self) -> None:
         enabled = self._stem_pair_chosen()
@@ -1215,7 +1293,11 @@ class EnsemblePage:
         set_row_subtitle(row, wav_ensemble_subtitle(uses_chunk_min=uses_chunk))
 
     def _update_ensemble_options_summary(self) -> None:
-        group = getattr(self, "ensemble_group", None)
+        group = (
+            self._layout_object("combination_group", Adw.PreferencesGroup)
+            if hasattr(self, "_layout_builder")
+            else getattr(self, "ensemble_group", None)
+        )
         if group is None:
             return
         pair = self._ensemble_pair()
@@ -1353,6 +1435,7 @@ class EnsemblePage:
             == list(getattr(getattr(self.settings, "ensemble", None), "selected_models", []) or [])
             else None
         )
+        self._rebuild_stem_only_toggles()
         self._update_models_dialog_status()
         self._update_models_summary()
 
@@ -1432,7 +1515,13 @@ class EnsemblePage:
     def _update_models_summary(self) -> None:
         row = getattr(self, "models_trigger_row", None)
         if row is not None:
-            row.set_subtitle(self._models_summary())
+            tags = self._effective_selected_models()
+            labels = [self._model_row_text.get(tag, (tag, ""))[0] for tag in tags[:3]]
+            row.set_subtitle(
+                "\n".join(labels) + (f"\n+{len(tags) - 3} more models" if len(tags) > 3 else "")
+                if labels
+                else self._models_summary()
+            )
         self._apply_algorithm_row_presentation()
         self._update_member_models_sensitivity()
         self._update_ensemble_options_summary()
@@ -1584,7 +1673,7 @@ class EnsemblePage:
         """Ensemble-configuration blocker (stem pair / member models), if any.
 
         Excludes input/output readiness (those rows carry their own affordances);
-        this is what the empty-state banner surfaces.
+        The shared log panel presents this reason beside Start.
         """
         splitter = getattr(self, "vocal_split_row", None)
         splitter_reason = splitter.blocked_reason() if splitter is not None else None
@@ -1594,6 +1683,13 @@ class EnsemblePage:
             return _REASON_STEM_PAIR
         if len(self._effective_selected_models()) <= 1:
             return _REASON_TWO_MODELS
+        controls = getattr(self, "output_stems", None)
+        if controls is not None and controls.controls is not None:
+            snapshot = controls.controls.snapshot()
+            if snapshot.review_required:
+                return "Review unavailable output stems"
+            if self._ensemble_is_multi_or_four() and not snapshot.main_count:
+                return "No output stems have two contributing models"
         return None
 
     def start_blocked_reason(self) -> Optional[str]:
@@ -1608,13 +1704,29 @@ class EnsemblePage:
             return output_reason
         return self._config_blocked_reason()
 
+    def _persist_pair_stem_selection(self) -> None:
+        # Commit this page's visible choice even if another tab changed shared focus.
+        controls = self.save_stems.controls
+        if (
+            controls is not None
+            and controls.value is not None
+            and not controls.snapshot().review_required
+        ):
+            controls.adopt_view(controls.value)
+        self.settings.ensemble.stems_selected = []
+        self.save_stems.persist_to_settings()
+
     def _flush_run_settings(self) -> None:
         """Persist widget state plan/start reads (mirrors separation preflight flush)."""
         self.settings.process.method = ProcessMethod.ENSEMBLE
         self._persist_selected_models()
         assert self._shared_session is not None
         self._shared_session.commit()
-        self.save_stems.persist_to_settings()
+        if self._ensemble_is_multi_or_four():
+            self.settings.process.stem_focus = ""
+            self.ensemble_stem_controls.persist_to_settings()
+        else:
+            self._persist_pair_stem_selection()
 
     def build_job_spec(self) -> JobSpec:
         import copy
@@ -1631,7 +1743,7 @@ class EnsemblePage:
         )
 
     def _update_ensemble_banner(self) -> None:
-        """Reveal the empty-state banner while the ensemble config is incomplete."""
+        """Show saved-configuration warnings and refresh shared Start readiness."""
         banner = getattr(self, "_ensemble_banner", None)
         if banner is None:
             return
@@ -1649,7 +1761,7 @@ class EnsemblePage:
             if pair_warning
             else "Saved ensemble warning: " + " ".join(warnings)
             if warnings
-            else self._config_blocked_reason()
+            else None
         )
         if reason:
             banner.set_title(reason)

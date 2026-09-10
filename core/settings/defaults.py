@@ -151,6 +151,7 @@ def default_ensemble() -> dict:
         "main_stem": "",
         "type": MAX_MIN,
         "selected_models": [],
+        "stems_selected": [],
         "chosen_ensemble": CHOOSE_ENSEMBLE_OPTION,
         "save_all_outputs": True,
         "append_ensemble_name": False,

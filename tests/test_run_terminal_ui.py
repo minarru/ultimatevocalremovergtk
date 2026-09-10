@@ -74,6 +74,39 @@ class RunTerminalUiTests(unittest.TestCase):
         ):
             self.enterContext(mock.patch.object(self.controller, method))
 
+    def test_blocked_start_is_dimmed_and_click_explains_reason(self) -> None:
+        self.target.start_blocked_reason.return_value = "Choose a model"
+        self.controller.refresh_start_readiness()
+        button = self.window.start_button
+        self.assertTrue(button.get_sensitive())
+        self.assertTrue(button.has_css_class("dim-label"))
+        with (
+            mock.patch.object(self.window, "toast") as toast,
+            mock.patch.object(self.controller, "_begin_preflight") as begin,
+        ):
+            button.emit("clicked")
+            toast.assert_called_once_with("Choose a model")
+            begin.assert_not_called()
+        self.target.start_blocked_reason.return_value = None
+        self.controller.refresh_start_readiness()
+        self.assertFalse(button.has_css_class("dim-label"))
+
+    def test_inspector_mock_error_log_preserves_existing_errors_and_run_state(self):
+        from ui import errorlog
+
+        errorlog.set_error_log("Existing report")
+        self.addCleanup(errorlog.set_error_log, "")
+        action = self.window.lookup_action("mock_error_log")
+        self.assertIsNotNone(action)
+        with mock.patch("ui.errorlog.open_error_log") as open_log:
+            action.activate(None)
+        self.assertTrue(errorlog.get_error_log().startswith("Existing report"))
+        self.assertIn("SYNTHETIC TEST ERROR", errorlog.get_error_log())
+        self.assertGreater(len(errorlog.get_error_log().splitlines()), 50)
+        open_log.assert_called_once_with(self.window)
+        self.assertFalse(self.controller.is_running())
+        self.assertIsNone(self.controller._operation_id)
+
     def _begin(self) -> None:
         settings = copy.deepcopy(self.window.settings)
         self.controller._host.bind_run_settings(settings)
@@ -143,7 +176,8 @@ class RunTerminalUiTests(unittest.TestCase):
         self.assertIsNone(self.controller._running_target)
         self.assertFalse(self.controller.is_running())
         self.assertFalse(self.window.stop_button.get_sensitive())
-        self.assertEqual(self.window.start_button.get_sensitive(), reason is None)
+        self.assertTrue(self.window.start_button.get_sensitive())
+        self.assertEqual(self.window.start_button.has_css_class("dim-label"), reason is not None)
         self.assertTrue(all(p.get_sensitive() for p in self.window._options_pages))
         for name in ("settings", "view_inputs", "download"):
             self.assertTrue(self.window.lookup_action(name).get_enabled())
@@ -178,6 +212,26 @@ class RunTerminalUiTests(unittest.TestCase):
                     self.complete_toast.reset_mock()
                     self._check_terminal(outcome, reason, deferred=True)
 
+    def test_choice_labels_restore_live_progress(self) -> None:
+        self._begin()
+        panel = self.window.log_panel
+        panel.set_progress_text("File 2 of 3", title="Separating audio")
+        previous = panel._progress_label.get_text()
+        with mock.patch("ui.run_control.Adw.AlertDialog"):
+            self.controller._present_stop_confirm()
+        self.assertEqual(panel._progress_label.get_text(), "Stop this run?")
+        self.controller._resume_after_dialog_cancel(self.target)
+        self.assertEqual(panel._progress_label.get_text(), previous)
+        self.assertEqual(panel._detail_label.get_text(), "File 2 of 3")
+        request = mock.Mock()
+        with mock.patch("ui.oom_dialog.present_oom_choice_dialog") as present:
+            self.controller._on_oom_choice(request)
+        self.assertEqual(panel._progress_label.get_text(), "Waiting for your choice")
+        self.assertEqual(panel._detail_label.get_text(), "GPU memory exhausted")
+        present.call_args.kwargs["on_choice"]("retry")
+        self.assertEqual(panel._progress_label.get_text(), previous)
+        request.respond.assert_called_once_with("retry")
+
     def test_requested_stop_stays_locked_until_worker_reports_stopped(self) -> None:
         self._begin()
         with mock.patch.object(self.controller.shutdown, "schedule_inference_cleanup"):
@@ -190,7 +244,10 @@ class RunTerminalUiTests(unittest.TestCase):
         self.assertFalse(self.window.start_button.get_sensitive())
         self.assertFalse(self.window.stop_button.get_sensitive())
         self.assertTrue(all(not p.get_sensitive() for p in self.window._options_pages))
-        self.assertEqual(self.window.log_panel._progress_status, "Stopping…")
+        self.assertEqual(self.window.log_panel._progress_title, "Stopping…")
+        self.assertEqual(
+            self.window.log_panel._detail_label.get_text(), "Waiting for the worker to finish"
+        )
         self.controller.refresh_start_readiness()
         self.assertFalse(self.window.start_button.get_sensitive())
         self.controller._on_stopped()
@@ -249,11 +306,12 @@ class RunTerminalUiTests(unittest.TestCase):
         self.assertFalse(self.window.stop_button.get_sensitive())
         self.assertTrue(all(p.get_sensitive() for p in self.window._options_pages))
 
-    def test_blocked_start_is_disabled_with_visible_reason(self):
+    def test_blocked_start_is_dimmed_with_visible_reason(self):
         panel = self.window.log_panel
         self.target.start_blocked_reason.return_value = 'Choose an input file'
         self.controller.refresh_start_readiness()
-        self.assertFalse(self.window.start_button.get_sensitive())
+        self.assertTrue(self.window.start_button.get_sensitive())
+        self.assertTrue(self.window.start_button.has_css_class("dim-label"))
         self.assertEqual(panel._progress_label.get_text(), 'Choose an input file')
         self.assertTrue(panel._progress_label.get_visible())
         self.target.start_blocked_reason.return_value = None

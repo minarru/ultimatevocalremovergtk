@@ -1,7 +1,7 @@
 using Gtk 4.0;
 using Adw 1;
 
-template $InputFilesRow: Adw.ExpanderRow {
+template $InputFilesRow: Adw.ActionRow {
   title: "Input";
 
   [prefix]
@@ -11,7 +11,7 @@ template $InputFilesRow: Adw.ExpanderRow {
 
   [suffix]
   Gtk.Button clear_button {
-    icon-name: "edit-clear-all-symbolic";
+    icon-name: "uvr-edit-clear-all-symbolic";
     valign: center;
     styles ["flat"]
   }

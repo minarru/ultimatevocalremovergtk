@@ -276,7 +276,7 @@ class MainWindow(Adw.ApplicationWindow):
         self._hint_manager = HelpHintManager()
 
         page = self._build_content()
-        self.log_panel = LogPanel()
+        self.log_panel = LogPanel(on_completion_expired=self._refresh_start_readiness)
         self.console = self.log_panel.console
         self.start_button = self.log_panel.start_button
         self.stop_button = self.log_panel.stop_button
@@ -391,13 +391,7 @@ class MainWindow(Adw.ApplicationWindow):
         self._columns_ready = True
         self._populate_columns()
 
-        # Proactive empty-state hint: a full-width banner above the two columns,
-        # shown only when the active method has no installed models. It opens the
-        # in-app Download Center and auto-hides once models appear (see
-        # ``_update_sep_banner``, driven from method switch / load / refresh).
         page_builder = load_builder("separation-page")
-        self._sep_banner = object_from_builder(page_builder, "sep_banner", Adw.Banner)
-        self._sep_banner.connect("button-clicked", self._on_sep_banner_clicked)
         separation_page = object_from_builder(page_builder, "separation_page", Gtk.Box)
         self._options_page = wrap_options_scroller(self._columns_box)
         separation_page.append(self._options_page)
@@ -410,17 +404,22 @@ class MainWindow(Adw.ApplicationWindow):
         # Runnable mode pages only; the shared console lives in the collapsible
         # log panel and auto-expands when a run starts.
         self.content_stack = object_from_builder(page_builder, "content_stack", Adw.ViewStack)
+        # ViewStack gained native crossfades in libadwaita 1.7. Keep older
+        # runtimes usable; native transitions respect system animation settings.
+        if hasattr(self.content_stack, "set_enable_transitions"):
+            self.content_stack.set_property("transition-duration", 180)
+            self.content_stack.set_property("enable-transitions", True)
         self.content_stack.add_titled_with_icon(
             separation_page, "separation", "Separation", "audio-x-generic-symbolic"
         )
         self.content_stack.add_titled_with_icon(
-            self._ensemble_page.widget, "ensemble", "Ensemble", "media-playlist-shuffle-symbolic"
+            self._ensemble_page.widget, "ensemble", "Ensemble", "uvr-api-symbolic"
         )
         self.content_stack.add_titled_with_icon(
             self._audio_tools_page.widget,
             "audio_tools",
             "Audio Tools",
-            "applications-utilities-symbolic",
+            "uvr-mixer-sliders-symbolic",
         )
 
         # Every page's columns_box is flipped together by the responsive
@@ -503,7 +502,7 @@ class MainWindow(Adw.ApplicationWindow):
             return
         view._sync_only_active()
         self._populate_columns()
-        self._update_sep_banner()
+        self._refresh_start_readiness()
         self._refresh_separation_layout()
         self._sync_selected_model()
 
@@ -567,22 +566,6 @@ class MainWindow(Adw.ApplicationWindow):
         from core import paths
 
         open_folder_in_file_manager(self, paths.DATA_DIR, on_error=self.toast)
-
-    def _update_sep_banner(self) -> None:
-        """Reveal the empty-state banner when the active method has no models."""
-        banner = getattr(self, "_sep_banner", None)
-        if banner is None:
-            return
-        banner.set_revealed(not self._active_view().has_any_models())
-        self._refresh_start_readiness()
-
-    def _on_sep_banner_clicked(self, _banner: Adw.Banner) -> None:
-        from core.model_scores import download_center_hint_for_method
-
-        from .download import open_download_center
-
-        purpose, arch = download_center_hint_for_method(self._active_view().method_key)
-        open_download_center(self, self.context, purpose=purpose, arch=arch)
 
     def _on_breakpoint_narrow(self, _breakpoint: typing.Any) -> None:
         # Single stacked column on every page: drop homogeneity so groups size
@@ -777,6 +760,7 @@ class MainWindow(Adw.ApplicationWindow):
             "start": self._on_start_action,
             "stop": self._on_stop_action,
             "shortcuts": self._on_shortcuts,
+            "mock_error_log": self._on_mock_error_log,
             "mock_oom_dialog": self._on_mock_oom_dialog,
             "mock_oom_dialog_separation": self._on_mock_oom_dialog_separation,
         }
@@ -1281,7 +1265,6 @@ class MainWindow(Adw.ApplicationWindow):
             method = getattr(view, "method_key", type(view).__name__)
             model_count = len(getattr(view, "list_models", lambda: [])())
             debug("model", f"refresh_models view={method} models={model_count}")
-        self._update_sep_banner()
         self._sync_selected_model()
         self._refresh_start_readiness()
         self._deferred_model_refresh = None
@@ -1342,6 +1325,13 @@ class MainWindow(Adw.ApplicationWindow):
     def _on_error_log(self, _action: Gio.SimpleAction, _param: typing.Any) -> None:
         from .errorlog import open_error_log
 
+        open_error_log(self)
+
+    def _on_mock_error_log(self, _action: Gio.SimpleAction, _param: typing.Any) -> None:
+        # Inspector-only entry point: intentionally no menu item or accelerator.
+        from .errorlog import append_error_log, mock_error_log, open_error_log
+
+        append_error_log(mock_error_log())
         open_error_log(self)
 
     def _on_mock_oom_dialog(self, _action: Gio.SimpleAction, _param: typing.Any) -> None:

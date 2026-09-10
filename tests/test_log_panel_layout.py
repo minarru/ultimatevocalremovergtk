@@ -65,6 +65,27 @@ class LogPanelLayoutTests(unittest.TestCase):
         finally:
             window.set_visible(False)
 
+    def test_log_height_is_fixed_across_status_and_window_changes(self):
+        from gi.repository import Adw
+
+        from ui.widgets.log_panel import _LOG_BODY_HEIGHT, LogPanel
+
+        panel = LogPanel()
+        panel._available_size = (1000, 740)
+        panel._update_geometry()
+        expected = round(Adw.length_unit_to_px(Adw.LengthUnit.SP, _LOG_BODY_HEIGHT, panel.get_settings()))
+        self.assertEqual(panel._log_height, expected)
+        panel.set_progress_text("Waiting for the worker to finish", title="Stopping…")
+        self.assertEqual(panel._log_height, expected)
+        panel.set_run_result("Processing failed", error=True)
+        self.assertEqual(panel._log_height, expected)
+        panel._available_size = (1000, 900)
+        panel._update_geometry()
+        self.assertEqual(panel._log_height, expected)
+        panel._available_size = (1000, 300)
+        panel._update_geometry()
+        self.assertLess(panel._log_height, expected)
+
     def test_expanded_width_depends_on_content_and_not_progress_text(self):
         from gi.repository import Gtk
 
@@ -95,6 +116,138 @@ class LogPanelLayoutTests(unittest.TestCase):
         panel.clear_log()
         self.settle(lambda: abs(panel._log_stack.get_width() - empty_width) <= 1)
 
+    def test_choice_label_restores_progress_and_terminal_result_clears_it(self):
+        from ui.widgets.log_panel import LogPanel
+
+        panel = LogPanel()
+        panel.set_progress_text("File 2 of 3", title="Separating audio")
+        panel.set_waiting_status("Stop this run?")
+        self.assertEqual(panel._progress_label.get_text(), "Stop this run?")
+        panel.set_waiting_status(None)
+        self.assertEqual(panel._progress_label.get_text(), "Separating audio")
+        self.assertEqual(panel._detail_label.get_text(), "File 2 of 3")
+        panel.set_waiting_status("Waiting for your choice", "GPU memory exhausted")
+        panel.set_run_result("Processing failed", error=True)
+        self.assertEqual(panel._progress_label.get_text(), "Processing failed")
+
+    def test_empty_log_labels_follow_preparing_clear_and_new_run(self):
+        from ui.widgets.log_panel import LogPanel
+
+        panel = LogPanel()
+        panel.set_preparing(True)
+        self.assertEqual(panel._empty_title.get_text(), "Waiting for output")
+        panel.console.append("Working\n")
+        panel.clear_log()
+        self.assertEqual(panel._empty_title.get_text(), "Log cleared")
+        self.assertEqual(panel._empty_body.get_text(), "New messages will appear here.")
+        panel.set_preparing(False)
+        panel.set_preparing(True)
+        self.assertEqual(panel._empty_title.get_text(), "Log cleared")
+        panel.prepare_for_run()
+        self.assertEqual(panel._empty_title.get_text(), "Waiting for output")
+
+    def test_clear_stopped_log_restores_readiness(self):
+        from ui.widgets.log_panel import LogPanel
+
+        for reason in (None, "Choose a model"):
+            with self.subTest(reason=reason):
+                panel = LogPanel()
+                panel.set_start_blocked_reason(reason)
+                panel.console.append("Stopped by user\n")
+                panel.set_run_result("Run stopped")
+                panel.clear_log()
+                self.assertEqual(panel._progress_label.get_text(), reason or "Ready to process")
+                self.assertEqual(panel._empty_title.get_text(), "Log cleared")
+                self.assertFalse(panel._progress_revealer.get_reveal_child())
+
+    def test_clear_log_preserves_active_and_restart_required_status(self):
+        from ui.widgets.log_panel import LogPanel
+
+        panel = LogPanel()
+        panel.set_progress_text("Waiting for the worker to finish", title="Stopping…")
+        panel.clear_log()
+        self.assertEqual(panel._progress_label.get_text(), "Stopping…")
+        panel.set_run_result("Unable to stop — restart required", error=True)
+        panel.clear_log()
+        self.assertEqual(panel._progress_label.get_text(), "Unable to stop — restart required")
+        self.assertTrue(panel._progress_label.has_css_class("error"))
+
+    def test_preflight_temporarily_hides_error_style_and_completed_progress(self):
+        from ui.widgets.log_panel import LogPanel
+
+        panel = LogPanel()
+        panel.set_run_result("Processing failed", error=True)
+        panel.set_preparing(True)
+        self.assertFalse(panel._progress_label.has_css_class("error"))
+        panel.set_preparing(False)
+        self.assertTrue(panel._progress_label.has_css_class("error"))
+        panel.set_progress_fraction(1)
+        panel.set_progress_text("Done")
+        panel.set_preparing(True)
+        self.assertFalse(panel._progress_revealer.get_reveal_child())
+        panel.set_preparing(False)
+        self.assertTrue(panel._progress_revealer.get_reveal_child())
+
+    def test_clear_all_finished_outcomes_restores_readiness(self):
+        from ui.widgets.log_panel import LogPanel
+
+        for result in ("Run stopped", "Processing failed", "Separation complete"):
+            panel = LogPanel()
+            panel.set_start_blocked_reason("Choose a model")
+            panel.set_run_result(result, error=result == "Processing failed")
+            panel.clear_log()
+            self.assertEqual(panel._progress_label.get_text(), "Choose a model")
+            self.assertFalse(panel._progress_label.has_css_class("error"))
+
+    def test_empty_run_keeps_waiting_page_until_output_arrives(self):
+        from ui.widgets.log_panel import LogPanel
+
+        panel = LogPanel()
+        panel.set_progress_text("Loading engines…")
+        panel.prepare_for_run()
+        self.assertEqual(panel._log_stack.get_visible_child_name(), "empty")
+        self.assertEqual(panel._empty_title.get_text(), "Waiting for output")
+        panel.console.append("Loaded\n")
+        self.assertEqual(panel._log_stack.get_visible_child_name(), "console")
+
+    def test_completion_holds_for_five_seconds_then_rechecks_readiness(self):
+        from unittest import mock
+
+        from ui.widgets.log_panel import LogPanel
+
+        refresh = mock.Mock()
+        panel = LogPanel(on_completion_expired=refresh)
+        panel.set_progress_fraction(1)
+        panel.set_progress_text("Done")
+        with mock.patch("ui.widgets.log_panel.GLib.timeout_add", return_value=123) as timeout:
+            panel.mark_run_complete()
+        self.assertEqual(timeout.call_args.args[0], 5000)
+        panel.set_start_blocked_reason("Choose a model")
+        self.assertEqual(panel._progress_label.get_text(), "Done")
+        refresh.assert_not_called()
+        timeout.call_args.args[1]()
+        refresh.assert_called_once_with()
+        self.assertEqual(panel._progress_label.get_text(), "Choose a model")
+        self.assertFalse(panel._progress_revealer.get_reveal_child())
+
+    def test_clear_or_new_run_cancels_completion_hold(self):
+        from ui.widgets.log_panel import LogPanel
+
+        for next_action in ("clear", "start"):
+            panel = LogPanel()
+            panel.set_progress_fraction(1)
+            panel.set_progress_text("Done")
+            panel.mark_run_complete()
+            if next_action == "clear":
+                panel.clear_log()
+                expected = "Ready to process"
+            else:
+                panel.set_progress_text("Loading engines…")
+                expected = "Loading engines…"
+            self.assertIsNone(panel._done_collapse_id)
+            panel._on_done_collapse()  # A late callback must not replace the new state.
+            self.assertEqual(panel._progress_label.get_text(), expected)
+
     def test_preflight_status_does_not_erase_previous_result(self):
         from ui.widgets.log_panel import LogPanel
 
@@ -122,7 +275,7 @@ class LogPanelLayoutTests(unittest.TestCase):
         panel._cancel_done_collapse()
         panel._on_done_collapse()
         self.assertFalse(panel._progress_revealer.get_reveal_child())
-        self.assertIn("complete", panel._progress_label.get_text().lower())
+        self.assertEqual(panel._progress_label.get_text(), "Ready to process")
 
     def test_manual_scroll_survives_new_output_and_reopening(self):
         from gi.repository import Gtk
@@ -281,6 +434,16 @@ class LogPanelLayoutTests(unittest.TestCase):
                     picked = pick_center(panel._log_stack)
                     self.assertTrue(
                         picked is panel or (picked is not None and picked.is_ancestor(panel))
+                    )
+                # The clamp spans the window at the card's height. Its transparent
+                # sides must not become pointer targets in any expansion state.
+                for x in (bounds.get_x() - 10, bounds.get_x() + bounds.get_width() + 10):
+                    picked = overlay.pick(
+                        x, bounds.get_y() + bounds.get_height() / 2, Gtk.PickFlags.DEFAULT
+                    )
+                    self.assertTrue(
+                        picked is background or (picked is not None and picked.is_ancestor(background)),
+                        f"Transparent side picked {type(picked).__name__}",
                     )
                 picked = overlay.pick(100, 100, Gtk.PickFlags.DEFAULT)
                 self.assertTrue(

@@ -215,6 +215,7 @@ class EnsembleSettings:
     main_stem: str = ""
     type: str = MAX_MIN
     selected_models: list[str] = field(default_factory=list)
+    stems_selected: list[str] = field(default_factory=list)
     chosen_ensemble: str = CHOOSE_ENSEMBLE_OPTION
     save_all_outputs: bool = True
     append_ensemble_name: bool = False

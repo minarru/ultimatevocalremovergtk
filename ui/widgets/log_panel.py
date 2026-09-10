@@ -15,11 +15,11 @@ from core.debug_log import debug
 from ..hints import set_icon_button_a11y
 from ..resources import RESOURCE_PREFIX, require_resource_bundle
 from .console import ConsoleView
-from .log_layout import PanelLayout, StableLogLayout
+from .log_layout import PanelClamp, PanelLayout, StableLogLayout
 
 # Fallback before the overlay's first allocation. Actual clearance is measured
 # at the target width before starting the animation.
-_LOG_BODY_HEIGHT = 200
+_LOG_BODY_HEIGHT = 260
 OVERLAY_MARGIN_BOTTOM = 12
 
 _PROGRESS_DONE_LABEL = "Done"
@@ -33,7 +33,7 @@ require_resource_bundle(_TEMPLATE_RESOURCE)
 class LogPanel(Gtk.Box):
     __gtype_name__ = "LogPanel"
 
-    _panel_clamp: Adw.Clamp = Gtk.Template.Child("panel_clamp")
+    _panel_clamp: PanelClamp = Gtk.Template.Child("panel_clamp")
     _run_actions: Gtk.CenterBox = Gtk.Template.Child("run_actions")
     _control_content: Gtk.Box = Gtk.Template.Child("control_content")
     _log_content: Gtk.Box = Gtk.Template.Child("log_content")
@@ -45,6 +45,8 @@ class LogPanel(Gtk.Box):
     _progressbar: Gtk.ProgressBar = Gtk.Template.Child("progressbar")
     _progress_revealer: Gtk.Revealer = Gtk.Template.Child("progress_revealer")
     _log_meta_row: Gtk.Box = Gtk.Template.Child("log_meta_row")
+    _empty_title: Gtk.Label = Gtk.Template.Child("empty_title")
+    _empty_body: Gtk.Label = Gtk.Template.Child("empty_body")
     _log_title: Gtk.Label = Gtk.Template.Child("log_title")
     log_copy_button: Gtk.Button = Gtk.Template.Child("log_copy_button")
     log_clear_button: Gtk.Button = Gtk.Template.Child("log_clear_button")
@@ -61,10 +63,12 @@ class LogPanel(Gtk.Box):
         self,
         on_console_changed: Optional[Callable[[bool], None]] = None,
         on_expanded_changed: Optional[Callable[[bool], None]] = None,
+        on_completion_expired: Callable[[], object] | None = None,
     ):
         Adw.init()
         super().__init__()
 
+        self._on_completion_expired = on_completion_expired
         self._on_console_changed = on_console_changed
         self._on_expanded_changed = on_expanded_changed
         self._syncing_expand = False
@@ -78,10 +82,13 @@ class LogPanel(Gtk.Box):
         self._clearance = self.default_bottom_inset()
         self._on_layout_changed: Callable[[], None] | None = None
         self._log_height = _LOG_BODY_HEIGHT
+        self._waiting_status: tuple[str, str] | None = None
+        self._log_cleared = False
         self._run_label = ""
         self._preparing = False
         self._progress_title: str | None = None
         self._result_status = ""
+        self._result_error = False
         self._blocked_reason: str | None = None
         self._progress_status = ""
 
@@ -187,7 +194,12 @@ class LogPanel(Gtk.Box):
         overhead = controls + log_content - stack + 2
         if not self._progress_revealer.get_reveal_child():
             overhead += self._progressbar.measure(Gtk.Orientation.VERTICAL, width)[0]
-        height = round(min(360 * scale, max(80, available_height * 0.65 - overhead)))
+        # Keep the log viewport stable across status and window-size changes.
+        # Only constrain it when the complete panel would not fit the window.
+        height = round(min(
+            _LOG_BODY_HEIGHT * scale,
+            max(80, available_height - overhead - OVERLAY_MARGIN_BOTTOM),
+        ))
         if height != self._log_height:
             self._log_height = height
             if height > self.console.get_max_content_height():
@@ -246,39 +258,64 @@ class LogPanel(Gtk.Box):
         self._sync_progress_section_visible()
 
     def set_progress_text(self, text: str, *, title: str | None = None) -> None:
+        if text != _PROGRESS_DONE_LABEL:
+            self._cancel_done_collapse()
+        self._waiting_status = None
         self._progress_title = title
         self._progress_status = text or ""
         if text:
             self._result_status = ""
-            self._progress_label.remove_css_class("error")
+            self._result_error = False
         self._render_status()
         self._sync_progress_section_visible()
 
     def set_preparing(self, preparing: bool) -> None:
         self._preparing = preparing
         self._render_status()
-        self._update_geometry()
+        self._sync_progress_section_visible()
 
     def set_start_blocked_reason(self, reason: str | None) -> None:
         self._blocked_reason = reason
+        if reason is not None:
+            self.start_button.remove_css_class("suggested-action")
+            self.start_button.add_css_class("dim-label")
+        else:
+            self.start_button.remove_css_class("dim-label")
+            self.start_button.add_css_class("suggested-action")
         self._render_status()
         self._update_geometry()
 
     def set_run_result(self, text: str, *, error: bool = False) -> None:
         """Retain a terminal result without suggesting that progress is live."""
         self._cancel_done_collapse()
+        self._waiting_status = None
         self._result_status = text
+        self._result_error = error
         self.stop_progress_pulse()
         self._progress_status = ""
         self._render_status()
         self._sync_progress_section_visible()
-        if error:
-            self._progress_label.add_css_class("error")
+
+    def set_waiting_status(self, title: str | None, detail: str = "") -> None:
+        """Temporarily describe a choice without losing the underlying progress."""
+        self._waiting_status = (title, detail) if title else None
+        self._render_status()
+
+    def _render_empty_status(self) -> None:
+        if self._log_cleared:
+            title, body = "Log cleared", "New messages will appear here."
+        elif self._preparing or (self._progress_status and not self._result_status):
+            title, body = "Waiting for output", "New messages will appear here."
         else:
-            self._progress_label.remove_css_class("error")
+            title, body = "No activity yet", "Start processing to see the log here."
+        self._empty_title.set_label(title)
+        self._empty_body.set_label(body)
 
     def _render_status(self) -> None:
-        if self._preparing:
+        self._render_empty_status()
+        if self._waiting_status:
+            title, detail = self._waiting_status
+        elif self._preparing:
             title = "Preparing…"
             detail = "Checking model configuration and output options"
         elif self._progress_status:
@@ -293,6 +330,12 @@ class LogPanel(Gtk.Box):
         else:
             title = self._result_status or self._blocked_reason or "Ready to process"
             detail = self._blocked_reason if self._result_status and self._blocked_reason else ""
+        if title == "Unable to stop — restart required":
+            detail = "Wait longer or quit and restart the app"
+        if self._result_error and not (self._preparing or self._waiting_status or self._progress_status):
+            self._progress_label.add_css_class("error")
+        else:
+            self._progress_label.remove_css_class("error")
         self._progress_label.set_label(title)
         self._progress_label.set_visible(True)
         self._detail_label.set_label(detail or "")
@@ -321,14 +364,19 @@ class LogPanel(Gtk.Box):
         self._sync_progress_section_visible()
 
     def mark_run_complete(self) -> None:
-        """Dismiss the finished progress track after five seconds, retaining its result."""
+        """Hold completion for five seconds before returning to current readiness."""
         self._cancel_done_collapse()
         self._done_collapse_id = GLib.timeout_add(_DONE_COLLAPSE_MS, self._on_done_collapse)
 
     def _on_done_collapse(self) -> bool:
         self._done_collapse_id = None
-        self._result_status = f"{self._run_label or 'Processing'} complete"
+        if self._progress_status != _PROGRESS_DONE_LABEL:
+            return GLib.SOURCE_REMOVE
+        self._result_status = ""
+        self._result_error = False
         self.clear_progress()
+        if self._on_completion_expired is not None:
+            self._on_completion_expired()
         return GLib.SOURCE_REMOVE
 
     def _cancel_done_collapse(self) -> None:
@@ -337,25 +385,25 @@ class LogPanel(Gtk.Box):
             self._done_collapse_id = None
 
     def clear_log(self) -> None:
-        """Clear the console; collapse the progress block after a finished run."""
+        """Clear output and dismiss finished results, preserving live or locked states."""
+        self._log_cleared = True
         self.console.clear()
-        self._collapse_progress_if_done()
-
-    def _collapse_progress_if_done(self) -> None:
-        if (
-            self._pulse_source_id is None
-            and self._progressbar.get_fraction() >= 1.0
-            and self._progress_status == _PROGRESS_DONE_LABEL
-        ):
+        finished = bool(self._result_status) or self._progress_status == _PROGRESS_DONE_LABEL
+        if finished and self._result_status != "Unable to stop — restart required":
             self._cancel_done_collapse()
-            self._on_done_collapse()
+            self._result_status = ""
+            self._result_error = False
+            self.clear_progress()
+        else:
+            self._render_status()
 
     def prepare_for_run(self) -> None:
-        """Show the console and reset scroll before worker output arrives."""
+        """Reset the log for a new run, retaining the empty page until output arrives."""
         self._cancel_done_collapse()
         revealed = self._log_revealer.get_child_revealed()
         debug("ui", f"log_panel.prepare_for_run child_revealed={revealed}")
-        self._log_stack.set_visible_child_name("console")
+        self._log_cleared = False
+        self._handle_console_changed(self.console.is_empty())
         if self._log_revealer.get_child_revealed():
             self.console.resume_scroll()
             self.console.scroll_to_end_stable()
@@ -383,7 +431,7 @@ class LogPanel(Gtk.Box):
         return GLib.SOURCE_CONTINUE
 
     def _sync_progress_section_visible(self) -> None:
-        busy = not self._result_status and (
+        busy = not self._preparing and not self._result_status and (
             bool(self._progress_status)
             or self._progressbar.get_fraction() > 0.0
             or self._pulse_source_id is not None
@@ -422,6 +470,9 @@ class LogPanel(Gtk.Box):
         self.console.scroll_to_end_stable()
 
     def _handle_console_changed(self, is_empty: bool) -> None:
+        if not is_empty:
+            self._log_cleared = False
+        self._render_empty_status()
         self._log_stack.set_visible_child_name("empty" if is_empty else "console")
         self._sync_width()
         self.log_clear_button.set_sensitive(not is_empty)

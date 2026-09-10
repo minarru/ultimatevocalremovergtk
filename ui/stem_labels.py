@@ -69,8 +69,8 @@ STEM_ONLY_ICONS: Dict[str, str] = {
     PIANO_STEM: "folder-music-symbolic",
     "Speech": "person-talking-symbolic",
     "Music": "folder-music-symbolic",
-    "Sfx": "speaker-3-symbolic",
-    "Effects": "speaker-3-symbolic",
+    "Sfx": "uvr-speaker-symbolic",
+    "Effects": "uvr-speaker-symbolic",
 }
 ALL_STEMS_ICON = "ungroup-symbolic"
 

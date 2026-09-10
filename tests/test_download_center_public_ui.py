@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import unittest
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import Any
 from unittest import mock
 
 
@@ -214,38 +214,3 @@ class DownloadCenterOpenTests(unittest.TestCase):
 
         existing.present.assert_called_once()
         existing.select_catalogue.assert_not_called()
-
-    def test_sep_banner_passes_method_hint(self) -> None:
-        from bundled.constants import MDX_ARCH_TYPE
-        from core.model_scores import PURPOSE_VOCALS
-        from ui.window import MainWindow
-
-        win = SimpleNamespace(
-            _active_view=lambda: SimpleNamespace(method_key=MDX_ARCH_TYPE),
-            context=mock.MagicMock(),
-        )
-        with mock.patch("ui.download.open_download_center") as opener:
-            MainWindow._on_sep_banner_clicked(cast(Any, win), mock.MagicMock())
-
-        opener.assert_called_once()
-        self.assertIs(opener.call_args.args[0], win)
-        self.assertEqual(opener.call_args.kwargs["purpose"], PURPOSE_VOCALS)
-        self.assertEqual(opener.call_args.kwargs["arch"], MDX_ARCH_TYPE)
-
-    def test_apollo_banner_opens_restore_with_apollo_network(self) -> None:
-        from bundled.constants import APOLLO_ARCH_TYPE
-        from core.model_scores import PURPOSE_RESTORE
-        from ui.audio_tools.window import AudioToolsPage
-
-        page = object.__new__(AudioToolsPage)
-        page._banner_mode = "apollo"
-        page.window = mock.MagicMock()
-        page.context = mock.MagicMock()
-        with mock.patch("ui.download.open_download_center") as opener:
-            AudioToolsPage._on_audio_banner_clicked(page)
-
-        opener.assert_called_once()
-        self.assertIs(opener.call_args.args[0], page.window)
-        self.assertIs(opener.call_args.args[1], page.context)
-        self.assertEqual(opener.call_args.kwargs["purpose"], PURPOSE_RESTORE)
-        self.assertEqual(opener.call_args.kwargs["arch"], APOLLO_ARCH_TYPE)

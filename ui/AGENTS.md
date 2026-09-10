@@ -79,9 +79,14 @@ Rules for new UI:
 ### Floating processing log
 
 - `LogPanel` owns presentation; `RunController` and `RunHost` own run state and
-  readiness. Incomplete settings disable Start with a visible reason. Stop stays
-  visible but insensitive when unavailable. Preserve terminal summaries while
-  hiding stopped/failed progress; a full bar alone does not establish success.
+  readiness. Incomplete settings dim Start while keeping it clickable to explain
+  the visible blocking reason; busy states disable Start. Stop stays
+  visible but insensitive when unavailable. Hold successful completion for five
+  seconds before refreshing readiness, independently of desktop notifications.
+  Explicit clear or a new run dismisses completion sooner. Clear dismisses stopped
+  and failed summaries too, but preserves restart-required warnings. Hide previous
+  progress/error styling during preflight without discarding it on cancellation;
+  a full bar alone does not establish success.
 - Keep explicit phases flowing through `JobCallbacks`, `gtk_job_callbacks`, and
   `RunProgressPresenter`. The latter and `ProgressEtaTracker` own labels, throttling,
   and ETA; widgets must not reconstruct phases. Phase changes must survive latest
@@ -89,12 +94,17 @@ Rules for new UI:
 - `ConsoleView` follows new output only when already at the bottom. Reopening the
   log preserves reading position. `ui.auto_expand_log` controls expansion at run
   start and defaults to false; it is not a scroll-follow preference.
+- The expanded log viewport uses `_LOG_BODY_HEIGHT` (in sp), independent of status and output.
+  Shrink it only when the available window height cannot fit the complete panel.
 - Width is state-driven: 400 sp collapsed or expanded-empty, 560 sp expanded with
   output, constrained by available space. `PanelLayout` responds to allocations;
   `StableLogLayout` keeps text wrapping at the expanded width during transitions.
   Preserve this split instead of polling every frame or sizing from log text.
-- The overlay fills available space, but `LogPanel.do_contains` targets only the
-  visible card, including its padding. Keep ancestors targetable: disabling them
+- The overlay fills available space, but both `LogPanel.do_contains` and
+  `PanelClamp.do_contains` target only the visible card, including its padding.
+  Use `Adw.ClampLayout` in the custom clamp: an ordinary full-width `Adw.Clamp`
+  intercepts clicks beside the card before the parent can reject them.
+  Keep ancestors targetable: disabling them
   can block mouse input to descendants while keyboard navigation still works.
   Check buttons, text selection, padding, and click-through outside the card.
 - Keep console messages grouped through `core.console_text`. Standalone headings

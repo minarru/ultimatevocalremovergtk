@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import os
 import time
-from typing import Any, List, cast
+from typing import Any, List, Sequence, cast
 
 from bundled.constants import WAV
 from core.processing_phase import ProcessingPhase
@@ -30,10 +30,17 @@ from .stem_roles import StemRoleId
 from .stems import StemRoute, StemRouteKind, run_export_routes, select_stem_routes
 
 
-def _filter_final_collected_stems(stems: list[CollectedStem], focus: str) -> list[CollectedStem]:
+def _filter_final_collected_stems(
+    stems: list[CollectedStem], focus: str, selected_roles: Sequence[str] = ()
+) -> list[CollectedStem]:
     """Apply final focus without losing raw-literal collection identity."""
     if not focus:
-        return stems
+        from .ensemble_selection import select_ensemble_subset
+
+        selected, missing = select_ensemble_subset(stems, selected_roles)
+        if missing:
+            raise ValueError("Selected ensemble outputs unavailable: " + ", ".join(missing))
+        return list(selected)
     routes = tuple(
         StemRoute(
             native=None,
@@ -312,7 +319,9 @@ class _EnsembleRunHooks:
         combine_steps: List[tuple] = []
         if plan is not None:
             focus = str(runner.settings.process.stem_focus or "")
-            output_stems = _filter_final_collected_stems(list(self.ensemble.pair_stems), focus)
+            output_stems = _filter_final_collected_stems(
+                list(self.ensemble.pair_stems), focus, runner.settings.ensemble.stems_selected
+            )
             stacked = next(
                 stem for stem in self.ensemble.pair_stems if stem.role == plan.stacked_role
             )
@@ -353,12 +362,16 @@ class _EnsembleRunHooks:
             if not output_stems:
                 raise RuntimeError("Ensemble has no viable stems with at least two contributors")
             focus = str(runner.settings.process.stem_focus or "")
-            output_stems = _filter_final_collected_stems(output_stems, focus)
+            output_stems = _filter_final_collected_stems(
+                output_stems, focus, runner.settings.ensemble.stems_selected
+            )
             combine_steps = [(collected, {}) for collected in output_stems]
         else:
             pair_stems = list(self.ensemble.pair_stems)
             focus = str(runner.settings.process.stem_focus or "")
-            pair_stems = _filter_final_collected_stems(pair_stems, focus)
+            pair_stems = _filter_final_collected_stems(
+                pair_stems, focus, runner.settings.ensemble.stems_selected
+            )
             combine_steps = [(collected, {}) for collected in pair_stems]
 
         combine_total = max(1, len(combine_steps))

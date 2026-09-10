@@ -1,6 +1,9 @@
 """Separation's output summary and direct stem-selection dialog."""
 
+from __future__ import annotations
+
 from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from gi.repository import Adw, Gtk
 
@@ -9,10 +12,13 @@ from core.stem_selection import _TOGGLE_ALL
 from ..dialogs.utils import present_modal_dialog
 from ..gtk_narrow import root_window
 from ..markup import set_row_subtitle
-from ..stem_controls import StemControlsSnapshot
+from ..stem_controls import StemControls, StemControlsSnapshot
 from ..template import load_builder, object_from_builder
 from .rows import configure_combo_row, get_combo_value, set_combo_tag_values, set_combo_value
 from .stem_only import SaveStemsSection
+
+if TYPE_CHECKING:
+    from ..ensemble.stem_controls import EnsembleStemControls
 
 
 class OutputStemsSection:
@@ -26,7 +32,9 @@ class OutputStemsSection:
         use_direct_controls: bool = True,
     ):
         self.section = section
-        self.controls = section.enable_direct_controls() if use_direct_controls else None
+        self.controls: StemControls | EnsembleStemControls | None = (
+            section.enable_direct_controls() if use_direct_controls else None
+        )
         self._rendering = False
         self._row_revision = -1
         self._output_rows: dict[str, tuple[Adw.ActionRow, Gtk.CheckButton]] = {}

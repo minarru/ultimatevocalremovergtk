@@ -297,6 +297,7 @@ class PairConsistentPlanAvailabilityTests(unittest.TestCase):
         page._dry_resolved_member_routes = mock.Mock(return_value=None)
         page.derive_complement_row = mock.Mock()
         page.preset_row = mock.Mock()
+        page._update_algorithm_visibility = mock.Mock()
         page.primary_algo_row = mock.Mock()
         page.secondary_algo_row = mock.Mock()
         return page
@@ -410,12 +411,8 @@ class PairConsistentPlanAvailabilityTests(unittest.TestCase):
 
 
 class MainStemChangedOrderTests(unittest.TestCase):
-    def test_model_list_rebuilds_before_stem_toggles(self) -> None:
-        """Regression: stem-only toggles resolve export-semantics hints from
-        _selected_model_tags(), which reads the model checklist built by
-        _reconcile_member_list(). Rebuilding toggles first meant that checklist
-        still reflected the *previous* stem pair for one render pass.
-        """
+    def test_stem_change_reconciles_members_before_summary(self) -> None:
+        """Reconciliation now owns refreshing output choices after the model list."""
         from unittest import mock
 
         import ui.ensemble.window as ensemble_window
@@ -453,7 +450,7 @@ class MainStemChangedOrderTests(unittest.TestCase):
 
         self.assertEqual(
             order,
-            ["refresh_type", "rebuild_model_list", "rebuild_stem_toggles", "update_summary"],
+            ["refresh_type", "rebuild_model_list", "update_summary"],
         )
 
 
@@ -549,6 +546,7 @@ class RebuildStemOnlyTogglesConfidenceTests(unittest.TestCase):
         page = object.__new__(ensemble_window.EnsemblePage)
         page.settings = mock.Mock()
         page.save_stems = save_stems
+        page.output_stems = mock.Mock()
         page.stems_group = mock.Mock()
         page._ensemble_stem_pair = mock.Mock(return_value=("Vocals", "Instrumental"))
         page._ensemble_is_multi_or_four = mock.Mock(return_value=False)

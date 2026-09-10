@@ -7,7 +7,7 @@ import os
 import re
 import tempfile
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Sequence
 
 from . import paths
 from .ensemble_presets import curated_combo_label, curated_id_from_combo_label
@@ -68,6 +68,8 @@ def save_ensemble(
     wav_ensemble: bool = False,
     save_all_outputs: bool = True,
     derive_complement_from_mix: bool = False,
+    stems_selected: Sequence[str] = (),
+    stem_focus: str = "",
 ) -> str:
     """Persist an ensemble with an exact current semantic pair/mode id."""
     pair_id = normalize_stem_pair_id(ensemble_main_stem)
@@ -79,6 +81,8 @@ def save_ensemble(
         "is_wav_ensemble": bool(wav_ensemble),
         "save_all_outputs": bool(save_all_outputs),
         "derive_complement_from_mix": bool(derive_complement_from_mix),
+        "stems_selected": list(stems_selected),
+        "stem_focus": stem_focus,
     }
     path = _saved_ensemble_path(name)
     cache_dir = paths.ENSEMBLE_CACHE_DIR
@@ -183,6 +187,8 @@ class ResolvedEnsemblePreset:
     save_all_outputs: bool = True
     derive_complement_from_mix: bool = False
     validation_warnings: tuple[str, ...] = ()
+    stems_selected: tuple[str, ...] = ()
+    stem_focus: str = ""
 
 
 class EnsembleService:
@@ -263,6 +269,8 @@ class EnsembleService:
             bool(data.get("save_all_outputs", True)),
             bool(data.get("derive_complement_from_mix", False)),
             tuple(validation_warnings),
+            tuple(data.get("stems_selected") or ()),
+            str(data.get("stem_focus") or ""),
         )
 
     def apply(self, settings: Any, name: str) -> ResolvedEnsemblePreset:
@@ -275,6 +283,8 @@ class EnsembleService:
         settings.ensemble.wav_ensemble = preset.wav_ensemble
         settings.ensemble.save_all_outputs = preset.save_all_outputs
         settings.ensemble.derive_complement_from_mix = preset.derive_complement_from_mix
+        settings.ensemble.stems_selected = list(preset.stems_selected)
+        settings.process.stem_focus = preset.stem_focus
         return preset
 
     def create(
@@ -288,6 +298,8 @@ class EnsembleService:
         save_all_outputs: bool = True,
         derive_complement_from_mix: bool = False,
         replace: bool = False,
+        stems_selected: Sequence[str] = (),
+        stem_focus: str = "",
     ) -> ResolvedEnsemblePreset:
         if load_ensemble(name) is not None and not replace:
             raise ValueError(f"ensemble {name!r} already exists; pass --replace")
@@ -310,6 +322,8 @@ class EnsembleService:
             wav_ensemble=wav_ensemble,
             save_all_outputs=save_all_outputs,
             derive_complement_from_mix=derive_complement_from_mix,
+            stems_selected=stems_selected,
+            stem_focus=stem_focus,
         )
         return self.resolve(name)
 

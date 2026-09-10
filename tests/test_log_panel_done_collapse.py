@@ -60,7 +60,7 @@ class DoneCollapseTests(unittest.TestCase):
         self.assertIsNone(panel._done_collapse_id)
         self.assertEqual(panel.progressbar.get_fraction(), 0.0)
         self.assertFalse(panel._progress_revealer.get_reveal_child())
-        self.assertIn("complete", panel._progress_label.get_text())
+        self.assertEqual(panel._progress_label.get_text(), "Ready to process")
 
     def test_starting_a_new_run_cancels_the_pending_collapse(self):
         panel = _panel()

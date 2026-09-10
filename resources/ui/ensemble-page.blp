@@ -23,14 +23,14 @@ Adw.PreferencesGroup files_group {
 }
 
 Adw.PreferencesGroup ensemble_group {
-  title: "Ensemble options";
+  title: "Ensemble";
 
   Adw.ComboRow saved_row {
-    title: "Saved ensemble";
+    title: "Configuration";
 
     [suffix]
     Gtk.Button save_button {
-      icon-name: "document-save-symbolic";
+      icon-name: "bookmark-outline-symbolic";
       valign: center;
       styles ["flat"]
     }
@@ -44,7 +44,7 @@ Adw.PreferencesGroup ensemble_group {
   }
 
   Adw.ComboRow main_stem_row {
-    title: "Main stem pair";
+    title: "Output mode";
 
     [prefix]
     Gtk.Image {
@@ -55,6 +55,8 @@ Adw.PreferencesGroup ensemble_group {
   Adw.ActionRow models_trigger_row {
     title: "Member models";
     activatable: true;
+    subtitle-lines: 0;
+    [suffix] Gtk.Button edit_models_button { label: "Edit models"; valign: center; }
 
     [suffix]
     Gtk.Image {
@@ -62,24 +64,13 @@ Adw.PreferencesGroup ensemble_group {
     }
   }
 
-  Adw.ActionRow member_options_row {
-    title: "Member model options";
-    subtitle: "Batch size, secondary models, and more";
-    activatable: true;
+}
 
-    [suffix]
-    Gtk.Image {
-      icon-name: "go-next-symbolic";
-    }
-  }
+Adw.PreferencesGroup combination_group {
+  title: "Combination";
 
   Adw.ComboRow preset_row {
     title: "Algorithm preset";
-
-    [prefix]
-    Gtk.Image {
-      icon-name: "emblem-favorite-symbolic";
-    }
   }
 
   Adw.SwitchRow derive_complement_row {
@@ -89,26 +80,15 @@ Adw.PreferencesGroup ensemble_group {
 
   Adw.ComboRow primary_algo_row {
     title: "Primary algorithm";
-
-    [prefix]
-    Gtk.Image {
-      icon-name: "media-playlist-shuffle-symbolic";
-    }
   }
 
   Adw.ComboRow secondary_algo_row {
     title: "Secondary algorithm";
-
-    [prefix]
-    Gtk.Image {
-      icon-name: "media-playlist-shuffle-symbolic";
-    }
   }
 }
 
 Adw.PreferencesGroup stems_group {
-  title: "Save stems";
-  visible: false;
+  title: "Output";
 }
 
 Adw.PreferencesGroup processing_group {
@@ -127,11 +107,6 @@ Adw.SwitchRow gpu_row {
 Adw.SwitchRow autocast_row {
   title: "FP16 autocast";
   subtitle: "Faster VR/MDX/Roformer on modern NVIDIA GPUs";
-
-  [prefix]
-  Gtk.Image {
-    icon-name: "emblem-system-symbolic";
-  }
 }
 
 Adw.SwitchRow sample_row {
@@ -139,16 +114,26 @@ Adw.SwitchRow sample_row {
 
   [prefix]
   Gtk.Image {
-    icon-name: "preferences-system-time-symbolic";
+    icon-name: "uvr-stopwatch-symbolic";
   }
 }
 
 Adw.ExpanderRow advanced_row {
-  title: "Advanced ensemble options";
+  title: "Advanced settings";
 
-  Adw.SwitchRow save_all_row {
-    title: "Save all outputs";
+  Adw.ActionRow member_options_row {
+    title: "Member model options";
+    subtitle: "Batch size, secondary models, and more";
+    activatable: true;
+
+    [suffix]
+    Gtk.Image {
+      icon-name: "go-next-symbolic";
+    }
   }
+
+
+
 
   Adw.SwitchRow append_name_row {
     title: "Append ensemble name to output";
@@ -157,4 +142,9 @@ Adw.ExpanderRow advanced_row {
   Adw.SwitchRow wav_ensemble_row {
     title: "Ensemble waveforms";
   }
+}
+
+Adw.SwitchRow save_all_row {
+  title: "Keep individual model outputs";
+  subtitle: "Save each model’s files alongside the final ensemble.";
 }

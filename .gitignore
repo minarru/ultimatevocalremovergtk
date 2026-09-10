@@ -126,8 +126,6 @@ resources/ui/**/*.ui
 .cursor/*
 !.cursor/environment.json
 !.cursor/install.sh
-resources/icons/scalable/actions/bug-symbolic.svg
-resources/icons/scalable/actions/cross-small-symbolic.svg
 
 # Subagent-driven-development scratch (any depth, including worktrees)
 .superpowers/

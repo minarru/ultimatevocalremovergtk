@@ -21,7 +21,7 @@ def _window() -> Any:
     window.context = mock.MagicMock()
     window._run_controller = None
     window._deferred_model_refresh = None
-    window._update_sep_banner = mock.MagicMock()
+    window._refresh_start_readiness = mock.MagicMock()
     window._views = [mock.MagicMock(name=f"view{i}") for i in range(3)]
     window._ensemble_page = mock.MagicMock(name="ensemble")
     window._audio_tools_page = mock.MagicMock(name="audio_tools")

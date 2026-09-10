@@ -112,7 +112,7 @@ class RunController:
         )
         self._run_ui_suspended = False
         self._preflight_in_progress = False
-        self._plan_dialog: Optional[Adw.AlertDialog] = None
+        self._plan_dialog: Optional[Adw.Dialog] = None
         self._preflight_start_label: Optional[str] = None
 
     @property
@@ -349,26 +349,17 @@ class RunController:
     def _present_plan_confirmation(
         self, target: RunTarget, fingerprint: str, plan: typing.Any
     ) -> None:
-        from core.job_plan import format_effective_plan
+        from .dialogs.plan_review import ReviewPlanDialog
 
-        dialog = Adw.AlertDialog(
-            heading="Review processing plan",
-            body=format_effective_plan(plan),
-        )
-        dialog.add_response("cancel", "Cancel")
-        dialog.add_response("start", "Start Processing")
-        dialog.set_response_appearance("start", Adw.ResponseAppearance.SUGGESTED)
-        dialog.set_default_response("cancel")
-        dialog.set_close_response("cancel")
-
+        dialog = ReviewPlanDialog(plan)
         operation_id = self._operation_id
 
-        def response(_dialog: typing.Any, choice: str) -> None:
+        def closed(_dialog: Adw.Dialog) -> None:
             if self._plan_dialog is not dialog or not self._operation_is_current(operation_id):
                 return
             self._plan_dialog = None
             self._host.refresh_readiness()
-            if choice == "start":
+            if dialog.accepted:
                 self._accept_plan(target, fingerprint, plan)
             else:
                 self._finish_operation(
@@ -376,7 +367,7 @@ class RunController:
                     reason="plan_confirmation",
                 )
 
-        dialog.connect("response", response)
+        dialog.connect("closed", closed)
         self._plan_dialog = dialog
         self.refresh_start_readiness()
         dialog.present(self._host.dialog_parent)
@@ -594,6 +585,7 @@ class RunController:
         target = self._running_target
         operation_id = self._operation_id
         self._suspend_run_ui_for_dialog()
+        self._host.set_waiting_status("Stop this run?")
 
         pending: dict[str, Any] = {"run": None}
 
@@ -732,6 +724,7 @@ class RunController:
     def _resume_run_ui_after_dialog(self) -> None:
         debug("ui", f"resume_run_ui after dialog dismissed running={self.is_running()}")
         self._run_ui_suspended = False
+        self._host.set_waiting_status(None)
         if self.is_running():
             self._host.set_pulse(True)
 
@@ -785,7 +778,7 @@ class RunController:
         self._host.enable_stop(False)
         self._host.enable_start(False)
         self._host.set_pulse(False)
-        self._host.set_progress_text("Stopping…")
+        self._host.set_progress_text("Waiting for the worker to finish", title="Stopping…")
         self._run_ui_suspended = True
         self._host.append_console(f"\n{STOP_PROCESSING}\n")
         target.stop()
@@ -822,6 +815,7 @@ class RunController:
         )
         self._run_ui_suspended = True
         self._host.set_pulse(False)
+        self._host.set_waiting_status("Waiting for your choice", "GPU memory exhausted")
 
         operation_id = self._operation_id
 
@@ -831,6 +825,7 @@ class RunController:
                 return
             self._oom_dialog = None
             self._run_ui_suspended = False
+            self._host.set_waiting_status(None)
             if self.is_running():
                 self._host.set_pulse(True)
             label = {
@@ -881,7 +876,7 @@ class RunController:
                 self._closing = True
                 self._complete_shutdown(deferred=False)
             else:
-                self._host.set_progress_text("Stopping…")
+                self._host.set_progress_text("Waiting for the worker to finish", title="Stopping…")
                 self.shutdown.resume_inference_cleanup(target)
 
         self._stop_timeout_dialog = dialog
@@ -1074,7 +1069,7 @@ class RunController:
         return self._host.active_download_count()
 
     def refresh_start_readiness(self) -> Optional[str]:
-        """Disable Start until the active target is ready and show its reason."""
+        """Keep idle Start clickable so activation can explain a readiness blocker."""
         if (
             self._closing
             or self._running_target is not None
@@ -1086,7 +1081,7 @@ class RunController:
             return None
         target = self._host.target
         reason = target_blocked_reason(target)
-        self._host.enable_start(reason is None)
+        self._host.enable_start(True)
         description = reason or "Start processing"
         self._host.describe_start(description)
         self._host.set_start_blocked_reason(reason)

@@ -39,6 +39,7 @@ class MemberRenderTests(unittest.TestCase):
         page._ensemble_pair = lambda: 'pair.vocals_instrumental'
         page._update_models_dialog_status = mock.Mock()
         page._update_models_summary = mock.Mock()
+        page._rebuild_stem_only_toggles = mock.Mock()
         with mock.patch(
             'core.model_identity.ModelIdentityService.records',
             return_value=(record('b', 'Zulu'), record('a', 'Alpha')),
@@ -301,7 +302,8 @@ class ReviewedContractTests(unittest.TestCase):
                 host.target.start_blocked_reason.reset_mock()
                 self.assertEqual(controller.refresh_start_readiness(), reason)
                 host.target.start_blocked_reason.assert_called_once_with()
-                host.enable_start.assert_called_with(reason is None)
+                host.enable_start.assert_called_with(True)
+                host.set_start_blocked_reason.assert_called_with(reason)
                 host.describe_start.assert_called_with(reason or 'Start processing')
 
     def test_live_counts_and_empty_state_survive_pinned_incremental_removal(self):

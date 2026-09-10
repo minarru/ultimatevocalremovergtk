@@ -927,6 +927,7 @@ class StemSelectionState:
             raise ValueError(f"invalid stem selection {concept!r}")
         route = selection.routes[0]
         settings.demucs.stems_selected = []
+        settings.ensemble.stems_selected = []
         settings.process.stem_focus = _persist_route_focus(route)
         if route.concept in (
             "vocal.vocals",
@@ -946,6 +947,7 @@ class StemSelectionState:
     def write_cli_positional(self, settings: Settings, choice: str) -> None:
         """Persist a CLI positional pick as a stem_focus sentinel."""
         settings.demucs.stems_selected = []
+        settings.ensemble.stems_selected = []
         if choice == "both":
             settings.process.stem_focus = ""
             settings.demucs.stems = settings.mdx.stems = ALL_STEMS

@@ -71,6 +71,9 @@ class GtkRunHost:
     def set_progress_text(self, text: str, *, title: str | None = None) -> None:
         self.window.log_panel.set_progress_text(text, title=title)
 
+    def set_waiting_status(self, title: str | None, detail: str = "") -> None:
+        self.window.log_panel.set_waiting_status(title, detail)
+
     def set_preparing(self, preparing: bool) -> None:
         self.window.log_panel.set_preparing(preparing)
 

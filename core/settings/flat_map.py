@@ -117,6 +117,7 @@ FLAT_TO_PATH: dict[str, tuple[str, str]] = {
     "ensemble_main_stem": ("ensemble", "main_stem"),
     "ensemble_type": ("ensemble", "type"),
     "selected_models": ("ensemble", "selected_models"),
+    "ensemble_stems_selected": ("ensemble", "stems_selected"),
     "chosen_ensemble": ("ensemble", "chosen_ensemble"),
     "is_save_all_outputs_ensemble": ("ensemble", "save_all_outputs"),
     "is_append_ensemble_name": ("ensemble", "append_ensemble_name"),

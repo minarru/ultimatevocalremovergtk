@@ -113,16 +113,6 @@ from .dual_batch import DualBatchDialog
 
 _MATCH_FILES_DESCRIPTION = "Target is mastered to match the reference track"
 _ALIGN_FILES_DESCRIPTION = "Primary is usually the full mix; secondary is usually the instrumental"
-_DUAL_BANNER_TITLE = "No input pairs selected. Open the pair editor to choose files."
-_APOLLO_BANNER_TITLE = (
-    "No Apollo models found. Get one from the Download Center, or place a "
-    "checkpoint (.ckpt or .bin) in the Apollo models folder."
-)
-_RUBBERBAND_BANNER_TITLE = (
-    "Rubber Band CLI was not found. Install rubberband to use Time Stretch "
-    "or Change Pitch, then restart the app."
-)
-
 # Full tool list (Time Stretch / Change Pitch are surfaced on all platforms here;
 # UVR hides them on Linux purely because pyrubberband may be unavailable - the
 # backend reports that as a graceful error if the dep is missing).
@@ -182,13 +172,11 @@ class AudioToolsPage:
         self._apollo_stored_value: typing.Any = CHOOSE_MODEL
         self._apollo_write_gated = False
         self._apollo_gated_value: typing.Any = None
-        self._banner_mode: Optional[str] = None
         self._layout_builder = load_builder("audio-tools-page")
 
         # Match Separation / Ensemble: shared Files (inputs + output) on the
         # left, Processing on the right. Tool-specific settings stay in the
-        # stack below the tool selector. Page-level banner covers dual/Apollo
-        # empty states (same pattern as Separation / Ensemble).
+        # stack below the tool selector.
         self.files_group = self._build_files_group()
         select_group = self._build_select_group()
         self.tool_stack = self._build_tool_stack()
@@ -202,7 +190,6 @@ class AudioToolsPage:
         self.options_page = wrap_options_scroller(self.columns_box)
 
         self._audio_banner = self._layout_object("audio_banner", Adw.Banner)
-        self._audio_banner.connect("button-clicked", self._on_audio_banner_clicked)
 
         page = self._layout_object("page", Gtk.Box)
         page.append(self.options_page)
@@ -679,67 +666,15 @@ class AudioToolsPage:
             self.files_group.set_description(None)
 
     def _update_audio_banner(self) -> None:
-        """Page-level empty-state banner for Apollo models / dual input pairs."""
-        from core.audio_tools import DUAL_INPUT_TOOLS
-        from core.external_tools import resolve_rubberband
-
-        tool = self._current_tool()
-        if tool == APOLLO_RESTORE and self._apollo_write_gated:
-            self._banner_mode = "apollo-identity"
+        """Retain saved-model details; the log panel owns readiness messages."""
+        invalid_saved_model = self._current_tool() == APOLLO_RESTORE and self._apollo_write_gated
+        if invalid_saved_model:
             self._audio_banner.set_title(
                 f"Saved Apollo model {self._apollo_stored_value!r} cannot be "
                 "selected; it was kept as written. Pick a model to replace it."
             )
-            self._audio_banner.set_button_label("")
-            self._audio_banner.set_revealed(True)
-            self.window._refresh_start_readiness()
-            return
-        if tool in (TIME_STRETCH, CHANGE_PITCH) and not resolve_rubberband():
-            self._banner_mode = "rubberband"
-            self._audio_banner.set_title(_RUBBERBAND_BANNER_TITLE)
-            self._audio_banner.set_button_label("")
-            self._audio_banner.set_revealed(True)
-            self.window._refresh_start_readiness()
-            return
-        if tool == APOLLO_RESTORE and not self._apollo_has_models:
-            self._banner_mode = "apollo"
-            self._audio_banner.set_title(_APOLLO_BANNER_TITLE)
-            self._audio_banner.set_button_label("Download Center")
-            self._audio_banner.set_revealed(True)
-            self.window._refresh_start_readiness()
-            return
-        if tool in DUAL_INPUT_TOOLS and not self._dual_pairs:
-            self._banner_mode = "dual"
-            self._audio_banner.set_title(_DUAL_BANNER_TITLE)
-            self._audio_banner.set_button_label("Pair Editor")
-            self._audio_banner.set_revealed(True)
-            self.window._refresh_start_readiness()
-            return
-        self._banner_mode = None
-        self._audio_banner.set_revealed(False)
+        self._audio_banner.set_revealed(invalid_saved_model)
         self.window._refresh_start_readiness()
-
-    def _on_audio_banner_clicked(self, *_args: typing.Any) -> None:
-        if self._banner_mode == "apollo":
-            # Apollo models are downloadable now, so the empty state sends users
-            # to Restore with the Apollo network filter. Manual placement stays
-            # available via the folder button in the Apollo group header (shown
-            # once a model exists) and the Download Center's own
-            # "Open models folder".
-            from bundled.constants import APOLLO_ARCH_TYPE
-            from core.model_scores import download_center_hint_for_method
-
-            from ..download import open_download_center
-
-            purpose, arch = download_center_hint_for_method(APOLLO_ARCH_TYPE)
-            open_download_center(
-                self.window,
-                self.context,
-                purpose=purpose,
-                arch=arch,
-            )
-        elif self._banner_mode == "dual":
-            self._on_open_dual_editor()
 
     def _on_view_inputs_clicked(self, *_args: typing.Any) -> None:
         """Open the pair editor for dual tools; otherwise the shared verifier."""
