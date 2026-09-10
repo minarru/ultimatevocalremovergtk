@@ -90,6 +90,7 @@ from .shared_settings import (
     sanitize_input_paths,
     shared_settings_bindings,
 )
+from .startup import FirstFrameScheduler
 from .template import load_builder, object_from_builder
 from .views import METHOD_VIEWS
 from .widgets.columns import (
@@ -240,6 +241,7 @@ class MainWindow(Adw.ApplicationWindow):
         self.settings = self.context.settings
         self._shared_session: SharedSettingsSession | None = None
         self._deferred_model_refresh: str | None = None
+        self._engine_warmup = FirstFrameScheduler()
 
         self.set_title(APP_TITLE)
         # Restore the persisted geometry (falling back to the default size), and
@@ -517,6 +519,8 @@ class MainWindow(Adw.ApplicationWindow):
             clamp.queue_resize()
 
     def _on_window_mapped(self, *_args: typing.Any) -> None:
+        self._schedule_engine_warmup()
+
         def refresh() -> None:
             if self._current_view is not None:
                 self._populate_columns()
@@ -525,6 +529,20 @@ class MainWindow(Adw.ApplicationWindow):
             self._reveal_data_dir_banner_if_needed()
 
         idle_on_main(refresh)
+
+    def _schedule_engine_warmup(self) -> None:
+        """Start engine import after the first rendered window frame."""
+
+        def warmup() -> None:
+            from core.separate_import import warm_import_separate_engines
+
+            warm_import_separate_engines()
+
+        self._engine_warmup.schedule(self, warmup)
+
+    def cancel_startup_work(self) -> None:
+        """Cancel startup callbacks when the application shuts down directly."""
+        self._engine_warmup.cancel()
 
     def _sync_options_bottom_clearance(self) -> None:
         """Keep scroll padding aligned with the floating log panel height."""
@@ -1051,6 +1069,7 @@ class MainWindow(Adw.ApplicationWindow):
         return self._run_controller.handle_close_request(self._finalize_close)
 
     def _finalize_close(self, deferred: bool) -> None:
+        self.cancel_startup_work()
         # The repository outlives this window (it hangs off AppContext), so a
         # live subscription would keep calling into a dead widget tree.
         self._unsubscribe_model_events()

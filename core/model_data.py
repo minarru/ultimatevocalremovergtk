@@ -20,21 +20,22 @@ def _mdx_c_yaml_loader() -> typing.Any:
     """Return the restricted loader shared by file and in-memory configs."""
     import re
 
-    import yaml
-
     global _MDX_C_YAML_LOADER
     if _MDX_C_YAML_LOADER is None:
 
-        class MdxCYamlLoader(yaml.SafeLoader):
-            pass
+        try:
+            from yaml import CSafeLoader as SafeLoader
+        except ImportError:
+            from yaml import SafeLoader
+
+        MdxCYamlLoader = type("MdxCYamlLoader", (SafeLoader,), {})
 
         def _construct_python_tuple(loader: typing.Any, node: typing.Any):
             return tuple(loader.construct_sequence(node))
 
-        yaml.add_constructor(
+        MdxCYamlLoader.add_constructor(
             "tag:yaml.org,2002:python/tuple",
             _construct_python_tuple,
-            Loader=MdxCYamlLoader,
         )
         MdxCYamlLoader.add_implicit_resolver(
             "tag:yaml.org,2002:float",
@@ -65,7 +66,7 @@ def load_mdx_c_config(path: str) -> dict:
     """Load a bundled MDX-C / Roformer yaml config.
 
     Shipped configs use ``!!python/tuple`` for a few list fields; this extends
-    :class:`yaml.SafeLoader` with only that tag so we avoid ``FullLoader`` while
+    PyYAML's safe loader (C-backed when available) with only that tag while
     still parsing the trusted local files under ``mdx_c_configs/``. It also
     widens the float resolver: PyYAML's default one requires a ``.`` in the
     mantissa, so a bare-exponent value like ``1e-3`` (no shipped config uses

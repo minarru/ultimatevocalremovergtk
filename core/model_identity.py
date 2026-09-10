@@ -296,6 +296,10 @@ class _ModelInventory:
             return build_identity_index(repo, snapshot=self._snapshot())
         slot = self._cache_slot()
         with lock:
+            # Initial publication establishes the catalogue revision before we
+            # capture the key. Read the build's snapshot after the key below,
+            # so a concurrent publication still triggers the revision retry.
+            self._snapshot()
             generation = repo.inventory_generation
             catalogue_revision = repo.catalogue_revision
             naming_revision = repo.naming_revision

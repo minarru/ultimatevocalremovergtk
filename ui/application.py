@@ -115,14 +115,18 @@ class UVRApplication(Adw.Application):
     def do_activate(self):
         self._did_activate = True
         register_gresources()
-        from core.separate_import import warm_import_separate_engines
-
-        warm_import_separate_engines()
         window = self._main_window
         if window is None:
             window = MainWindow(application=self)
             self._main_window = window
         window.present()
+
+    def do_shutdown(self):
+        # ``app.quit()`` can end the application without a window close-request;
+        # release any after-paint/idle startup callback before GTK tears down.
+        if self._main_window is not None:
+            self._main_window.cancel_startup_work()
+        Adw.Application.do_shutdown(self)
 
 
 def main(
@@ -140,12 +144,10 @@ def main(
         install_runtime_hooks,
         log_event,
     )
-    from core.torch_checkpoint import ensure_demucs_import_aliases
 
     if configure_diagnostics:
         configure_bootstrap()
     install_runtime_hooks()
-    ensure_demucs_import_aliases()
     if configure_diagnostics:
         configure_from_settings(Settings.load())
     glib_log.init()

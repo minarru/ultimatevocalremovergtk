@@ -798,27 +798,32 @@ class DebugLogTests(unittest.TestCase):
         names = [call.args[1] for call in log_event.call_args_list]
         self.assertEqual(names, ["application_started", "application_exited"])
 
-    def test_gui_runtime_hooks_install_before_failure_prone_startup_work(self) -> None:
+    def test_gui_runtime_hooks_install_before_running_app(self) -> None:
         from ui import application
 
         order: list[str] = []
+        fake_app = mock.Mock()
+
+        def run(*_args: object) -> int:
+            order.append("run")
+            return 0
+
+        fake_app.run.side_effect = run
+        fake_app._did_activate = True
         with mock.patch(
             "core.debug_log.configure_bootstrap",
             side_effect=lambda: order.append("bootstrap"),
         ), mock.patch(
             "core.debug_log.install_runtime_hooks",
             side_effect=lambda: order.append("hooks"),
+        ), mock.patch.object(
+            application, "UVRApplication", return_value=fake_app
         ), mock.patch(
-            "core.torch_checkpoint.ensure_demucs_import_aliases",
-            side_effect=lambda: (
-                order.append("aliases"),
-                (_ for _ in ()).throw(RuntimeError("alias setup failed")),
-            )[1],
+            "ui.shutdown.finalize_process_exit"
         ):
-            with self.assertRaisesRegex(RuntimeError, "alias setup failed"):
-                application.main(["uvr"])
+            self.assertEqual(application.main(["uvr"]), 0)
 
-        self.assertEqual(order, ["bootstrap", "hooks", "aliases"])
+        self.assertEqual(order, ["bootstrap", "hooks", "run"])
 
     def test_ui_error_log_records_error_at_default_threshold(self) -> None:
         from core.error_log import log_error
