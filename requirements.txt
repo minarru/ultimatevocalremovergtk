@@ -44,39 +44,39 @@ kthread==0.2.3
 lazy-loader==0.5
 librosa==0.11.0
 lightning-utilities==0.15.3
-llvmlite==0.47.0
+llvmlite==0.49.0
 markupsafe==3.0.3
 matchering==2.0.6
 ml-collections==1.1.0
-ml-dtypes==0.5.4
+ml-dtypes==0.6.0
 mpmath==1.3.0
 msgpack==1.2.1
 multidict==6.7.1
 narwhals==2.22.1
 natsort==8.4.0
 networkx==3.6.1
-numba==0.65.1
-# numpy: was 2.3.2, bumped to 2.3.5. pandas==3.0.4 requires numpy>=2.3.3, so
+numba==0.67.0
+# numpy: was 2.3.2, bumped to 2.3.5. pandas==3.0.5 requires numpy>=2.3.3, so
 # 2.3.2 is unsatisfiable; 2.3.5 is the latest 2.3.x (still <2.5 for numba 0.65.1,
 # satisfies pandas, has cp314 wheels, and shadows the system numpy 2.5).
-numpy==2.3.5
+numpy==2.5.2
 omegaconf==2.3.1
 onnx==1.22.0
-onnx2pytorch==0.5.3
-onnxruntime==1.26.0
+onnx2pytorch==0.6.0
+onnxruntime==1.29.0
 # opencv-python 4.12.0.88 caps numpy<2.3.0 (all py>=3.9), which conflicts with
 # the numpy==2.3.2 pin below under strict resolvers (uv) on Python 3.14. 4.13.x
 # drops the upper bound (numpy>=2) and ships cp37-abi3 wheels usable on 3.14.
-opencv-python==4.13.0.92
+opencv-python==5.0.0.93
 packaging==26.2
-pandas==3.0.4
+pandas==3.0.5
 patsy==1.0.2
 pillow==12.2.0
 platformdirs==4.10.0
 pooch==1.9.0
 PoPE-pytorch==0.2.1
 propcache==0.5.2
-protobuf==7.35.1
+protobuf==7.36.1
 psutil==7.2.2
 pycparser==3.0
 pydub==0.25.1
@@ -91,7 +91,7 @@ resampy==0.4.3
 rotary-embedding-torch==0.9.1
 samplerate==0.2.4
 scikit-learn==1.9.0
-scipy==1.16.3
+scipy==1.18.1
 screeninfo==0.8.1
 setuptools==81.0.0
 six==1.17.0
@@ -101,12 +101,12 @@ soxr==1.1.0
 statsmodels==0.14.6
 sympy==1.14.0
 threadpoolctl==3.6.0
-torch==2.12.1
-torch-einops-utils==0.1.15
+torch==2.14.0
+torch-einops-utils==0.1.25
 torchmetrics==1.9.0
-torchvision==0.27.1
+torchvision==0.29.0
 tqdm==4.68.3
-triton==3.7.1
+triton==3.8.0
 typing-extensions==4.15.0
 urllib3==2.7.0
 wget==3.2
