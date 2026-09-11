@@ -93,7 +93,7 @@ samplerate==0.2.4
 scikit-learn==1.9.0
 scipy==1.16.3
 screeninfo==0.8.1
-setuptools==81.0.0
+setuptools==84.0.0
 six==1.17.0
 soundfile==0.14.0
 soundstretch==1.2
