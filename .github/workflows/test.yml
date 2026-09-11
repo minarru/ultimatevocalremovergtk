@@ -18,7 +18,7 @@ jobs:
   unittest:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Enforce main dev-doc boundary
         if: github.ref == 'refs/heads/main' || github.base_ref == 'main'
@@ -108,7 +108,7 @@ jobs:
     continue-on-error: true
     runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Enforce main dev-doc boundary
         if: github.ref == 'refs/heads/main' || github.base_ref == 'main'
@@ -196,7 +196,7 @@ jobs:
   typecheck:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Create virtual environment
         run: |
