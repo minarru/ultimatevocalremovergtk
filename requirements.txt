@@ -7,12 +7,12 @@
 #
 # onnxruntime is the CPU build by default; install_packages.sh --cuda installs
 # requirements-cuda-linux.txt (onnxruntime-gpu + NVIDIA CUDA wheels).
-absl-py==2.4.0
-aiohappyeyeballs==2.6.2
-aiohttp==3.14.1
+absl-py==2.5.0
+aiohappyeyeballs==2.7.1
+aiohttp==3.14.3
 aiosignal==1.4.0
 altgraph==0.17.5
-antlr4-python3-runtime==4.9.3
+antlr4-python3-runtime==4.13.2
 attrs==26.1.0
 audioread==3.1.0
 # Roformer (BS-Roformer / Mel-Band Roformer) architecture deps. Vendored in
@@ -22,23 +22,23 @@ audioread==3.1.0
 # torch-einops-utils) are only for BSRoformer's optional ``use_pope`` path
 # (community "BS PolarFormer" checkpoints) -- see ml/bs_roformer.py.
 beartype==0.22.9
-certifi==2026.6.17
-cffi==2.0.0
-charset-normalizer==3.4.7
-cython==3.2.6
+certifi==2026.7.22
+cffi==2.1.1
+charset-normalizer==3.5.1
+cython==3.3.0
 decorator==5.3.1
 diffq==0.2.4
 einops==0.8.2
 einx==0.4.3
-filelock==3.29.4
+filelock==3.32.5
 flatbuffers==25.12.19
 frozendict==2.4.7
 frozenlist==1.8.0
-fsspec==2026.6.0
+fsspec==2026.7.0
 future==1.0.0
-idna==3.18
+idna==3.19
 jinja2==3.1.6
-joblib==1.5.3
+joblib==1.6.0
 julius==0.2.8
 kthread==0.2.3
 lazy-loader==0.5
@@ -49,10 +49,10 @@ markupsafe==3.0.3
 matchering==2.0.6
 ml-collections==1.1.0
 ml-dtypes==0.5.4
-mpmath==1.3.0
-msgpack==1.2.1
+mpmath==1.4.1
+msgpack==1.2.2
 multidict==6.7.1
-narwhals==2.22.1
+narwhals==2.25.0
 natsort==8.4.0
 networkx==3.6.1
 numba==0.65.1
@@ -68,11 +68,11 @@ onnxruntime==1.26.0
 # the numpy==2.3.2 pin below under strict resolvers (uv) on Python 3.14. 4.13.x
 # drops the upper bound (numpy>=2) and ships cp37-abi3 wheels usable on 3.14.
 opencv-python==4.13.0.92
-packaging==26.2
+packaging==26.3
 pandas==3.0.4
-patsy==1.0.2
-pillow==12.2.0
-platformdirs==4.10.0
+patsy==1.0.3
+pillow==12.3.0
+platformdirs==4.11.7
 pooch==1.9.0
 PoPE-pytorch==0.2.1
 propcache==0.5.2
@@ -80,7 +80,7 @@ protobuf==7.35.1
 psutil==7.2.2
 pycparser==3.0
 pydub==0.25.1
-pyglet==2.1.15
+pyglet==2.1.16
 pyperclip==1.11.0
 pyrubberband==0.4.0
 python-dateutil==2.9.0.post0
@@ -98,16 +98,16 @@ six==1.17.0
 soundfile==0.14.0
 soundstretch==1.2
 soxr==1.1.0
-statsmodels==0.14.6
+statsmodels==0.15.0
 sympy==1.14.0
 threadpoolctl==3.6.0
 torch==2.12.1
 torch-einops-utils==0.1.15
 torchmetrics==1.9.0
 torchvision==0.27.1
-tqdm==4.68.3
+tqdm==4.70.0
 triton==3.7.1
-typing-extensions==4.15.0
+typing-extensions==4.16.0
 urllib3==2.7.0
 wget==3.2
-yarl==1.24.2
+yarl==1.24.5
