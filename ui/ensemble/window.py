@@ -691,10 +691,15 @@ class EnsemblePage:
         was_syncing = self._syncing_preset
         self._syncing_preset = True
         try:
-            set_combo_values(
-                preset_row,
-                ensemble_preset_options(include_pair_consistent=plan is not None),
-            )
+            options = ensemble_preset_options(include_pair_consistent=plan is not None)
+            model = preset_row.get_model()
+            # Replacing the model during notify::selected queues another
+            # notification after _syncing_preset is cleared. Keep unchanged
+            # choices in place so selecting a preset cannot retrigger itself.
+            if not isinstance(model, Gtk.StringList) or tuple(
+                model.get_string(index) for index in range(model.get_n_items())
+            ) != tuple(options):
+                set_combo_values(preset_row, options)
             primary, secondary = parse_ensemble_type(self.settings.ensemble.type)
             set_combo_value(
                 preset_row,
