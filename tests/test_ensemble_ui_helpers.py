@@ -278,6 +278,82 @@ def _complement_route(role: StemRoleId, of_role: StemRoleId) -> StemRoute:
 
 
 class PairConsistentPlanAvailabilityTests(unittest.TestCase):
+    def test_real_preset_signals_settle_and_preserve_complement_state(self) -> None:
+        from unittest import mock
+
+        import gi
+
+        gi.require_version("Gtk", "4.0")
+        gi.require_version("Adw", "1")
+        from gi.repository import Adw, Gtk
+
+        from ui.ensemble.window import EnsemblePage
+        from ui.template import load_builder
+        from ui.widgets.rows import get_combo_value, set_combo_value
+
+        if not Gtk.init_check():
+            self.skipTest("GTK display unavailable")
+        Adw.init()
+        page = self._page()
+        page._loading = False
+        page._custom_algorithms = False
+        page._stem_pair_chosen = lambda: True
+        page._update_wav_ensemble_subtitle = mock.Mock()
+        page._update_ensemble_options_summary = mock.Mock()
+        page._update_algorithm_visibility = EnsemblePage._update_algorithm_visibility.__get__(page)
+        builder = load_builder("ensemble-page")
+        for name in ("preset_row", "derive_complement_row", "primary_algo_row", "secondary_algo_row"):
+            setattr(page, name, builder.get_object(name))
+        vocal = (_native_route(_VOCALS, "vocals"), _complement_route(_INST, _VOCALS))
+        page._dry_resolved_member_routes.return_value = (vocal, vocal)
+        page._refresh_ensemble_type_values()
+        notifications = 0
+
+        def changed(*args: object) -> None:
+            nonlocal notifications
+            notifications += 1
+            # Bound a regression without hanging the suite or raising inside GI.
+            if notifications <= 20:
+                page._on_preset_changed(*args)
+
+        page.preset_row.connect("notify::selected", changed)
+        page.derive_complement_row.connect("notify::active", page._on_derive_complement_changed)
+        for row in (page.primary_algo_row, page.secondary_algo_row):
+            row.connect("notify::selected", page._on_ensemble_type_changed)
+
+        set_combo_value(page.preset_row, PAIR_CONSISTENT_PRESET)
+        self.assertLess(notifications, 20, "Preset selection entered a notification loop")
+        self.assertEqual(get_combo_value(page.preset_row), PAIR_CONSISTENT_PRESET)
+        self.assertTrue(page.settings.ensemble.derive_complement_from_mix)
+        self.assertTrue(page.derive_complement_row.get_active())
+        self.assertFalse(page.secondary_algo_row.get_sensitive())
+
+        set_combo_value(page.preset_row, CUSTOM_PRESET)
+        self.assertTrue(page.primary_algo_row.get_visible())
+        self.assertFalse(page.secondary_algo_row.get_sensitive())
+        page.derive_complement_row.set_active(False)
+        self.assertFalse(page.settings.ensemble.derive_complement_from_mix)
+        self.assertTrue(page.secondary_algo_row.get_sensitive())
+        page.derive_complement_row.set_active(True)
+
+        page._dry_resolved_member_routes.return_value = None
+        page._apply_algorithm_row_presentation()
+        page._update_algo_sensitivity()
+        self.assertFalse(page.derive_complement_row.get_visible())
+        self.assertTrue(page.settings.ensemble.derive_complement_from_mix)
+        self.assertTrue(page.secondary_algo_row.get_sensitive())
+        page._dry_resolved_member_routes.return_value = (vocal, vocal)
+        page._apply_algorithm_row_presentation()
+        page._update_algo_sensitivity()
+        self.assertTrue(page.derive_complement_row.get_visible())
+        self.assertTrue(page.derive_complement_row.get_active())
+        self.assertFalse(page.secondary_algo_row.get_sensitive())
+
+        set_combo_value(page.preset_row, RECOMMENDED_PRESET)
+        self.assertFalse(page.settings.ensemble.derive_complement_from_mix)
+        self.assertFalse(page.derive_complement_row.get_active())
+        self.assertLess(notifications, 20)
+
     def _page(self) -> Any:
         from unittest import mock
 
