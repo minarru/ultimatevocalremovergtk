@@ -15,6 +15,7 @@ from __future__ import annotations
 import os
 import time
 import typing
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, Callable, List, Optional, Protocol
 
@@ -308,8 +309,9 @@ def run_models_on_files(
     models: list,
     *,
     hooks: FilePassHooks,
+    file_positions: Mapping[str, tuple[int, int]] | None = None,
 ) -> None:
-    """Decode each mix as its file starts, then run every model/chunk via ``hooks``."""
+    """Run every model/chunk; optional batch positions affect presentation only."""
     from engines.gpu_cache import clear_gpu_cache
 
     chunk_seconds, overlap_seconds = _long_file_chunk_settings(runner.settings)
@@ -341,8 +343,10 @@ def run_models_on_files(
         check_stopped(runner)
         runner._cached_sources_clear()
         base_text = ""
-        callbacks.console(file_heading(input_paths[file_num - 1], file_num, total_files))
-        progress_ctx["file_num"] = file_num
+        path = input_paths[file_num - 1]
+        display_num, display_total = (file_positions or {}).get(path, (file_num, total_files))
+        callbacks.console(file_heading(path, display_num, display_total))
+        progress_ctx["file_num"] = display_num
 
         if plan is None:
             audio_file = input_paths[file_num - 1]
@@ -377,7 +381,7 @@ def run_models_on_files(
                 runner,
                 callbacks,
                 progress_ctx,
-                total_files=total_files,
+                total_files=display_total,
                 units=units,
                 sink=progress_sink,
             ),

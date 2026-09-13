@@ -154,7 +154,7 @@ class RunLoopLazyDecodeTests(unittest.TestCase):
         run_sep.side_effect = _run_sep
 
         hooks = _Hooks()
-        callbacks, _console = _callbacks()
+        callbacks, console = _callbacks()
         runner = _runner(true_model_count=2)
         with tempfile.TemporaryDirectory() as tmp:
             path_a = os.path.join(tmp, "a.wav")
@@ -174,6 +174,8 @@ class RunLoopLazyDecodeTests(unittest.TestCase):
             )
 
         self.assertEqual(decode.call_count, 2)
+        self.assertIn("\nFile 1/2 — a.wav\n", console)
+        self.assertIn("\nFile 2/2 — b.wav\n", console)
         self.assertEqual(
             events,
             [

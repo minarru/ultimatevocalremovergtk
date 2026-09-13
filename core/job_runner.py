@@ -15,7 +15,7 @@ import copy
 import os
 import time
 import typing
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, List, Literal, Optional, Sequence
 
 from bundled.constants import (
@@ -445,10 +445,23 @@ class JobRunner:
             )
 
         if box["status"] == "success":
+            # CLI exports are still staged here. Check the same rebased directories
+            # used by runtime naming, before the frontend promotes them to final paths.
+            output_paths = []
+            for output in planned.outputs:
+                path = output.path
+                if self._run_output_root is not None:
+                    naming = rebase_output_naming(
+                        replace(planned.naming, export_directory=os.path.dirname(path)),
+                        self.settings.process.export_path,
+                        self._run_output_root,
+                    )
+                    path = os.path.join(naming.export_directory, os.path.basename(path))
+                output_paths.append((output, path))
             missing_required = tuple(
-                output.path
-                for output in planned.outputs
-                if not output.conditional and not os.path.isfile(output.path)
+                path
+                for output, path in output_paths
+                if not output.conditional and not os.path.isfile(path)
             )
             if missing_required:
                 return InputOutcome(
@@ -458,7 +471,7 @@ class JobRunner:
                     elapsed_s=time.perf_counter() - started,
                 )
             box["outputs"] = tuple(
-                output.path for output in planned.outputs if os.path.isfile(output.path)
+                path for _output, path in output_paths if os.path.isfile(path)
             )
 
         return InputOutcome(
@@ -469,6 +482,15 @@ class JobRunner:
             elapsed_s=time.perf_counter() - started,
             stopped=bool(box["stopped"]),
         )
+
+    def _planned_input_for_file(self, audio_file: str) -> PlannedInput | None:
+        """Resolve a planned input, including sample paths; a planned miss fails closed."""
+        if self._run_planned is None:
+            return None
+        target = os.path.abspath(audio_file)
+        if self._run_path_map is not None:
+            target = self._run_path_map.get(target, target)
+        return next(entry for entry in self._run_planned if os.path.abspath(entry.path) == target)
 
     def _naming_for_file(
         self,
@@ -485,13 +507,8 @@ class JobRunner:
         When ``_run_planned`` is set, every input must resolve to a planned
         entry (after sample-mode path remapping). A miss fails closed.
         """
-        if self._run_planned is not None:
-            target = os.path.abspath(audio_file)
-            if self._run_path_map is not None:
-                target = self._run_path_map.get(target, target)
-            item = next(
-                entry for entry in self._run_planned if os.path.abspath(entry.path) == target
-            )
+        item = self._planned_input_for_file(audio_file)
+        if item is not None:
             return rebase_output_naming(
                 item.naming,
                 self.settings.process.export_path,
@@ -821,12 +838,23 @@ class JobRunner:
             self._set_run_protect_identities(models)
             self._ensure_vram_for_job(callbacks)
             self.true_model_count = self._count_true_models(models)
+            # CLI workers receive one input at a time; retain its batch position
+            # for presentation without changing the worker's local progress budget.
+            file_positions = {}
+            for index, path in enumerate(paths, start=1):
+                planned = self._planned_input_for_file(path)
+                if planned is not None:
+                    file_positions[path] = (
+                        planned.naming.file_index or index,
+                        planned.naming.file_total,
+                    )
             run_models_on_files(
                 self,
                 paths,
                 callbacks,
                 models,
                 hooks=hooks,
+                file_positions=file_positions,
             )
             if mode == "ensemble" and ensemble_export_path is not None:
                 try:

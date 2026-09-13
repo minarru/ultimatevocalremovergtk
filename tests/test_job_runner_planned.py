@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import tempfile
 import unittest
+from pathlib import Path
 from typing import Any
 from unittest.mock import Mock, patch
 
@@ -30,6 +32,45 @@ def _planned(path: str, track_base: str, export_directory: str = "/out") -> Plan
 
 
 class JobRunnerPlannedTests(unittest.TestCase):
+    def test_staged_outputs_are_checked_in_stage_preserving_planned_names(self) -> None:
+        for command in ('separate', 'ensemble'):
+            with self.subTest(command=command), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                final, stage = root / 'final', root / 'stage'
+                settings = Settings.defaults()
+                settings.process.export_path = str(stage)
+                runner = JobRunner(settings)
+                runner._run_output_root = str(final)
+                runner._resolved_command = command
+                naming = OutputNamingContext(
+                    input_path='/in/song.wav', track='song', track_base='2-song Model',
+                    export_directory=str(final / 'Model' / 'song'), extension='wav',
+                    file_index=2, file_total=12,
+                )
+                destination = final / 'Model' / 'song' / '2-song Model (Vocals).wav'
+                planned = PlannedInput('/in/song.wav', naming, (PlannedOutput(str(destination), 'Vocals'),))
+                written = stage / 'Model' / 'song' / destination.name
+
+                def write_output(*_args: Any, runner: JobRunner = runner, stage: Path = stage, written: Path = written) -> None:
+                    actual = runner._naming_for_file('/in/song.wav', export_path=str(stage))
+                    self.assertEqual(actual.track_base, '2-song Model')
+                    self.assertEqual(Path(actual.export_directory), written.parent)
+                    written.parent.mkdir(parents=True, exist_ok=True)
+                    written.write_bytes(b'output')
+
+                with patch.object(runner, '_run_separation', side_effect=write_output):
+                    outcome = runner._run_one_planned(planned, JobCallbacks())
+                self.assertEqual(outcome.status, 'success', outcome.error)
+                self.assertEqual(outcome.outputs, (str(written),))
+                self.assertFalse(destination.exists())
+                self.assertEqual(planned.outputs[0].path, str(destination))
+                written.unlink()
+                destination.parent.mkdir(parents=True)
+                destination.write_bytes(b'old output must not satisfy staged validation')
+                with patch.object(runner, '_run_separation'):
+                    missing = runner._run_one_planned(planned, JobCallbacks())
+                self.assertEqual(missing.status, 'failed')
+
     def test_required_planned_output_must_exist_before_success(self) -> None:
         runner = JobRunner(Settings.defaults())
         planned = PlannedInput(
