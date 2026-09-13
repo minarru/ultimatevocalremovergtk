@@ -169,6 +169,8 @@ class AudioTools:
         if algorithm_part:
             name = f"{name} ({algorithm_part})"
         stem_save_path = os.path.join(f"{self.main_export_path}", f"{name}.wav")
+        from core.ensemble_blend import report_alignment
+
         spec_utils.ensemble_inputs(
             list(audio_inputs),
             algorithm,
@@ -179,6 +181,7 @@ class AudioTools:
             min_peak=self.amplification_threshold,
             on_progress=on_progress,
             on_phase=self._operation_phases(ProcessingPhase.COMBINING),
+            on_alignment=report_alignment,
         )
         self._save_format(stem_save_path)
 

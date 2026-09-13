@@ -163,6 +163,7 @@ class _EnsembleRunHooks:
         self.is_multi_stem = is_multi_stem
 
     def before_file(self, runner: Any, state: FileState) -> None:
+        self.ensemble.reset_member_identities()
         state.scratch["ensemble_stem_arrays"] = {}
         state.scratch["ensemble_stem_paths"] = {}
         state.scratch["ensemble_stems"] = {}
@@ -232,6 +233,7 @@ class _EnsembleRunHooks:
                 continue
             key = collected.group_key
             scratch["member_paths"][key] = path
+            self.ensemble.remember_member(str(getattr(model, "canonical_id", "") or ""), path=path)
             if os.path.isfile(path):
                 retained = scratch["ensemble_stem_paths"].setdefault(key, [])
                 if path not in retained:
@@ -242,6 +244,7 @@ class _EnsembleRunHooks:
             if collected is None:
                 return
             scratch["ensemble_stem_arrays"].setdefault(collected.group_key, []).append(value)
+            self.ensemble.remember_member(str(getattr(model, "canonical_id", "") or ""), array=value)
 
         if chunked:
             for stem_tag, arr in stems.items():
@@ -262,6 +265,7 @@ class _EnsembleRunHooks:
             for collected, parts in scratch["member_stem_parts"].items():
                 concat = concat_stems(parts, overlap_samples=state.ov_samples)
                 scratch["ensemble_stem_arrays"].setdefault(collected.group_key, []).append(concat)
+                self.ensemble.remember_member(str(getattr(model, "canonical_id", "") or ""), array=concat)
                 salvage_arrays[collected.group_key] = concat
             if runner.settings.ensemble.save_all_outputs and salvage_arrays:
                 state.callbacks.report_phase(ProcessingPhase.SAVING)

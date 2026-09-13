@@ -127,6 +127,12 @@ def validate_setting_value(settings: Settings, path: str, value: Any) -> None:
     section_name, field_name = validate_setting_path(
         settings, path, allow_containers=True
     )
+    if section_name == "ensemble" and field_name in {
+        "member_weights", "smoothing", "soft_strength", "hybrid_balance",
+    }:
+        from core.ensemble_blend import validate_blend_value
+
+        validate_blend_value(field_name, value)
     current_field = getattr(getattr(settings, section_name), field_name)
     if isinstance(current_field, (list, dict)):
         if _container_mismatch(current_field, value):
@@ -135,13 +141,9 @@ def validate_setting_value(settings: Settings, path: str, value: Any) -> None:
             )
         return
     if path == "ensemble.type":
-        from bundled.constants import ENSEMBLE_ALGORITHMS
+        from core.ensemble_algorithms import parse_ensemble_type
 
-        atoms = [part.strip() for part in str(value).split("/")]
-        if not atoms or any(atom not in ENSEMBLE_ALGORITHMS for atom in atoms):
-            raise ValueError(
-                f"invalid value for {path}: {value!r}; expected one or two known algorithms"
-            )
+        parse_ensemble_type(str(value), strict=True)
         return
     if path == "process.stem_focus":
         from core.stems import normalize_stem_focus

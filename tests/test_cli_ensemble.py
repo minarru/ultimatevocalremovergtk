@@ -8,6 +8,7 @@ from contextlib import redirect_stdout
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from bundled.constants import MAX_MAG_AVG_PHASE
 from cli.job import ResolvedJob
 from cli.main import UsageError, build_parser, main
 from cli.profiles import LoadedProfile
@@ -117,7 +118,22 @@ class EnsembleParserTests(unittest.TestCase):
     def test_explicit_focus_overrides_saved_ensemble_focus(self) -> None:
         self._assert_explicit_stems_override_saved_selection("vocals", "vocal.vocals")
 
-    def _assert_explicit_stems_override_saved_selection(self, stems: str, focus: str) -> None:
+    def test_phase_algorithm_survives_job_resolution_as_one_atom(self) -> None:
+        self._assert_explicit_stems_override_saved_selection(
+            "both",
+            "",
+            algorithm=MAX_MAG_AVG_PHASE,
+            expected_algorithm=f"{MAX_MAG_AVG_PHASE}/{MAX_MAG_AVG_PHASE}",
+        )
+
+    def _assert_explicit_stems_override_saved_selection(
+        self,
+        stems: str,
+        focus: str,
+        *,
+        algorithm: str | None = None,
+        expected_algorithm: str | None = None,
+    ) -> None:
         from cli.job import resolve_ensemble_job
         from core.model_identity import ModelArtifacts, ModelRecord
 
@@ -154,7 +170,7 @@ class EnsembleParserTests(unittest.TestCase):
             stems=stems,
             long_chunk_seconds=None,
             long_chunk_overlap=None,
-            algorithm=None,
+            algorithm=algorithm,
             wav_ensemble=None,
             save_all_outputs=None,
             device=None,
@@ -194,6 +210,8 @@ class EnsembleParserTests(unittest.TestCase):
 
         self.assertEqual(job.settings.ensemble.stems_selected, [])
         self.assertEqual(job.settings.process.stem_focus, focus)
+        if expected_algorithm is not None:
+            self.assertEqual(job.settings.ensemble.type, expected_algorithm)
 
     def test_saved_preset_reset_warning_survives_cli_resolution_and_logs_safely(self) -> None:
         from cli.job import resolve_ensemble_job

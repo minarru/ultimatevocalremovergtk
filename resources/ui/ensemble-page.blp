@@ -85,6 +85,13 @@ Adw.PreferencesGroup combination_group {
   Adw.ComboRow secondary_algo_row {
     title: "Secondary algorithm";
   }
+  Adw.ActionRow blend_options_row {
+    title: "Blend options";
+    subtitle: "Model weights, smoothing, and alignment";
+    activatable: true;
+    [suffix]
+    Gtk.Image { icon-name: "go-next-symbolic"; }
+  }
 }
 
 Adw.PreferencesGroup stems_group {

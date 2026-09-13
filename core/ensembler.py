@@ -19,8 +19,6 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import List, Sequence
 
-from bundled.constants import MAX_SPEC
-
 from . import paths
 from .audio_io import resolve_wav_type_set
 from .debug_log import debug
@@ -213,6 +211,33 @@ class Ensembler:
         self.save_format = settings.process.save_format.value
         os.makedirs(self.ensemble_folder_name, exist_ok=True)
 
+    def reset_member_identities(self) -> None:
+        self._array_member_ids: dict[int, str] = {}
+        self._path_member_ids: dict[str, str] = {}
+
+    def remember_member(self, model_id: str, *, array: typing.Any = None, path: str = "") -> None:
+        if not hasattr(self, "_array_member_ids"):
+            self.reset_member_identities()
+        if array is not None:
+            self._array_member_ids[id(array)] = model_id
+        if path:
+            self._path_member_ids[path] = model_id
+
+    def _blend_options(self, inputs: Sequence[typing.Any], stem: CollectedStem, *, arrays: bool) -> dict:
+        from core.ensemble_blend import blend_kwargs
+
+        identities = getattr(self, "_array_member_ids" if arrays else "_path_member_ids", {})
+        member_ids = [identities.get(id(value) if arrays else value, "") for value in inputs]
+        options = blend_kwargs(self.settings, member_ids, str(stem.role))
+        from core.model_identity import parse_stored_model_id
+
+        if self.settings.ensemble.member_weights:
+            for value in member_ids:
+                parse_stored_model_id(value)
+        if sum(weight > 0 for weight in options["weights"]) < 2:
+            raise ValueError(f"Ensemble output {stem.filename_tag!r} requires two positive-weight members")
+        return options
+
     def _algorithm_for_stem(
         self,
         stem: CollectedStem,
@@ -223,9 +248,9 @@ class Ensembler:
         if algorithm is not None:
             return algorithm
         if is_multi_stem:
-            # Single-token algorithm (no slash); never use an empty secondary partition.
-            raw_type = self.settings.ensemble.type
-            return raw_type.partition("/")[0].strip() or MAX_SPEC
+            from core.ensemble_algorithms import parse_ensemble_type
+
+            return parse_ensemble_type(self.settings.ensemble.type)[0]
         return (
             self.primary_algorithm
             if self.pair_stems and stem.role == self.pair_stems[0].role
@@ -283,6 +308,7 @@ class Ensembler:
                 chosen,
                 is_wave=self.is_wav_ensemble,
                 is_array=True,
+                **self._blend_options(array_inputs, stem, arrays=True),
             )
             return wave
         if len(stem_outputs) > 1:
@@ -291,6 +317,7 @@ class Ensembler:
                 chosen,
                 is_wave=self.is_wav_ensemble,
                 is_array=False,
+                **self._blend_options(stem_outputs, stem, arrays=False),
             )
             return wave
         raise RuntimeError(

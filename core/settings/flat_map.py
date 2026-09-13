@@ -124,6 +124,11 @@ FLAT_TO_PATH: dict[str, tuple[str, str]] = {
     "is_wav_ensemble": ("ensemble", "wav_ensemble"),
     "is_cleanup_ensemble_temps": ("ensemble", "cleanup_temps"),
     "is_derive_complement_from_mix": ("ensemble", "derive_complement_from_mix"),
+    "ensemble_member_weights": ("ensemble", "member_weights"),
+    "ensemble_smoothing": ("ensemble", "smoothing"),
+    "ensemble_soft_strength": ("ensemble", "soft_strength"),
+    "ensemble_hybrid_balance": ("ensemble", "hybrid_balance"),
+    "ensemble_alignment_correction": ("ensemble", "alignment_correction"),
     # audio tools
     "chosen_audio_tool": ("audio_tools", "chosen_audio_tool"),
     "choose_algorithm": ("audio_tools", "choose_algorithm"),

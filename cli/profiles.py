@@ -143,7 +143,9 @@ def _flatten_settings(settings: Settings) -> dict[str, Any]:
             continue
         for field_name, value in values.items():
             path = f"{section}.{field_name}"
-            if path not in IDENTITY_SETTING_PATHS and not isinstance(value, dict):
+            if path not in IDENTITY_SETTING_PATHS and (
+                not isinstance(value, dict) or path == "ensemble.member_weights"
+            ):
                 flat[path] = value
     return flat
 

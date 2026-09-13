@@ -188,13 +188,17 @@ def coerce_enum(enum_type: type[E], value: Any, default: E) -> E:
 
 def coerce_ensemble_type(value: Any) -> str:
     """Normalize ``ensemble.type``; atoms must be ensemble algorithms."""
-    from core.ensemble_algorithms import format_ensemble_type, parse_ensemble_type
+    from core.ensemble_algorithms import (
+        format_ensemble_type,
+        is_single_token_ensemble_type,
+        parse_ensemble_type,
+    )
 
     text = "" if value is None else str(value).strip()
     if not text:
         text = MAX_MIN
     primary, secondary = parse_ensemble_type(text)
-    if "/" not in text:
+    if is_single_token_ensemble_type(text) or "/" not in text:
         return primary
     return format_ensemble_type(primary, secondary)
 
@@ -359,6 +363,14 @@ _ENUM_FIELDS: dict[tuple[str, str], tuple[type[Enum], Enum]] = {
 def coerce_field(section_name: str, field: str, value: Any) -> Any:
     """Coerce one nested setting value through the canonical field rules."""
     path = (section_name, field)
+    if section_name == "ensemble" and field in {
+        "member_weights", "smoothing", "soft_strength", "hybrid_balance",
+    }:
+        from core.ensemble_blend import validate_blend_value
+
+        return validate_blend_value(field, value)
+    if path == ("ensemble", "alignment_correction"):
+        return as_bool(value)
     if path in _BOOL_FIELDS:
         return as_bool(value)
     if path in _INT_FIELDS:

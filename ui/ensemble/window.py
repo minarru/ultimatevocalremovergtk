@@ -311,6 +311,8 @@ class EnsemblePage:
         set_tooltip(self.member_options_row, ENSEMBLE_MEMBER_MODEL_OPTIONS_HINT)
         self.member_options_row.connect("activated", self._open_member_model_options)
 
+        self._layout_object("blend_options_row", Adw.ActionRow).connect("activated", self._open_blend_options)
+
         self.preset_row = configure_combo_row(
             self._layout_object("preset_row", Adw.ComboRow),
             list(ensemble_preset_options(include_pair_consistent=False)),
@@ -366,6 +368,27 @@ class EnsemblePage:
 
         self.models_dialog = object_from_builder(builder, "dialog", Adw.Dialog)
         self.models_dialog.connect("closed", self._on_models_dialog_closed)
+
+    def _open_blend_options(self, *_args: typing.Any) -> None:
+        from core.model_display import format_tag_title
+        from core.stems import run_export_routes
+
+        from .blend_dialog import show_blend_dialog
+
+        members = []
+        for model_id in self._effective_selected_models():
+            model = self._resolve_ensemble_member_model(model_id)
+            if model is not None:
+                members.append((model_id, format_tag_title(model_id, self.context.repo), run_export_routes(model)))
+
+        def apply(values: dict[str, typing.Any]) -> None:
+            if not self._active:
+                return
+            for name, value in values.items():
+                setattr(self.settings.ensemble, name, value)
+            self._update_ensemble_options_summary()
+
+        show_blend_dialog(self.window, self.settings, members, apply)
 
     def _build_stems_group(self) -> Adw.PreferencesGroup:
         group = self._layout_object("stems_group", Adw.PreferencesGroup)
@@ -1026,6 +1049,7 @@ class EnsemblePage:
             self._persist_pair_stem_selection()
         try:
             canonical_name = canonical_saved_ensemble_name(name)
+            from core.ensemble_blend import saved_blend_options
             from core.ensemble_service import EnsembleService
 
             EnsembleService(self.context.repo).create(
@@ -1037,6 +1061,7 @@ class EnsemblePage:
                 save_all_outputs=self.settings.ensemble.save_all_outputs,
                 derive_complement_from_mix=self.settings.ensemble.derive_complement_from_mix,
                 replace=True,
+                blend_options=saved_blend_options(self.settings),
                 stems_selected=self.settings.ensemble.stems_selected
                 if self._ensemble_is_multi_or_four()
                 else (),

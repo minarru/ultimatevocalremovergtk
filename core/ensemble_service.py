@@ -6,7 +6,7 @@ import json
 import os
 import re
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, List, Optional, Sequence
 
 from . import paths
@@ -70,9 +70,15 @@ def save_ensemble(
     derive_complement_from_mix: bool = False,
     stems_selected: Sequence[str] = (),
     stem_focus: str = "",
+    blend_options: dict[str, Any] | None = None,
 ) -> str:
     """Persist an ensemble with an exact current semantic pair/mode id."""
+    from core.ensemble_blend import restore_blend_options
+
     pair_id = normalize_stem_pair_id(ensemble_main_stem)
+    validated_blend_options = (
+        restore_blend_options(blend_options, strict=True) if blend_options is not None else {}
+    )
     saved_data = {
         "schema_version": 2,
         "ensemble_main_stem": pair_id,
@@ -83,6 +89,7 @@ def save_ensemble(
         "derive_complement_from_mix": bool(derive_complement_from_mix),
         "stems_selected": list(stems_selected),
         "stem_focus": stem_focus,
+        "blend_options": validated_blend_options,
     }
     path = _saved_ensemble_path(name)
     cache_dir = paths.ENSEMBLE_CACHE_DIR
@@ -189,6 +196,7 @@ class ResolvedEnsemblePreset:
     validation_warnings: tuple[str, ...] = ()
     stems_selected: tuple[str, ...] = ()
     stem_focus: str = ""
+    blend_options: dict[str, Any] = field(default_factory=dict)
 
 
 class EnsembleService:
@@ -256,6 +264,9 @@ class EnsembleService:
         # Preserve unresolved references for the GUI's missing-model download
         # offer; persistence validation never rewrites stored text.
         members.extend(unresolved)
+        from core.ensemble_blend import restore_blend_options
+
+        blend_options = restore_blend_options(data.get("blend_options"), validation_warnings)
         return ResolvedEnsemblePreset(
             preset_id,
             display,
@@ -271,6 +282,7 @@ class EnsembleService:
             tuple(validation_warnings),
             tuple(data.get("stems_selected") or ()),
             str(data.get("stem_focus") or ""),
+            blend_options,
         )
 
     def apply(self, settings: Any, name: str) -> ResolvedEnsemblePreset:
@@ -285,6 +297,8 @@ class EnsembleService:
         settings.ensemble.derive_complement_from_mix = preset.derive_complement_from_mix
         settings.ensemble.stems_selected = list(preset.stems_selected)
         settings.process.stem_focus = preset.stem_focus
+        for name, value in preset.blend_options.items():
+            setattr(settings.ensemble, name, value)
         return preset
 
     def create(
@@ -300,6 +314,7 @@ class EnsembleService:
         replace: bool = False,
         stems_selected: Sequence[str] = (),
         stem_focus: str = "",
+        blend_options: dict[str, Any] | None = None,
     ) -> ResolvedEnsemblePreset:
         if load_ensemble(name) is not None and not replace:
             raise ValueError(f"ensemble {name!r} already exists; pass --replace")
@@ -324,6 +339,7 @@ class EnsembleService:
             derive_complement_from_mix=derive_complement_from_mix,
             stems_selected=stems_selected,
             stem_focus=stem_focus,
+            blend_options=blend_options,
         )
         return self.resolve(name)
 

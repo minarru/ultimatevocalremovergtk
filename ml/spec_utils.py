@@ -592,91 +592,8 @@ def mix_complement(
         return invert_stem(mix, shaped)
     return -shaped.T + mix.T
 
-def _pad_ensemble_members(inputs: Sequence[np.ndarray], is_wavs: bool = False) -> list[np.ndarray]:
-    """Pad members to the longest time axis (no truncation)."""
-    if not inputs:
-        raise ValueError("ensembling requires at least one input")
-    if len(inputs) == 1:
-        return list(inputs)
-
-    if is_wavs:
-        max_t = max(x.shape[-1] for x in inputs)
-        padded = []
-        for x in inputs:
-            if x.shape[-1] < max_t:
-                pad_width = [(0, 0)] * x.ndim
-                pad_width[-1] = (0, max_t - x.shape[-1])
-                x = np.pad(x, pad_width, mode="constant")
-            padded.append(x)
-        return padded
-
-    max_t = max(x.shape[2] for x in inputs)
-    padded = []
-    for x in inputs:
-        if x.shape[2] < max_t:
-            x = np.pad(x, ((0, 0), (0, 0), (0, max_t - x.shape[2])), mode="constant")
-        padded.append(x)
-    return padded
-
-
-def _softmax_weights(logits: np.ndarray, axis: int = 0) -> np.ndarray:
-    shifted = logits - np.max(logits, axis=axis, keepdims=True)
-    weights = np.exp(shifted)
-    denom = np.sum(weights, axis=axis, keepdims=True)
-    denom = np.where(denom == 0, 1.0, denom)
-    return weights / denom
-
-
-def ensembling(a: str, inputs: Sequence[np.ndarray], is_wavs: bool = False) -> np.ndarray:
-    """Combine stacked spectrograms (or waves) with the chosen algorithm atom."""
-    members = _pad_ensemble_members(inputs, is_wavs=is_wavs)
-    if len(members) == 1:
-        return members[0]
-
-    stack = np.stack(members, axis=0)
-    mags = np.abs(stack)
-
-    if a == MIN_SPEC:
-        idx = np.argmin(mags, axis=0)
-        return np.take_along_axis(stack, idx[None, ...], axis=0)[0]
-
-    if a == MAX_SPEC:
-        idx = np.argmax(mags, axis=0)
-        return np.take_along_axis(stack, idx[None, ...], axis=0)[0]
-
-    if a == MEDIAN_SPEC:
-        return np.median(np.real(stack), axis=0) + 1j * np.median(np.imag(stack), axis=0)
-
-    if a == SOFT_SPEC:
-        if stack.shape[0] < 2:
-            return stack[0]
-        mean_mag = np.mean(mags, axis=0, keepdims=True)
-        var = np.var(mags, axis=0, keepdims=True)
-        # Agreement: members near the mean get higher weight; high bin variance softens contrast.
-        logits = -((mags - mean_mag) ** 2) / (var + 1e-8)
-        weights = _softmax_weights(logits, axis=0)
-        return np.sum(weights * stack, axis=0)
-
-    if a == MAX_MAG_AVG_PHASE:
-        max_mag = np.max(mags, axis=0)
-        eps = 1e-8
-        unit = stack / (mags + eps)
-        avg_unit = np.mean(unit, axis=0)
-        return max_mag * np.exp(1j * np.angle(avg_unit))
-
-    if a == HYBRID_SPEC:
-        max_idx = np.argmax(mags, axis=0)
-        min_idx = np.argmin(mags, axis=0)
-        max_spec = np.take_along_axis(stack, max_idx[None, ...], axis=0)[0]
-        min_spec = np.take_along_axis(stack, min_idx[None, ...], axis=0)[0]
-        return 0.5 * (max_spec + min_spec)
-
-    # Unknown algorithm: fall back to Max Spec behaviour.
-    idx = np.argmax(mags, axis=0)
-    return np.take_along_axis(stack, idx[None, ...], axis=0)[0]
-
-
 def ensemble_for_align(waves: Sequence[np.ndarray]) -> np.ndarray:
+    from .ensemble_spectral import combine_spectra
     
     specs = []
     
@@ -684,7 +601,7 @@ def ensemble_for_align(waves: Sequence[np.ndarray]) -> np.ndarray:
         spec = wave_to_spectrogram_no_mp(wav.T)
         specs.append(spec)
         
-    wav_aligned = spectrogram_to_wave_no_mp(ensembling(MIN_SPEC, specs)).T
+    wav_aligned = spectrogram_to_wave_no_mp(combine_spectra(MIN_SPEC, specs)).T
     wav_aligned = match_array_shapes(wav_aligned, waves[1], is_swap=True)    
    
     return wav_aligned
@@ -713,47 +630,88 @@ def combine_ensemble_waveforms(
     is_wave: bool = False,
     is_array: bool = False,
     on_progress: Callable[[float], None] | None = None,
+    *,
+    weights: Sequence[float] | None = None,
+    smoothing: float = 0.0,
+    soft_strength: float = 1.0,
+    hybrid_balance: float = 0.5,
+    align: bool = False,
+    alignment_diagnostics: bool = True,
+    on_alignment: Callable[[Sequence[Any]], None] | None = None,
 ) -> tuple[np.ndarray, int]:
-    """Combine ensemble members to a channel-first ``(2, T)`` wave and samplerate."""
+    """Combine members with valid-length voting and optional conservative alignment."""
+    from .ensemble_waveforms import combine_waves
 
-    def _tick(fraction: float) -> None:
-        if on_progress is not None:
-            on_progress(max(0.0, min(1.0, float(fraction))))
+    if not audio_input:
+        raise ValueError("Ensembling requires at least one member")
+    member_weights = np.ones(len(audio_input)) if weights is None else np.asarray(weights, dtype=float)
+    if member_weights.shape != (len(audio_input),) or not np.all(np.isfinite(member_weights)):
+        raise ValueError("Provide one finite weight per ensemble member")
+    if np.any(member_weights < 0) or not np.any(member_weights > 0):
+        raise ValueError("Ensemble weights must be nonnegative with a positive total")
+    active = member_weights > 0
+    wavs_, samplerate = _load_ensemble_waves(
+        [item for item, keep in zip(audio_input, active, strict=True) if keep], is_array=is_array,
+    )
+    wavs_ = [np.stack((wave, wave)) if wave.ndim == 1 else wave for wave in wavs_]
+    member_weights = member_weights[active]
+    # Normalize globally to avoid overflow; local valid support is renormalized below.
+    member_weights = member_weights / member_weights.max()
+    original_length = max(wave.shape[-1] for wave in wavs_)
+    if original_length == 0:
+        return np.zeros_like(wavs_[0]), int(samplerate)
+    starts = [0] * len(wavs_)
+    if align or alignment_diagnostics:
+        from dataclasses import replace
 
-    if algorithm == AVERAGE:
-        _tick(0.4)
-        output: np.ndarray = average_audio(audio_input, is_array=is_array)
-        samplerate = 44100
-        _tick(0.9)
-    elif algorithm == CHUNK_MIN:
-        wavs_, samplerate = _load_ensemble_waves(audio_input, is_array=is_array)
-        _tick(0.5)
-        padded = _pad_ensemble_members(wavs_, is_wavs=True)
-        # ensemble_wav splits along axis 0 (time); use time-major (T, C).
-        time_major = [w.T for w in padded]
-        chunked = ensemble_wav(time_major)
-        if chunked.ndim == 1:
-            output = np.asfortranarray([chunked, chunked])
-        else:
-            output = chunked.T
-        _tick(0.9)
+        from .ensemble_alignment import align_ensemble_members
+
+        wavs_, diagnostics = align_ensemble_members(wavs_, samplerate, correct=align)
+        starts = [item.valid_start_samples for item in diagnostics]
+        active_indices = np.flatnonzero(active).tolist()
+        diagnostics = [replace(item, member_index=active_indices[item.member_index]) for item in diagnostics]
+        if on_alignment is not None:
+            on_alignment(diagnostics)
+    if on_progress is not None:
+        on_progress(0.5)
+    if algorithm == CHUNK_MIN:
+        from .ensemble_chunk_min import combine_chunk_min
+
+        output = combine_chunk_min(wavs_, samplerate, valid_starts=starts)
+    elif algorithm == AVERAGE or (is_wave and algorithm not in _STFT_ONLY_ALGORITHMS):
+        output = combine_waves(wavs_, algorithm, member_weights.tolist(), starts)
     else:
-        wavs_, samplerate = _load_ensemble_waves(audio_input, is_array=is_array)
-        _tick(0.5)
-        wave_shapes = [w.shape[1] for w in wavs_]
-        target_shape = wavs_[wave_shapes.index(max(wave_shapes))].shape
+        from .ensemble_spectral import combine_spectra
 
-        # STFT-only atoms always use the spectrogram path; Max/Min honour is_wave.
-        use_wave = bool(is_wave) and algorithm not in _STFT_ONLY_ALGORITHMS
-        if use_wave:
-            output = ensembling(algorithm, wavs_, is_wavs=True)
-        else:
-            specs = [wave_to_spectrogram_no_mp(wave) for wave in wavs_]
-            output = spectrogram_to_wave_no_mp(ensembling(algorithm, specs))
-
-        output = to_shape(output, target_shape)
-        _tick(0.9)
-
+        # Only actual frame centers vote. Alignment-created prefixes are excluded.
+        specs = []
+        valid_starts = []
+        for wave, start in zip(wavs_, starts, strict=True):
+            size = wave.shape[-1]
+            if size == 0:
+                spec = np.empty((wave.shape[0], 1025, 0), dtype=np.complex64)
+            else:
+                spec = wave_to_spectrogram_no_mp(wave)
+                # Frames overlapping a missing tail contain artificial zeros.
+                if size < original_length:
+                    spec = spec[..., :max(0, (size - 1024) // 1024 + 1)]
+            specs.append(spec)
+            first_center = start + 1024 if start else 0
+            valid_starts.append(min(spec.shape[-1], (first_center + 1023) // 1024))
+        present = [i for i, spec in enumerate(specs) if spec.shape[-1] > 0]
+        combined = combine_spectra(
+            algorithm, [specs[i] for i in present],
+            weights=[float(member_weights[i]) for i in present],
+            valid_starts=[valid_starts[i] for i in present],
+            smoothing=smoothing, soft_strength=soft_strength, hybrid_balance=hybrid_balance,
+        )
+        output = librosa.istft(combined, n_fft=2048, hop_length=1024, length=original_length)
+    # Keep the input timeline, including after optional offset correction.
+    output = output[:, :original_length]
+    if output.shape[-1] < original_length:
+        output = np.pad(output, ((0, 0), (0, original_length - output.shape[-1])))
+    if on_progress is not None:
+        on_progress(0.9)
     return output, int(samplerate)
 
 
@@ -768,6 +726,13 @@ def ensemble_inputs(
     min_peak: float = 0.0,
     on_progress: Callable[[float], None] | None = None,
     on_phase: AudioPhaseFn | None = None,
+    *,
+    weights: Sequence[float] | None = None,
+    smoothing: float = 0.0,
+    soft_strength: float = 1.0,
+    hybrid_balance: float = 0.5,
+    align: bool = False,
+    on_alignment: Callable[[Sequence[Any]], None] | None = None,
 ) -> None:
 
     def _tick(fraction: float) -> None:
@@ -782,6 +747,8 @@ def ensemble_inputs(
         is_wave=is_wave,
         is_array=is_array,
         on_progress=on_progress,
+        weights=weights, smoothing=smoothing, soft_strength=soft_strength,
+        hybrid_balance=hybrid_balance, align=align, on_alignment=on_alignment,
     )
     if on_phase is not None:
         on_phase("saving")
@@ -980,38 +947,6 @@ def augment_audio(
     )
     if save_format is not None:
         save_format(export_path)
-    
-def average_audio(audio: Sequence[str | np.ndarray], is_array: bool = False) -> np.ndarray:
-    
-    waves = []
-    wave_shapes = []
-    final_waves = []
-
-    for i in range(len(audio)):
-        if is_array:
-            wave = np.asarray(audio[i])
-            if wave.ndim == 1:
-                wave = np.asarray([wave, wave])
-            elif wave.shape[0] != 2 and wave.shape[-1] == 2:
-                wave = wave.T
-        else:
-            wave = librosa.load(str(audio[i]), sr=44100, mono=False)[0]
-        waves.append(wave)
-        wave_shapes.append(wave.shape[1])
-
-    wave_shapes_index = wave_shapes.index(max(wave_shapes))
-    target_shape = waves[wave_shapes_index]
-    waves.pop(wave_shapes_index)
-    final_waves.append(target_shape)
-
-    for n_array in waves:
-        wav_target = to_shape(n_array, target_shape.shape)
-        final_waves.append(wav_target)
-
-    waves = sum(final_waves)
-    waves = waves / len(audio)
-
-    return cast(np.ndarray, waves)
     
 def average_dual_sources(wav_1: np.ndarray, wav_2: np.ndarray, value: float) -> np.ndarray:
     

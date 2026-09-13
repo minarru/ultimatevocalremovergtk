@@ -158,6 +158,11 @@ def default_ensemble() -> dict:
         "wav_ensemble": False,
         "cleanup_temps": True,
         "derive_complement_from_mix": False,
+        "member_weights": {},
+        "smoothing": 0.0,
+        "soft_strength": 1.0,
+        "hybrid_balance": 0.5,
+        "alignment_correction": False,
     }
 
 

@@ -21,14 +21,14 @@ _DEFAULT_PRIMARY = MAX_SPEC
 _DEFAULT_SECONDARY = MIN_SPEC
 
 ENSEMBLE_ALGORITHM_BLURBS: Dict[str, str] = {
-    MAX_SPEC: "Strongest magnitude per bin (fuller; can add artifacts)",
-    MIN_SPEC: "Weakest magnitude per bin (cleaner; can sound muddy)",
-    AUDIO_AVERAGE: "Mean of all member waveforms",
-    MEDIAN_SPEC: "Per-bin median — robust with 3+ models",
-    SOFT_SPEC: "Agreement-weighted blend (automatic weights)",
-    MAX_MAG_AVG_PHASE: "Max magnitudes with averaged phase",
-    HYBRID_SPEC: "Average of Max Spec and Min Spec",
-    CHUNK_MIN: "Time-domain: quietest chunk from any member",
+    MAX_SPEC: "Strongest bins with fixed time/frequency smoothing",
+    MIN_SPEC: "Weakest bins for cleanness; optional smoothing preserves more detail",
+    AUDIO_AVERAGE: "Weighted mean of member waveforms",
+    MEDIAN_SPEC: "Median of real and imaginary components — robust with 3+ models",
+    SOFT_SPEC: "Mean/variance magnitude-agreement blend with adjustable strength",
+    MAX_MAG_AVG_PHASE: "Max magnitude with circular average phase",
+    HYBRID_SPEC: "Adjustable blend of smoothed maximum and minimum selections",
+    CHUNK_MIN: "1-second windows; switches only for a 10% quieter member, with crossfades",
 }
 
 CUSTOM_PRESET = "Custom"
@@ -81,26 +81,48 @@ def parse_ensemble_type(
     value: Optional[str],
     *,
     algorithms: Sequence[str] = ENSEMBLE_ALGORITHMS,
+    strict: bool = False,
 ) -> Tuple[str, str]:
     """Parse ``ensemble_type`` into ``(primary, secondary)`` atoms.
 
-    Accepts legacy pair strings and single-token 4-stem values. Unknown atoms
-    fall back to Max Spec / Min Spec.
+    Known atoms are matched before pair separators because an atom may itself
+    contain ``/``. Pair strings may contain spaces around their separator.
+    Unknown atoms fall back to Max Spec / Min Spec unless ``strict`` is true.
     """
     allowed = set(algorithms)
-    text = (value or "").strip() or MAX_MIN
-    if "/" in text:
-        primary, _sep, secondary = text.partition("/")
-        primary = primary.strip()
-        secondary = secondary.strip()
-    else:
-        primary = text
-        secondary = text
-    if primary not in allowed:
-        primary = _DEFAULT_PRIMARY
-    if secondary not in allowed:
-        secondary = _DEFAULT_SECONDARY
-    return primary, secondary
+    supplied = (value or "").strip()
+    if strict and not supplied:
+        raise ValueError("ensemble algorithm must be a known atom or pair")
+    text = supplied or MAX_MIN
+    if text in allowed:
+        return text, text
+
+    split_candidates: list[tuple[int, str, str]] = []
+    for index, character in enumerate(text):
+        if character != "/":
+            continue
+        primary = text[:index].strip()
+        secondary = text[index + 1 :].strip()
+        score = int(primary in allowed) + int(secondary in allowed)
+        split_candidates.append((score, primary, secondary))
+
+    exact_pairs = [candidate for candidate in split_candidates if candidate[0] == 2]
+    if len(exact_pairs) == 1:
+        _score, primary, secondary = exact_pairs[0]
+        return primary, secondary
+    if strict:
+        raise ValueError(f"unknown or ambiguous ensemble algorithm: {text!r}")
+    if exact_pairs:
+        _score, primary, secondary = exact_pairs[0]
+        return primary, secondary
+
+    if split_candidates:
+        _score, primary, secondary = max(split_candidates, key=lambda candidate: candidate[0])
+        return (
+            primary if primary in allowed else _DEFAULT_PRIMARY,
+            secondary if secondary in allowed else _DEFAULT_SECONDARY,
+        )
+    return _DEFAULT_PRIMARY, _DEFAULT_SECONDARY
 
 
 def legacy_pair_values() -> Tuple[str, ...]:
@@ -123,7 +145,7 @@ def legacy_pair_values() -> Tuple[str, ...]:
 def is_single_token_ensemble_type(value: Optional[str]) -> bool:
     """True for 4-stem / multi-stem styles that store one algorithm atom."""
     text = (value or "").strip()
-    return bool(text) and "/" not in text
+    return text in set(ENSEMBLE_ALGORITHMS)
 
 
 def normalize_ensemble_algorithm(

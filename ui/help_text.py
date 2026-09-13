@@ -126,14 +126,14 @@ ENSEMBLE_TYPE_HELP = """How member outputs are combined
 
 Dual-stem ensembles use a Primary and a Secondary algorithm (saved as Primary/Secondary). 4-stem and multi-stem ensembles use one algorithm for every stem
 
-• Max Spec — strongest magnitude per bin (fuller; can add artifacts)
-• Min Spec — weakest magnitude per bin (cleaner; can sound muddy)
-• Average — mean of member waveforms
-• Median Spec — per-bin median of complex spectrograms (robust with 3+ models)
-• Soft Spec — softmax blend with automatic magnitude-agreement weights
-• Max Mag / Avg Phase — Max Spec magnitudes with a stable average phase
-• Hybrid Spec — average of Max Spec and Min Spec
-• Chunk Min — time-domain: quietest chunk from any member
+• Max Spec — strongest bins with fixed time/frequency smoothing
+• Min Spec — weakest bins for cleanness; optional smoothing may preserve detail while allowing more bleed
+• Average — weighted mean of member waveforms
+• Median Spec — median of real and imaginary components (robust with 3+ models)
+• Soft Spec — mean/variance magnitude agreement with adjustable strength and model weights
+• Max Mag / Avg Phase — maximum magnitude with circular average phase
+• Hybrid Spec — adjustable blend of smoothed maximum and minimum selections
+• Chunk Min — 1-second windows, 100 ms crossfades; keeps the current model unless another is at least 10% quieter or the current model ends
 
 Default dual-stem pair is Max Spec / Min Spec"""
 

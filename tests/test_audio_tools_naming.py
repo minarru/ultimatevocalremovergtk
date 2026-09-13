@@ -21,6 +21,31 @@ from core.types.settings_enums import ManualEnsembleOption
 
 
 class ManualEnsembleNamingTests(unittest.TestCase):
+    def test_manual_blend_does_not_inherit_model_ensemble_options(self) -> None:
+        import inspect
+
+        from ml.spec_utils import ensemble_inputs as combine
+
+        settings = Settings.defaults()
+        settings.ensemble.alignment_correction = True
+        settings.ensemble.smoothing = 4.0
+        settings.ensemble.member_weights = {"*": {"mdx:example": 0.0}}
+        with tempfile.TemporaryDirectory() as export_dir:
+            settings.process.export_path = export_dir
+            tool = AudioTools(settings)
+            with (
+                mock.patch("ml.spec_utils.ensemble_inputs") as combine_mock,
+                mock.patch("core.audio_tools.save_format"),
+            ):
+                tool.ensemble_manual(["a.wav", "b.wav"], "song")
+        call = combine_mock.call_args
+        bound = inspect.signature(combine).bind(*call.args, **call.kwargs)
+        bound.apply_defaults()
+        self.assertFalse(bound.arguments["align"])
+        self.assertEqual(bound.arguments["smoothing"], 0.0)
+        self.assertIsNone(bound.arguments["weights"])
+        self.assertTrue(callable(bound.arguments["on_alignment"]))
+
     def test_apollo_runner_requires_resolved_backend_before_start(self) -> None:
         runner = AudioToolRunner(Settings.defaults())
 
