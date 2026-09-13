@@ -309,7 +309,7 @@ class ViewInputsTests(unittest.TestCase):
         remove = next(
             w
             for w in descendants(view._rows["/tmp/bad.wav"])
-            if isinstance(w, Gtk.Button) and w.get_icon_name() == "cross-small-symbolic"
+            if isinstance(w, Gtk.Button) and w.get_icon_name() == "uvr-cross-small-symbolic"
         )
         remove.emit("clicked")
         self.assertEqual(context.settings.process.input_paths, ["/tmp/good.wav"])
@@ -363,9 +363,9 @@ class ViewInputsTests(unittest.TestCase):
         self.assertIn("probe result", view._rows["/tmp/bad.wav"].get_subtitle() or "")
         good_icon = view._status_icons["/tmp/good.wav"]
         bad_icon = view._status_icons["/tmp/bad.wav"]
-        self.assertEqual(good_icon.get_icon_name(), "success-small-symbolic")
+        self.assertEqual(good_icon.get_icon_name(), "uvr-success-small-symbolic")
         self.assertTrue(good_icon.has_css_class("success"))
-        self.assertEqual(bad_icon.get_icon_name(), "warning-outline-symbolic")
+        self.assertEqual(bad_icon.get_icon_name(), "uvr-warning-outline-symbolic")
         self.assertTrue(bad_icon.has_css_class("warning"))
         view.remove_unreadable_button.emit("clicked")
         self.assertEqual(context.settings.process.input_paths, ["/tmp/good.wav"])
@@ -380,9 +380,9 @@ class ViewInputsTests(unittest.TestCase):
         self.assertFalse(icon.has_css_class("success"))
         self.assertFalse(icon.has_css_class("warning"))
         view._apply_result("/tmp/good.wav", False, "Unreadable", 1)
-        self.assertEqual(icon.get_icon_name(), "warning-outline-symbolic")
+        self.assertEqual(icon.get_icon_name(), "uvr-warning-outline-symbolic")
         view._apply_result("/tmp/good.wav", True, "Readable", 1)
-        self.assertEqual(icon.get_icon_name(), "success-small-symbolic")
+        self.assertEqual(icon.get_icon_name(), "uvr-success-small-symbolic")
         self.assertTrue(icon.has_css_class("success"))
         self.assertFalse(icon.has_css_class("warning"))
 

@@ -60,19 +60,19 @@ _REFRESH_REPICK_SUMMARY = "Choose a stem again after the model refresh"
 STEM_ONLY_ICON_FALLBACK = "audio-x-generic-symbolic"
 
 STEM_ONLY_ICONS: Dict[str, str] = {
-    VOCAL_STEM: "person-talking-symbolic",
-    INST_STEM: "bullhorn-symbolic",
+    VOCAL_STEM: "uvr-person-talking-symbolic",
+    INST_STEM: "uvr-bullhorn-symbolic",
     BASS_STEM: "audio-input-microphone-symbolic",
     DRUM_STEM: "audio-speakers-symbolic",
     OTHER_STEM: "folder-music-symbolic",
     GUITAR_STEM: "audio-speakers-symbolic",
     PIANO_STEM: "folder-music-symbolic",
-    "Speech": "person-talking-symbolic",
+    "Speech": "uvr-person-talking-symbolic",
     "Music": "folder-music-symbolic",
     "Sfx": "uvr-speaker-symbolic",
     "Effects": "uvr-speaker-symbolic",
 }
-ALL_STEMS_ICON = "ungroup-symbolic"
+ALL_STEMS_ICON = "uvr-ungroup-symbolic"
 
 # UI-only: names with no ensemble/bucket significance today. Kept separate
 # from the shared core table on purpose -- folding them in would change

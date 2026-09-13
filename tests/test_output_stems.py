@@ -230,6 +230,55 @@ class DirectOutputStemsTests(unittest.TestCase):
         self.assertEqual(self.settings.process.stem_focus, "")
         self.assertTrue(instrumental.get_active())
 
+    def test_model_change_publishes_reconciled_stem_readiness(self):
+        from types import SimpleNamespace
+        from typing import Any
+        from unittest import mock
+
+        from bundled.constants import MDX_ARCH_TYPE
+        from ui.views.base import MethodView
+        from ui.widgets.log_panel import LogPanel
+
+        self.pair()
+        self.check("Instrumental").set_active(False)
+        self.assertFalse(self.section.repick_required)
+        panel = LogPanel()
+        view: Any = MethodView.__new__(MethodView)
+        view.settings = self.settings
+        view._loading = False
+        view.model_key = "mdx_net_model"
+        view.method_key = MDX_ARCH_TYPE
+        view.primary_only_key = "is_primary_stem_only"
+        view.secondary_only_key = "is_secondary_stem_only"
+        view.save_stems = self.section
+        selected = SimpleNamespace(id="mdx:drum-model", primary="Drums", secondary="No Drums")
+        view.selected_model = lambda: selected.id
+        view.has_model = lambda: True
+
+        def resolve(*_args: Any):
+            return SimpleNamespace(
+                canonical_id=selected.id,
+                primary_stem=selected.primary,
+                secondary_stem=selected.secondary,
+                mdx_model_stems=[],
+                is_vocal_split_model=False,
+            )
+
+        view.context = SimpleNamespace(repo=SimpleNamespace(resolve_model_dry=resolve))
+        view._update_stem_group_metadata = lambda: self.output.refresh()
+        view.sync_dynamic_option_state = mock.Mock()
+        observed = []
+
+        def refresh_readiness():
+            observed.append(self.section.repick_required)
+            panel.set_start_blocked_reason("Review stems" if self.section.repick_required else None)
+
+        view._on_settings_changed = refresh_readiness
+        view._on_model_changed()
+        self.assertTrue(self.section.repick_required)
+        self.assertEqual(observed, [True])
+        self.assertTrue(panel.start_button.has_css_class("dim-label"))
+
     def test_search_does_not_drop_hidden_selected_outputs(self):
         stems = [f"Part {i}" for i in range(12)]
         self.section.configure_subset(

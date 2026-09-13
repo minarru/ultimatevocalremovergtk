@@ -352,7 +352,7 @@ class DownloadCenterWindow:
         self.direction_button.set_tooltip_text(f"{label} — switch to {opposite}")
         # The supplied 'down' asset emphasizes the upward arrow.
         self.direction_icon.set_from_icon_name(
-            "vertical-arrows-down-symbolic" if self._descending else "vertical-arrows-up-symbolic"
+            "uvr-vertical-arrows-down-symbolic" if self._descending else "uvr-vertical-arrows-up-symbolic"
         )
 
     def _on_breakpoint_changed(self, *_args: object) -> None:
@@ -705,7 +705,7 @@ class DownloadCenterWindow:
         status.add_css_class("dim-label")
         action.add_suffix(status)
         stash(action, "_uvr_status_label", status)
-        button = Gtk.MenuButton(icon_name="info-outline-symbolic", valign=Gtk.Align.CENTER)
+        button = Gtk.MenuButton(icon_name="uvr-info-outline-symbolic", valign=Gtk.Align.CENTER)
         button.add_css_class("flat")
         button.set_tooltip_text("Model details")
         button.set_create_popup_func(lambda *_: self._create_details_popup(button, key))

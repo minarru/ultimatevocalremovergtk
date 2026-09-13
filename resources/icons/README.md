@@ -7,8 +7,8 @@ the row helpers.
 Examples:
 
 ```
-scalable/devices/pci-card-symbolic.svg    # device icons (GPU, etc.)
-scalable/actions/bullhorn-symbolic.svg    # action/status symbolic icons
+scalable/devices/uvr-pci-card-symbolic.svg    # device icons (GPU, etc.)
+scalable/actions/uvr-bullhorn-symbolic.svg    # action/status symbolic icons
 ```
 
 Then recompile the GResource bundle:
@@ -20,8 +20,9 @@ Then recompile the GResource bundle:
 Restart the app so the new `ui/data/uvr.gresource` is loaded.
 
 Icons are registered at app startup. A system theme can take precedence over
-a bundled icon with the same name; use an `uvr-` prefix for collisions so the
-application reliably displays its bundled artwork.
+a bundled icon with the same name; all bundled symbolic icons must use the `uvr-` prefix so the
+application reliably displays its bundled artwork. Keep this prefix when adding
+new icons and use the full prefixed name at every call site.
 
 
 ## GNOME Icon Development Kit exports
@@ -47,26 +48,26 @@ and dark foreground colors.
 
 | Local filename (without `.svg`) | Devkit source | Scale within 16px canvas |
 | --- | --- | --- |
-| `cogged-wheel-symbolic` | `cogged-wheel` | 1 |
-| `processor-symbolic` | `processor` | 1 |
-| `export-symbolic` | `export` | 1 |
-| `wrench-symbolic` | `wrench` | 1 |
-| `vertical-arrows-up-symbolic` | `view-sort-ascending` | 1 |
-| `vertical-arrows-down-symbolic` | `view-sort-descending` | 1 |
-| `error-outline-symbolic` | `cross` | 1 |
-| `bullhorn-symbolic` | `sound-wave` | 1 |
-| `pci-card-symbolic` | `pci` | 1 |
-| `ungroup-symbolic` | `ungroup` | 1 |
-| `check-round-outline-symbolic` | `circle-check` | 1 |
-| `exclamation-mark-symbolic` | `round-exclamation` | 1 |
-| `warning-outline-symbolic` | `dialog-warning` | 1 |
-| `bookmark-outline-symbolic` | `bookmark` | 1 |
-| `info-outline-symbolic` | `info-outline` | 1 |
+| `uvr-cogged-wheel-symbolic` | `cogged-wheel` | 1 |
+| `uvr-processor-symbolic` | `processor` | 1 |
+| `uvr-export-symbolic` | `export` | 1 |
+| `uvr-wrench-symbolic` | `wrench` | 1 |
+| `uvr-vertical-arrows-up-symbolic` | `view-sort-ascending` | 1 |
+| `uvr-vertical-arrows-down-symbolic` | `view-sort-descending` | 1 |
+| `uvr-error-outline-symbolic` | `cross` | 1 |
+| `uvr-bullhorn-symbolic` | `sound-wave` | 1 |
+| `uvr-pci-card-symbolic` | `pci` | 1 |
+| `uvr-ungroup-symbolic` | `ungroup` | 1 |
+| `uvr-check-round-outline-symbolic` | `circle-check` | 1 |
+| `uvr-exclamation-mark-symbolic` | `round-exclamation` | 1 |
+| `uvr-warning-outline-symbolic` | `dialog-warning` | 1 |
+| `uvr-bookmark-outline-symbolic` | `bookmark` | 1 |
+| `uvr-info-outline-symbolic` | `info-outline` | 1 |
 | `uvr-edit-clear-all-symbolic` | `edit-clear-all` | 1 |
 | `uvr-go-bottom-symbolic` | `go-bottom` | 1 |
-| `cross-small-symbolic` | `cross` | 0.625 |
-| `success-small-symbolic` | `object-select` | 0.625 |
-| `stop-small-symbolic` | `media-playback-stop` (filled state) | 1 |
+| `uvr-cross-small-symbolic` | `cross` | 0.625 |
+| `uvr-success-small-symbolic` | `object-select` | 0.625 |
+| `uvr-stop-small-symbolic` | `media-playback-stop` (filled state) | 1 |
 | `uvr-mixer-sliders-symbolic` | `mixer-sliders` | 1 |
 | `uvr-api-symbolic` | `api` | 1 |
 | `uvr-stopwatch-symbolic` | `stopwatch` | 1 |

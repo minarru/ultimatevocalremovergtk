@@ -562,7 +562,7 @@ class CatalogueEvidenceSchedulingTests(unittest.TestCase):
         self.assertEqual(
             dataclasses.asdict(manager.catalogue_evidence_summary()),
             {
-                "reviewed": 483,
+                "reviewed": 490,
                 "raw": 0,
                 "waived": 2,
                 "pending": 0,
@@ -570,7 +570,7 @@ class CatalogueEvidenceSchedulingTests(unittest.TestCase):
                 "stale": 0,
             },
         )
-        self.assertEqual(sum(len(entries) for entries in public.values()), 485)
+        self.assertEqual(sum(len(entries) for entries in public.values()), 492)
 
         public_due_label = next(
             label

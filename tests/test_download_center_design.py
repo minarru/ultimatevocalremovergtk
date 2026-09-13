@@ -147,7 +147,7 @@ class DownloadCenterDesignTests(unittest.TestCase):
         walk(row)
         self.assertEqual(len(buttons), 1)
         self.assertTrue(buttons[0].get_sensitive())
-        self.assertEqual(buttons[0].get_icon_name(), 'info-outline-symbolic')
+        self.assertEqual(buttons[0].get_icon_name(), 'uvr-info-outline-symbolic')
         self.assertIn('Needs a newer build', center._details_text((self.arch, 'Future')))
 
     def test_unchecked_and_disposed_rows_ignore_late_size_results(self) -> None:

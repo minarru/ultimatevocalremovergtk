@@ -387,8 +387,9 @@ class MethodView:
             "model",
             f"model selected name={preview_text(name)} arch={self.title or self.method_key}",
         )
-        self._on_settings_changed()
         self.update_stem_labels()
+        # Readiness depends on the new model's reconciled Save Stems state.
+        self._on_settings_changed()
 
     # -- Custom stem naming -----------------------------------------------------
 

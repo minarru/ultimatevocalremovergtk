@@ -268,7 +268,7 @@ class ModelPicker:
         check = Gtk.Image.new_from_icon_name('object-select-symbolic')
         check.add_css_class('accent')
         row.add_prefix(check)
-        info = Gtk.Button.new_from_icon_name('info-outline-symbolic')
+        info = Gtk.Button.new_from_icon_name('uvr-info-outline-symbolic')
         info.add_css_class('flat')
         info.set_valign(Gtk.Align.CENTER)
         info.connect('clicked', lambda *_: self._show_details_by_id(model_id))

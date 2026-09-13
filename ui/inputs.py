@@ -44,8 +44,8 @@ from .template import load_builder, object_from_builder
 from .widgets.file_chooser import merge_input_paths
 from .widgets.file_dialogs import audio_open_dialog, is_dialog_dismissed
 
-_STATUS_OK = "success-small-symbolic"
-_STATUS_BAD = "warning-outline-symbolic"
+_STATUS_OK = "uvr-success-small-symbolic"
+_STATUS_BAD = "uvr-warning-outline-symbolic"
 _SEARCH_THRESHOLD = 8
 
 
