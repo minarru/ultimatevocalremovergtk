@@ -413,3 +413,11 @@ the estimated delay and confidence. Optional correction requires consistent,
 unambiguous correlation across several excerpts within 20 ms; stereo channels
 move together. Missing prefixes and tails do not vote as padded silence. This
 check does not measure separation quality or automatically normalize gain.
+
+## Reference scoring for models and ensembles
+
+`uvr score prepare`, `files`, `run`, and `compare` evaluate saved outputs against
+known reference stems without running inference. See [the scoring guide](scoring.md)
+for manifests, optional BSS Eval installation, metric definitions, progress and
+report comparison. Use `--metrics basic` for waveform SDR and SI-SDR with the
+existing dependencies. The existing `uvr bench` A/B inference workflow is unchanged.

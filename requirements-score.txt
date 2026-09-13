@@ -1,0 +1,12 @@
+# Optional CPU reference scoring; install after requirements.txt.
+# Keep the evaluation backend and its additional dependency tree reproducible.
+museval==0.4.1
+musdb==0.4.3
+stempeg==0.2.6
+simplejson==4.1.2
+jsonschema==4.26.0
+jsonschema-specifications==2025.9.1
+referencing==0.37.0
+rpds-py==2026.6.3
+ffmpeg-python==0.2.0
+threadpoolctl==3.6.0

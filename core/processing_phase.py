@@ -20,6 +20,7 @@ class ProcessingPhase(StrEnum):
     DEVERBING = "deverbing"
     BUFFERING = "buffering"
     SAVING = "saving"
+    SCORING = "scoring"
     COMBINING = "combining"
     JOINING = "joining"
     CHANGING_PITCH = "changing_pitch"
@@ -76,6 +77,7 @@ _LABELS = {
     ProcessingPhase.DEVERBING: "Removing reverb",
     ProcessingPhase.BUFFERING: "Collecting outputs",
     ProcessingPhase.SAVING: "Saving outputs",
+    ProcessingPhase.SCORING: "Scoring audio",
     ProcessingPhase.COMBINING: "Combining outputs",
     ProcessingPhase.JOINING: "Joining chunks",
     ProcessingPhase.CHANGING_PITCH: "Changing pitch",
