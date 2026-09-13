@@ -3633,6 +3633,53 @@
         "review_note": "catalogue_id=mdx:bs_bass_xlancer; source=mvsepless; metadata_source=bundled_yaml:bs_bass_xlancer_config.yaml; native_signature=bass; backend_primary=bass; backend_target=bass; reviewed_contexts=full_mix"
       }
     },
+    "mdx:bs_bowed_str2_gilliaaan": {
+      "catalogue_evidence": {
+        "catalogue_label": "BS Roformer Bowed Strings v2 by Gilliaaan",
+        "config_yaml": "bs_bowed_str2_gilliaaan_config.yaml",
+        "metadata_source": "bundled_yaml:bs_bowed_str2_gilliaaan_config.yaml",
+        "primary_artifact": "bs_bowed_str2_gilliaaan.ckpt",
+        "source": "mvsepless"
+      },
+      "config_evidence": {
+        "bs_bowed_str2_gilliaaan_config.yaml": {
+          "content_sha256": "f32c4491984d6d3656cb078626758bef30ed0367e0d19c50d96392812a6eca74",
+          "sources": [
+            "https://huggingface.co/noblebarkrr/mvsepless_resources/resolve/main/bs_roformer/bs_bowed_str2_gilliaaan_config.yaml?download=true"
+          ],
+          "target_instrument": null,
+          "training_instruments": [
+            "strings",
+            "other"
+          ]
+        }
+      },
+      "display_alias": "BandSplit Roformer \u2014 Bowed Strings v2 \u00b7 Gilliaaan",
+      "lifecycle": "current",
+      "stem_semantics": {
+        "contexts": {
+          "full_mix": {
+            "logical_primary": "instrument.bowed_strings",
+            "outputs": [
+              {
+                "native": "strings",
+                "role": "instrument.bowed_strings"
+              },
+              {
+                "native": "other",
+                "role": "instrument.bowed_strings.removed"
+              }
+            ]
+          }
+        },
+        "intent": "specialty_stem",
+        "native_signature": [
+          "strings",
+          "other"
+        ],
+        "review_note": "Reviewed 2026-09-13; catalogue_id=mdx:bs_bowed_str2_gilliaaan; source=mvsepless; metadata_source=bundled_yaml:bs_bowed_str2_gilliaaan_config.yaml; backend_primary=strings; upstream_revision=030a01aa951b3908ed6b01b2e507c17953300c2d; checkpoint_url=https://huggingface.co/noblebarkrr/mvsepless_resources/resolve/main/bs_roformer/bs_bowed_str2_gilliaaan.ckpt?download=true; config_url=https://huggingface.co/noblebarkrr/mvsepless_resources/resolve/main/bs_roformer/bs_bowed_str2_gilliaaan_config.yaml?download=true; config_sha256=f32c4491984d6d3656cb078626758bef30ed0367e0d19c50d96392812a6eca74; native_signature=strings|other; backend_target=; reviewed_contexts=full_mix; one-second synthetic forward pass finite; checkpoint state_dict keys match; no ignored config keys."
+      }
+    },
     "mdx:bs_bowed_str_gilliaaan": {
       "catalogue_evidence": {
         "catalogue_label": "BS Roformer Bowed Strings by Gilliaaan",
@@ -3664,6 +3711,54 @@
           "other"
         ],
         "review_note": "catalogue_id=mdx:bs_bowed_str_gilliaaan; source=mvsepless; metadata_source=bundled_yaml:bs_bowed_str_gilliaaan_config.yaml; native_signature=strings|other; backend_primary=strings; backend_target=; reviewed_contexts=full_mix"
+      }
+    },
+    "mdx:bs_deeffect_gilliaaan": {
+      "catalogue_evidence": {
+        "catalogue_label": "BS Roformer DeEffect by Gilliaaan",
+        "config_yaml": "bs_deeffect_gilliaaan_config.yaml",
+        "metadata_source": "bundled_yaml:bs_deeffect_gilliaaan_config.yaml",
+        "primary_artifact": "bs_deeffect_gilliaaan.ckpt",
+        "source": "mvsepless"
+      },
+      "config_evidence": {
+        "bs_deeffect_gilliaaan_config.yaml": {
+          "content_sha256": "1fef5aada1fc9a5aade296b81c4b64b0463dd335de1b21982b6b275b3821a6ba",
+          "sources": [
+            "https://huggingface.co/noblebarkrr/mvsepless_resources/resolve/main/bs_roformer/bs_deeffect_gilliaaan_config.yaml?download=true"
+          ],
+          "target_instrument": "vocals",
+          "training_instruments": [
+            "vocals",
+            "instrumental"
+          ]
+        }
+      },
+      "display_alias": "BandSplit Roformer \u2014 DeEffect \u00b7 Gilliaaan",
+      "lifecycle": "current",
+      "stem_semantics": {
+        "contexts": {
+          "full_mix": {
+            "logical_primary": "effect.effects.removed",
+            "outputs": [
+              {
+                "native": "vocals",
+                "role": "effect.effects.removed"
+              },
+              {
+                "complement_of": "effect.effects.removed",
+                "native": null,
+                "production": "derived",
+                "role": "effect.effects"
+              }
+            ]
+          }
+        },
+        "intent": "special_fx",
+        "native_signature": [
+          "vocals"
+        ],
+        "review_note": "Reviewed 2026-09-13; catalogue_id=mdx:bs_deeffect_gilliaaan; source=mvsepless; metadata_source=bundled_yaml:bs_deeffect_gilliaaan_config.yaml; backend_primary=vocals; upstream_revision=030a01aa951b3908ed6b01b2e507c17953300c2d; checkpoint_url=https://huggingface.co/noblebarkrr/mvsepless_resources/resolve/main/bs_roformer/bs_deeffect_gilliaaan.ckpt?download=true; config_url=https://huggingface.co/noblebarkrr/mvsepless_resources/resolve/main/bs_roformer/bs_deeffect_gilliaaan_config.yaml?download=true; config_sha256=1fef5aada1fc9a5aade296b81c4b64b0463dd335de1b21982b6b275b3821a6ba; native_signature=vocals; backend_target=vocals; reviewed_contexts=full_mix; one-second synthetic forward pass finite; checkpoint state_dict keys match; no ignored config keys. Catalogue category Effects and DeEffect name establish generic effects-removal intent; vocals is the backend key, not evidence of a vocal/instrumental separator. No specific effect type or vocal-only context is asserted."
       }
     },
     "mdx:bs_dereverb_2250_anvuew": {
@@ -4244,6 +4339,54 @@
           "instrument"
         ],
         "review_note": "catalogue_id=mdx:bs_inst_large2_unwa; source=mvsepless; metadata_source=bundled_yaml:bs_inst_large2_unwa_config.yaml; native_signature=instrument; backend_primary=instrument; backend_target=instrument; reviewed_contexts=full_mix"
+      }
+    },
+    "mdx:bs_invert_clean1_gilliaaan": {
+      "catalogue_evidence": {
+        "catalogue_label": "BS Roformer Invert Clean v1 by Gilliaaan",
+        "config_yaml": "bs_invert_clean1_gilliaaan_config.yaml",
+        "metadata_source": "bundled_yaml:bs_invert_clean1_gilliaaan_config.yaml",
+        "primary_artifact": "bs_invert_clean1_gilliaaan.ckpt",
+        "source": "mvsepless"
+      },
+      "config_evidence": {
+        "bs_invert_clean1_gilliaaan_config.yaml": {
+          "content_sha256": "a4e8ed1e45e39907def9736a086f4ea57663e0343098face080336eb5eb72b70",
+          "sources": [
+            "https://huggingface.co/noblebarkrr/mvsepless_resources/resolve/main/bs_roformer/bs_invert_clean1_gilliaaan_config.yaml?download=true"
+          ],
+          "target_instrument": "vocals",
+          "training_instruments": [
+            "vocals",
+            "other"
+          ]
+        }
+      },
+      "display_alias": "BandSplit Roformer \u2014 Invert Clean v1 \u00b7 Gilliaaan",
+      "lifecycle": "current",
+      "stem_semantics": {
+        "contexts": {
+          "full_mix": {
+            "logical_primary": "vocal.vocals",
+            "outputs": [
+              {
+                "native": "vocals",
+                "role": "vocal.vocals"
+              },
+              {
+                "complement_of": "vocal.vocals",
+                "native": null,
+                "production": "derived",
+                "role": "mix.instrumental"
+              }
+            ]
+          }
+        },
+        "intent": "vocals",
+        "native_signature": [
+          "vocals"
+        ],
+        "review_note": "Reviewed 2026-09-13; catalogue_id=mdx:bs_invert_clean1_gilliaaan; source=mvsepless; metadata_source=bundled_yaml:bs_invert_clean1_gilliaaan_config.yaml; backend_primary=vocals; upstream_revision=030a01aa951b3908ed6b01b2e507c17953300c2d; checkpoint_url=https://huggingface.co/noblebarkrr/mvsepless_resources/resolve/main/bs_roformer/bs_invert_clean1_gilliaaan.ckpt?download=true; config_url=https://huggingface.co/noblebarkrr/mvsepless_resources/resolve/main/bs_roformer/bs_invert_clean1_gilliaaan_config.yaml?download=true; config_sha256=a4e8ed1e45e39907def9736a086f4ea57663e0343098face080336eb5eb72b70; native_signature=vocals; backend_target=vocals; reviewed_contexts=full_mix; one-second synthetic forward pass finite; checkpoint state_dict keys match; no ignored config keys."
       }
     },
     "mdx:bs_karaoke_3stem_giantailab": {
@@ -7412,6 +7555,71 @@
           "other"
         ],
         "review_note": "catalogue_id=mdx:bs_pope_instvoc_aname; source=mvsepless; metadata_source=bundled_yaml:bs_pope_instvoc_aname_config.yaml; native_signature=vocals|other; backend_primary=vocals; backend_target=; reviewed_contexts=full_mix"
+      }
+    },
+    "mdx:bs_pope_karaoke2_lambda": {
+      "catalogue_evidence": {
+        "catalogue_label": "BS PolarFormer Karaoke v2 by Lambda001",
+        "config_yaml": "bs_pope_karaoke2_lambda_config.yaml",
+        "metadata_source": "bundled_yaml:bs_pope_karaoke2_lambda_config.yaml",
+        "primary_artifact": "bs_pope_karaoke2_lambda.ckpt",
+        "source": "mvsepless"
+      },
+      "config_evidence": {
+        "bs_pope_karaoke2_lambda_config.yaml": {
+          "content_sha256": "17774912085a0e7f5f5ace2e7538f0bb66573c18b852688a2fbd61f4a69f0f57",
+          "sources": [
+            "https://huggingface.co/noblebarkrr/mvsepless_resources/resolve/main/bs_roformer/bs_pope_karaoke2_lambda_config.yaml?download=true"
+          ],
+          "target_instrument": "lead",
+          "training_instruments": [
+            "lead",
+            "back_instrum"
+          ]
+        }
+      },
+      "display_alias": "BandSplit PolarFormer \u2014 Karaoke v2 \u00b7 Lambda001",
+      "lifecycle": "current",
+      "stem_semantics": {
+        "contexts": {
+          "full_mix": {
+            "logical_primary": "mix.instrumental_with_backing_vocals",
+            "logical_secondary": "vocal.lead",
+            "outputs": [
+              {
+                "native": "lead",
+                "role": "vocal.lead"
+              },
+              {
+                "complement_of": "vocal.lead",
+                "native": null,
+                "production": "derived",
+                "role": "mix.instrumental_with_backing_vocals"
+              }
+            ]
+          },
+          "vocal_split": {
+            "logical_primary": "vocal.backing",
+            "logical_secondary": "vocal.lead",
+            "outputs": [
+              {
+                "native": "lead",
+                "role": "vocal.lead"
+              },
+              {
+                "complement_of": "vocal.lead",
+                "native": null,
+                "production": "derived",
+                "role": "vocal.backing"
+              }
+            ]
+          }
+        },
+        "intent": "karaoke",
+        "native_signature": [
+          "lead"
+        ],
+        "review_note": "Reviewed 2026-09-13; catalogue_id=mdx:bs_pope_karaoke2_lambda; source=mvsepless; metadata_source=bundled_yaml:bs_pope_karaoke2_lambda_config.yaml; backend_primary=lead; upstream_revision=030a01aa951b3908ed6b01b2e507c17953300c2d; checkpoint_url=https://huggingface.co/noblebarkrr/mvsepless_resources/resolve/main/bs_roformer/bs_pope_karaoke2_lambda.ckpt?download=true; config_url=https://huggingface.co/noblebarkrr/mvsepless_resources/resolve/main/bs_roformer/bs_pope_karaoke2_lambda_config.yaml?download=true; config_sha256=17774912085a0e7f5f5ace2e7538f0bb66573c18b852688a2fbd61f4a69f0f57; native_signature=lead; backend_target=lead; reviewed_contexts=full_mix|vocal_split; one-second synthetic forward pass finite; checkpoint state_dict keys match; no ignored config keys. Config explicitly requests use_pope=true and zero_dc=true; native lead output, complementary karaoke/backing output is derived."
       }
     },
     "mdx:bs_pope_karaoke_974_lambda": {
@@ -11888,6 +12096,68 @@
         "review_note": "catalogue_id=mdx:mbr_karaoke1_gabox; source=mvsepless; metadata_source=bundled_yaml:mbr_karaoke1_gabox_config.yaml; native_signature=Vocals; backend_primary=Vocals; backend_target=Vocals; reviewed_contexts=full_mix|vocal_split"
       }
     },
+    "mdx:mbr_karaoke1_gilliaaan": {
+      "catalogue_evidence": {
+        "catalogue_label": "Mel-Band Roformer Karaoke v1 (finetune of Mid-Side/Center-Wide v3 model) by Gilliaaan",
+        "config_yaml": "mbr_karaoke1_gilliaaan_config.yaml",
+        "metadata_source": "bundled_yaml:mbr_karaoke1_gilliaaan_config.yaml",
+        "primary_artifact": "mbr_karaoke1_gilliaaan.ckpt",
+        "source": "mvsepless"
+      },
+      "config_evidence": {
+        "mbr_karaoke1_gilliaaan_config.yaml": {
+          "content_sha256": "6335e208665f5927f8ce8ffc420b733dc475b4f6b2d32b439528d20ebb6dc8d9",
+          "sources": [
+            "https://huggingface.co/noblebarkrr/mvsepless_resources/resolve/main/mel_band_roformer/mbr_karaoke1_gilliaaan_config.yaml?download=true"
+          ],
+          "target_instrument": null,
+          "training_instruments": [
+            "lead",
+            "back-instrum"
+          ]
+        }
+      },
+      "display_alias": "MelBand Roformer \u2014 Karaoke v1 \u00b7 Gilliaaan",
+      "lifecycle": "current",
+      "stem_semantics": {
+        "contexts": {
+          "full_mix": {
+            "logical_primary": "mix.instrumental_with_backing_vocals",
+            "logical_secondary": "vocal.lead",
+            "outputs": [
+              {
+                "native": "lead",
+                "role": "vocal.lead"
+              },
+              {
+                "native": "back-instrum",
+                "role": "mix.instrumental_with_backing_vocals"
+              }
+            ]
+          },
+          "vocal_split": {
+            "logical_primary": "vocal.backing",
+            "logical_secondary": "vocal.lead",
+            "outputs": [
+              {
+                "native": "lead",
+                "role": "vocal.lead"
+              },
+              {
+                "native": "back-instrum",
+                "role": "vocal.backing"
+              }
+            ]
+          }
+        },
+        "intent": "karaoke",
+        "native_signature": [
+          "lead",
+          "back-instrum"
+        ],
+        "review_note": "Reviewed 2026-09-13; catalogue_id=mdx:mbr_karaoke1_gilliaaan; source=mvsepless; metadata_source=bundled_yaml:mbr_karaoke1_gilliaaan_config.yaml; backend_primary=lead; upstream_revision=030a01aa951b3908ed6b01b2e507c17953300c2d; checkpoint_url=https://huggingface.co/noblebarkrr/mvsepless_resources/resolve/main/mel_band_roformer/mbr_karaoke1_gilliaaan.ckpt?download=true; config_url=https://huggingface.co/noblebarkrr/mvsepless_resources/resolve/main/mel_band_roformer/mbr_karaoke1_gilliaaan_config.yaml?download=true; config_sha256=6335e208665f5927f8ce8ffc420b733dc475b4f6b2d32b439528d20ebb6dc8d9; native_signature=lead|back-instrum; backend_target=; reviewed_contexts=full_mix|vocal_split; one-second synthetic forward pass finite; checkpoint state_dict keys match; no ignored config keys. Both lead and back-instrum are native outputs; on isolated vocals back-instrum represents backing vocals."
+      }
+    },
     "mdx:mbr_karaoke25022025_gabox": {
       "catalogue_evidence": {
         "catalogue_label": "Mel-Band Roformer Karaoke 25-02-2025 by GaboxR67",
@@ -12578,6 +12848,53 @@
           "Vocals"
         ],
         "review_note": "catalogue_id=mdx:mbr_leadvoc_dereverb_gabox; source=mvsepless; metadata_source=bundled_yaml:mbr_leadvoc_dereverb_gabox_config.yaml; native_signature=Vocals; backend_primary=Vocals; backend_target=Vocals; reviewed_contexts=full_mix"
+      }
+    },
+    "mdx:mbr_mid_side3_gilliaaan": {
+      "catalogue_evidence": {
+        "catalogue_label": "Mel-Band Roformer Mid-Side v3 by Gilliaaan",
+        "config_yaml": "mbr_mid_side3_gilliaaan_config.yaml",
+        "metadata_source": "bundled_yaml:mbr_mid_side3_gilliaaan_config.yaml",
+        "primary_artifact": "mbr_mid_side3_gilliaaan.ckpt",
+        "source": "mvsepless"
+      },
+      "config_evidence": {
+        "mbr_mid_side3_gilliaaan_config.yaml": {
+          "content_sha256": "ee0b250b567ee353903a182491c205e814db6625ce59dce83acc956240211efe",
+          "sources": [
+            "https://huggingface.co/noblebarkrr/mvsepless_resources/resolve/main/mel_band_roformer/mbr_mid_side3_gilliaaan_config.yaml?download=true"
+          ],
+          "target_instrument": null,
+          "training_instruments": [
+            "center",
+            "wide"
+          ]
+        }
+      },
+      "display_alias": "MelBand Roformer \u2014 Mid-Side v3 \u00b7 Gilliaaan",
+      "lifecycle": "current",
+      "stem_semantics": {
+        "contexts": {
+          "full_mix": {
+            "logical_primary": "spatial.center",
+            "outputs": [
+              {
+                "native": "center",
+                "role": "spatial.center"
+              },
+              {
+                "native": "wide",
+                "role": "spatial.side"
+              }
+            ]
+          }
+        },
+        "intent": "specialty_stem",
+        "native_signature": [
+          "center",
+          "wide"
+        ],
+        "review_note": "Reviewed 2026-09-13; catalogue_id=mdx:mbr_mid_side3_gilliaaan; source=mvsepless; metadata_source=bundled_yaml:mbr_mid_side3_gilliaaan_config.yaml; backend_primary=center; upstream_revision=030a01aa951b3908ed6b01b2e507c17953300c2d; checkpoint_url=https://huggingface.co/noblebarkrr/mvsepless_resources/resolve/main/mel_band_roformer/mbr_mid_side3_gilliaaan.ckpt?download=true; config_url=https://huggingface.co/noblebarkrr/mvsepless_resources/resolve/main/mel_band_roformer/mbr_mid_side3_gilliaaan_config.yaml?download=true; config_sha256=ee0b250b567ee353903a182491c205e814db6625ce59dce83acc956240211efe; native_signature=center|wide; backend_target=; reviewed_contexts=full_mix; one-second synthetic forward pass finite; checkpoint state_dict keys match; no ignored config keys."
       }
     },
     "mdx:mbr_mid_side_gilliaaan": {
@@ -13597,6 +13914,54 @@
           "vocals"
         ],
         "review_note": "catalogue_id=mdx:mbr_xeno; source=mvsepless; metadata_source=bundled_yaml:mbr_xeno_config.yaml; native_signature=vocals; backend_primary=vocals; backend_target=vocals; reviewed_contexts=full_mix"
+      }
+    },
+    "mdx:mbr_xeno3": {
+      "catalogue_evidence": {
+        "catalogue_label": "Mel-Band Roformer Xeno v3 by DrYound3r",
+        "config_yaml": "mbr_xeno3_config.yaml",
+        "metadata_source": "bundled_yaml:mbr_xeno3_config.yaml",
+        "primary_artifact": "mbr_xeno3.ckpt",
+        "source": "mvsepless"
+      },
+      "config_evidence": {
+        "mbr_xeno3_config.yaml": {
+          "content_sha256": "a191d8223a640daa016f43ba40b7b5ef1fe5cea4a192ce4c4a500f003de96c99",
+          "sources": [
+            "https://huggingface.co/noblebarkrr/mvsepless_resources/resolve/main/mel_band_roformer/mbr_xeno3_config.yaml?download=true"
+          ],
+          "target_instrument": "vocals",
+          "training_instruments": [
+            "vocals",
+            "other"
+          ]
+        }
+      },
+      "display_alias": "MelBand Roformer \u2014 Xeno v3 \u00b7 DrYound3r",
+      "lifecycle": "current",
+      "stem_semantics": {
+        "contexts": {
+          "full_mix": {
+            "logical_primary": "vocal.vocals",
+            "outputs": [
+              {
+                "native": "vocals",
+                "role": "vocal.vocals"
+              },
+              {
+                "complement_of": "vocal.vocals",
+                "native": null,
+                "production": "derived",
+                "role": "mix.instrumental"
+              }
+            ]
+          }
+        },
+        "intent": "vocals",
+        "native_signature": [
+          "vocals"
+        ],
+        "review_note": "Reviewed 2026-09-13; catalogue_id=mdx:mbr_xeno3; source=mvsepless; metadata_source=bundled_yaml:mbr_xeno3_config.yaml; backend_primary=vocals; upstream_revision=030a01aa951b3908ed6b01b2e507c17953300c2d; checkpoint_url=https://huggingface.co/noblebarkrr/mvsepless_resources/resolve/main/mel_band_roformer/mbr_xeno3.ckpt?download=true; config_url=https://huggingface.co/noblebarkrr/mvsepless_resources/resolve/main/mel_band_roformer/mbr_xeno3_config.yaml?download=true; config_sha256=a191d8223a640daa016f43ba40b7b5ef1fe5cea4a192ce4c4a500f003de96c99; native_signature=vocals; backend_target=vocals; reviewed_contexts=full_mix; one-second synthetic forward pass finite; checkpoint state_dict keys match; no ignored config keys."
       }
     },
     "mdx:mdx23c_4stem_kuielab": {
@@ -19125,6 +19490,17 @@
       "family": "effect",
       "filename_tag": "Echo_Removed",
       "removed_of": "effect.echo"
+    },
+    "effect.effects": {
+      "display": "Effects",
+      "family": "effect",
+      "filename_tag": "Effects"
+    },
+    "effect.effects.removed": {
+      "display": "Effects Removed",
+      "family": "effect",
+      "filename_tag": "Effects_Removed",
+      "removed_of": "effect.effects"
     },
     "effect.noise": {
       "display": "Noise",

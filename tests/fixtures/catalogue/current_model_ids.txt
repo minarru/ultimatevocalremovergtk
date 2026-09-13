@@ -84,7 +84,9 @@ mdx:bs_6stem
 mdx:bs_6stem_fixed
 mdx:bs_bass_beatloo_labs
 mdx:bs_bass_xlancer
+mdx:bs_bowed_str2_gilliaaan
 mdx:bs_bowed_str_gilliaaan
+mdx:bs_deeffect_gilliaaan
 mdx:bs_dereverb_2250_anvuew
 mdx:bs_deverb_256_8_anvuew
 mdx:bs_deverb_384_10_anvuew
@@ -102,6 +104,7 @@ mdx:bs_inst_fno_unwa
 mdx:bs_inst_hyperace2_unwa
 mdx:bs_inst_hyperace_unwa
 mdx:bs_inst_large2_unwa
+mdx:bs_invert_clean1_gilliaaan
 mdx:bs_karaoke_3stem_giantailab
 mdx:bs_karaoke_anvuew
 mdx:bs_karaoke_becruily
@@ -182,6 +185,7 @@ mdx:bs_perc_xlancer
 mdx:bs_pope_4stem_09072026_aname
 mdx:bs_pope_4stem_aname
 mdx:bs_pope_instvoc_aname
+mdx:bs_pope_karaoke2_lambda
 mdx:bs_pope_karaoke_974_lambda
 mdx:bs_pope_vocals_zfturbo
 mdx:bs_resurrection2_quality_test_unwa
@@ -301,6 +305,7 @@ mdx:mbr_instvoc_duality1_unwa
 mdx:mbr_instvoc_duality2_unwa
 mdx:mbr_invert_clean_becruily
 mdx:mbr_karaoke1_gabox
+mdx:mbr_karaoke1_gilliaaan
 mdx:mbr_karaoke25022025_gabox
 mdx:mbr_karaoke28022025_gabox
 mdx:mbr_karaoke2_gabox
@@ -317,6 +322,7 @@ mdx:mbr_kimft3_aname
 mdx:mbr_kimft3_prev_unwa
 mdx:mbr_lead_rhythm_guitar_listra92
 mdx:mbr_leadvoc_dereverb_gabox
+mdx:mbr_mid_side3_gilliaaan
 mdx:mbr_mid_side_gilliaaan
 mdx:mbr_misc_jazzpear
 mdx:mbr_musicless_jasper
@@ -347,6 +353,7 @@ mdx:mbr_vocalsfv7_beta2_gabox
 mdx:mbr_vocalsfv7_beta3_gabox
 mdx:mbr_vocalsfv7_gabox
 mdx:mbr_xeno
+mdx:mbr_xeno3
 mdx:mdx23c_4stem_kuielab
 mdx:mdx23c_4stem_small_kuielab
 mdx:mdx23c_4stem_zfturbo

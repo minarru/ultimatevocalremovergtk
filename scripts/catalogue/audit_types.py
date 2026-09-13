@@ -51,7 +51,8 @@ _COMPLEMENT_ONLY_NAMES = frozenset({"drum-bass", "no bass", "no drums", "no othe
 
 # Reviewed 2026-08-27 unified snapshot, including exact config evidence served
 # from the bundled manifest when live/cache bytes are unavailable.
-_PINNED_EVIDENCE_COUNTS = (155, 123, 92)
+# September mvsepless review adds the distinct native spelling "back-instrum".
+_PINNED_EVIDENCE_COUNTS = (156, 124, 92)
 
 
 _REVIEWED_VOCAL_SPLIT_IDS = frozenset(

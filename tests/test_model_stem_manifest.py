@@ -770,7 +770,7 @@ class ManifestValidationTests(unittest.TestCase):
                 continue
             declarations.append((model_id, declaration, target_match.group(1)))
 
-        self.assertEqual(len(declarations), 304)
+        self.assertEqual(len(declarations), 308)
         self.assertNotIn(
             "mdx:MDX23C-De-Reverb-aufr33-jarredou",
             {model_id for model_id, _declaration, _target in declarations},
@@ -876,8 +876,8 @@ class ManifestValidationTests(unittest.TestCase):
         current_models = current_ids.intersection(registry.models)
         current_waivers = current_ids.intersection(registry.waivers)
 
-        self.assertEqual(len(current_ids), 485)
-        self.assertEqual(len(current_models), 483)
+        self.assertEqual(len(current_ids), 492)
+        self.assertEqual(len(current_models), 490)
         self.assertEqual(
             current_waivers,
             {
@@ -935,7 +935,7 @@ class ManifestValidationTests(unittest.TestCase):
     def test_bundled_manifest_loads_core_roles_pairs_and_reviewed_catalogue(self) -> None:
         registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)
 
-        self.assertEqual(len(registry.models), 485)
+        self.assertEqual(len(registry.models), 492)
         self.assertEqual(len(registry.waivers), 2)
         self.assertIn(StemRoleId("vocal.vocals"), registry.roles)
         self.assertEqual(

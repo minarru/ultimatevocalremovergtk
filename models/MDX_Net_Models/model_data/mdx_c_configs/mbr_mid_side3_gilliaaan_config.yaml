@@ -1,0 +1,99 @@
+audio:
+  chunk_size: 132300
+  dim_f: 1024
+  dim_t: 256
+  hop_length: 441
+  n_fft: 2048
+  num_channels: 2
+  sample_rate: 44100
+  min_mean_abs: 000
+
+model:
+  dim: 256
+  depth: 12
+  stereo: true
+  num_stems: 2
+  time_transformer_depth: 1
+  freq_transformer_depth: 1
+  num_bands: 60
+  dim_head: 64
+  heads: 8
+  attn_dropout: 0
+  ff_dropout: 0
+  flash_attn: true
+  dim_freqs_in: 1025
+  sample_rate: 44100
+  stft_n_fft: 2048
+  stft_hop_length: 441
+  stft_win_length: 2048
+  stft_normalized: false
+  mask_estimator_depth: 2
+  multi_stft_resolution_loss_weight: 1.0
+  multi_stft_resolutions_window_sizes: !!python/tuple
+  - 4096
+  - 2048
+  - 1024
+  - 512
+  - 256
+  multi_stft_hop_size: 147
+  multi_stft_normalized: false
+  mlp_expansion_factor: 4
+  use_torch_checkpoint: true
+  skip_connection: false
+  
+training:
+  batch_size: 2
+  gradient_accumulation_steps: 1
+  grad_clip: 1
+  instruments: ['center', 'wide']
+  patience: 40
+  reduce_factor: 0.85
+  target_instrument: 
+  num_epochs: 1000
+  num_steps: 250
+  q: 0.80
+  coarse_loss_clip: true
+  ema_momentum: 0.999
+  other_fix: false 
+  use_amp: true
+  lr: 1.0
+  optimizer: prodigy
+
+augmentations:
+  enable: true
+  loudness: true
+  loudness_min: 0.03
+  loudness_max: 1.5
+ 
+  all:
+    random_inverse: 0.0
+    random_polarity: 0.0
+    seven_band_parametric_eq: 0.5
+    seven_band_parametric_eq_min_gain_db: -24
+    seven_band_parametric_eq_max_gain_db: 6
+    mp3_compression: 0.1
+    mp3_compression_min_bitrate: 96
+    mp3_compression_max_bitrate: 320
+    mp3_compression_backend: "lameenc"
+  wide:
+    channel_shuffle: 0.5
+    
+loss_multistft:
+  fft_sizes: [1024, 2048, 4096]
+  hop_sizes: [512, 1024, 2048]
+  win_lengths: [1024, 2048, 4096]
+  window: "hann_window"
+  scale: "mel"
+  n_bins: 128
+  sample_rate: 44100
+  perceptual_weighting: false
+  w_sc: 0.0
+  w_log_mag: 1.0
+  w_lin_mag: 0.0
+  w_phs: 0.0
+  mag_distance: "L1"
+
+inference:
+  batch_size: 4
+  dim_t: 256
+  num_overlap: 4

@@ -1,6 +1,6 @@
 # UVR Model Catalogue (TRvlvr + Politrees + extras + mvsepless)
 
-Generated: 2026-08-28 10:35 UTC by `scripts/generate_models_catalogue.py`.
+Generated: 2026-09-13 09:11 UTC by `scripts/generate_models_catalogue.py`.
 
 Regenerate after catalogue updates:
 
@@ -32,13 +32,13 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 - Source stale: none
 - Source failed: none
 - Source upstream live: True
-- Cache community: 0m old
-- Cache yaml: 0m old
+- Cache community: 10m old
+- Cache yaml: 10m old
 
 ## Summary
 
-- Total catalogue entries: **485**
-- Entries with resolved metadata: **485**
+- Total catalogue entries: **492**
+- Entries with resolved metadata: **492**
 - Unknown intent remaining: **2**
 - Flagged mismatches: **0**
 - Unsupported mvsepless entries (omitted): **0**
@@ -87,12 +87,15 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | MDX-Net | BandSplit PolarFormer — Lazy Bat (4 Stems) · Aname | multi_stem | Multi-stem: Vocals, Residual, Drums, Bass | multi_stem | vocals | — |
 | MDX-Net | BandSplit PolarFormer — Instrumental/Vocals Duality Lazy Bat · Aname | dual_voc_inst | Vocals or Instrumental — both are first-class 2-st… | two_stem | vocals | — |
 | MDX-Net | BandSplit PolarFormer — Karaoke · Lambda001 | karaoke | Instrumental with Backing Vocals / Lead Vocals | karaoke_vocal_primary | lead | — |
+| MDX-Net | BandSplit PolarFormer — Karaoke v2 · Lambda001 | karaoke | Instrumental with Backing Vocals / Lead Vocals | karaoke_vocal_primary | lead | — |
 | MDX-Net | BandSplit PolarFormer — Vocals · ZFTurbo | vocals | Vocals / Instrumental | vocal_target | vocals | — |
 | MDX-Net | BandSplit Roformer (4 Stems) · ZFTurbo | multi_stem | Multi-stem: Vocals, Drums, Bass, Residual | multi_stem | drums | — |
 | MDX-Net | BandSplit Roformer (4 Stems) · Aname | multi_stem | Multi-stem: Vocals, Drums, Bass, Residual | multi_stem | drums | — |
 | MDX-Net | BandSplit Roformer — Bass Experimental · BeatLoo Labs | specialty_stem | Bass (+ Bass Removed complement) | single_target:bass | bass | — |
 | MDX-Net | BandSplit Roformer — Bass · Xlance | specialty_stem | Bass (+ Bass Removed complement) | single_target:bass | bass | — |
 | MDX-Net | BandSplit Roformer — Bowed Strings · Gilliaaan | specialty_stem | Bowed Strings, Bowed Strings Removed | two_stem | strings | — |
+| MDX-Net | BandSplit Roformer — Bowed Strings v2 · Gilliaaan | specialty_stem | Bowed Strings, Bowed Strings Removed | two_stem | strings | — |
+| MDX-Net | BandSplit Roformer — DeEffect · Gilliaaan | special_fx | Effects Removed (+ Effects complement) | vocal_target | vocals | — |
 | MDX-Net | BandSplit Roformer — DeReverb (SDR 22.50) · Anvuew | special_fx | Reverb Removed (+ Reverb complement) | special_fx_target:noreverb | noreverb | — |
 | MDX-Net | BandSplit Roformer — DeReverb 256-8 · Anvuew | special_fx | Reverb Removed (+ Reverb complement) | special_fx_target:noreverb | noreverb | — |
 | MDX-Net | BandSplit Roformer — DeReverb 384-10 · Anvuew | special_fx | Reverb Removed (+ Reverb complement) | special_fx_target:noreverb | noreverb | — |
@@ -111,6 +114,7 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | MDX-Net | BandSplit Roformer — Instrumental Large v2 · Unwa | instrumental | Instrumental / Vocals | single_target:instrument | instrument | — |
 | MDX-Net | BandSplit Roformer — Instrumental Resurrection · Gabox | instrumental | Instrumental / Vocals | instrumental_target_other_yaml | other | — |
 | MDX-Net | BandSplit Roformer — Instrumental Resurrection · Unwa | instrumental | Instrumental / Vocals | instrumental_target_other_yaml | other | — |
+| MDX-Net | BandSplit Roformer — Invert Clean v1 · Gilliaaan | vocals | Vocals / Instrumental | vocal_target | vocals | — |
 | MDX-Net | BandSplit Roformer — Karaoke Inverted · GaboxR67 | karaoke | Instrumental with Backing Vocals / Lead Vocals | karaoke_instrumental_primary | other | — |
 | MDX-Net | BandSplit Roformer — Karaoke · Anvuew | karaoke | Instrumental with Backing Vocals / Lead Vocals | karaoke_vocal_primary | Vocals | — |
 | MDX-Net | BandSplit Roformer — Karaoke · Becruily & Frazer | karaoke | Instrumental with Backing Vocals / Lead Vocals | karaoke_vocal_primary | Vocals | — |
@@ -344,6 +348,7 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | MDX-Net | MelBand Roformer — Karaoke Fusion Total · Gonzaluigi | karaoke | Instrumental with Backing Vocals / Lead Vocals | karaoke_vocal_primary | Vocals | — |
 | MDX-Net | MelBand Roformer — Karaoke Fusion · Gonzaluigi | karaoke | Instrumental with Backing Vocals / Lead Vocals | karaoke_vocal_primary | Vocals | — |
 | MDX-Net | MelBand Roformer — Karaoke Small · GaboxR67 & Aufr33 | karaoke | Instrumental with Backing Vocals / Lead Vocals | karaoke_vocal_primary | Vocals | — |
+| MDX-Net | MelBand Roformer — Karaoke v1 · Gilliaaan | karaoke | Instrumental with Backing Vocals, Lead Vocals | karaoke_vocal_primary | lead | — |
 | MDX-Net | MelBand Roformer — Karaoke v1 · GaboxR67 | karaoke | Instrumental with Backing Vocals / Lead Vocals | karaoke_vocal_primary | Vocals | — |
 | MDX-Net | MelBand Roformer — Karaoke v2 · GaboxR67 | karaoke | Instrumental with Backing Vocals / Lead Vocals | karaoke_vocal_primary | Vocals | — |
 | MDX-Net | MelBand Roformer — Kim Fine-Tuned v1 · Aname | vocals | Vocals / Instrumental | vocal_target | vocals | — |
@@ -357,6 +362,7 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | MDX-Net | MelBand Roformer — Merged Beta v1 · SYH99999 | vocals | Vocals / Instrumental | vocal_target | vocals | — |
 | MDX-Net | MelBand Roformer — Metal Instrumental Preview · Mesk | instrumental | Instrumental / Vocals | instrumental_target_other_yaml | other | — |
 | MDX-Net | MelBand Roformer — Mid-Side · Gilliaaan | specialty_stem | Center, Side | two_stem | mid | — |
+| MDX-Net | MelBand Roformer — Mid-Side v3 · Gilliaaan | specialty_stem | Center, Side | two_stem | center | — |
 | MDX-Net | MelBand Roformer — Musicless · Jasper | specialty_stem | Music Removed (+ Music complement) | single_target:nomusic | nomusic | — |
 | MDX-Net | MelBand Roformer — Percussion Experimental · yolkispalkis | specialty_stem | Percussion (+ Percussion Removed complement) | single_target:percussions | percussions | — |
 | MDX-Net | MelBand Roformer — SYHFT B1 1 · SYH99999 | vocals | Vocals / Instrumental | vocal_target | vocals | — |
@@ -385,6 +391,7 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | MDX-Net | MelBand Roformer — Vocals · ViperX | vocals | Vocals / Instrumental | vocal_target | vocals | — |
 | MDX-Net | MelBand Roformer — Vocals · ZFTurbo | vocals | Vocals / Instrumental | vocal_target | vocals | — |
 | MDX-Net | MelBand Roformer — Xeno · DrYound3r | vocals | Vocals / Instrumental | vocal_target | vocals | — |
+| MDX-Net | MelBand Roformer — Xeno v3 · DrYound3r | vocals | Vocals / Instrumental | vocal_target | vocals | — |
 | Roformer | BandSplit Roformer — Drum/Bass Separation (SDR 10.53) · ViperX | drum_bass_sep | Drum/Bass (complement of Drum/Bass Removed) | drum_bass_target | No Drum-Bass | — |
 | Roformer | BandSplit Roformer — ViperX 12.96 | vocals | Vocals / Instrumental | vocal_target | Vocals | — |
 | Roformer | BandSplit Roformer — ViperX 12.97 | vocals | Vocals / Instrumental | vocal_target | Vocals | — |
@@ -551,6 +558,7 @@ Roformer karaoke yamls typically target **vocals** (lead) with instrumental comp
 | VR v5 — HP Karaoke 5 | Instrumental | yes | Instrumental with Backing Vocals, Lead Vocals |
 | VR v5 — HP Karaoke 6 | Instrumental | yes | Instrumental with Backing Vocals, Lead Vocals |
 | BandSplit PolarFormer — Karaoke · Lambda001 | lead | yes | Instrumental with Backing Vocals / Lead Vocals |
+| BandSplit PolarFormer — Karaoke v2 · Lambda001 | lead | yes | Instrumental with Backing Vocals / Lead Vocals |
 | BandSplit Roformer — Karaoke Inverted · GaboxR67 | other | yes | Instrumental with Backing Vocals / Lead Vocals |
 | BandSplit Roformer — Karaoke · Anvuew | Vocals | yes | Instrumental with Backing Vocals / Lead Vocals |
 | BandSplit Roformer — Karaoke · Becruily & Frazer | Vocals | yes | Instrumental with Backing Vocals / Lead Vocals |
@@ -566,6 +574,7 @@ Roformer karaoke yamls typically target **vocals** (lead) with instrumental comp
 | MelBand Roformer — Karaoke Fusion Total · Gonzaluigi | Vocals | yes | Instrumental with Backing Vocals / Lead Vocals |
 | MelBand Roformer — Karaoke Fusion · Gonzaluigi | Vocals | yes | Instrumental with Backing Vocals / Lead Vocals |
 | MelBand Roformer — Karaoke Small · GaboxR67 & Aufr33 | Vocals | yes | Instrumental with Backing Vocals / Lead Vocals |
+| MelBand Roformer — Karaoke v1 · Gilliaaan | lead | yes | Instrumental with Backing Vocals, Lead Vocals |
 | MelBand Roformer — Karaoke v1 · GaboxR67 | Vocals | yes | Instrumental with Backing Vocals / Lead Vocals |
 | MelBand Roformer — Karaoke v2 · GaboxR67 | Vocals | yes | Instrumental with Backing Vocals / Lead Vocals |
 | BandSplit Roformer — Karaoke Frazer · Becruily | Vocals | yes | Instrumental with Backing Vocals / Lead Vocals |
@@ -1053,6 +1062,22 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: Instrumental with Backing Vocals / Lead Vocals
 - **Metadata:** bundled_yaml:bs_pope_karaoke_974_lambda_config.yaml
 
+### BandSplit PolarFormer — Karaoke v2 · Lambda001
+
+- **Source:** mvsepless
+- **Weight:** `bs_pope_karaoke2_lambda.ckpt`
+- **Config:** `bs_pope_karaoke2_lambda_config.yaml`
+- **Architecture:** BS Roformer
+- **Name intent:** karaoke
+- **Backend focus:** karaoke_vocal_primary
+- **Primary stem (backend):** `lead`
+- **Instruments:** lead, back_instrum
+- **Target instrument:** `lead`
+- **Karaoke model:** yes
+- **Best result:** Instrumental with Backing Vocals / Lead Vocals
+- **Save stems UI:** UI: Instrumental with Backing Vocals / Lead Vocals
+- **Metadata:** bundled_yaml:bs_pope_karaoke2_lambda_config.yaml
+
 ### BandSplit PolarFormer — Vocals · ZFTurbo
 
 - **Source:** mvsepless
@@ -1139,6 +1164,36 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Best result:** Bowed Strings, Bowed Strings Removed
 - **Save stems UI:** UI: Bowed Strings / Bowed Strings Removed subset
 - **Metadata:** bundled_yaml:bs_bowed_str_gilliaaan_config.yaml
+
+### BandSplit Roformer — Bowed Strings v2 · Gilliaaan
+
+- **Source:** mvsepless
+- **Weight:** `bs_bowed_str2_gilliaaan.ckpt`
+- **Config:** `bs_bowed_str2_gilliaaan_config.yaml`
+- **Architecture:** BS Roformer
+- **Name intent:** specialty_stem
+- **Backend focus:** two_stem
+- **Primary stem (backend):** `strings`
+- **Instruments:** strings, other
+- **Best result:** Bowed Strings, Bowed Strings Removed
+- **Save stems UI:** UI: Bowed Strings / Bowed Strings Removed subset
+- **Metadata:** bundled_yaml:bs_bowed_str2_gilliaaan_config.yaml
+
+### BandSplit Roformer — DeEffect · Gilliaaan
+
+- **Source:** mvsepless
+- **Weight:** `bs_deeffect_gilliaaan.ckpt`
+- **Config:** `bs_deeffect_gilliaaan_config.yaml`
+- **Architecture:** BS Roformer
+- **Name intent:** special_fx
+- **Backend focus:** vocal_target
+- **Primary stem (backend):** `vocals`
+- **Instruments:** vocals, instrumental
+- **Target instrument:** `vocals`
+- **Best result:** Effects Removed (+ Effects complement)
+- **Save stems UI:** UI: Effects Removed / Effects
+- **Metadata:** bundled_yaml:bs_deeffect_gilliaaan_config.yaml
+- **Note:** Name intent corrected from metadata (vocals)
 
 ### BandSplit Roformer — DeReverb (SDR 22.50) · Anvuew
 
@@ -1413,6 +1468,21 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: Instrumental / Vocals
 - **Metadata:** bundled_yaml:bs_resurrection_inst_unwa_config.yaml
 - **Note:** Expected: inst models use yaml stem `other` (UI: Vocals / Instrumental)
+
+### BandSplit Roformer — Invert Clean v1 · Gilliaaan
+
+- **Source:** mvsepless
+- **Weight:** `bs_invert_clean1_gilliaaan.ckpt`
+- **Config:** `bs_invert_clean1_gilliaaan_config.yaml`
+- **Architecture:** BS Roformer
+- **Name intent:** vocals
+- **Backend focus:** vocal_target
+- **Primary stem (backend):** `vocals`
+- **Instruments:** vocals, other
+- **Target instrument:** `vocals`
+- **Best result:** Vocals / Instrumental
+- **Save stems UI:** UI: Vocals / Instrumental
+- **Metadata:** bundled_yaml:bs_invert_clean1_gilliaaan_config.yaml
 
 ### BandSplit Roformer — Karaoke Inverted · GaboxR67
 
@@ -4857,6 +4927,21 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: Instrumental with Backing Vocals / Lead Vocals
 - **Metadata:** bundled_yaml:mbr_karaoke_small_gabox_aufr33_config.yaml
 
+### MelBand Roformer — Karaoke v1 · Gilliaaan
+
+- **Source:** mvsepless
+- **Weight:** `mbr_karaoke1_gilliaaan.ckpt`
+- **Config:** `mbr_karaoke1_gilliaaan_config.yaml`
+- **Architecture:** Mel-Band Roformer
+- **Name intent:** karaoke
+- **Backend focus:** karaoke_vocal_primary
+- **Primary stem (backend):** `lead`
+- **Instruments:** lead, back-instrum
+- **Karaoke model:** yes
+- **Best result:** Instrumental with Backing Vocals, Lead Vocals
+- **Save stems UI:** UI: Instrumental with Backing Vocals / Lead Vocals
+- **Metadata:** bundled_yaml:mbr_karaoke1_gilliaaan_config.yaml
+
 ### MelBand Roformer — Karaoke v1 · GaboxR67
 
 - **Source:** mvsepless
@@ -5053,6 +5138,20 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Best result:** Center, Side
 - **Save stems UI:** UI: Center / Side subset
 - **Metadata:** bundled_yaml:mbr_mid_side_gilliaaan_config.yaml
+
+### MelBand Roformer — Mid-Side v3 · Gilliaaan
+
+- **Source:** mvsepless
+- **Weight:** `mbr_mid_side3_gilliaaan.ckpt`
+- **Config:** `mbr_mid_side3_gilliaaan_config.yaml`
+- **Architecture:** Mel-Band Roformer
+- **Name intent:** specialty_stem
+- **Backend focus:** two_stem
+- **Primary stem (backend):** `center`
+- **Instruments:** center, wide
+- **Best result:** Center, Side
+- **Save stems UI:** UI: Center / Side subset
+- **Metadata:** bundled_yaml:mbr_mid_side3_gilliaaan_config.yaml
 
 ### MelBand Roformer — Musicless · Jasper
 
@@ -5472,6 +5571,21 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Best result:** Vocals / Instrumental
 - **Save stems UI:** UI: Vocals / Instrumental
 - **Metadata:** bundled_yaml:mbr_xeno_config.yaml
+
+### MelBand Roformer — Xeno v3 · DrYound3r
+
+- **Source:** mvsepless
+- **Weight:** `mbr_xeno3.ckpt`
+- **Config:** `mbr_xeno3_config.yaml`
+- **Architecture:** Mel-Band Roformer
+- **Name intent:** vocals
+- **Backend focus:** vocal_target
+- **Primary stem (backend):** `vocals`
+- **Instruments:** vocals, other
+- **Target instrument:** `vocals`
+- **Best result:** Vocals / Instrumental
+- **Save stems UI:** UI: Vocals / Instrumental
+- **Metadata:** bundled_yaml:mbr_xeno3_config.yaml
 
 ## Roformer (detail)
 

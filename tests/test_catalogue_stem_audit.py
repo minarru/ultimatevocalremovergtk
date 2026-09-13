@@ -945,7 +945,7 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
 
         evidence = _diagnostic(result, "evidence-count")
         self.assertEqual(evidence.model_ids, ("mdx:fixture",))
-        self.assertEqual(evidence.expected, ("155", "123", "92"))
+        self.assertEqual(evidence.expected, ("156", "124", "92"))
         self.assertEqual(evidence.actual, ("6", "6", "1"))
         self.assertNotIn("reference-drift", _codes(result))
         self.assertTrue(result.reference_matches)
@@ -1209,6 +1209,7 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
         self.assertEqual(
             [(item.normalized_native, item.role_ids) for item in ambiguities],
             [
+                ("back-instrum", ("mix.instrumental_with_backing_vocals", "vocal.backing")),
                 ("bass", ("instrument.bass", "vocal.bass")),
                 (
                     "dry",
@@ -1252,7 +1253,7 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
                 ("strings", ("instrument.bowed_strings", "instrument.strings")),
                 (
                     "vocals",
-                    ("cinematic.speech", "vocal.backing", "vocal.lead", "vocal.vocals"),
+                    ("cinematic.speech", "effect.effects.removed", "vocal.backing", "vocal.lead", "vocal.vocals"),
                 ),
             ],
         )
@@ -1274,14 +1275,14 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
                 ("mix.instrumental", ("instrument", "instrumental", "other")),
                 (
                     "mix.instrumental_with_backing_vocals",
-                    ("instrumental", "other"),
+                    ("back-instrum", "instrumental", "other"),
                 ),
                 ("mix.music", ("music", "other")),
                 ("spatial.center", ("cen", "center", "mid", "similarity")),
                 ("spatial.side", ("side", "wide")),
                 (
                     "vocal.backing",
-                    ("back-vocal", "backing_vocal", "instrumental", "other", "vocals"),
+                    ("back-instrum", "back-vocal", "backing_vocal", "instrumental", "other", "vocals"),
                 ),
                 (
                     "vocal.lead",
@@ -1390,7 +1391,7 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
         self.assertEqual(rendered_ids, set(contracts))
         self.assertTrue(all(row[status_column] == "reviewed" for row in rows[1:]))
 
-    def test_canonical_snapshot_is_483_2_0_with_bidirectional_row_parity(self) -> None:
+    def test_canonical_snapshot_is_490_2_0_with_bidirectional_row_parity(self) -> None:
         """Checked identity evidence and reviewed schema-2 routes agree exactly."""
         from core.mdx_runtime_contract import load_bundled_mdx_runtime_contracts
         from core.model_manifest import load_model_manifest
@@ -1490,10 +1491,10 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
                 current_model_ids=current_ids,
             )
 
-        self.assertEqual(len(identity_by_id), 485)
+        self.assertEqual(len(identity_by_id), 492)
         self.assertEqual(
             len(result.reviewed_model_ids),
-            483,
+            490,
             (result.raw_model_ids, result.diagnostics),
         )
         self.assertEqual(len(result.waived_model_ids), 2)

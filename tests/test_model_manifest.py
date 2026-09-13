@@ -685,14 +685,14 @@ class ModelManifestTests(unittest.TestCase):
 
 
 class CurrentCatalogueManifestTests(unittest.TestCase):
-    def test_reviewed_current_snapshot_is_exactly_485_sorted_unique_ids(self) -> None:
+    def test_reviewed_current_snapshot_is_exactly_492_sorted_unique_ids(self) -> None:
         """The expected Download Center membership is an explicit reviewed fixture."""
         from core.model_manifest import load_model_manifest
 
         expected_ids = _CURRENT_MODEL_IDS_FIXTURE.read_text(encoding="utf-8").splitlines()
-        self.assertEqual(len(expected_ids), 485)
+        self.assertEqual(len(expected_ids), 492)
         self.assertEqual(expected_ids, sorted(expected_ids))
-        self.assertEqual(len(set(expected_ids)), 485)
+        self.assertEqual(len(set(expected_ids)), 492)
 
         registry = load_model_manifest()
         current_ids = {
