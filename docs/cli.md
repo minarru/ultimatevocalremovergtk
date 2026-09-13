@@ -354,3 +354,11 @@ earlier experimental surface.
 
 Removed Python headless helpers are replaced by the public resolved-job and
 blocking-runner APIs in `core`; no import trampoline remains.
+
+## Reference scoring for models and ensembles
+
+`uvr score prepare`, `files`, `run`, and `compare` evaluate saved outputs against
+known reference stems without running inference. See [the scoring guide](scoring.md)
+for manifests, optional BSS Eval installation, metric definitions, progress and
+report comparison. Use `--metrics basic` for waveform SDR and SI-SDR with the
+existing dependencies. The existing `uvr bench` A/B inference workflow is unchanged.

@@ -22,6 +22,7 @@ from .discovery import (
 from .ensemble import add_ensemble_args, cmd_ensemble
 from .replay import add_run_args, cmd_run
 from .reporting import REPORT_CHOICES, ensure_job_id, fail
+from .score import add_score_parser
 from .separate import add_separate_args, cmd_separate
 from .update import add_update_parser
 from .validate import add_validation_level, cmd_validate
@@ -114,6 +115,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_bench_args(bench)
     bench.set_defaults(func=cmd_bench)
 
+    add_score_parser(sub)
     add_models_parser(sub)
     add_ensembles_parser(sub)
     add_devices_parser(sub)
