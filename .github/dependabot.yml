@@ -1,0 +1,76 @@
+# Keep this configuration on the default branch (main), even though routine
+# version-update PRs target dev. Security updates still target the default branch.
+version: 2
+
+updates:
+  - package-ecosystem: "pip"
+    directory: "/"
+    target-branch: "dev"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Europe/Prague"
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
+    # Vendored projects are maintained separately from UVR's requirements files.
+    exclude-paths:
+      - "vendor/**"
+      - "models/**"
+    groups:
+      # Review the numerical/GPU stack together, including major updates.
+      # Grouping does not prove CUDA, Python-wheel, or model compatibility;
+      # these PRs still need installation and real inference checks.
+      inference-stack:
+        patterns:
+          - "torch*"
+          - "pytorch-lightning"
+          - "lightning-utilities"
+          - "triton"
+          - "nvidia-*"
+          - "cuda-*"
+          - "onnx*"
+          - "numpy"
+          - "numba"
+          - "llvmlite"
+          - "scipy"
+          - "pandas"
+          - "scikit-learn"
+          - "opencv-python"
+          - "ml-dtypes"
+          - "protobuf"
+          - "sympy"
+          - "networkx"
+      # Match explicit names: plain requirements files do not reliably identify
+      # development dependencies. Keep the stubs' separate --no-deps install.
+      development-tooling:
+        patterns:
+          - "basedpyright"
+          - "ruff"
+          - "coverage"
+          - "PyGObject-stubs"
+        update-types:
+          - "minor"
+          - "patch"
+      # First matching group wins. Leave other major upgrades as individual PRs.
+      python-maintenance:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    target-branch: "dev"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Europe/Prague"
+    open-pull-requests-limit: 2
+    groups:
+      github-actions:
+        patterns:
+          - "*"
