@@ -928,10 +928,11 @@ class DownloadManager:
         Port of ``download_model_settings``; on any failure existing local files
         are left untouched. Returns ``True`` on a successful refresh.
 
-        Name mappers are written as a pure upstream mirror; fork-local keys
-        live in a sibling ``*_local.json`` overlay (see :mod:`core.name_mapper`)
-        and are merged on read, so an upstream deletion propagates instead of
-        surviving forever in a union file. Hash maps replace. Unchanged payloads
+        Name mappers are written as a pure upstream mirror. Legacy local keys
+        are rescued once into a sibling overlay; its archive also marks that
+        migration complete (see :mod:`core.name_mapper`). Presentation reads
+        ignore the legacy overlay so upstream deletions propagate. Hash maps
+        replace. Unchanged payloads
         are not rewritten; stem-check invalidation runs only when a file changes.
 
         When ``repo`` is supplied, its stem-check cache is invalidated after a

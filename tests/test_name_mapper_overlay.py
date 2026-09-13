@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import tempfile
 import threading
 import unittest
 import warnings
+from typing import TextIO
 from unittest import mock
 
 from core import name_mapper
@@ -25,6 +27,100 @@ def _read(path: str) -> dict:
 
 
 class NameMapperOverlayTests(unittest.TestCase):
+    def test_model_metadata_refresh_does_not_recreate_archived_overlay(self) -> None:
+        from core import downloads
+
+        with tempfile.TemporaryDirectory() as tmp:
+            mapper = os.path.join(tmp, "model_name_mapper.json")
+            archive = name_mapper.legacy_overlay_archive_path(mapper)
+            _write(mapper, {"removed.ckpt": "Deleted upstream name"})
+            _write(archive, {"prior.ckpt": "Preserved legacy name"})
+            manager = downloads.DownloadManager()
+            with (
+                mock.patch.object(downloads, "_MODEL_DATA_URLS", [("https://example.test/mapper", mapper)]),
+                mock.patch.object(downloads, "_NAME_MAPPER_DESTS", frozenset({mapper})),
+                mock.patch.object(downloads, "_urlopen", side_effect=lambda _url: io.StringIO("{}")),
+                warnings.catch_warnings(record=True) as caught,
+            ):
+                warnings.simplefilter("always")
+                for _ in range(2):
+                    self.assertTrue(manager.update_model_settings())
+                    self.assertFalse(os.path.exists(name_mapper.local_overlay_path(mapper)))
+                    self.assertFalse(name_mapper.archive_legacy_local_overlay(mapper))
+            self.assertEqual(caught, [])
+            self.assertEqual(_read(mapper), {})
+            self.assertEqual(_read(archive), {"prior.ckpt": "Preserved legacy name"})
+
+    def test_archived_overlay_prevents_refresh_from_recreating_migration(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            mapper = os.path.join(tmp, "model_name_mapper.json")
+            _write(mapper, {"removed.ckpt": "Deleted upstream name"})
+            archive = name_mapper.legacy_overlay_archive_path(mapper)
+            _write(archive, {"prior.ckpt": "Preserved legacy name"})
+
+            self.assertIsNone(name_mapper.plan_local_overlay_migration(mapper, {}))
+            self.assertFalse(name_mapper.migrate_local_only_keys(mapper, {}))
+            self.assertFalse(os.path.exists(name_mapper.local_overlay_path(mapper)))
+            self.assertEqual(_read(archive), {"prior.ckpt": "Preserved legacy name"})
+
+    def test_archival_removes_only_empty_recreated_overlay_without_warning(self) -> None:
+        for archived in ({}, {"old.ckpt": "Preserved legacy name"}):
+            with self.subTest(archived=archived), tempfile.TemporaryDirectory() as tmp:
+                mapper = os.path.join(tmp, "model_name_mapper.json")
+                source = name_mapper.local_overlay_path(mapper)
+                archive = name_mapper.legacy_overlay_archive_path(mapper)
+                _write(source, {})
+                _write(archive, archived)
+                with open(archive, "rb") as handle:
+                    original = handle.read()
+                with warnings.catch_warnings(record=True) as caught:
+                    warnings.simplefilter("always")
+                    self.assertTrue(name_mapper.archive_legacy_local_overlay(mapper))
+                    self.assertFalse(name_mapper.archive_legacy_local_overlay(mapper))
+                self.assertEqual(caught, [])
+                self.assertFalse(os.path.exists(source))
+                with open(archive, "rb") as handle:
+                    self.assertEqual(handle.read(), original)
+
+    def test_archive_conflict_preserves_malformed_or_non_object_source(self) -> None:
+        for payload in ("{broken", "[]", "null", '{"model.ckpt": "New evidence"}'):
+            with self.subTest(payload=payload), tempfile.TemporaryDirectory() as tmp:
+                mapper = os.path.join(tmp, "model_name_mapper.json")
+                source = name_mapper.local_overlay_path(mapper)
+                archive = name_mapper.legacy_overlay_archive_path(mapper)
+                with open(source, "w", encoding="utf-8") as handle:
+                    handle.write(payload)
+                _write(archive, {"old.ckpt": "Preserved"})
+                with self.assertWarnsRegex(RuntimeWarning, "archive already exists"):
+                    self.assertFalse(name_mapper.archive_legacy_local_overlay(mapper))
+                with open(source, encoding="utf-8") as handle:
+                    self.assertEqual(handle.read(), payload)
+                self.assertEqual(_read(archive), {"old.ckpt": "Preserved"})
+
+    def test_empty_overlay_cleanup_preserves_concurrent_replacement(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            mapper = os.path.join(tmp, "model_name_mapper.json")
+            source = name_mapper.local_overlay_path(mapper)
+            archive = name_mapper.legacy_overlay_archive_path(mapper)
+            _write(source, {})
+            _write(archive, {"old.ckpt": "Preserved"})
+            real_load = json.load
+
+            def replace_after_read(handle: TextIO) -> object:
+                result = real_load(handle)
+                replacement = source + ".replacement"
+                _write(replacement, {"new.ckpt": "Concurrent replacement"})
+                os.replace(replacement, source)
+                return result
+
+            with (
+                mock.patch.object(name_mapper.json, "load", side_effect=replace_after_read),
+                self.assertWarns(RuntimeWarning),
+            ):
+                self.assertFalse(name_mapper.archive_legacy_local_overlay(mapper))
+            self.assertEqual(_read(source), {"new.ckpt": "Concurrent replacement"})
+            self.assertEqual(_read(archive), {"old.ckpt": "Preserved"})
+
     def test_overlay_path_is_sibling_of_mapper(self) -> None:
         mapper = os.path.join("a", "b", "model_name_mapper.json")
         self.assertEqual(
