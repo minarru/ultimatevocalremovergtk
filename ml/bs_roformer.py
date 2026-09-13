@@ -475,6 +475,7 @@ class BSRoformer(Module):
             # 10ms at 44100Hz, from sections 4.1, 4.4 in the paper - @faroit recommends // 2 or // 4 for better reconstruction
             stft_win_length: int = 2048,
             stft_normalized: bool = False,
+            zero_dc: bool = False,
             stft_window_fn: BeartypeOptional[BeartypeCallable[..., Tensor]] = None,
             mask_estimator_depth: int = 2,
             multi_stft_resolution_loss_weight: float = 1.,
@@ -511,6 +512,7 @@ class BSRoformer(Module):
         self.stereo = stereo
         self.audio_channels = 2 if stereo else 1
         self.num_stems = num_stems
+        self.zero_dc = zero_dc
         self.use_torch_checkpoint = use_torch_checkpoint
         self.skip_connection = skip_connection
 
@@ -747,6 +749,12 @@ class BSRoformer(Module):
         # istft
 
         stft_repr = rearrange(stft_repr, 'b n (f s) t -> (b n s) f t', s=self.audio_channels)
+        if self.zero_dc:
+            # Upstream's optional DC filter acts on each output/channel after
+            # masking. Keep it opt-in for existing checkpoints and CPU bounce.
+            stft_repr = stft_repr.index_fill(
+                1, torch.tensor([0], device=stft_repr.device), 0.0
+            )
 
         recon_audio = torch_istft(
             stft_repr,
