@@ -1333,7 +1333,7 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
             )
         )
 
-    def test_all_28_promoted_ids_are_present_in_semantic_reference_tsv(self) -> None:
+    def test_all_promoted_ids_are_present_in_semantic_reference_tsv(self) -> None:
         from core.mdx_runtime_contract import load_bundled_mdx_runtime_contracts
         from core.model_stem_manifest import load_bundled_stem_semantics
 
@@ -1387,7 +1387,7 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
         status_column = rows[0].index("review_status")
         rendered_ids = {row[model_id_column] for row in rows[1:]}
 
-        self.assertEqual(len(contracts), 28)
+        self.assertEqual(len(contracts), 29)
         self.assertEqual(rendered_ids, set(contracts))
         self.assertTrue(all(row[status_column] == "reviewed" for row in rows[1:]))
 

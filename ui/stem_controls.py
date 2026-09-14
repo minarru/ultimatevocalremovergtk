@@ -30,9 +30,13 @@ from core.stems import (
     StemRoute,
     StemRouteKind,
     StemSelectionStatus,
+    persisted_stem_focus,
     routes_matching_stems,
     select_stem_routes,
+    with_instrumental_mix,
 )
+
+from .stem_output_labels import selection_tooltips, stem_label
 
 if TYPE_CHECKING:
     from core.model_config import ModelConfig
@@ -91,6 +95,9 @@ class StemControlsSnapshot:
     model_id: str
     active_mode_id: str
     active_focus_id: str
+    selection_actions: tuple[tuple[str, str], ...] = ()
+    tooltips: tuple[tuple[str, str], ...] = ()
+    runtime_error: str = ""
 
 
 class StemControls:
@@ -121,7 +128,9 @@ class StemControls:
         same_layout = self._layout == state.mode
         self.state = state
         self.model_id = model_id
-        self._routes = tuple(state.routes)
+        self._routes = (with_instrumental_mix(state.routes)
+                        if state.mode in ('subset', 'demucs') else tuple(state.routes))
+        state.routes = self._routes
         self._native_alias_ambiguity = state.mode == 'subset' and any(
             routes_matching_stems(self._routes, [route.native.raw]) != (route,)
             for route in self._routes
@@ -139,7 +148,14 @@ class StemControls:
         elif old.selected_ids:
             available = {output_id(r) for r in self._routes}
             if not old.selected_ids <= available:
-                self.require_review()
+                # A compatible reconciliation can promote an exact scoped raw
+                # selection to a reviewed role without losing the user's pick.
+                mapped = [
+                    self._exact_route(persisted_stem_focus(choice.route), self._routes)
+                    for choice in old.choices if choice.selected
+                ]
+                if not mapped or any(route is None for route in mapped):
+                    self.require_review()
         if self.view is None or not same_layout:
             self.view = self._default_view()
 
@@ -216,7 +232,7 @@ class StemControls:
         if isinstance(view, SubsetView) and not self.review_required:
             self._native_memory = self.snapshot().selected_ids
 
-    def _read_demucs_native(self, settings: Settings) -> SubsetView:
+    def _read_demucs_native(self, settings: Settings) -> SubsetView | ExclusiveView:
         """Project legacy focused settings without migrating them on read."""
         natives = tuple(r for r in self._routes if r.native is not None)
         focus = settings.process.stem_focus or ''
@@ -225,6 +241,9 @@ class StemControls:
             self.require_review()
             return SubsetView(_QUICK_ALL, set(), True)
         if focus:
+            route = self._exact_route(focus, self._derived_routes())
+            if route is not None:
+                return ExclusiveView(route.concept)
             # Positional primary refers to the legacy focused native source.
             # Secondary is a remainder, which is not a native subset encoding.
             if focus == 'primary' and settings.demucs.stems != ALL_STEMS:
@@ -269,6 +288,13 @@ class StemControls:
             and not r.selected_by_default
             and isinstance(r.role, StemRoleId)
             and (r.derived_from or r.complement_of)
+            and (self._layout != 'demucs' or (
+                r.concept == 'mix.instrumental' and len(r.derived_from) >= 2
+                and set(r.derived_from) == {
+                    n.role for n in self._routes if n.native is not None
+                    and n.role != StemRoleId('vocal.vocals')
+                }
+            ))
         )
 
     def _inventory(self) -> tuple[ControlMode, tuple[StemRoute, ...]]:
@@ -283,7 +309,7 @@ class StemControls:
         return 'pair', self._routes
 
     def _selected(self, routes: tuple[StemRoute, ...]) -> frozenset[str]:
-        if self.review_required:
+        if self.review_required or self.state.runtime_error:
             return frozenset()
         view = self.view
         if isinstance(view, ExclusiveView):
@@ -322,23 +348,47 @@ class StemControls:
             )
             if not enabled:
                 explanation = 'This selection change is not supported by the current exporter.'
+            if self.state.runtime_error:
+                enabled = False
+                explanation = self.state.runtime_error
             choices.append(OutputChoice(ident, route, checked, True, explanation, enabled))
         modes: tuple[tuple[str, str], ...] = ()
         presets: tuple[tuple[str, str], ...] = ()
-        if self._layout == 'subset' and self._derived_routes():
+        if self._layout in ('subset', 'demucs') and self._derived_routes():
             modes = (('native_subset', 'Individual stems'),) + tuple(
-                (output_id(r), r.label) for r in self._derived_routes()
+                (output_id(r), stem_label(r)) for r in self._derived_routes()
             )
-        if mode == 'native_subset':
-            presets = (('all', ALL_STEMS),)
-            for role, label in (('vocal.vocals', 'Vocals'), ('mix.instrumental', 'Instrumental')):
-                matches = [
-                    r for r in routes if isinstance(r.role, StemRoleId) and r.role.value == role
-                ]
+        if mode == 'pair':
+            presets = (('all', 'Both'),) + tuple((output_id(r), stem_label(r)) for r in routes)
+        selection_actions: tuple[tuple[str, str], ...] = ()
+        if mode in ('native_subset', 'derived'):
+            native_routes = tuple(r for r in self._routes if r.native is not None)
+            by_role = {r.concept: r for r in self._routes}
+            karaoke = all(role in by_role for role in (
+                'vocal.lead', 'vocal.backing', 'mix.instrumental',
+                'mix.instrumental_with_backing_vocals',
+            ))
+            roles = (
+                (('vocal.lead', 'Lead Vocals'),
+                 ('mix.instrumental_with_backing_vocals', 'Instrumental + BGV'))
+                if karaoke else
+                (('vocal.vocals', 'Vocals'), ('mix.instrumental', 'Instrumental mix'))
+            )
+            presets = (('all', 'All'),)
+            for role, label in roles:
+                matches = [r for r in (*native_routes, *self._derived_routes()) if isinstance(r.role, StemRoleId) and r.role.value == role]
                 if len(matches) == 1:
                     presets += ((output_id(matches[0]), label),)
-        summary = ', '.join(c.route.label for c in choices if c.selected)
-        if self.review_required:
+            non_vocal = self._separate_selection('separate_non_vocal')
+            if non_vocal and len(non_vocal) < len(native_routes):
+                selection_actions += (('separate_non_vocal', 'Select non-vocal stems (separate files)'),)
+            if karaoke:
+                selection_actions += (('separate_backing_instrumental',
+                                       'Save BGV and Instrumental separately'),)
+        summary = ', '.join(stem_label(c.route) for c in choices if c.selected)
+        if self.state.runtime_error:
+            summary = self.state.runtime_error
+        elif self.review_required:
             summary = 'Outputs changed. Choose the stems to save.'
         elif mode == 'unavailable':
             summary = 'Select a model to choose outputs.'
@@ -362,15 +412,18 @@ class StemControls:
             summary,
             len(selected),
             note,
-            self.review_required,
+            self.review_required or bool(self.state.runtime_error),
             self.revision,
             self.model_id,
             active_mode,
             active_focus,
+            selection_actions,
+            selection_tooltips((output_id(r), r) for r in self._routes),
+            self.state.runtime_error,
         )
 
     def _current(self, revision: int | None) -> bool:
-        return (revision is None or revision == self.revision) and self.state.has_model
+        return (revision is None or revision == self.revision) and self.state.has_model and not self.state.runtime_error
 
     def _mirror_subset(self) -> None:
         if isinstance(self.view, SubsetView):
@@ -400,22 +453,28 @@ class StemControls:
         resolved = routes_matching_stems(self._routes, natives)
         return frozenset(output_id(r) for r in resolved) == selected
 
+    def _set_native_selection(self, selected: frozenset[str]) -> bool:
+        routes = tuple(r for r in self._routes if r.native is not None)
+        chosen = tuple(r for r in routes if output_id(r) in selected)
+        if not chosen or not self._native_selection_supported(selected):
+            return False
+        defaults = frozenset(output_id(r) for r in routes if r.selected_by_default)
+        self.adopt_view(
+            SubsetView(
+                _QUICK_ALL if selected == defaults else _SUBSET_CUSTOM,
+                {r.concept for r in chosen},
+                selected == defaults,
+            )
+        )
+        return True
+
     def _set_selection(self, selected: frozenset[str]) -> bool:
         mode, routes = self._inventory()
         chosen = tuple(r for r in routes if output_id(r) in selected)
         if not chosen:
             return False
         if mode == 'native_subset':
-            if not self._native_selection_supported(selected):
-                return False
-            defaults = frozenset(output_id(r) for r in routes if r.selected_by_default)
-            self.adopt_view(
-                SubsetView(
-                    _QUICK_ALL if selected == defaults else _SUBSET_CUSTOM,
-                    {r.concept for r in chosen},
-                    selected == defaults,
-                )
-            )
+            return self._set_native_selection(selected)
         elif mode in ('pair', 'derived'):
             self.adopt_view(
                 ExclusiveView(
@@ -453,9 +512,30 @@ class StemControls:
         )
         return self._set_selection(selected)
 
+    def _separate_selection(self, preset_id: str) -> frozenset[str]:
+        natives = tuple(r for r in self._routes if r.native is not None)
+        if preset_id == 'separate_backing_instrumental':
+            return frozenset(output_id(r) for r in natives
+                             if r.concept in ('vocal.backing', 'mix.instrumental'))
+        return frozenset(output_id(r) for r in natives
+                         if isinstance(r.role, StemRoleId) and not r.role.value.startswith('vocal.'))
+
     def choose_preset(self, preset_id: str, *, revision: int | None = None) -> bool:
-        if not self._current(revision) or preset_id not in dict(self.snapshot().presets):
+        snapshot = self.snapshot()
+        allowed = dict((*snapshot.presets, *snapshot.selection_actions))
+        if not self._current(revision) or preset_id not in allowed:
             return False
+        if preset_id in dict(snapshot.selection_actions):
+            return self._set_native_selection(self._separate_selection(preset_id))
+        if preset_id in dict(self.snapshot().modes):
+            return self.choose_mode(preset_id, revision=revision)
+        if self._layout in ('subset', 'demucs'):
+            selected = (
+                frozenset(output_id(r) for r in self._routes if r.native and r.selected_by_default)
+                if preset_id == 'all'
+                else frozenset((preset_id,))
+            )
+            return self._set_native_selection(selected)
         if preset_id == 'all':
             return self.select_all(revision=revision)
         return self._set_selection(frozenset((preset_id,)))
@@ -493,11 +573,12 @@ class StemControls:
         if (
             not self._dirty
             or self.review_required
+            or self.state.runtime_error
             or self.view is None
             or not self.snapshot().main_count
         ):
             return
-        if self._layout == 'subset' and isinstance(self.view, ExclusiveView):
+        if self._layout in ('subset', 'demucs') and isinstance(self.view, ExclusiveView):
             # Existing exact-focus mode has no native subset sidecar. Clearing
             # through the adapter keeps stale native choices out of the writer.
             self.state.write(settings, SubsetView(_QUICK_ALL, set(), True))

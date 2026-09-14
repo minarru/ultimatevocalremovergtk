@@ -41,6 +41,11 @@ class SeperateAttributes(EngineLegacyOptions):
         master_vocal_source: Any = None,
     ) -> None:
 
+        semantics = getattr(model_data, "stem_semantics", None)
+        runtime_error = getattr(semantics, "runtime_error", "")
+        if runtime_error:
+            raise ValueError(runtime_error)
+
         self.context = EngineRunContext(
             model_data, process_data,
             EngineInvocation(main_model_primary_stem_4_stem, main_process_method,

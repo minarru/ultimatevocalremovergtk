@@ -160,3 +160,19 @@ scale marks mark indicator {
 .uvr-selection-badge { background-color: @accent_bg_color; color: @accent_fg_color;
   border-radius: 99px; padding: 0 5px; min-height: 16px; min-width: 6px;
   font-weight: bold; transform: translate(3px, -3px); }
+
+/* Overlay checks sit over the corner without changing the label allocation. */
+.stem-check-badge {
+  border-radius: 999px;
+  padding: 3px;
+  background: @accent_bg_color;
+  color: @accent_fg_color;
+  transform: translate(9px, -9px);
+}
+.stem-toggle, .stem-quick-group toggle { padding: 0; }
+.stem-toggle-label { padding: 8px 12px; }
+
+.stem-quick-group .stem-toggle-label { padding-top: 3px; padding-bottom: 3px; }
+
+/* Separate-file shortcuts remain secondary to the selected output controls. */
+.stem-selection-action { font-weight: normal; }

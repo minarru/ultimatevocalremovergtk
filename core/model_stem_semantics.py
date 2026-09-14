@@ -63,12 +63,15 @@ def resolve_catalogue_stem_semantics(
     context: StemProcessingContext = StemProcessingContext.FULL_MIX,
     runtime_warning: str = "",
     registry: typing.Any = None,
+    retain_reviewed: bool = True,
 ) -> ModelStemSemantics:
     """Resolve a catalogue row through exact declarations or an exact waiver.
 
     Catalogue name/category guesses deliberately do not take part in this
     lookup.  A waiver is audit evidence for an exact canonical identity, not a
-    declaration of output membership, so it carries no routes.
+    declaration of output membership, so it carries no routes. Publication
+    audits pass retain_reviewed=False to test observed evidence strictly; UI
+    presentation retains the declaration beside any evidence warning.
     """
     from .model_stem_manifest import (
         StemSemanticsRegistry,
@@ -83,8 +86,29 @@ def resolve_catalogue_stem_semantics(
         backend_primary=backend_primary,
         backend_target=backend_target,
         context=context,
-        registry=StemSemanticsRegistry.empty() if runtime_warning else selected_registry,
+        registry=(
+            StemSemanticsRegistry.empty()
+            if runtime_warning and not retain_reviewed
+            else selected_registry
+        ),
     )
+    declaration = selected_registry.models.get(model_id)
+    if (
+        retain_reviewed
+        and semantics.status is StemReviewStatus.RAW
+        and declaration is not None
+        and context in declaration.contexts
+    ):
+        # Catalogue presentation retains the review; only the installed-model
+        # reconciler can bind these roles to actual arrays and permit execution.
+        warning = semantics.warning
+        semantics = resolve_model_stem_semantics(
+            model_id,
+            native_stems=declaration.native_signature,
+            context=context,
+            registry=selected_registry,
+        )
+        semantics = replace(semantics, warning=warning)
     if runtime_warning:
         return replace(semantics, warning=runtime_warning)
     waiver = selected_registry.waivers.get(model_id)
@@ -136,7 +160,7 @@ def resolve_exact_catalogue_stem_semantics(
         not semantic_mismatch_warning
         and exact_native_stems is not None
         and declared
-        and semantics.status is StemReviewStatus.RAW
+        and semantics.warning.startswith("signature-mismatch")
     ):
         mismatch = f"catalogue-evidence-mismatch model_id={model_id} {semantics.warning}"
         warning = f"{warning}; {mismatch}" if warning else mismatch
@@ -226,6 +250,7 @@ def stem_semantics_projection(
         canonical_roles=tuple(roles),
         evidence=semantics.evidence,
         warning=semantics.warning,
+        runtime_error=semantics.runtime_error,
     )
 
 

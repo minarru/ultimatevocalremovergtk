@@ -58,7 +58,17 @@ def assess_stem_semantics(
         "context": projection.context,
         "status": projection.status,
     }
-    if projection.status == "raw":
+    if semantics.runtime_error:
+        diagnostics.append(
+            Diagnostic(
+                "stems.configuration_conflict",
+                semantics.runtime_error,
+                "error",
+                details={"model_id": descriptor.id, "reason": semantics.warning},
+            )
+        )
+        events.append(DiagnosticEvent("model", "stem_configuration_conflict", "error", fields))
+    elif projection.status == "raw":
         warning = semantics.warning or "raw-fallback"
         event = "stem_semantics_fallback"
         if warning.startswith("signature-mismatch"):

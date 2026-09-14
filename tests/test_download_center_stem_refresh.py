@@ -267,7 +267,7 @@ class ApplyCatalogueStemCacheTests(unittest.TestCase):
         self.assertEqual(patched.catalogue_evidence_warning, "request failed")
         self.assertNotIn("mismatch", patched.stem_semantics.warning)
 
-    def test_strict_runtime_contract_digest_mismatch_remains_raw(self) -> None:
+    def test_config_digest_drift_retains_reviewed_presentation(self) -> None:
         meta = EntryMeta(
             label="Reviewed",
             display="Reviewed",
@@ -291,7 +291,7 @@ class ApplyCatalogueStemCacheTests(unittest.TestCase):
         self.assertEqual(updated, {meta.label})
         patched = self.manager.catalogue_meta[meta.label]
         self.assertEqual(patched.catalogue_evidence_status, CatalogueEvidenceState.READY)
-        self.assertEqual(patched.stem_semantics.status, "raw")
+        self.assertEqual(patched.stem_semantics.status, "reviewed")
         self.assertIn("runtime-contract-mismatch", patched.catalogue_evidence_warning)
 
 

@@ -10936,7 +10936,58 @@
         "primary_artifact": "mbr_inst2_unwa.ckpt",
         "source": "mvsepless"
       },
+      "config_evidence": {
+        "config_melbandroformer_inst_v2.yaml": {
+          "content_sha256": "4b902a7360a930c178edb4846b30e4e326aa1219d1b2daf660d46a311e0cd50b",
+          "sources": [
+            "https://raw.githubusercontent.com/TRvlvr/application_data/main/mdx_model_data/mdx_c_configs/config_melbandroformer_inst_v2.yaml"
+          ],
+          "target_instrument": "Instrumental",
+          "training_instruments": [
+            "Instrumental",
+            "Vocals"
+          ]
+        },
+        "mbr_inst2_unwa_config.yaml": {
+          "content_sha256": "959d88e8bef9cbe6736a0f02d19346c045e4ef3b435c38e67bd7ea5e2eed3b0f",
+          "sources": [
+            "https://huggingface.co/noblebarkrr/mvsepless_resources/resolve/main/mel_band_roformer/mbr_inst2_unwa_config.yaml?download=true"
+          ],
+          "target_instrument": "other",
+          "training_instruments": [
+            "other",
+            "vocals"
+          ]
+        }
+      },
       "lifecycle": "current",
+      "runtime_contract": {
+        "artifact_evidence": [
+          {
+            "hash_record_source": "models/MDX_Net_Models/model_data/model_data.json",
+            "uvr_md5": "951f8ef420a941a395a9919f5d55cce9"
+          }
+        ],
+        "backend": "mdx_c_target",
+        "config_yamls": [
+          "mbr_inst2_unwa_config.yaml",
+          "config_melbandroformer_inst_v2.yaml"
+        ],
+        "evidence": {
+          "artifact_sources": [
+            "https://huggingface.co/noblebarkrr/mvsepless_resources/resolve/main/mel_band_roformer/mbr_inst2_unwa.ckpt?download=true",
+            "https://huggingface.co/pcunwa/Mel-Band-Roformer-Inst/resolve/main/melband_roformer_inst_v2.ckpt"
+          ],
+          "review_note": "Reviewed 2026-09-14: installed mbr_inst2_unwa.ckpt and melband_roformer_inst_v2.ckpt have identical full SHA-256 bd19766620f7d6f58fdf7aaada7e89907fe41bc64490ce3faa9a6dab15d6e1f2 and UVR digest 951f8ef420a941a395a9919f5d55cce9. Parsed configs are identical after normalizing training source names and target other to Instrumental. Both address the sole instrumental tensor; vocals is its mix complement.",
+          "runtime_metadata_sources": [
+            "models/MDX_Net_Models/model_data/model_data.json"
+          ]
+        },
+        "primary_native": "other",
+        "target_aliases": [
+          "Instrumental"
+        ]
+      },
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -10959,7 +11010,7 @@
         "native_signature": [
           "other"
         ],
-        "review_note": "catalogue_id=mdx:mbr_inst2_unwa; source=mvsepless; metadata_source=bundled_yaml:mbr_inst2_unwa_config.yaml; native_signature=other; backend_primary=other; backend_target=other; reviewed_contexts=full_mix"
+        "review_note": "catalogue_id=mdx:mbr_inst2_unwa; source=mvsepless; metadata_source=bundled_yaml:mbr_inst2_unwa_config.yaml; native_signature=other; backend_primary=other; backend_target=other; reviewed_contexts=full_mix; runtime_contract=model_manifest.json"
       }
     },
     "mdx:mbr_inst_1652_essid": {

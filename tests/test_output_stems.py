@@ -1,6 +1,7 @@
 """Output summary stays connected to the existing stem-selection controls."""
 
 import unittest
+from collections.abc import Callable
 
 from tests.private_gtk import require_private_gtk
 
@@ -230,6 +231,158 @@ class DirectOutputStemsTests(unittest.TestCase):
         self.assertEqual(self.settings.process.stem_focus, "")
         self.assertTrue(instrumental.get_active())
 
+    def test_quick_selection_is_rendered_above_save_stems(self):
+        import time
+
+        from gi.repository import Adw, GLib
+
+        self.pair()
+        parent = Adw.Window(content=self.host, default_width=600, default_height=400)
+        self.addCleanup(parent.close)
+        parent.present()
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline:
+            while GLib.MainContext.default().pending():
+                GLib.MainContext.default().iteration(False)
+            if self.output.quick.group.get_height() > 0:
+                break
+            time.sleep(0.01)
+        quick_ok, quick_bounds = self.output.quick.group.compute_bounds(parent)
+        row_ok, row_bounds = self.output.row.compute_bounds(parent)
+        self.assertTrue(quick_ok and row_ok)
+        self.assertLessEqual(quick_bounds.get_y() + quick_bounds.get_height(), row_bounds.get_y())
+
+    def test_quick_selection_shrinks_after_leaving_narrow_breakpoint(self):
+        self._check_quick_resize("Vocals", "Instrumental")
+
+    def test_long_quick_labels_shrink_after_leaving_narrow_breakpoint(self):
+        self._check_quick_resize("Reverb/Echo Removed", "Reverb/Echo")
+
+    def _check_quick_resize(self, primary: str, secondary: str) -> None:
+        import time
+
+        from gi.repository import Adw, GLib, Gtk
+
+        self.section.configure_exclusive(
+            primary_stem=primary,
+            secondary_stem=secondary,
+            primary_key="is_primary_stem_only",
+            secondary_key="is_secondary_stem_only",
+        )
+        self.section.sync_from_settings()
+        self.output.refresh()
+        parent = Adw.Window(content=self.host, default_width=600, default_height=400)
+        self.addCleanup(parent.close)
+        parent.present()
+        group = self.output.quick.group
+
+        def wait_for(predicate: Callable[[], bool]) -> None:
+            deadline = time.monotonic() + 3
+            while time.monotonic() < deadline:
+                while GLib.MainContext.default().pending():
+                    GLib.MainContext.default().iteration(False)
+                if predicate():
+                    return
+                time.sleep(0.01)
+            self.fail(
+                f"Quickselect did not settle: orientation={group.get_orientation()}, "
+                f"height={group.get_height()}, width={group.get_width()}, "
+                f"window={parent.get_width()}, request={self.output.quick.widget.get_size_request()[1]}"
+            )
+
+        wait_for(lambda: group.get_width() > 420 and group.get_height() > 0)
+        # Wait for the initial Wayland configure to finish before requesting a
+        # resize; its acknowledgement can otherwise overwrite the new size.
+        frames: list[int] = []
+
+        def mapped_frame(*_args: object) -> bool:
+            frames.append(1)
+            return len(frames) < 3
+
+        parent.add_tick_callback(mapped_frame)
+        wait_for(lambda: len(frames) == 3)
+        self.output.refresh()
+        wide_height = self.output.quick.widget.get_size_request()[1]
+        for _ in range(2):
+            parent.set_default_size(320, 400)
+            wait_for(
+                lambda: (
+                    group.get_orientation() == Gtk.Orientation.VERTICAL
+                    and group.get_width() < 420
+                    and group.get_height() > wide_height
+                )
+            )
+            parent.set_default_size(600, 400)
+            wait_for(
+                lambda: (
+                    group.get_orientation() == Gtk.Orientation.HORIZONTAL
+                    and group.get_width() > 420
+                    and group.get_height() <= wide_height
+                    and self.output.quick.widget.get_size_request()[1] == wide_height
+                )
+            )
+
+    def test_quick_selection_updates_dialog_and_badges_without_opening(self):
+        self.pair()
+        self.assertTrue(hasattr(self.output, "quick"))
+        from gi.repository import Gtk
+
+        group = self.output.quick.group
+        if isinstance(group, Gtk.Box):
+            self.skipTest("Native ToggleGroup unavailable")
+        group.set_active_name(
+            next(key for key, label in self.output.quick.items if label == "Vocals")
+        )
+        self.assertTrue(self.check("Vocals").get_active())
+        self.assertFalse(self.check("Instrumental").get_active())
+        self.assertEqual(self.output.count.get_label(), "1 stem")
+        self.assertEqual(
+            self.output.dialog_quick.group.get_property("active-name"), group.get_active_name()
+        )
+        self.assertIsNone(self.output.dialog.get_root())
+        self.assertEqual(self.edits, 1)
+        active = group.get_active_name()
+        assert active is not None
+        self.assertEqual(self.output.quick.badges[active].get_opacity(), 1)
+        self.check("Instrumental").set_active(True)
+        self.assertEqual(group.get_active_name(), "all")
+        self.assertEqual(self.output.quick.badges["all"].get_opacity(), 1)
+
+    def test_custom_subset_clears_quick_preset_and_keeps_rows_selected(self):
+        from gi.repository import Gtk
+
+        self.section.configure_subset(
+            stems=["Vocals", "Drums", "Bass", "Other"],
+            show_quick_export=True,
+            primary_key="is_primary_stem_only",
+            secondary_key="is_secondary_stem_only",
+        )
+        self.section.sync_from_settings()
+        self.output.refresh()
+        self.check("Vocals").set_active(False)
+        self.assertTrue(all(b.get_opacity() == 0 for b in self.output.quick.badges.values()))
+        self.assertEqual(self.settings.mdx.stems_selected, ["Drums", "Bass", "Other"])
+        for _label, button in self.output._output_rows.values():
+            self.assertIsInstance(button, Gtk.CheckButton)
+
+    def test_older_adwaita_quick_buttons_and_dialog_rows(self):
+        from unittest.mock import patch
+
+        from gi.repository import Adw, Gtk
+
+        from ui.widgets.output_stems import OutputStemsSection
+
+        with patch("ui.widgets.stem_quick_select.hasattr", return_value=False, create=True):
+            self.output = OutputStemsSection(self.section, Adw.PreferencesGroup())
+        self.pair()
+        self.assertIsInstance(self.output._output_list, Gtk.ListBox)
+        vocal = next(key for key, label in self.output.quick.items if label == "Vocals")
+        self.output.quick.buttons[vocal].emit("clicked")
+        self.assertEqual(self.output.count.get_label(), "1 stem")
+        self.assertTrue(self.check("Vocals").get_active())
+        self.assertFalse(self.check("Instrumental").get_active())
+        self.assertEqual(self.output.quick.badges[vocal].get_opacity(), 1)
+
     def test_model_change_publishes_reconciled_stem_readiness(self):
         from types import SimpleNamespace
         from typing import Any
@@ -335,6 +488,90 @@ class DirectOutputStemsTests(unittest.TestCase):
         self.assertEqual(self.edits, 1)
         self.assertEqual(self.output.count.get_label(), "1 stem")
 
+    def test_dialog_quick_selection_and_separate_karaoke_action_share_state(self):
+        from gi.repository import Gtk
+
+        from tests.stem_control_cases import KARAOKE_THREE, manifest_routes
+
+        routes = manifest_routes(KARAOKE_THREE)
+        self.section.configure_subset(
+            stems=[r.native.raw for r in routes if r.native],
+            routes=routes,
+            show_quick_export=False,
+            primary_key="is_primary_stem_only",
+            secondary_key="is_secondary_stem_only",
+        )
+        self.section.sync_from_settings()
+        self.output.refresh()
+        self.assertIsInstance(self.output._output_list, Gtk.ListBox)
+        self.assertFalse(self.output._select_all.get_visible())
+        self.assertFalse(self.output._mode_group.get_visible())
+        group = self.output.dialog_quick.group
+        if isinstance(group, Gtk.Box):
+            self.skipTest("Native ToggleGroup unavailable")
+        combined = next(
+            ident for ident, label in self.output.quick.items if label == "Instrumental + BGV"
+        )
+        for quick in (self.output.quick, self.output.dialog_quick):
+            badge = quick.badges[combined]
+            parent = badge.get_parent()
+            assert parent is not None
+            tooltip = parent.get_tooltip_text() or ""
+            self.assertIn("backing vocals", tooltip.lower())
+            self.assertIn("one", tooltip.lower())
+        group.set_active_name(combined)
+        self.assertEqual(self.output.quick.group.get_property("active-name"), combined)
+        self.assertEqual(self.settings.process.stem_focus, "mix.instrumental_with_backing_vocals")
+        action = self.output._separate_actions.get_last_child()
+        assert isinstance(action, Gtk.Button)
+        self.assertIn("separate", action.get_tooltip_text() or "")
+        action.emit("clicked")
+        self.assertEqual(self.settings.mdx.stems_selected, ["backing_vocal", "instrumental"])
+        self.assertEqual(self.settings.process.stem_focus, "")
+        self.assertEqual(self.output.count.get_label(), "2 stems")
+        self.assertTrue(self.check("BGV").get_active())
+        self.assertIn("Backing vocals", self.check("BGV").get_tooltip_text() or "")
+        self.assertTrue(self.check("Instrumental").get_active())
+        self.assertFalse(self.check("Lead Vocals").get_active())
+        self.assertIsNone(group.get_active_name())
+
+    def test_derived_quick_selection_keeps_group_and_badge_visible(self):
+        from gi.repository import Gtk
+
+        from tests.stem_control_cases import KARAOKE_THREE, manifest_routes
+        from ui.widgets.rows import get_combo_value
+
+        routes = manifest_routes(KARAOKE_THREE)
+        self.section.set_model_context(KARAOKE_THREE)
+        self.section.configure_subset(
+            stems=[r.native.raw for r in routes if r.native],
+            show_quick_export=False,
+            primary_key="is_primary_stem_only",
+            secondary_key="is_secondary_stem_only",
+            routes=routes,
+        )
+        self.section.sync_from_settings()
+        self.output.refresh()
+        group = self.output.quick.group
+        if isinstance(group, Gtk.Box):
+            self.skipTest("Native ToggleGroup unavailable")
+        assert self.output.controls is not None
+        combined = self.output.controls.snapshot().modes[-1][0]
+        group.set_active_name(combined)
+        self.assertTrue(group.get_visible())
+        self.assertEqual(group.get_active_name(), combined)
+        self.assertEqual(self.output.quick.badges[combined].get_opacity(), 1)
+        self.assertEqual(self.output.quick.badges["all"].get_opacity(), 0)
+        self.assertEqual(get_combo_value(self.output._mode), combined)
+        self.assertEqual(self.settings.process.stem_focus, "mix.instrumental_with_backing_vocals")
+        self.assertIsNone(self.output.dialog.get_root())
+        group.set_active_name("all")
+        self.assertEqual(get_combo_value(self.output._mode), "native_subset")
+        self.assertEqual(self.output.count.get_label(), "3 stems")
+        self.assertEqual(self.settings.process.stem_focus, "")
+        self.assertEqual(self.output.quick.badges["all"].get_opacity(), 1)
+        self.assertEqual(self.edits, 2)
+
     def test_combined_mode_restores_native_subset_without_nested_dialog(self):
         from tests.stem_control_cases import KARAOKE_THREE, manifest_routes
         from ui.widgets.rows import set_combo_value
@@ -385,7 +622,8 @@ class DirectOutputStemsTests(unittest.TestCase):
         self.section.sync_from_settings()
         self.output.refresh()
         self.assertFalse(self.check("Lead Vocals").get_active())
-        self.assertTrue(self.check("Backing Vocals").get_active())
+        self.assertTrue(self.check("BGV").get_active())
+        self.assertIn("Backing vocals", self.check("BGV").get_tooltip_text() or "")
         self.assertTrue(self.check("Instrumental").get_active())
 
     def test_model_option_refresh_does_not_replace_selection(self):
@@ -461,7 +699,7 @@ class DirectOutputStemsTests(unittest.TestCase):
         self.section.sync_from_settings()
         self.output.refresh(model_name="Demucs six-stem model")
         self.assertFalse(self.output._focus.get_visible())
-        self.assertTrue(self.output._select_all.get_visible())
+        self.assertFalse(self.output._select_all.get_visible())
         for route in routes:
             if route.native and route.native.raw not in {"vocals", "drums", "bass"}:
                 self.check(route.label).set_active(False)

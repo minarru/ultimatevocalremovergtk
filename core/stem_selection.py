@@ -477,6 +477,7 @@ class StemSelectionState:
     """Configure context plus persist/sync for one Save Stems section."""
 
     def __init__(self) -> None:
+        self.runtime_error = ""
         self.mode = "hidden"
         self.has_model = False
         self.primary_key = "is_primary_stem_only"

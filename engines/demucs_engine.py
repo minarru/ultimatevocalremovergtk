@@ -89,6 +89,8 @@ class SeperateDemucs(SeperateAttributes):
                 self.demucs_stems == ALL_STEMS and not self.process_data.is_ensemble_master
             ) or (self.is_4_stem_ensemble and not self.is_return_dual)
 
+        if any(route.derived_from and route.concept == 'mix.instrumental' for route in export_routes):
+            write_all_sources = True
         if write_all_sources:
             if isinstance(source, np.ndarray) and (
                 self.is_match_mix_level or self.is_prevent_export_clipping
@@ -115,6 +117,7 @@ class SeperateDemucs(SeperateAttributes):
                     write_all_sources=True,
                     blend=self.process_secondary_stem,
                     blended_sources=blended,
+                    available_routes=self.available_stem_routes,
                     is_secondary_model=self.is_secondary_model,
                     is_pre_proc_model=self.is_pre_proc_model,
                     is_sec_bv_rebalance=self.is_sec_bv_rebalance,

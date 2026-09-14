@@ -360,3 +360,12 @@ acknowledgements:
 - [BS-Roformer-HyperACE](https://huggingface.co/pcunwa/BS-Roformer-HyperACE)
   and [PoPE-pytorch](https://pypi.org/project/PoPE-pytorch/) are the sources for
   the specialised Roformer paths above.
+
+### Reviewed stems and alternate configs
+
+Known models use their reviewed stem names in the model picker, output controls,
+and exports, even when a compatible alternate config uses a raw name such as
+`other`. Unknown models and unreviewed processing contexts retain their native
+names. If the checkpoint or config cannot be reconciled with the reviewed outputs,
+UVR shows a configuration conflict and blocks the run instead of guessing which
+stem to save. Compatible configs and local metadata are preserved.

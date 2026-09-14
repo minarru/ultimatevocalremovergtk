@@ -5,6 +5,7 @@ from collections.abc import Sequence
 from core.settings import Settings
 from core.stems import StemRoute
 from ui.stem_controls import OutputChoice, StemControlsSnapshot
+from ui.stem_output_labels import selection_tooltips, stem_label
 
 
 class EnsembleStemControls:
@@ -38,7 +39,7 @@ class EnsembleStemControls:
             for route in self.routes
         )
         summary = ", ".join(
-            route.label for route in self.routes if str(route.role) in self.selected
+            stem_label(route) for route in self.routes if str(route.role) in self.selected
         )
         if review:
             summary = "Review unavailable stem selection"
@@ -47,7 +48,12 @@ class EnsembleStemControls:
         return StemControlsSnapshot(
             mode="native_subset" if self.ready and self.routes else "unavailable",
             choices=choices,
-            presets=(),
+            presets=(("all", "All"),)
+            + tuple(
+                (str(route.role), stem_label(route))
+                for route in self.routes
+                if str(route.role) in ("vocal.vocals", "mix.instrumental")
+            ),
             modes=(),
             focus_choices=(),
             selected_ids=frozenset(self.selected),
@@ -61,6 +67,7 @@ class EnsembleStemControls:
             model_id="ensemble",
             active_mode_id="",
             active_focus_id="",
+            tooltips=selection_tooltips((str(r.role), r) for r in self.routes),
         )
 
     def toggle_output(self, output_id: str, checked: bool, *, revision: int) -> bool:
@@ -98,8 +105,15 @@ class EnsembleStemControls:
         # Snapshot reads the current retention option, without resolving models.
         pass
 
-    def choose_preset(self, _preset: str, *, revision: int) -> bool:
-        return False
+    def choose_preset(self, preset: str, *, revision: int) -> bool:
+        if not self.ready or revision != self.revision:
+            return False
+        if preset not in dict(self.snapshot().presets):
+            return False
+        if preset == "all":
+            return self.select_all()
+        self.selected = {preset}
+        return True
 
     def choose_mode(self, _mode: str) -> bool:
         return False

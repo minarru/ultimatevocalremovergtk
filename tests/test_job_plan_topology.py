@@ -185,7 +185,7 @@ class PlannedOutputStemTests(unittest.TestCase):
 
         settings = Settings.defaults()
         semantics = resolve_catalogue_stem_semantics(
-            "mdx:bs_neo_inst_beta", native_stems=("vocals", "other")
+            "mdx:unknown_beta", native_stems=("vocals", "other")
         )
         plan = ResolvedJob(
             command="separate",
@@ -193,7 +193,7 @@ class PlannedOutputStemTests(unittest.TestCase):
             inputs=(),
             models=(
                 ModelDescriptor(
-                    "mdx:bs_neo_inst_beta",
+                    "mdx:unknown_beta",
                     "mdx",
                     "bs_neo_inst_beta",
                     "Beta",
@@ -210,7 +210,7 @@ class PlannedOutputStemTests(unittest.TestCase):
         ).to_dict()
 
         self.assertEqual(plan["models"][0]["stem_semantics_status"], "raw")
-        self.assertIn("signature-mismatch", plan["models"][0]["stem_semantics_warning"])
+        self.assertIn("unknown-model", plan["models"][0]["stem_semantics_warning"])
 
     def test_stem_semantic_diagnostics_log_reviewed_and_fallback_context(self) -> None:
         from core.job_diagnostics import stem_semantics_diagnostics as _stem_semantics_diagnostics
@@ -231,27 +231,27 @@ class PlannedOutputStemTests(unittest.TestCase):
             ),
         )
         mismatch = ModelDescriptor(
-            "mdx:bs_neo_inst_beta",
+            "mdx:unknown_beta",
             "mdx",
             "bs_neo_inst_beta",
             "Beta",
             primary_stem="other",
             stem_semantics=resolve_catalogue_stem_semantics(
-                "mdx:bs_neo_inst_beta", native_stems=("vocals", "other")
+                "mdx:unknown_beta", native_stems=("vocals", "other")
             ),
         )
 
         with patch("core.debug_log.log_event") as event:
             diagnostics = _stem_semantics_diagnostics((reviewed, mismatch))
 
-        self.assertEqual(diagnostics[0].code, "stems.semantics_signature_mismatch")
+        self.assertEqual(diagnostics[0].code, "stems.semantics_fallback")
         calls = {call.args[1]: call.kwargs for call in event.call_args_list}
         self.assertEqual(calls["stem_semantics_routing"]["label"], "Instrumental")
         self.assertEqual(calls["stem_semantics_routing"]["role"], "mix.instrumental")
         self.assertEqual(calls["stem_semantics_routing"]["native"], "other")
         self.assertEqual(calls["stem_semantics_routing"]["context"], "full_mix")
         self.assertEqual(calls["stem_semantics_routing"]["status"], "reviewed")
-        self.assertEqual(calls["stem_semantics_signature_mismatch"]["level"], "warning")
+        self.assertEqual(calls["stem_semantics_fallback"]["level"], "warning")
 
     def test_pair_selection_requires_two_distinct_reviewed_members(self) -> None:
         from core.job_diagnostics import ensemble_pair_diagnostics as _ensemble_pair_diagnostics

@@ -105,6 +105,39 @@ The Ensemble page reuses the output-stem dialog with its own selection controlle
 its checkbox edits never write MDX or Demucs subsets. Saved ensembles retain both
 this subset and the pair-mode `process.stem_focus` selection.
 
+Reviewed full-mix MDX-C and Demucs inventories with one Vocals source and
+multiple instrument/residual sources expose an optional Instrumental mix route.
+It sums the non-vocal sources into one `Instrumental` file and is excluded from
+All stems. The route uses `process.stem_focus = "mix.instrumental"`; native
+subset settings still mean separate files. Raw, cinematic and karaoke inventories
+are not inferred by this capability. Three-stem karaoke uses its declared
+Instrumental-with-Backing-Vocals recipe, or an explicit two-native-stem subset.
+
+**Installed stem-role reconciliation is separate from config validation.**
+`core/stem_reconciliation.py` retains the reviewed declaration for a known model
+and context, binds exact native keys without depending on their order, and accepts
+a different single-target key only for a checkpoint verified against its reviewed
+MDX target contract. Multi-source config tensor order must still match reviewed
+config evidence; reordering a source dictionary does not change tensor order.
+Single-target Roformer tensors use the explicit target key, independently of the
+training-list order. Runtime keys are never renamed in the engine. Compatible
+config filename/content differences remain diagnostics, without discarding reviewed
+roles or their declared complement recipes. Incompatible identity, layout or source
+mappings retain reviewed labels and carry `runtime_error`: selection controls are
+disabled, planning reports an error, and engine construction rejects the run.
+Unknown models and undeclared contexts keep raw outputs. Scoped raw selections may
+be read through a matching model/context/native-signature alias; new selections
+persist reviewed roles. Reconciliation does not rewrite config files or local
+metadata. Inventory and presentation refreshes use the existing model refresh spine.
+
+Single-target runtime contracts may declare `target_aliases` for explicitly reviewed
+config target spellings. Each alias must occur in the contract's config evidence,
+and aliases require checkpoint evidence. They do not apply to other models or to
+multi-source tensor slots. The `mbr_inst2_unwa` contract records the verified shared
+checkpoint and equivalent `other`/`Instrumental` configs without changing its native
+stem declaration. Ensemble pair and four-stem eligibility use the assembled model's
+reconciled full-mix roles and reject runtime conflicts.
+
 **Semantic review and catalogue evidence availability are independent.** Reviewed/waived/raw stem status comes only from the unified manifest; `ready`, `pending`, `unavailable`, `stale`, and `not_applicable` describe whether exact catalogue/config evidence can currently be validated. A timeout, cold cache, or stale last-known-good entry must not downgrade a reviewed declaration to raw, and successful parsed evidence may report drift but must never invent semantics.
 
 **Run payloads are typed.** `ProcessData` carries callbacks, routing flags, and source-cache state into engines. Engines reuse already-computed stems within one input file via its `cached_source_callback` / `cached_model_source_holder` fields; the runner clears the cache per input file (`_cached_sources_clear`). `_build_all_models` supplies `list_all_models`, which engines use to decide whether a referenced primary/secondary model actually participates in this run.

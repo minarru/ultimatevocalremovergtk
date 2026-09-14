@@ -499,10 +499,15 @@ class SeperateMDXC(SeperateAttributes):
                 )
 
                 if S > 1 or self.is_vocal_main_target:
+                    output_keys = (
+                        [self.roformer_config.training.target_instrument]
+                        if self.roformer_config.training.target_instrument
+                        else self.mdx_c_configs.training.instruments
+                    )
                     sources = {
                         k: pitch_fix(v) if self.is_pitch_change else v
                         for k, v in zip(
-                            self.mdx_c_configs.training.instruments,
+                            output_keys,
                             estimated_sources.cpu().detach().numpy(),
                             strict=False,
                         )

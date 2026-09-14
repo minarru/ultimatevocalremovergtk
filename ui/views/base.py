@@ -429,6 +429,8 @@ class MethodView:
             self.save_stems.configure_hidden(has_model=False)
         else:
             self._configure_save_stems(model)
+        semantics = getattr(model, "stem_semantics", None)
+        self.save_stems.set_runtime_error(getattr(semantics, "runtime_error", ""))
         self._on_model_resolved(model)
         if self.has_model():
             self.save_stems.sync_from_settings()

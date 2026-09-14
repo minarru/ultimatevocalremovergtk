@@ -736,38 +736,20 @@ def _has_reviewed_vocal_split_context(model: Any) -> bool:
 
 def _has_reviewed_full_mix_roles(model: Any, required_roles: typing.Iterable[Any]) -> bool:
     """Require exact reviewed full-mix roles for a semantic ensemble pair."""
-    native_stems: tuple[str, ...] = ()
-    for attribute in ("mdx_model_stems", "demucs_source_list"):
-        value = getattr(model, attribute, ())
-        if isinstance(value, (list, tuple)) and value:
-            native_stems = tuple(str(item) for item in value if item)
-            if native_stems:
-                break
-    if not native_stems:
-        native_stems = tuple(
-            dict.fromkeys(
-                str(item)
-                for item in (
-                    getattr(model, "primary_stem_native", None)
-                    or getattr(model, "primary_stem", None),
-                    getattr(model, "secondary_stem", None),
-                )
-                if item
-            )
-        )
-    model_id = _checklist_id(model)
-    if not model_id or not native_stems:
-        return False
-    semantics = resolve_model_stem_semantics(
-        model_id,
-        native_stems=native_stems,
-        backend_primary=str(
-            getattr(model, "primary_stem_native", None) or getattr(model, "primary_stem", "") or ""
-        ),
-        backend_target=str(getattr(model, "target_instrument", "") or ""),
-        context=StemProcessingContext.FULL_MIX,
-    )
-    if semantics.status is not StemReviewStatus.REVIEWED:
+    from .stem_roles import ModelStemSemantics
+    from .stems import model_stem_routes
+
+    # Use the same config/identity reconciliation as execution and stem controls.
+    # Matching raw names alone neither proves compatibility nor handles renamed
+    # targets on verified checkpoints.
+    model_stem_routes(model)
+    semantics = getattr(model, "stem_semantics", None)
+    if (
+        not isinstance(semantics, ModelStemSemantics)
+        or semantics.status is not StemReviewStatus.REVIEWED
+        or semantics.context is not StemProcessingContext.FULL_MIX
+        or semantics.runtime_error
+    ):
         return False
     available_roles = {output.role for output in semantics.outputs}
     return set(required_roles).issubset(available_roles)

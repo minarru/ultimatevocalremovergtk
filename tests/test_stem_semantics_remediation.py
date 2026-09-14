@@ -221,17 +221,29 @@ class ReviewedDecisionLedgerTests(unittest.TestCase):
     def test_task5_manifest_matches_every_shared_ordered_decision(self) -> None:
         expected_models = self.fixture["models"]
         actual_models = self.manifest["models"]
-        self.assertEqual(len(actual_models), 484)
+        # The Task 5 fixture is historical. Later reviewed decisions have their
+        # own config and output-route assertions in test_mvsepless_september_review.
+        later_reviewed_ids = {
+            "mdx:bs_bowed_str2_gilliaaan",
+            "mdx:bs_deeffect_gilliaaan",
+            "mdx:bs_invert_clean1_gilliaaan",
+            "mdx:bs_pope_karaoke2_lambda",
+            "mdx:mbr_karaoke1_gilliaaan",
+            "mdx:mbr_mid_side3_gilliaaan",
+            "mdx:mbr_xeno3",
+        }
+        self.assertEqual(set(actual_models), set(expected_models) | later_reviewed_ids)
+        historical_models = {model_id: actual_models[model_id] for model_id in expected_models}
+        self.assertEqual(len(historical_models), 484)
         self.assertEqual(
             self.manifest["waivers"],
             {model_id: self.manifest["waivers"][model_id] for model_id in self.fixture["waivers"]},
         )
         self.assertEqual(
-            sum(len(model["contexts"]) for model in actual_models.values()),
+            sum(len(model["contexts"]) for model in historical_models.values()),
             515,
         )
-        self.assertEqual(set(actual_models), set(expected_models))
-        for model_id in sorted(actual_models):
+        for model_id in sorted(historical_models):
             with self.subTest(model_id=model_id):
                 self.assertEqual(
                     _normalized_manifest_model(actual_models[model_id]),
@@ -241,7 +253,11 @@ class ReviewedDecisionLedgerTests(unittest.TestCase):
         actual_karaoke_ids = {
             model_id for model_id, model in actual_models.items() if model["intent"] == "karaoke"
         }
-        self.assertEqual(actual_karaoke_ids, set(self.fixture["karaoke_model_ids"]))
+        self.assertEqual(
+            actual_karaoke_ids,
+            set(self.fixture["karaoke_model_ids"])
+            | {"mdx:bs_pope_karaoke2_lambda", "mdx:mbr_karaoke1_gilliaaan"},
+        )
 
     def test_current_scnet_mid_side_decision_pins_exact_evidence(self) -> None:
         model_id = "mdx:scnet_mid_side_gilliaaan"
@@ -289,7 +305,7 @@ class ReviewedDecisionLedgerTests(unittest.TestCase):
 
         self.assertNotIn(model_id, load_bundled_mdx_runtime_contracts().contracts)
 
-    def test_reviewed_roles_are_exact_and_used_by_the_final_oracle(self) -> None:
+    def test_reviewed_roles_are_exact_and_used_by_current_models(self) -> None:
         expected_roles = {
             "vocal.bass": ("Bass Vocals", "Bass_Vocals", None),
             "instrument.hi_hat": ("Hi-Hat", "Hi_Hat", None),
@@ -319,6 +335,8 @@ class ReviewedDecisionLedgerTests(unittest.TestCase):
                 "instrument.drum_bass",
             ),
             "effect.reverb_echo": ("Reverb/Echo", "Reverb_Echo", None),
+            "effect.effects": ("Effects", "Effects", None),
+            "effect.effects.removed": ("Effects Removed", "Effects_Removed", "effect.effects"),
             "effect.reverb_echo.removed": (
                 "Reverb/Echo Removed",
                 "Reverb_Echo_Removed",
@@ -357,7 +375,7 @@ class ReviewedDecisionLedgerTests(unittest.TestCase):
         self.assertFalse(obsolete.intersection(roles))
         used_roles = {
             output["role"]
-            for model in self.fixture["models"].values()
+            for model in self.manifest["models"].values()
             for context in model["contexts"].values()
             for output in context["outputs"]
         }

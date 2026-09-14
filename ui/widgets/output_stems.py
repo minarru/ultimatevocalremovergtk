@@ -13,9 +13,11 @@ from ..dialogs.utils import present_modal_dialog
 from ..gtk_narrow import root_window
 from ..markup import set_row_subtitle
 from ..stem_controls import StemControls, StemControlsSnapshot
+from ..stem_output_labels import stem_label, stem_tooltip
 from ..template import load_builder, object_from_builder
 from .rows import configure_combo_row, get_combo_value, set_combo_tag_values, set_combo_value
 from .stem_only import SaveStemsSection
+from .stem_quick_select import StemQuickSelect
 
 if TYPE_CHECKING:
     from ..ensemble.stem_controls import EnsembleStemControls
@@ -39,7 +41,6 @@ class OutputStemsSection:
         self._row_revision = -1
         self._output_rows: dict[str, tuple[Adw.ActionRow, Gtk.CheckButton]] = {}
         self._row_signature: tuple[tuple[str, bool], ...] = ()
-        self._preset_signature: tuple[tuple[str, str], ...] = ()
         self._mode_items: tuple[tuple[str, str], ...] = ()
         self._focus_items: tuple[tuple[str, str], ...] = ()
         builder = load_builder("output-stems")
@@ -53,11 +54,24 @@ class OutputStemsSection:
         self._additional = object_from_builder(builder, "additional_outputs", Gtk.Label)
         self._workload = object_from_builder(builder, "workload", Gtk.Label)
         self._output_list = object_from_builder(builder, "output_list", Gtk.ListBox)
+        self._outputs_section = object_from_builder(builder, "outputs_section", Gtk.Box)
+        self._output_heading = object_from_builder(builder, "output_heading", Gtk.Label)
+        self._quick_section = object_from_builder(builder, "quick_section", Gtk.Box)
+        self._separate_section = object_from_builder(builder, "separate_section", Gtk.Box)
+        self._quick_row = object_from_builder(builder, "quick_row", Adw.PreferencesRow)
+        self.quick = StemQuickSelect(self._choose_preset)
+        self.dialog_quick = StemQuickSelect(self._choose_preset)
+        object_from_builder(builder, "quick_holder", Gtk.Box).append(self.quick.widget)
+        object_from_builder(builder, "dialog_quick_holder", Gtk.Box).append(
+            self.dialog_quick.widget
+        )
+        self._separate_actions = object_from_builder(builder, "separate_actions", Gtk.Box)
+        self._action_signature: tuple[tuple[str, str], ...] = ()
+        object_from_builder(builder, "choose_stems", Gtk.Button).connect("clicked", self._present)
         self._search = object_from_builder(builder, "search", Gtk.SearchEntry)
         self._no_matches = object_from_builder(builder, "no_matches", Adw.StatusPage)
         self._review = object_from_builder(builder, "review", Gtk.Label)
         self._select_all = object_from_builder(builder, "select_all", Gtk.Button)
-        self._presets = object_from_builder(builder, "presets", Gtk.Box)
         self._mode_group = object_from_builder(builder, "mode_group", Adw.PreferencesGroup)
         self._mode = configure_combo_row(
             object_from_builder(builder, "export_mode", Adw.ComboRow), []
@@ -73,6 +87,7 @@ class OutputStemsSection:
         self._select_all.connect("clicked", self._all_clicked)
         self._mode.connect("notify::selected", self._mode_changed)
         self._focus.connect("notify::selected", self._focus_changed)
+        host.add(self._quick_row)
         host.add(self.row)
         self.row.connect("activated", self._present)
         self.refresh()
@@ -123,13 +138,17 @@ class OutputStemsSection:
         self.row.set_sensitive(bool(presentation.visible_rows))
         self.row.set_tooltip_text(presentation.hint)
         for widget in (
+            self._quick_row,
+            self.dialog_quick.widget,
+            self._separate_section,
+            self._quick_section,
+            self._outputs_section,
             self._output_list,
             self._search,
             self._no_matches,
             self._review,
             self._mode_group,
             self._select_all,
-            self._presets,
             self._additional,
         ):
             widget.set_visible(False)
@@ -150,9 +169,17 @@ class OutputStemsSection:
         self.row.set_sensitive(snapshot.mode != "unavailable")
         self.row.set_tooltip_text(self.section.active_hint())
         self._review.set_visible(snapshot.review_required)
-        self._mode.set_visible(bool(snapshot.modes))
+        self._review.set_label(snapshot.runtime_error or "Outputs changed. Choose the stems to save.")
+        for control in (self.quick.widget, self.dialog_quick.widget, self._mode,
+                        self._focus, self._select_all, self._separate_actions):
+            control.set_sensitive(not snapshot.runtime_error)
+        preset_ids = {ident for ident, _ in snapshot.presets}
+        has_extra_modes = any(
+            ident != "native_subset" and ident not in preset_ids for ident, _ in snapshot.modes
+        )
+        self._mode.set_visible(has_extra_modes)
         self._focus.set_visible(len(snapshot.focus_choices) > 1)
-        self._mode_group.set_visible(bool(snapshot.modes) or len(snapshot.focus_choices) > 1)
+        self._mode_group.set_visible(has_extra_modes or len(snapshot.focus_choices) > 1)
         if self._mode_items != snapshot.modes:
             self._mode_items = snapshot.modes
             set_combo_tag_values(self._mode, list(snapshot.modes))
@@ -161,28 +188,39 @@ class OutputStemsSection:
             set_combo_tag_values(self._focus, list(snapshot.focus_choices))
         set_combo_value(self._mode, snapshot.active_mode_id)
         set_combo_value(self._focus, snapshot.active_focus_id)
-        revision_changed = self._row_revision != snapshot.revision
-        # Short lists need only the checkboxes and header Select All. Preserve
-        # useful one-click presets for large inventories without duplicating All.
-        presets = (
-            tuple(p for p in snapshot.presets if p[0] != "all")
-            if len(snapshot.choices) >= 8
-            else ()
+        self._quick_row.set_visible(snapshot.mode != "unavailable")
+        self.quick.render(snapshot)
+        self.dialog_quick.render(snapshot)
+        self._quick_section.set_visible(bool(snapshot.presets))
+        self._outputs_section.set_visible(bool(snapshot.choices))
+        self._output_heading.set_label(
+            "Combined output" if snapshot.mode == "derived" else "Individual stems"
         )
-        if revision_changed or self._preset_signature != presets:
-            self._preset_signature = presets
-            while (child := self._presets.get_first_child()) is not None:
-                self._presets.remove(child)
-            for preset_id, label in presets:
-                button = Gtk.Button(label=label)
-                button.connect("clicked", self._preset_clicked, preset_id, snapshot.revision)
-                self._presets.append(button)
-        self._presets.set_visible(bool(presets))
-        review_all = snapshot.review_required and bool(snapshot.focus_choices)
+        if (
+            self._action_signature != snapshot.selection_actions
+            or self._row_revision != snapshot.revision
+        ):
+            self._action_signature = snapshot.selection_actions
+            while (child := self._separate_actions.get_first_child()) is not None:
+                self._separate_actions.remove(child)
+            for ident, label in snapshot.selection_actions:
+                button = Gtk.Button(css_classes=["stem-selection-action"])
+                label = {
+                    "separate_non_vocal": "Non-vocal stems",
+                    "separate_backing_instrumental": "BGV and Instrumental",
+                }.get(ident, label)
+                button.set_child(Gtk.Label(label=label, wrap=True))
+                button.set_tooltip_text(dict(snapshot.tooltips).get(ident))
+                button.connect("clicked", self._preset_clicked, ident, snapshot.revision)
+                self._separate_actions.append(button)
+        self._separate_section.set_visible(bool(snapshot.selection_actions))
+        revision_changed = self._row_revision != snapshot.revision
+        review_all = snapshot.review_required
         self._select_all.set_visible(
             review_all
             or (
-                snapshot.mode in ("pair", "native_subset", "demucs_focus")
+                "all" not in preset_ids
+                and snapshot.mode in ("pair", "native_subset", "demucs_focus")
                 and (
                     snapshot.mode != "demucs_focus"
                     or all(choice.enabled for choice in snapshot.choices)
@@ -201,23 +239,22 @@ class OutputStemsSection:
             self._output_rows.clear()
             for choice in snapshot.choices:
                 builder = load_builder("output-stem-row")
-                row = object_from_builder(builder, "row", Adw.ActionRow)
+                label = object_from_builder(builder, "row", Adw.ActionRow)
                 check = object_from_builder(builder, "selected", Gtk.CheckButton)
-                fixed = object_from_builder(builder, "fixed_selection", Gtk.Image)
-                check.set_visible(choice.editable)
-                fixed.set_visible(not choice.editable)
-                if choice.editable:
-                    row.set_activatable_widget(check)
+                label.set_activatable_widget(check)
                 check.connect("toggled", self._toggled, choice.id, snapshot.revision)
-                self._output_rows[choice.id] = row, check
-                self._output_list.append(row)
+                self._output_rows[choice.id] = label, check
+                self._output_list.append(label)
             if revision_changed:
                 self._search.set_text("")
         for choice in snapshot.choices:
             row, check = self._output_rows[choice.id]
-            check.set_sensitive(choice.enabled)
-            row.set_title(choice.route.label)
+            check.set_sensitive(choice.enabled and choice.editable)
+            row.set_title(stem_label(choice.route))
+            tooltip = " ".join(filter(None, (stem_tooltip(choice.route), choice.explanation)))
+            row.set_tooltip_text(tooltip)
             set_row_subtitle(row, choice.explanation)
+            check.set_tooltip_text(tooltip)
             check.update_property([Gtk.AccessibleProperty.LABEL], [f"Save {choice.route.label}"])
             check.update_property(
                 [Gtk.AccessibleProperty.DESCRIPTION], ["At least one output is required."]
@@ -232,7 +269,7 @@ class OutputStemsSection:
         query = self._search.get_text().strip().casefold() if self._search.get_visible() else ""
         visible = 0
         for row, _check in self._output_rows.values():
-            matches = query in (row.get_title() or "").casefold()
+            matches = query in f"{row.get_title() or ''} {row.get_tooltip_text() or ''}".casefold()
             row.set_visible(matches)
             visible += matches
         self._no_matches.set_visible(bool(query) and not visible)
@@ -260,6 +297,9 @@ class OutputStemsSection:
                 self._apply(controls.select_all)
 
     def _preset_clicked(self, _button: Gtk.Button, preset_id: str, revision: int) -> None:
+        self._choose_preset(preset_id, revision)
+
+    def _choose_preset(self, preset_id: str, revision: int) -> None:
         if (controls := self.controls) is not None:
             self._apply(lambda: controls.choose_preset(preset_id, revision=revision))
 
@@ -274,7 +314,7 @@ class OutputStemsSection:
     def _resize(self) -> None:
         parent = root_window(self.row)
         height = parent.get_height() if parent is not None else 700
-        self._scroll.set_max_content_height(min(440, max(120, height - 340)))
+        self._scroll.set_max_content_height(min(620, max(180, height - 160)))
         self.dialog.set_content_height(-1)
 
     def _present(self, *_args: object) -> None:

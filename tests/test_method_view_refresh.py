@@ -167,6 +167,7 @@ class StemLabelResolutionTests(unittest.TestCase):
         view.save_stems = SimpleNamespace(
             configure_exclusive=configure,
             set_model_context=mock.Mock(),
+            set_runtime_error=mock.Mock(),
             sync_from_settings=mock.Mock(),
         )
         view._on_model_resolved = mock.Mock()

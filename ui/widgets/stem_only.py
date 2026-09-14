@@ -27,7 +27,8 @@ from core.stem_selection import (
 )
 from core.stems import (
     StemRoute,
-    persisted_stem_focus,
+    StemSelectionStatus,
+    select_stem_routes,
 )
 
 from ..dialogs.utils import present_modal_dialog, set_dialog_content
@@ -372,6 +373,10 @@ class SaveStemsSection:
     def set_model_context(self, model_id: str) -> None:
         self._model_id = model_id
 
+    def set_runtime_error(self, message: str) -> None:
+        """Carry a reviewed-model configuration conflict to direct controls."""
+        self._state.runtime_error = message
+
     def controls_changed(self) -> None:
         """Publish an accepted direct edit through the existing page owner."""
         self._clear_refresh_repick()
@@ -658,7 +663,9 @@ class SaveStemsSection:
         if not focus or focus in {"primary", "secondary"}:
             self._clear_refresh_repick()
             return False
-        valid = any(persisted_stem_focus(route) == focus for route in self._state.routes)
+        valid = (
+            select_stem_routes(self._state.routes, focus).status is StemSelectionStatus.MATCHED
+        )
         if valid:
             self._clear_refresh_repick()
             return False

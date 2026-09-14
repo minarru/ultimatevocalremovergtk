@@ -33,6 +33,7 @@ class DemucsExportRequest:
     write_all_sources: bool
     blend: Callable[..., Any]
     blended_sources: Mapping[str, Any] = field(default_factory=dict)
+    available_routes: tuple[StemRoute, ...] = ()
     primary_stem: str = ""
     secondary_stem: str = ""
     is_secondary_model: bool = False
@@ -80,6 +81,34 @@ def plan_demucs_export(request: DemucsExportRequest) -> ExportPlan:
     # ---------------------------------------------------------------------
     if write_all_sources:
         export_sources = dict(request.blended_sources)
+
+        recipes = tuple(r for r in export_routes if r.derived_from)
+        if recipes:
+            by_role = {r.role: r for r in request.available_routes if r.native is not None}
+            combined: dict[str, Any] = {}
+            for route in recipes:
+                parts = []
+                for role in route.derived_from:
+                    dependency = by_role.get(role)
+                    if dependency is None or dependency.native is None:
+                        raise ValueError(f"Missing Instrumental source role: {role}")
+                    key = _demucs_map_key(dependency.native.raw)
+                    if key is None or key not in export_sources:
+                        raise ValueError(f"Missing Instrumental source: {dependency.native.raw}")
+                    parts.append(export_sources[key])
+                # Avoid stacking every full-length source into another large
+                # array just to sum it; keep only the final mix allocation.
+                mixed = np.zeros_like(parts[0])
+                for part in parts:
+                    mixed += part
+                combined[route.concept] = mixed
+            selected_sources: dict[str, Any] = {}
+            for route in native_export:
+                if route.native is not None:
+                    key = _demucs_map_key(route.native.raw)
+                    if key is not None and key in export_sources:
+                        selected_sources[route.native.raw] = export_sources[key]
+            export_sources = {**selected_sources, **combined}
 
         # Derived instrumental complement is required by nested secondary
         # gather/pre-proc callers on 4/6-stem Demucs.

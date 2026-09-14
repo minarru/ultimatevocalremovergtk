@@ -333,7 +333,7 @@ class DemucsStemControlContractTests(unittest.TestCase):
                 ),
                 (DemucsView("instrument.bass", "all", True), "", None),
                 (DemucsView("focus_vocals", "all", False), "vocal.vocals", "vocal.vocals"),
-                (DemucsView("focus_instrumental", "all", False), "mix.instrumental", None),
+                (DemucsView("focus_instrumental", "all", False), "mix.instrumental", "mix.instrumental"),
             )
             for view, persisted, single_role in cases:
                 with self.subTest(model=model_id, view=view):
@@ -354,10 +354,10 @@ class DemucsStemControlContractTests(unittest.TestCase):
                     expected = (
                         tuple(r for r in available if r.concept == single_role)
                         if single_role
-                        else available
+                        else tuple(r for r in available if r.selected_by_default)
                     )
-                    # Canonical declarations have no remainder route. The
-                    # unsupported focus/both encodings fall back to all natives.
+                    # Instrumental is an optional combined output. Other
+                    # unsupported remainders still fall back to all natives.
                     self.assertEqual(model.selected_stem_routes, expected)
                     self.assertEqual(projected_routes(model), expected)
                     mapping = model.demucs_source_map
@@ -366,7 +366,8 @@ class DemucsStemControlContractTests(unittest.TestCase):
                         DemucsExportRequest(
                             native=DemucsNativeResult(source, np.full((2, 8), 100.0), mapping),
                             routes=expected,
-                            write_all_sources=single_role is None,
+                            write_all_sources=single_role in (None, "mix.instrumental"),
+                            available_routes=available,
                             blend=lambda src, secondary=None: src,
                             blended_sources={
                                 name: source[index].T for name, index in mapping.items()

@@ -42,6 +42,21 @@ class DemucsExportPlanTests(unittest.TestCase):
             exports_primary=True,
         )
 
+    def test_instrumental_mix_sums_blended_non_vocal_sources_once(self):
+        from core.stems import with_instrumental_mix
+        from tests.stem_control_cases import manifest_routes
+
+        routes = with_instrumental_mix(manifest_routes('demucs:htdemucs'))
+        instrumental = next(r for r in routes if r.concept == 'mix.instrumental')
+        blended = {name: self.source[index].T * 2 for name, index in self.mapping.items()}
+        plan = plan_demucs_export(replace(
+            self.request, routes=(instrumental,), available_routes=routes,
+            write_all_sources=True, blended_sources=blended,
+        ))
+        self.assertEqual(list(plan.sources), ['mix.instrumental'])
+        np.testing.assert_array_equal(plan.sources['mix.instrumental'], np.full((8, 2), 12.0))
+        np.testing.assert_array_equal(self.source[0], np.full((2, 8), 1.0))
+
     def test_dual_subtraction_preserves_order_shape_split_and_aliases(self):
         plan = plan_demucs_export(self.request)
         self.assertIsInstance(plan, ExportPlan)
@@ -152,6 +167,18 @@ class MDXCExportPlanTests(unittest.TestCase):
         resolved = resolve_mdx_c_export(request, routing, selection)
         return plan_mdx_c_export(resolved)
 
+    def test_instrumental_mix_materializes_one_combined_file(self):
+        from core.stems import with_instrumental_mix
+        from tests.stem_control_cases import manifest_routes
+
+        routes = with_instrumental_mix(manifest_routes('mdx:SCNet-large_starrytong_fixed'))
+        instrumental = next(r for r in routes if r.concept == 'mix.instrumental')
+        plan = self.plan(replace(self.request, available_routes=routes,
+                                export_routes=(instrumental,), exports_primary=False,
+                                exports_secondary=True, selected_stems=()))
+        self.assertEqual(list(plan.sources), ['mix.instrumental'])
+        np.testing.assert_array_equal(plan.sources['mix.instrumental'], np.full((8, 2), 9.0))
+
     def test_native_and_subset_preserve_inventory_order_and_array_views(self):
         for routes in [self.routes, self.routes[1:3]]:
             with self.subTest(routes=routes):
@@ -195,6 +222,23 @@ class MDXCExportPlanTests(unittest.TestCase):
 
 
 class CachedEnginePlanTests(unittest.TestCase):
+    def test_demucs_engine_exports_only_instrumental_mix_from_cached_sources(self):
+        from core.stems import with_instrumental_mix
+        from engines.demucs_engine import SeperateDemucs
+        from tests.stem_control_cases import manifest_routes
+        from tests.test_demucs_secondary_slots import _StubSeperateDemucs
+
+        stub: Any = _StubSeperateDemucs([None] * 4, [None] * 4)
+        routes = with_instrumental_mix(manifest_routes('demucs:htdemucs'))
+        stub.available_stem_routes = routes
+        stub.selected_stem_routes = tuple(r for r in routes if r.concept == 'mix.instrumental')
+        stub.selected_stem_routes_explicit = True
+        stub.is_sec_bv_rebalance = False
+        expected = np.sum(stub.primary_sources[:3], axis=0).T.copy()
+        plan = SeperateDemucs.seperate(stub)
+        self.assertEqual(list(plan.sources), ['mix.instrumental'])
+        np.testing.assert_array_equal(plan.sources['mix.instrumental'], expected)
+
     def test_demucs_engine_preserves_cache_alias_level_and_secondary_order(self):
         from engines.demucs_engine import SeperateDemucs
         from tests.test_demucs_secondary_slots import _Model, _StubSeperateDemucs

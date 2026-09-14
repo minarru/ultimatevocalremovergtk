@@ -201,14 +201,21 @@ class StemRouteTests(unittest.TestCase):
         deduped = _dedupe_routes(duplicated)
         self.assertEqual(deduped[1].complement_of, StemRoleId("mix.instrumental"))
 
-    def test_unknown_or_signature_mismatched_id_stays_raw_and_isolated(self) -> None:
+    def test_unknown_id_stays_raw_and_mismatch_retains_review(self) -> None:
         class Unknown(self._ReviewedReversePrimaryModel):
             canonical_id = "mdx:unreviewed-model"
 
         class Mismatched(self._ReviewedReversePrimaryModel):
             demucs_source_list = ["Vocals", "Instrumental", "Residual"]
 
-        for model in (Unknown(), Mismatched()):
+        model = Mismatched()
+        routes = model_stem_routes(model)
+        self.assertTrue(all(isinstance(route.role, StemRoleId) for route in routes))
+        semantics = getattr(model, "stem_semantics", None)
+        assert isinstance(semantics, ModelStemSemantics)
+        self.assertTrue(semantics.runtime_error)
+
+        for model in (Unknown(),):
             with self.subTest(model=type(model).__name__):
                 routes = model_stem_routes(model)
                 self.assertTrue(all(isinstance(route.role, StemLiteral) for route in routes))
@@ -458,7 +465,7 @@ class StemsModuleBoundaryTests(unittest.TestCase):
         source = (Path(__file__).resolve().parents[1] / "core" / "stems.py").read_text(
             encoding="utf-8"
         )
-        self.assertIn("resolve_catalogue_stem_semantics", source)
+        self.assertIn("reconcile_stem_roles", source)
 
     def test_semantics_does_not_reexport_stem_labels(self) -> None:
         source = (

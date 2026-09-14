@@ -71,6 +71,25 @@ class EnsemblePageDesignTests(unittest.TestCase):
         self.assertEqual(page.settings.mdx.stems_selected, ["keep"])
         self.assertEqual(page.output_stems.count.get_label(), "2 stems")
 
+    def test_quick_vocals_and_all_update_only_ensemble_outputs(self):
+        from gi.repository import Gtk
+
+        page = self.page
+        page.settings.ensemble.main_stem = "mode.multi_stem"
+        page.settings.mdx.stems_selected = ["keep"]
+        page._rebuild_stem_only_toggles()
+        group = page.output_stems.quick.group
+        if isinstance(group, Gtk.Box):
+            self.skipTest("Native ToggleGroup unavailable")
+        group.set_active_name("vocal.vocals")
+        self.assertEqual(page.settings.ensemble.stems_selected, ["vocal.vocals"])
+        self.assertEqual(page.settings.mdx.stems_selected, ["keep"])
+        self.assertEqual(page.output_stems.count.get_label(), "1 stem")
+        group.set_active_name("all")
+        self.assertEqual(page.settings.ensemble.stems_selected, [])
+        self.assertEqual(page.output_stems.count.get_label(), "3 stems")
+        self.assertEqual(group.get_active_name(), "all")
+
     def test_member_reconciliation_refreshes_available_output_roles(self):
         from types import SimpleNamespace
 

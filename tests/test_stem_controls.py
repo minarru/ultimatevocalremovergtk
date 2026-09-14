@@ -81,6 +81,45 @@ class StemControlsTests(unittest.TestCase):
         controls.sync_from_settings(settings or Settings.defaults())
         return controls
 
+    def test_multi_stem_instrumental_mix_and_separate_stems_round_trip(self):
+        from tests.stem_control_cases import (
+            resolved_demucs_model,
+            resolved_mdx_model,
+            selection_state,
+        )
+
+        for model_id in ('mdx:SCNet-large_starrytong_fixed', 'demucs:htdemucs_6s'):
+            with self.subTest(model=model_id):
+                settings = Settings.defaults()
+                controls = self.controller(selection_state(model_id), settings)
+                mix = next(ident for ident, label in controls.snapshot().presets if label == 'Instrumental mix')
+                self.assertTrue(controls.choose_preset(mix))
+                controls.persist_to_settings(settings)
+                self.assertEqual(settings.process.stem_focus, 'mix.instrumental')
+                controls.sync_from_settings(settings)
+                self.assertFalse(controls.snapshot().review_required)
+                self.assertEqual(controls.snapshot().main_count, 1)
+                resolve = resolved_demucs_model if model_id.startswith('demucs:') else resolved_mdx_model
+                model = resolve(model_id, settings)
+                self.assertEqual([r.concept for r in model.selected_stem_routes], ['mix.instrumental'])
+                self.assertTrue(controls.choose_preset('separate_non_vocal'))
+                controls.persist_to_settings(settings)
+                self.assertEqual(settings.process.stem_focus, '')
+                self.assertGreater(controls.snapshot().main_count, 1)
+                model = resolve(model_id, settings)
+                self.assertTrue(all(r.native is not None and r.concept != 'vocal.vocals'
+                                    for r in model.selected_stem_routes))
+
+    def test_karaoke_presets_and_separate_backing_instrumental(self):
+        settings = Settings.defaults()
+        controls = self.controller(subset_state(karaoke_routes()), settings)
+        self.assertEqual([label for _, label in controls.snapshot().presets],
+                         ['All', 'Lead Vocals', 'Instrumental + BGV'])
+        self.assertTrue(controls.choose_preset('separate_backing_instrumental'))
+        controls.persist_to_settings(settings)
+        self.assertEqual(settings.mdx.stems_selected, ['Backing', 'Instrumental'])
+        self.assertEqual(controls.snapshot().main_count, 2)
+
     def test_last_selected_output_cannot_be_unchecked(self):
         settings = Settings.defaults()
         controls = self.controller(subset_state(karaoke_routes()), settings)
@@ -93,6 +132,28 @@ class StemControlsTests(unittest.TestCase):
         controls.persist_to_settings(settings)
         self.assertEqual(settings, before)
         self.assertEqual(controls.snapshot().main_count, 1)
+
+    def test_derived_presets_stay_available_and_can_return_to_all_or_native(self):
+        settings = Settings.defaults()
+        controls = self.controller(subset_state(karaoke_routes()), settings)
+        initial = controls.snapshot()
+        combined = initial.modes[1][0]
+        self.assertIn(combined, dict(initial.presets))
+        native_id = next(c.id for c in initial.choices if c.route.label == 'Instrumental')
+        self.assertTrue(controls.choose_preset(combined))
+        self.assertEqual(controls.snapshot().presets, initial.presets)
+        controls.persist_to_settings(settings)
+        self.assertEqual(settings.process.stem_focus, 'mix.instrumental_with_backing_vocals')
+        self.assertTrue(controls.choose_preset('separate_non_vocal'))
+        self.assertEqual(controls.snapshot().mode, 'native_subset')
+        self.assertEqual(controls.snapshot().selected_ids, frozenset((native_id,)))
+        self.assertTrue(controls.choose_preset(combined))
+        self.assertTrue(controls.choose_preset('all'))
+        controls.persist_to_settings(settings)
+        self.assertEqual(controls.snapshot().main_count, 3)
+        self.assertEqual(settings.process.stem_focus, '')
+        self.assertEqual(settings.mdx.stems_selected, [])
+        self.assertFalse(controls.choose_preset(combined, revision=-1))
 
     def test_default_excludes_optional_output_and_derived_clears_sidecar(self):
         settings = Settings.defaults()
@@ -323,7 +384,7 @@ class StemControlsTests(unittest.TestCase):
                     self.assertEqual(snapshot.mode, 'native_subset')
                     self.assertEqual(snapshot.main_count, count)
                     self.assertEqual(snapshot.focus_choices, ())
-                    self.assertEqual(snapshot.modes, ())
+                    self.assertEqual(bool(snapshot.modes), not raw)
                     self.assertTrue(all(c.editable and c.enabled for c in snapshot.choices))
                     for choice in snapshot.choices:
                         assert choice.route.native is not None
@@ -371,7 +432,6 @@ class StemControlsTests(unittest.TestCase):
             (False, 'instrument.bass.removed'),
             (False, 'No Bass'),
             (False, ''),
-            (False, 'mix.instrumental'),
             (True, 'instrument.bass'),
             (True, 'raw:bass#scope=old'),
         ):

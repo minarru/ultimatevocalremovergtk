@@ -10,7 +10,11 @@ Adw.ActionRow summary_row {
     valign: center;
     styles ["dim-label"]
   }
-  [suffix] Gtk.Image { icon-name: "go-next-symbolic"; }
+  [suffix] Gtk.Button choose_stems {
+    label: "Choose…";
+    valign: center;
+    styles ["flat"]
+  }
 }
 
 Adw.Dialog dialog {
@@ -22,55 +26,67 @@ Adw.Dialog dialog {
   child: Adw.ToolbarView {
     bottom-bar-style: flat;
     [top] Adw.HeaderBar {}
-    [top] Gtk.Box context_box {
-      orientation: vertical;
-      spacing: 12;
-      margin-top: 8;
-      margin-bottom: 8;
-      margin-start: 18;
-      margin-end: 18;
-      Gtk.Box {
-        spacing: 12;
-        Gtk.Label model_name {
-          xalign: 0;
-          hexpand: true;
-          ellipsize: end;
-          styles ["dim-label"]
-        }
-        Gtk.Button select_all { label: "Select All"; styles ["flat"] }
-      }
-      Adw.PreferencesGroup mode_group {
-        Adw.ComboRow export_mode { title: "Export"; }
-        Adw.ComboRow stem_focus { title: "Stem focus"; }
-      }
-      Gtk.Box presets { halign: start; styles ["linked"] }
-      Gtk.SearchEntry search {
-        placeholder-text: "Search stems";
-        hexpand: true;
-      }
-      Gtk.Label review {
-        label: "The previous selection is no longer available. Choose outputs again.";
-        xalign: 0;
-        wrap: true;
-        styles ["warning"]
-      }
-    }
     content: Gtk.ScrolledWindow scroll {
       hscrollbar-policy: never;
       propagate-natural-height: true;
       min-content-height: 120;
-      max-content-height: 440;
+      max-content-height: 620;
       child: Gtk.Box {
         orientation: vertical;
-        spacing: 12;
-        margin-top: 4;
+        spacing: 20;
+        margin-top: 8;
         margin-bottom: 8;
         margin-start: 18;
         margin-end: 18;
+        Gtk.Box context_box {
+          orientation: vertical;
+          spacing: 18;
+          Gtk.Box {
+            spacing: 12;
+            Gtk.Label model_name {
+              xalign: 0;
+              hexpand: true;
+              ellipsize: end;
+              styles ["dim-label"]
+            }
+            Gtk.Button select_all { label: "Select All"; styles ["flat"] }
+          }
+          Gtk.Box quick_section {
+            orientation: vertical;
+            spacing: 12;
+            Gtk.Label { label: "Quick select"; xalign: 0; styles ["heading"] }
+            Gtk.Box dialog_quick_holder { orientation: vertical; margin-end: 10; }
+          }
+          Gtk.Box separate_section {
+            orientation: vertical;
+            spacing: 8;
+            Gtk.Label { label: "Separate files"; xalign: 0; styles ["dim-label", "caption"] }
+            Gtk.Box separate_actions { spacing: 8; homogeneous: true; }
+          }
+          Adw.PreferencesGroup mode_group {
+            Adw.ComboRow export_mode { title: "Export"; }
+            Adw.ComboRow stem_focus { title: "Stem focus"; }
+          }
+          Gtk.SearchEntry search {
+            placeholder-text: "Search stems";
+            hexpand: true;
+          }
+          Gtk.Label review {
+            label: "The previous selection is no longer available. Choose outputs again.";
+            xalign: 0;
+            wrap: true;
+            styles ["warning"]
+          }
+        }
         Adw.PreferencesGroup selection_group {}
-        Gtk.ListBox output_list {
-          selection-mode: none;
-          styles ["boxed-list"]
+        Gtk.Box outputs_section {
+          orientation: vertical;
+          spacing: 10;
+          Gtk.Label output_heading { label: "Individual stems"; xalign: 0; styles ["heading"] }
+          Gtk.ListBox output_list {
+            selection-mode: none;
+            styles ["boxed-list"]
+          }
         }
         Adw.StatusPage no_matches {
           title: "No matching stems";
@@ -91,5 +107,19 @@ Adw.Dialog dialog {
       Gtk.Label additional_outputs { xalign: 0; wrap: true; styles ["dim-label"] }
       Gtk.Label workload { xalign: 0; wrap: true; styles ["dim-label"] }
     }
+  };
+}
+
+Adw.PreferencesRow quick_row {
+  activatable: false;
+  selectable: false;
+  child: Gtk.Box quick_box {
+    orientation: vertical;
+    spacing: 8;
+    margin-top: 8;
+    margin-bottom: 8;
+    margin-start: 12;
+    margin-end: 12;
+    Gtk.Box quick_holder { orientation: vertical; }
   };
 }

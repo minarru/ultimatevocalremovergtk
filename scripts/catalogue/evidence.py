@@ -377,6 +377,7 @@ def reconcile_stem_semantics(
                 context=context,
                 registry=registry,
                 runtime_warning=runtime.warning,
+                retain_reviewed=False,
             )
             for context in contexts
         )
