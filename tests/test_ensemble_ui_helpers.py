@@ -660,5 +660,59 @@ class RebuildStemOnlyTogglesConfidenceTests(unittest.TestCase):
         self.assertFalse(kwargs["is_bv"])
 
 
+class ConflictingMemberRoutesTests(unittest.TestCase):
+    """Regression: ``run_export_routes`` raises on a stem-semantics runtime
+    error, and the unfiltered Multi-Stem list can hold such a member. The
+    ensemble page's GTK callbacks must treat it as unresolved instead of
+    letting the ``ValueError`` escape."""
+
+    def _page(self, models: dict[str, Any]) -> Any:
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from ui.ensemble.window import EnsemblePage
+
+        page: Any = object.__new__(EnsemblePage)
+        page._effective_selected_models = mock.Mock(return_value=list(models))
+        page._resolve_ensemble_member_model = mock.Mock(side_effect=models.__getitem__)
+        page.context = SimpleNamespace(repo=None)
+        return page
+
+    @staticmethod
+    def _model(runtime_error: str = "") -> Any:
+        from types import SimpleNamespace
+
+        route = _native_route(_VOCALS, "vocals")
+        return SimpleNamespace(
+            stem_semantics=SimpleNamespace(runtime_error=runtime_error),
+            available_stem_routes=(route,),
+            selected_stem_routes=(route,),
+        )
+
+    def test_conflicting_member_makes_dry_routes_unresolved(self) -> None:
+        page = self._page({"mdx:ok": self._model(), "mdx:bad": self._model("config conflicts")})
+        self.assertIsNone(page._dry_resolved_member_routes())
+
+    def test_clean_members_still_resolve(self) -> None:
+        page = self._page({"mdx:a": self._model(), "mdx:b": self._model()})
+        routes = page._dry_resolved_member_routes()
+        self.assertIsNotNone(routes)
+        self.assertEqual(len(routes), 2)
+
+    def test_blend_options_skip_conflicting_member(self) -> None:
+        from unittest import mock
+
+        page = self._page({"mdx:ok": self._model(), "mdx:bad": self._model("config conflicts")})
+        page.window = mock.Mock()
+        page.settings = mock.Mock()
+        with (
+            mock.patch("core.model_display.format_tag_title", side_effect=lambda tag, _repo: tag),
+            mock.patch("ui.ensemble.blend_dialog.show_blend_dialog") as show,
+        ):
+            page._open_blend_options()
+        members = show.call_args.args[2]
+        self.assertEqual([member[0] for member in members], ["mdx:ok"])
+
+
 if __name__ == "__main__":
     unittest.main()

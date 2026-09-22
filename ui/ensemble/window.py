@@ -371,15 +371,14 @@ class EnsemblePage:
 
     def _open_blend_options(self, *_args: typing.Any) -> None:
         from core.model_display import format_tag_title
-        from core.stems import run_export_routes
 
         from .blend_dialog import show_blend_dialog
 
         members = []
         for model_id in self._effective_selected_models():
-            model = self._resolve_ensemble_member_model(model_id)
-            if model is not None:
-                members.append((model_id, format_tag_title(model_id, self.context.repo), run_export_routes(model)))
+            routes = self._member_export_routes(self._resolve_ensemble_member_model(model_id))
+            if routes is not None:
+                members.append((model_id, format_tag_title(model_id, self.context.repo), routes))
 
         def apply(values: dict[str, typing.Any]) -> None:
             if not self._active:
@@ -675,19 +674,31 @@ class EnsemblePage:
             return None
         return self._resolve_ensemble_member_model(tags[0])
 
-    def _dry_resolved_member_routes(self):
-        """Export routes for selected members, or None if any tag is unresolved."""
+    @staticmethod
+    def _member_export_routes(model: typing.Any) -> tuple[StemRoute, ...] | None:
+        """Run export routes for a dry-resolved member, or None if it can't run.
+
+        ``run_export_routes`` raises on a stem-semantics runtime error (a
+        conflicting installed config); from a GTK callback that would escape
+        uncaught, so treat such a member as unresolved instead.
+        """
         from core.stems import run_export_routes
 
+        if model is None or getattr(getattr(model, "stem_semantics", None), "runtime_error", ""):
+            return None
+        return tuple(run_export_routes(model))
+
+    def _dry_resolved_member_routes(self):
+        """Export routes for selected members, or None if any tag is unresolved."""
         tags = self._effective_selected_models()
         if not tags:
             return None
         routes = []
         for tag in tags:
-            model = self._resolve_ensemble_member_model(tag)
-            if model is None:
+            member = self._member_export_routes(self._resolve_ensemble_member_model(tag))
+            if member is None:
                 return None
-            routes.append(tuple(run_export_routes(model)))
+            routes.append(member)
         return tuple(routes)
 
     def _role_display(self, role: object) -> str | None:
