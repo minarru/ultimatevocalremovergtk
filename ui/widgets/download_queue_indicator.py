@@ -174,6 +174,20 @@ def _details_markup(text: str) -> str:
     return f"<span size='small'>{escaped}</span>"
 
 
+def _on_status_query_tooltip(
+    label: Gtk.Label,
+    _x: int,
+    _y: int,
+    _keyboard_mode: bool,
+    tooltip: Gtk.Tooltip,
+) -> bool:
+    """Show the full model name only while the row label is ellipsized."""
+    if not label.get_layout().is_ellipsized():
+        return False
+    tooltip.set_text(label.get_label())
+    return True
+
+
 def _row_button_state(item: DownloadQueueItem) -> tuple[str, bool]:
     if item.status in ACTIVE_STATUSES:
         return ICON_CANCEL, True
@@ -373,6 +387,8 @@ class DownloadQueueIndicator:
         grid = object_from_builder(builder, "queue_grid", Gtk.Grid)
         status = object_from_builder(builder, "status_label", Gtk.Label)
         progress = object_from_builder(builder, "row_progress", Gtk.ProgressBar)
+        status.set_has_tooltip(True)
+        status.connect("query-tooltip", _on_status_query_tooltip)
         detail = object_from_builder(builder, "detail_label", Gtk.Label)
         action_button = object_from_builder(builder, "action_button", Gtk.Button)
         set_icon_button_a11y(action_button, "Cancel download")

@@ -1,6 +1,8 @@
 """Tests for the Nautilus-style download queue indicator."""
 
 import unittest
+from typing import Any, cast
+from unittest import mock
 
 from core.download_queue import DownloadQueueItem
 from ui.widgets.download_queue_icons import (
@@ -9,6 +11,7 @@ from ui.widgets.download_queue_icons import (
     ICON_ROW_SUCCESS,
 )
 from ui.widgets.download_queue_indicator import (
+    _on_status_query_tooltip,
     _row_button_state,
     chip_ring_state,
     should_schedule_remove_finished,
@@ -201,6 +204,26 @@ class RowButtonStateTests(unittest.TestCase):
                 defer_remove_on_close=False,
             )
         )
+
+
+class StatusTooltipTests(unittest.TestCase):
+    def _query(self, *, ellipsized: bool) -> tuple[bool, mock.Mock]:
+        label = mock.Mock()
+        label.get_layout.return_value.is_ellipsized.return_value = ellipsized
+        label.get_label.return_value = "MDX23C-8KFFT-InstVoc_HQ_2"
+        tooltip = mock.Mock()
+        shown = _on_status_query_tooltip(cast(Any, label), 0, 0, False, cast(Any, tooltip))
+        return shown, tooltip
+
+    def test_ellipsized_name_shows_full_label(self) -> None:
+        shown, tooltip = self._query(ellipsized=True)
+        self.assertTrue(shown)
+        tooltip.set_text.assert_called_once_with("MDX23C-8KFFT-InstVoc_HQ_2")
+
+    def test_fitting_name_has_no_tooltip(self) -> None:
+        shown, tooltip = self._query(ellipsized=False)
+        self.assertFalse(shown)
+        tooltip.set_text.assert_not_called()
 
 
 class AutoDismissSchedulingTests(unittest.TestCase):
