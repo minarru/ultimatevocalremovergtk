@@ -861,8 +861,8 @@ class UnifiedManifestCatalogueSemanticsTests(unittest.TestCase):
         current_declarations = current_ids.intersection(registry.models)
         current_waivers = current_ids.intersection(registry.waivers)
 
-        self.assertEqual((len(current_ids), len(retired_ids)), (492, 2))
-        self.assertEqual(len(current_declarations), 490)
+        self.assertEqual((len(current_ids), len(retired_ids)), (491, 3))
+        self.assertEqual(len(current_declarations), 489)
         self.assertEqual(
             current_waivers,
             {
@@ -873,7 +873,7 @@ class UnifiedManifestCatalogueSemanticsTests(unittest.TestCase):
         self.assertEqual(len(registry.models), 492)
         self.assertEqual(
             sum(len(registry.models[model_id].contexts) for model_id in current_declarations),
-            523,
+            522,
         )
         self.assertEqual(len(registry.pairs), 4)
 

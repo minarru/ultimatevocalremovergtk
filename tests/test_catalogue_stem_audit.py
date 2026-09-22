@@ -1404,7 +1404,7 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
         self.assertEqual(rendered_ids, set(contracts))
         self.assertTrue(all(row[status_column] == "reviewed" for row in rows[1:]))
 
-    def test_canonical_snapshot_is_490_2_0_with_bidirectional_row_parity(self) -> None:
+    def test_canonical_snapshot_is_489_2_0_with_bidirectional_row_parity(self) -> None:
         """Checked identity evidence and reviewed schema-2 routes agree exactly."""
         from core.mdx_runtime_contract import load_bundled_mdx_runtime_contracts
         from core.model_manifest import load_model_manifest
@@ -1504,10 +1504,10 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
                 current_model_ids=current_ids,
             )
 
-        self.assertEqual(len(identity_by_id), 492)
+        self.assertEqual(len(identity_by_id), 491)
         self.assertEqual(
             len(result.reviewed_model_ids),
-            490,
+            489,
             (result.raw_model_ids, result.diagnostics),
         )
         self.assertEqual(len(result.waived_model_ids), 2)

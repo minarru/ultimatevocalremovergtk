@@ -94,6 +94,28 @@ class PrimaryCheckpointUrlTests(unittest.TestCase):
 
 
 class DedupeCatalogueTests(unittest.TestCase):
+    def test_withdrawn_mislabelled_row_never_claims_its_content(self) -> None:
+        politrees = (
+            "https://huggingface.co/Politrees/UVR_resources/resolve/main/models/Roformer/MelBand/"
+        )
+        mvsepless = (
+            "https://huggingface.co/noblebarkrr/mvsepless_resources/resolve/main/mel_band_roformer/"
+        )
+        v4 = f"{politrees}mel_band_roformer_voc_fullness_v4_gabox.ckpt"
+        v5 = f"{politrees}mel_band_roformer_voc_fullness_v5_gabox.ckpt"
+        real_v4 = f"{mvsepless}mbr_vocalsfv4_gabox.ckpt"
+        catalogue = {
+            "Politrees Vocals Fullness v4": {"mel_band_roformer_voc_fullness_v4_gabox.ckpt": v4},
+            "Politrees Vocals Fullness v5": {"mel_band_roformer_voc_fullness_v5_gabox.ckpt": v5},
+            "mvsepless Vocals Fullness v4": {"mbr_vocalsfv4_gabox.ckpt": real_v4},
+        }
+        # Politrees' v4 row serves the v5 bytes.
+        content_ids = {v4 + "?download=true": "sha-v5", v5: "sha-v5", real_v4: "sha-v4"}
+        out = dedupe_download_catalogue(catalogue, content_ids=content_ids)
+        self.assertEqual(
+            list(out), ["Politrees Vocals Fullness v5", "mvsepless Vocals Fullness v4"]
+        )
+
     def test_keeps_first_checkpoint_collision(self) -> None:
         catalogue = {
             "Upstream Label": {"shared.ckpt": "https://up/shared.ckpt"},

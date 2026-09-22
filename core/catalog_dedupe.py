@@ -13,6 +13,17 @@ import re
 from typing import Any, Dict, Mapping, Optional, Tuple
 from urllib.parse import parse_qsl, unquote, urlencode, urlsplit, urlunsplit
 
+#: Source rows whose checkpoint is not the model their label names, keyed by
+#: normalized checkpoint URL. They never list, so the correctly labelled row
+#: wins, but metadata is built before dedupe and an installed copy still
+#: resolves.
+WITHDRAWN_CHECKPOINT_URLS: Mapping[str, str] = {
+    # Byte-identical to Politrees' Vocals Fullness v5 (SHA-256 6ede0504...);
+    # mvsepless's mbr_vocalsfv4_gabox.ckpt is the real v4.
+    "https://huggingface.co/Politrees/UVR_resources/resolve/main/models/Roformer/"
+    "MelBand/mel_band_roformer_voc_fullness_v4_gabox.ckpt": "Politrees serves v5 as v4",
+}
+
 _LABEL_PREFIXES = (
     "roformer model vip:",
     "roformer model:",
@@ -185,7 +196,8 @@ def dedupe_download_catalogue(
     * normalized selectable label
     * for Demucs bags only: identical full file→URL map
 
-    Insertion order is merge priority: earlier catalogues win.
+    Insertion order is merge priority: earlier catalogues win. Rows in
+    :data:`WITHDRAWN_CHECKPOINT_URLS` are dropped before any key is claimed.
     """
     kept: Dict[str, Any] = {}
     seen_ckpts: set[str] = set()
@@ -210,6 +222,8 @@ def dedupe_download_catalogue(
             preferred_url_labels[url] = matching[0]
 
     for label, model in catalogue.items():
+        if primary_checkpoint_url(model) in WITHDRAWN_CHECKPOINT_URLS:
+            continue
         url = primary_checkpoint_url(model) if not demucs_bags else None
         preferred = preferred_url_labels.get(url or "")
         if preferred is not None and label != preferred:

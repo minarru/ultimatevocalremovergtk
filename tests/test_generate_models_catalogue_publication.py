@@ -861,8 +861,8 @@ class ReviewedRepositoryPublicationTests(unittest.TestCase):
             for model_id, record in current.items()
             if "stem_waiver" in record
         }
-        self.assertEqual(len(current), 492)
-        self.assertEqual(len(declarations), 490)
+        self.assertEqual(len(current), 491)
+        self.assertEqual(len(declarations), 489)
         self.assertEqual(
             set(waivers),
             {
@@ -872,7 +872,7 @@ class ReviewedRepositoryPublicationTests(unittest.TestCase):
         )
         self.assertEqual(
             sum(len(declaration["contexts"]) for declaration in declarations.values()),
-            523,
+            522,
         )
 
         stem_lines = (root / "docs/model_stem_semantics_reference.tsv").read_text().splitlines()
@@ -880,7 +880,7 @@ class ReviewedRepositoryPublicationTests(unittest.TestCase):
         stem_rows = [
             dict(zip(stem_headers, line.split("\t"), strict=True)) for line in stem_lines[1:]
         ]
-        self.assertEqual(len(stem_rows), 1_255)
+        self.assertEqual(len(stem_rows), 1_253)
         self.assertEqual(
             {row["model_id"] for row in stem_rows if row["review_status"] == "raw"},
             set(),
@@ -891,7 +891,7 @@ class ReviewedRepositoryPublicationTests(unittest.TestCase):
         display_rows = [
             dict(zip(display_headers, line.split("\t"), strict=True)) for line in display_lines[1:]
         ]
-        self.assertEqual(len(display_rows), 492)
+        self.assertEqual(len(display_rows), 491)
         self.assertEqual(
             {row["canonical_id"] for row in display_rows if row["review_status"] == "unreviewed"},
             set(),

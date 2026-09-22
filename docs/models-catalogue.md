@@ -1,6 +1,6 @@
 # UVR Model Catalogue (TRvlvr + Politrees + extras + mvsepless)
 
-Generated: 2026-09-22 19:04 UTC by `scripts/generate_models_catalogue.py`.
+Generated: 2026-09-22 20:06 UTC by `scripts/generate_models_catalogue.py`.
 
 Regenerate after catalogue updates:
 
@@ -37,8 +37,8 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 
 ## Summary
 
-- Total catalogue entries: **492**
-- Entries with resolved metadata: **492**
+- Total catalogue entries: **491**
+- Entries with resolved metadata: **491**
 - Unknown intent remaining: **2**
 - Flagged mismatches: **0**
 - Unsupported mvsepless entries (omitted): **0**
@@ -490,7 +490,6 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | Roformer | MelBand Roformer — Vocals Fullness v1 · Gabox | vocals | Vocals / Instrumental | vocal_target | Vocals | — |
 | Roformer | MelBand Roformer — Vocals Fullness v2 · Gabox | vocals | Vocals / Instrumental | vocal_target | Vocals | — |
 | Roformer | MelBand Roformer — Vocals Fullness v3 · Gabox | vocals | Vocals / Instrumental | vocal_target | Vocals | — |
-| Roformer | MelBand Roformer — Vocals Fullness v4 · Gabox | vocals | Vocals / Instrumental | vocal_target | Vocals | — |
 | Roformer | MelBand Roformer — Vocals Fullness v5 · Gabox | vocals | Vocals / Instrumental | vocal_target | Vocals | — |
 | Roformer | MelBand Roformer — Vocals Fullness v6 · Gabox | vocals | Vocals / Instrumental | vocal_target | Vocals | — |
 | Roformer | MelBand Roformer — Vocals · Gabox | vocals | Vocals / Instrumental | vocal_target | Vocals | — |
@@ -7076,21 +7075,6 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 
 - **Source:** Politrees
 - **Weight:** `mel_band_roformer_voc_fullness_v3_gabox.ckpt`
-- **Config:** `config_melband_roformer_voc_gabox.yaml`
-- **Architecture:** Mel-Band Roformer
-- **Name intent:** vocals
-- **Backend focus:** vocal_target
-- **Primary stem (backend):** `Vocals`
-- **Instruments:** Vocals, Instrumental
-- **Target instrument:** `Vocals`
-- **Best result:** Vocals / Instrumental
-- **Save stems UI:** UI: Vocals / Instrumental
-- **Metadata:** bundled_yaml:config_melband_roformer_voc_gabox.yaml
-
-### MelBand Roformer — Vocals Fullness v4 · Gabox
-
-- **Source:** Politrees
-- **Weight:** `mel_band_roformer_voc_fullness_v4_gabox.ckpt`
 - **Config:** `config_melband_roformer_voc_gabox.yaml`
 - **Architecture:** Mel-Band Roformer
 - **Name intent:** vocals

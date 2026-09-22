@@ -15645,7 +15645,7 @@
         "primary_artifact": "mel_band_roformer_voc_fullness_v4_gabox.ckpt",
         "source": "Politrees"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {

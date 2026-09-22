@@ -17,6 +17,8 @@ _RETIRED_BECRUILY_IDS = {
     "mdx:mbr_guitar_becruily",
     "mdx:mbr_inst_becruily",
 }
+# Politrees serves the Vocals Fullness v5 checkpoint under this v4 name.
+_RETIRED_MISLABELLED_IDS = {"mdx:mel_band_roformer_voc_fullness_v4_gabox"}
 _EXPECTED_DEMUCS_SIGNATURES = {
     "demucs:UVR_Demucs_Model_1": ("instrumental", "vocals"),
     "demucs:demucs": ("drums", "bass", "other", "vocals"),
@@ -685,14 +687,14 @@ class ModelManifestTests(unittest.TestCase):
 
 
 class CurrentCatalogueManifestTests(unittest.TestCase):
-    def test_reviewed_current_snapshot_is_exactly_492_sorted_unique_ids(self) -> None:
+    def test_reviewed_current_snapshot_is_exactly_491_sorted_unique_ids(self) -> None:
         """The expected Download Center membership is an explicit reviewed fixture."""
         from core.model_manifest import load_model_manifest
 
         expected_ids = _CURRENT_MODEL_IDS_FIXTURE.read_text(encoding="utf-8").splitlines()
-        self.assertEqual(len(expected_ids), 492)
+        self.assertEqual(len(expected_ids), 491)
         self.assertEqual(expected_ids, sorted(expected_ids))
-        self.assertEqual(len(set(expected_ids)), 492)
+        self.assertEqual(len(set(expected_ids)), 491)
 
         registry = load_model_manifest()
         current_ids = {
@@ -702,6 +704,7 @@ class CurrentCatalogueManifestTests(unittest.TestCase):
         }
         self.assertEqual(current_ids, set(expected_ids))
         self.assertTrue(_RETIRED_BECRUILY_IDS.isdisjoint(expected_ids))
+        self.assertTrue(_RETIRED_MISLABELLED_IDS.isdisjoint(expected_ids))
 
     def test_invert_clean_record_pins_exact_reviewed_source_and_config_evidence(self) -> None:
         from core.model_manifest import load_model_manifest
@@ -764,7 +767,7 @@ class CurrentCatalogueManifestTests(unittest.TestCase):
                 for model_id, record in registry.models.items()
                 if record.lifecycle == "retired"
             },
-            _RETIRED_BECRUILY_IDS,
+            _RETIRED_BECRUILY_IDS | _RETIRED_MISLABELLED_IDS,
         )
         for model_id, expected_display in expected_displays.items():
             with self.subTest(model_id=model_id):

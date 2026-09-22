@@ -890,8 +890,8 @@ class ManifestValidationTests(unittest.TestCase):
         current_models = current_ids.intersection(registry.models)
         current_waivers = current_ids.intersection(registry.waivers)
 
-        self.assertEqual(len(current_ids), 492)
-        self.assertEqual(len(current_models), 490)
+        self.assertEqual(len(current_ids), 491)
+        self.assertEqual(len(current_models), 489)
         self.assertEqual(
             current_waivers,
             {
@@ -903,7 +903,11 @@ class ManifestValidationTests(unittest.TestCase):
         self.assertFalse(current_models & current_waivers)
         self.assertEqual(
             set(registry.models).difference(current_ids),
-            {"mdx:mbr_guitar_becruily", "mdx:mbr_inst_becruily"},
+            {
+                "mdx:mbr_guitar_becruily",
+                "mdx:mbr_inst_becruily",
+                "mdx:mel_band_roformer_voc_fullness_v4_gabox",
+            },
         )
 
     def test_accepts_all_supported_canonical_model_families(self) -> None:
