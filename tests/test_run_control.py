@@ -94,6 +94,7 @@ class EnsembleErrorContextSnapshotTests(unittest.TestCase):
             _ensemble_page=SimpleNamespace(input_row=SimpleNamespace(paths=["/tmp/song.wav"])),
         )
         from ui.ensemble.window import EnsemblePage
+
         page = cast(Any, EnsemblePage.__new__(EnsemblePage))
         page.settings = settings
         page.context = window.context
@@ -337,7 +338,9 @@ class AudioPreflightTests(unittest.TestCase):
         )
         runner = mock.Mock(apollo_backend_name=None)
         page = SimpleNamespace(
-            _shared_session=SharedSettingsSession(settings, SharedSettingsBindings(), can_commit=lambda: True),
+            _shared_session=SharedSettingsSession(
+                settings, SharedSettingsBindings(), can_commit=lambda: True
+            ),
             _current_tool=mock.Mock(return_value=APOLLO_RESTORE),
             _dual_pairs=[],
             inputs_row=SimpleNamespace(paths=["/tmp/song.wav"]),
@@ -471,11 +474,19 @@ class StartTargetSettingsCopyTests(unittest.TestCase):
         target.runner = page_runner
         target.settings = window_settings
         from ui.audio_tools.window import AudioToolsPage
-        target.bind_run_settings.side_effect = lambda settings: AudioToolsPage.bind_run_settings(target, settings)
-        target.restore_runner_settings.side_effect = lambda: AudioToolsPage.restore_runner_settings(target)
+
+        target.bind_run_settings.side_effect = lambda settings: AudioToolsPage.bind_run_settings(
+            target, settings
+        )
+        target.restore_runner_settings.side_effect = lambda: AudioToolsPage.restore_runner_settings(
+            target
+        )
         from ui.context import AppContext
+
         context.settings = window_settings
-        context.restore_runner_settings.side_effect = lambda: AppContext.restore_runner_settings(context)
+        context.restore_runner_settings.side_effect = lambda: AppContext.restore_runner_settings(
+            context
+        )
 
         window = mock.Mock()
         window.settings = window_settings
@@ -644,9 +655,18 @@ class BeginRunOutputTests(unittest.TestCase):
             )
         )
 
-        with mock.patch("ui.run_control.new_operation_id", return_value="ui-run-failed"), mock.patch("ui.run_control.log_event") as event:
+        with (
+            mock.patch("ui.run_control.new_operation_id", return_value="ui-run-failed"),
+            mock.patch("ui.run_control.log_event") as event,
+        ):
             controller._start_target(target)
-        event.assert_called_once_with("ui", "run_start_failed", level="error", operation_id="ui-run-failed", elapsed_seconds=mock.ANY)
+        event.assert_called_once_with(
+            "ui",
+            "run_start_failed",
+            level="error",
+            operation_id="ui-run-failed",
+            elapsed_seconds=mock.ANY,
+        )
 
         controller.fail_to_start.assert_called_once()
         self.assertIsNone(controller._operation_id)
@@ -906,12 +926,17 @@ class ActiveModelLabelTests(unittest.TestCase):
         from core.settings import Settings
 
         identity = ModelRecord(
-            id="mdx:missing-label-fixture", family="mdx", basename="missing-label-fixture",
-            display="Readable model label", backend_name="missing-label-fixture",
-            artifacts=ModelArtifacts("missing-label-fixture.onnx"), installed=False,
+            id="mdx:missing-label-fixture",
+            family="mdx",
+            basename="missing-label-fixture",
+            display="Readable model label",
+            backend_name="missing-label-fixture",
+            artifacts=ModelArtifacts("missing-label-fixture.onnx"),
+            installed=False,
         )
-        model = ModelConfig(Settings(), MagicMock(), "ignored caller label", identity=identity,
-                            is_dry_check=True)
+        model = ModelConfig(
+            Settings(), MagicMock(), "ignored caller label", identity=identity, is_dry_check=True
+        )
         self.assertEqual(model.model_display_label, "Readable model label")
         self.assertEqual(model.model_name, "Readable model label")
         self.assertEqual(model.backend_name, "missing-label-fixture")

@@ -14,10 +14,8 @@ from catalogue import collect as catalogue
 from catalogue import types as catalogue_types
 
 
-
-
-
 # isort: on
+
 
 class PublicationGuardTests(unittest.TestCase):
     """A degraded snapshot must not replace a good catalogue document."""
@@ -281,7 +279,9 @@ class SidecarTrustTests(unittest.TestCase):
             )
             stack.enter_context(
                 mock.patch.object(
-                    catalogue, "_build_catalogue_context", lambda **k: catalogue_types.CatalogueContext()
+                    catalogue,
+                    "_build_catalogue_context",
+                    lambda **k: catalogue_types.CatalogueContext(),
                 )
             )
             stack.enter_context(

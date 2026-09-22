@@ -82,9 +82,9 @@ class IdentityServiceTests(unittest.TestCase):
             barrier.wait()
             results.append(context.repo)
 
-
-        with patch("ui.context.ModelRepository", side_effect=make_repo), patch(
-            "core.model_hash_cache.flatten_trusted", return_value={}
+        with (
+            patch("ui.context.ModelRepository", side_effect=make_repo),
+            patch("core.model_hash_cache.flatten_trusted", return_value={}),
         ):
             workers = [threading.Thread(target=access) for _index in range(8)]
             for worker in workers:
@@ -102,9 +102,7 @@ class SharedPolicyTests(unittest.TestCase):
             good = os.path.join(root, "good.wav")
             open(good, "wb").close()
             missing = os.path.join(root, "missing.wav")
-            permissive = service.discover(
-                [good, missing], InputDiscoveryPolicy(strict=False)
-            )
+            permissive = service.discover([good, missing], InputDiscoveryPolicy(strict=False))
             self.assertEqual(permissive.paths, (os.path.realpath(good),))
             self.assertEqual(permissive.missing, (missing,))
             with self.assertRaisesRegex(ValueError, "not found"):

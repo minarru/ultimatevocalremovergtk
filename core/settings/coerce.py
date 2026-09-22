@@ -364,7 +364,10 @@ def coerce_field(section_name: str, field: str, value: Any) -> Any:
     """Coerce one nested setting value through the canonical field rules."""
     path = (section_name, field)
     if section_name == "ensemble" and field in {
-        "member_weights", "smoothing", "soft_strength", "hybrid_balance",
+        "member_weights",
+        "smoothing",
+        "soft_strength",
+        "hybrid_balance",
     }:
         from core.ensemble_blend import validate_blend_value
 

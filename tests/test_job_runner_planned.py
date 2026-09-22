@@ -43,15 +43,26 @@ class JobRunnerPlannedTests(unittest.TestCase):
                 runner._run_output_root = str(final)
                 runner._resolved_command = command
                 naming = OutputNamingContext(
-                    input_path='/in/song.wav', track='song', track_base='2-song Model',
-                    export_directory=str(final / 'Model' / 'song'), extension='wav',
-                    file_index=2, file_total=12,
+                    input_path='/in/song.wav',
+                    track='song',
+                    track_base='2-song Model',
+                    export_directory=str(final / 'Model' / 'song'),
+                    extension='wav',
+                    file_index=2,
+                    file_total=12,
                 )
                 destination = final / 'Model' / 'song' / '2-song Model (Vocals).wav'
-                planned = PlannedInput('/in/song.wav', naming, (PlannedOutput(str(destination), 'Vocals'),))
+                planned = PlannedInput(
+                    '/in/song.wav', naming, (PlannedOutput(str(destination), 'Vocals'),)
+                )
                 written = stage / 'Model' / 'song' / destination.name
 
-                def write_output(*_args: Any, runner: JobRunner = runner, stage: Path = stage, written: Path = written) -> None:
+                def write_output(
+                    *_args: Any,
+                    runner: JobRunner = runner,
+                    stage: Path = stage,
+                    written: Path = written,
+                ) -> None:
                     actual = runner._naming_for_file('/in/song.wav', export_path=str(stage))
                     self.assertEqual(actual.track_base, '2-song Model')
                     self.assertEqual(Path(actual.export_directory), written.parent)

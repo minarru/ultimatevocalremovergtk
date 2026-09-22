@@ -1,4 +1,5 @@
 """Config shells for tests of individual lookup/routing operations."""
+
 from core.model_config import (
     DemucsOptions,
     DeviceOptions,

@@ -256,7 +256,9 @@ class ActivePathTests(unittest.TestCase):
             set(plan.model_dependencies),
             {"mdx.model", "mdx.voc_inst_secondary_model"},
         )
-        final_dependencies = resolver.materializer.assemble.call_args_list[1].kwargs["model_dependencies"]
+        final_dependencies = resolver.materializer.assemble.call_args_list[1].kwargs[
+            "model_dependencies"
+        ]
         self.assertEqual(
             final_dependencies["mdx.voc_inst_secondary_model"].id,
             "mdx:voc-inst-helper",
@@ -332,9 +334,7 @@ class ActivePathTests(unittest.TestCase):
         helper = _record("mdx:helper")
         records = {old.id: old, helper.id: helper}
         resolver = resolver_with_ports(Mock(inventory_generation=0))
-        resolver.identities.lookup = Mock(
-            side_effect=lambda model_id: records[model_id]
-        )
+        resolver.identities.lookup = Mock(side_effect=lambda model_id: records[model_id])
         probe = Mock(model_status=True, primary_stem="Vocals")
         final = Mock(
             model_status=True,
@@ -346,8 +346,12 @@ class ActivePathTests(unittest.TestCase):
         resolver.materializer.assemble = assembly
 
         configs = ConfigurationFiles()
-        resolver = JobResolver(resolver.repo, identities=resolver.identities,
-                               materializer=resolver.materializer, configs=configs)
+        resolver = JobResolver(
+            resolver.repo,
+            identities=resolver.identities,
+            materializer=resolver.materializer,
+            configs=configs,
+        )
         resolver.identities.invalidate = lambda: records.update({old.id: new})
         with tempfile.NamedTemporaryFile(suffix=".wav") as source:
             plan = resolver.resolve(
@@ -358,8 +362,10 @@ class ActivePathTests(unittest.TestCase):
         self.assertIs(assembly.call_args_list[0].args[2][0], new)
         self.assertIs(plan.model_dependencies["mdx.model"], new)
         self.assertIs(assembly.call_args_list[1].kwargs["model_dependencies"]["mdx.model"], new)
-        self.assertEqual(configs.calls, [("exists", "refresh.yaml"), ("ensure", "refresh.yaml"),
-                                        ("exists", "refresh.yaml")])
+        self.assertEqual(
+            configs.calls,
+            [("exists", "refresh.yaml"), ("ensure", "refresh.yaml"), ("exists", "refresh.yaml")],
+        )
         self.assertEqual(
             plan.model_identity_digest,
             compute_model_identity_digest(plan.model_dependencies),
@@ -419,7 +425,9 @@ class ActivePathTests(unittest.TestCase):
                 "mdx.other_secondary_model",
             },
         )
-        final_dependencies = resolver.materializer.assemble.call_args_list[1].kwargs["model_dependencies"]
+        final_dependencies = resolver.materializer.assemble.call_args_list[1].kwargs[
+            "model_dependencies"
+        ]
         self.assertIs(
             final_dependencies["mdx.voc_inst_secondary_model"],
             records["mdx:voc-helper"],

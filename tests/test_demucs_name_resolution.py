@@ -41,14 +41,10 @@ class MapperSeparatorToleranceTests(unittest.TestCase):
     _MAPPER = {"hdemucs_mmi.yaml": "v4 | hdemucs_mmi", "tasnet.th": "v1 | Tasnet"}
 
     def test_an_em_dash_label_inverts_a_pipe_mapper_value(self) -> None:
-        self.assertEqual(
-            resolve_mapper_basename("v4 — hdemucs_mmi", self._MAPPER), "hdemucs_mmi"
-        )
+        self.assertEqual(resolve_mapper_basename("v4 — hdemucs_mmi", self._MAPPER), "hdemucs_mmi")
 
     def test_the_original_pipe_form_still_inverts(self) -> None:
-        self.assertEqual(
-            resolve_mapper_basename("v4 | hdemucs_mmi", self._MAPPER), "hdemucs_mmi"
-        )
+        self.assertEqual(resolve_mapper_basename("v4 | hdemucs_mmi", self._MAPPER), "hdemucs_mmi")
 
     def test_a_bare_basename_still_inverts(self) -> None:
         self.assertEqual(resolve_mapper_basename("tasnet", self._MAPPER), "tasnet")
@@ -73,9 +69,7 @@ class MapperSeparatorToleranceTests(unittest.TestCase):
             if not mapper:
                 continue
             keys = [_normalize_mapper_label(v) for v in mapper.values()]
-            self.assertEqual(
-                len(set(keys)), len(keys), f"{name} mapper collides when normalised"
-            )
+            self.assertEqual(len(set(keys)), len(keys), f"{name} mapper collides when normalised")
 
 
 class BagOwnerResolutionTests(unittest.TestCase):
@@ -99,18 +93,14 @@ class BagOwnerResolutionTests(unittest.TestCase):
         self.assertEqual(got, "htdemucs_ft")
 
     def test_a_non_member_stem_is_returned_unchanged(self) -> None:
-        with patch(
-            "core.model_display.demucs_bag_owner_basename", return_value=None
-        ):
+        with patch("core.model_display.demucs_bag_owner_basename", return_value=None):
             got = resolve_demucs_model_basename(
                 "v3 — something", None, catalogue_index={"something": "v3 — something"}
             )
         self.assertEqual(got, "something")
 
     def test_an_unknown_label_is_returned_unchanged(self) -> None:
-        self.assertEqual(
-            resolve_demucs_model_basename("nope", None, catalogue_index={}), "nope"
-        )
+        self.assertEqual(resolve_demucs_model_basename("nope", None, catalogue_index={}), "nope")
 
 
 class DemucsSpecAssignmentTests(unittest.TestCase):

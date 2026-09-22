@@ -16,9 +16,7 @@ else:
 
 
 class ProgressCallback(Protocol):
-    def __call__(
-        self, step: float, inference_iterations: float = 0.0
-    ) -> Any: ...
+    def __call__(self, step: float, inference_iterations: float = 0.0) -> Any: ...
 
 
 class ConsoleCallback(Protocol):

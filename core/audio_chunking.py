@@ -121,10 +121,7 @@ def slice_mix(
     if len(bounds) == 1:
         start, end = bounds[0]
         return [(start, end, audio)]
-    return [
-        (start, end, np.array(audio[:, start:end], copy=True))
-        for start, end in bounds
-    ]
+    return [(start, end, np.array(audio[:, start:end], copy=True)) for start, end in bounds]
 
 
 def concat_stems(
@@ -182,9 +179,7 @@ def overlaps_for_chunks(chunks: Sequence[Tuple[int, int, np.ndarray]]) -> List[i
     back so it ends exactly at the mix length. Deriving overlap directly from
     each chunk's ``(start, end)`` keeps every join correct regardless.
     """
-    return [
-        max(0, chunks[i][1] - chunks[i + 1][0]) for i in range(len(chunks) - 1)
-    ]
+    return [max(0, chunks[i][1] - chunks[i + 1][0]) for i in range(len(chunks) - 1)]
 
 
 def overlap_samples_for(

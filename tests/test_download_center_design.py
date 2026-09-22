@@ -319,7 +319,9 @@ class DownloadCenterDesignTests(unittest.TestCase):
             center._row_checks[key].set_active(True)
             center._size_lookup_ids[key] = 4
             stash(center._row_actions[key], '_uvr_size', '12 MB')
-        with patch.object(center, '_refresh_browser_metadata', wraps=center._refresh_browser_metadata) as metadata:
+        with patch.object(
+            center, '_refresh_browser_metadata', wraps=center._refresh_browser_metadata
+        ) as metadata:
             center._clear_selection()
         self.assertEqual(center.browser.selected_keys(), ())
         self.assertFalse(center.download_button.get_sensitive())
@@ -336,15 +338,23 @@ class DownloadCenterDesignTests(unittest.TestCase):
         for check in center._row_checks.values():
             check.set_active(True)
         with (
-            patch.object(center, '_project_browser_row', wraps=center._project_browser_row) as project,
-            patch.object(center, '_update_download_button', wraps=center._update_download_button) as summary,
-            patch.object(center._list_box, 'invalidate_filter', wraps=center._list_box.invalidate_filter) as filters,
+            patch.object(
+                center, '_project_browser_row', wraps=center._project_browser_row
+            ) as project,
+            patch.object(
+                center, '_update_download_button', wraps=center._update_download_button
+            ) as summary,
+            patch.object(
+                center._list_box, 'invalidate_filter', wraps=center._list_box.invalidate_filter
+            ) as filters,
         ):
             center._rebuild_catalogue()
         self.assertEqual(project.call_count, 3)  # two downloadable plus one unsupported
         self.assertEqual(summary.call_count, 1)
         self.assertEqual(filters.call_count, 1)
-        self.assertEqual(set(center.browser.selected_keys()), {(self.arch, 'Dual'), (self.arch, 'Second')})
+        self.assertEqual(
+            set(center.browser.selected_keys()), {(self.arch, 'Dual'), (self.arch, 'Second')}
+        )
         self.assertTrue(all(check.get_active() for check in center._row_checks.values()))
 
     def test_hidden_stem_updates_coalesce_until_present_and_disposal_blocks_delivery(self):

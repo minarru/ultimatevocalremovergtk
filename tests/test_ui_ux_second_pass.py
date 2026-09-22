@@ -48,9 +48,7 @@ class ReadinessTests(unittest.TestCase):
         def fail():
             raise RuntimeError("bad readiness hook")
 
-        self.assertIsNone(
-            target_blocked_reason(mock.Mock(start_blocked_reason=fail))
-        )
+        self.assertIsNone(target_blocked_reason(mock.Mock(start_blocked_reason=fail)))
 
 
 class DownloadFeedbackTests(unittest.TestCase):
@@ -120,9 +118,7 @@ class ProfileOverwriteDetectionTests(unittest.TestCase):
         from ui.preferences import persistence_feedback
 
         error = "Couldn't save settings: read-only filesystem"
-        self.assertEqual(
-            persistence_feedback(error, "Settings reset to default"), error
-        )
+        self.assertEqual(persistence_feedback(error, "Settings reset to default"), error)
         self.assertEqual(
             persistence_feedback(None, "Settings reset to default"),
             "Settings reset to default",

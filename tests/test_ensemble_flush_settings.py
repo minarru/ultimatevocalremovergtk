@@ -69,10 +69,13 @@ def _minimal_page(*, settings: Settings | None = None) -> typing.Any:
     page._ensemble_pair = MagicMock(return_value=Mock(value="Vocals/Instrumental"))
     page._selected_model_tags = MagicMock(return_value=["mdx:a", "mdx:b"])
     from ui.shared_settings import SharedSettingsSession, shared_settings_bindings
+
     page.gpu_row = Mock()
     page.gpu_row.get_active.return_value = False
     page._shared_session = SharedSettingsSession(
-        page.settings, shared_settings_bindings(gpu_row=page.gpu_row), can_commit=lambda: True,
+        page.settings,
+        shared_settings_bindings(gpu_row=page.gpu_row),
+        can_commit=lambda: True,
     )
     page._shared_session.refresh(lambda: None)
     page.gpu_row.get_active.return_value = True  # a pending real setting edit
@@ -96,10 +99,14 @@ class EnsembleFlushSettingsTests(unittest.TestCase):
     def test_start_flushes_save_stems(self) -> None:
         page = _minimal_page()
         observed_gpu = []
-        page.context.runner.start.side_effect = lambda *_args, **_kwargs: observed_gpu.append(page.settings.process.use_gpu)
+        page.context.runner.start.side_effect = lambda *_args, **_kwargs: observed_gpu.append(
+            page.settings.process.use_gpu
+        )
 
         page.start(MagicMock())
-        self.assertEqual(observed_gpu, [True], "shared edits must reach settings before the runner starts")
+        self.assertEqual(
+            observed_gpu, [True], "shared edits must reach settings before the runner starts"
+        )
 
         page.save_stems.persist_to_settings.assert_called_once()
         self.assertTrue(page.settings.process.use_gpu)

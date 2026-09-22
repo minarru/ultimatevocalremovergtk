@@ -44,7 +44,9 @@ class DownloadInfoThrottleTests(unittest.TestCase):
                 return_value=_FakeChunkResponse(payload),
             ):
                 with mock.patch("core.download_transfer.time.monotonic") as monotonic:
-                    monotonic.side_effect = [index * _INFO_UPDATE_INTERVAL_S for index in range(200)]
+                    monotonic.side_effect = [
+                        index * _INFO_UPDATE_INTERVAL_S for index in range(200)
+                    ]
                     manager._download_file_url(
                         "https://example.com/model.onnx",
                         tmp_path,

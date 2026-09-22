@@ -55,7 +55,8 @@ class RemoteJsonSourceTests(unittest.TestCase):
             cache_filename="catalog.json",
             cache_path=self.path,
             ttl_seconds=60,
-            opener=opener or (lambda _url: _Response({"mdx_download_list": {"A": {"a.ckpt": "u"}}})),
+            opener=opener
+            or (lambda _url: _Response({"mdx_download_list": {"A": {"a.ckpt": "u"}}})),
             clock=self.clock,
             **kwargs,
         )
@@ -78,9 +79,7 @@ class RemoteJsonSourceTests(unittest.TestCase):
         policy = AccessPolicy(allow_network=True, allow_metadata_writes=True)
         first = source.load(mode=RefreshMode.FORCE, policy=policy)
         opener.reset_mock()
-        second = source.load(
-            mode=RefreshMode.STALE_WHILE_REVALIDATE, policy=policy
-        )
+        second = source.load(mode=RefreshMode.STALE_WHILE_REVALIDATE, policy=policy)
         opener.assert_not_called()
         self.assertEqual(
             self._content(first).semantic_digest, self._content(second).semantic_digest

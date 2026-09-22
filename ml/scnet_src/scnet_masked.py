@@ -80,7 +80,7 @@ class SCNetMasked(nn.Module):
         self.embed_dim = dims[0]
         self.max_f = nfft // 2 + 1
         self.pos_embed_f = nn.Parameter(torch.zeros(1, self.embed_dim, self.max_f, 1))
-        nn.init.trunc_normal_(self.pos_embed_f, std=.02)
+        nn.init.trunc_normal_(self.pos_embed_f, std=0.02)
 
         self.stft_config = {
             'n_fft': nfft,
@@ -154,7 +154,10 @@ class SCNetMasked(nn.Module):
         x = torch.stft(x, **stft_kwargs, return_complex=True)
         x = torch.view_as_real(x)
         x = x.permute(0, 3, 1, 2).reshape(
-            x.shape[0] // self.audio_channels, x.shape[3] * self.audio_channels, x.shape[1], x.shape[2]
+            x.shape[0] // self.audio_channels,
+            x.shape[3] * self.audio_channels,
+            x.shape[1],
+            x.shape[2],
         )
 
         B, C, Fr, T = x.shape
@@ -210,7 +213,9 @@ class SCNetMasked(nn.Module):
         x = mixture_c * mask_c
 
         istft_kwargs = dict(self.stft_config)
-        istft_kwargs["window"] = torch.hann_window(self.win_size, device=x.device, dtype=x.real.dtype)
+        istft_kwargs["window"] = torch.hann_window(
+            self.win_size, device=x.device, dtype=x.real.dtype
+        )
         x = torch.istft(x, **istft_kwargs)
         x = x.reshape(B, len(self.sources), self.audio_channels, -1)
 

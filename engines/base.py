@@ -47,9 +47,15 @@ class SeperateAttributes(EngineLegacyOptions):
             raise ValueError(runtime_error)
 
         self.context = EngineRunContext(
-            model_data, process_data,
-            EngineInvocation(main_model_primary_stem_4_stem, main_process_method,
-                             is_return_dual, main_model_primary, vocal_stem_path),
+            model_data,
+            process_data,
+            EngineInvocation(
+                main_model_primary_stem_4_stem,
+                main_process_method,
+                is_return_dual,
+                main_model_primary,
+                vocal_stem_path,
+            ),
         )
         self.state = EngineState()
         self.audio_file_base_voc_split: Any = None
@@ -82,7 +88,9 @@ class SeperateAttributes(EngineLegacyOptions):
             selection_provenance if isinstance(selection_provenance, bool) else None
         )
         self.is_secondary_model_activated = (
-            self.context.secondary.is_secondary_model_activated if not self.is_pre_proc_model else False
+            self.context.secondary.is_secondary_model_activated
+            if not self.is_pre_proc_model
+            else False
         )
         self.is_secondary_model = (
             self.context.common.is_secondary_model if not self.is_pre_proc_model else True
@@ -115,9 +123,12 @@ class SeperateAttributes(EngineLegacyOptions):
         self.master_inst_source: Any = master_inst_source
         self.master_vocal_source: Any = master_vocal_source
         self.is_save_inst_vocal_splitter = (
-            isinstance(master_inst_source, np.ndarray) and self.context.common.is_save_inst_vocal_splitter
+            isinstance(master_inst_source, np.ndarray)
+            and self.context.common.is_save_inst_vocal_splitter
         )
-        self.is_bv_model_rebalenced = self.context.common.bv_model_rebalance and self.is_vocal_split_model
+        self.is_bv_model_rebalenced = (
+            self.context.common.bv_model_rebalance and self.is_vocal_split_model
+        )
         self.stem_path_init = self.stem_export_wav_path(self.secondary_stem)
         self.device = cpu
         self.run_type = ['CPUExecutionProvider']

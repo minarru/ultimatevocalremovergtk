@@ -35,9 +35,7 @@ class CliModelLookup:
             raise ValueError(_CANONICAL_ID_ERROR) from None
         record = self._service.index.lookup(parsed.value)
         if family is not None and record.family != family:
-            raise ValueError(
-                f"model {record.id!r} does not belong to required family {family}"
-            )
+            raise ValueError(f"model {record.id!r} does not belong to required family {family}")
         if allowed_families is not None and record.family not in allowed_families:
             raise ValueError(f"model {record.id!r} is not eligible for this setting")
         return record

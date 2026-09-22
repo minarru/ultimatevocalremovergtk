@@ -66,9 +66,7 @@ class KeyDiff:
         return not self.missing and not self.unexpected
 
 
-def diff_state_dict_keys(
-    module_keys: List[str], checkpoint_keys: List[str]
-) -> KeyDiff:
+def diff_state_dict_keys(module_keys: List[str], checkpoint_keys: List[str]) -> KeyDiff:
     """Compare a module's parameter names against a checkpoint's.
 
     Uses ``load_state_dict``'s own wording so probe output can be read straight
@@ -156,6 +154,7 @@ def _vr_arch_tables() -> Tuple[Tuple[int, ...], "frozenset[int]"]:
     from ml.vr_network.nets import VR_5_1_ARCH_SIZES, VR_ARCH_SIZES
 
     return VR_ARCH_SIZES, VR_5_1_ARCH_SIZES
+
 
 _VR_MODULE_CLASS_NAMES = {"CascadedNet", "CascadedASPPNet"}
 
@@ -330,9 +329,7 @@ def build_from_config(
         if section is None:
             section = getattr(config, "kwargs", None)  # Bandit configs
         dropped = (
-            dropped_config_keys(type(module), section)
-            if filtered and section is not None
-            else []
+            dropped_config_keys(type(module), section) if filtered and section is not None else []
         )
     return BuiltModel(
         config_path,
@@ -387,9 +384,7 @@ def _vr_probe_input(built: BuiltModel) -> Any:
     return torch.randn(1, 2, bins, 64)
 
 
-def forward_probe(
-    built: BuiltModel, *, seconds: Optional[float] = None
-) -> ForwardResult:
+def forward_probe(built: BuiltModel, *, seconds: Optional[float] = None) -> ForwardResult:
     """Run audio-shaped noise through ``built``. Proves the graph is wired up.
 
     Defaults to the config's own chunk size; ``seconds`` overrides it.
@@ -520,14 +515,13 @@ def render_report(result: ProbeResult) -> str:
     if result.reason:
         lines.append(f"  catalogue    listed unsupported: {result.reason}")
     if build.ok:
-        lines.append(
-            f"  architecture {build.architecture}  "
-            f"{build.parameters / 1e6:.1f}M params"
-        )
+        lines.append(f"  architecture {build.architecture}  {build.parameters / 1e6:.1f}M params")
         if build.stems:
             lines.append(f"  stems        {', '.join(build.stems)}")
         if build.dropped:
-            lines.append(f"  dropped      {', '.join(build.dropped)}  (config asks for these; the class ignores them)")
+            lines.append(
+                f"  dropped      {', '.join(build.dropped)}  (config asks for these; the class ignores them)"
+            )
     else:
         lines.append(f"  build error  {build.error}")
     if forward.ok:
@@ -605,9 +599,7 @@ def probe(
     forward = forward_probe(build, seconds=seconds)
     keys: Optional[KeyDiff] = None
     if checkpoint_keys is not None and build.ok:
-        keys = diff_state_dict_keys(
-            list(build.module.state_dict().keys()), checkpoint_keys
-        )
+        keys = diff_state_dict_keys(list(build.module.state_dict().keys()), checkpoint_keys)
     return ProbeResult(
         entry_id=entry_id or os.path.basename(config_path),
         label=label or os.path.basename(config_path),
@@ -802,14 +794,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     args = parser.parse_args(argv)
 
     if args.sweep:
-        targets = list(
-            iter_catalogue_targets(unsupported_only=not args.include_supported)
-        )
+        targets = list(iter_catalogue_targets(unsupported_only=not args.include_supported))
         if args.only:
             needle = args.only.lower()
             targets = [
-                t for t in targets
-                if needle in t.entry_id.lower() or needle in t.label.lower()
+                t for t in targets if needle in t.entry_id.lower() or needle in t.label.lower()
             ]
         if args.limit is not None:
             targets = targets[: args.limit]
@@ -836,9 +825,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 0 if all(r.verdict == VERDICT_BUILDABLE for r in results) else 1
 
     if args.config:
-        result = probe(
-            args.config, checkpoint_path=args.checkpoint, seconds=args.seconds
-        )
+        result = probe(args.config, checkpoint_path=args.checkpoint, seconds=args.seconds)
     else:
         target = resolve_target(args.entry)
         if not target.config_url:

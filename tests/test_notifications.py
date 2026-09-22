@@ -1,4 +1,5 @@
 """Tests for desktop notification preference gates."""
+
 import typing
 import unittest
 from unittest.mock import MagicMock, patch

@@ -73,7 +73,9 @@ class LogPanelLayoutTests(unittest.TestCase):
         panel = LogPanel()
         panel._available_size = (1000, 740)
         panel._update_geometry()
-        expected = round(Adw.length_unit_to_px(Adw.LengthUnit.SP, _LOG_BODY_HEIGHT, panel.get_settings()))
+        expected = round(
+            Adw.length_unit_to_px(Adw.LengthUnit.SP, _LOG_BODY_HEIGHT, panel.get_settings())
+        )
         self.assertEqual(panel._log_height, expected)
         panel.set_progress_text("Waiting for the worker to finish", title="Stopping…")
         self.assertEqual(panel._log_height, expected)
@@ -442,7 +444,8 @@ class LogPanelLayoutTests(unittest.TestCase):
                         x, bounds.get_y() + bounds.get_height() / 2, Gtk.PickFlags.DEFAULT
                     )
                     self.assertTrue(
-                        picked is background or (picked is not None and picked.is_ancestor(background)),
+                        picked is background
+                        or (picked is not None and picked.is_ancestor(background)),
                         f"Transparent side picked {type(picked).__name__}",
                     )
                 picked = overlay.pick(100, 100, Gtk.PickFlags.DEFAULT)

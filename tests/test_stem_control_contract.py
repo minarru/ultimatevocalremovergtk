@@ -333,7 +333,11 @@ class DemucsStemControlContractTests(unittest.TestCase):
                 ),
                 (DemucsView("instrument.bass", "all", True), "", None),
                 (DemucsView("focus_vocals", "all", False), "vocal.vocals", "vocal.vocals"),
-                (DemucsView("focus_instrumental", "all", False), "mix.instrumental", "mix.instrumental"),
+                (
+                    DemucsView("focus_instrumental", "all", False),
+                    "mix.instrumental",
+                    "mix.instrumental",
+                ),
             )
             for view, persisted, single_role in cases:
                 with self.subTest(model=model_id, view=view):

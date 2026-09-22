@@ -25,19 +25,22 @@ from .reporting import add_reporting_args, emit_document, fail
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _MANIFEST_SCHEMA_VERSION = 3
 _SEPARATION_FAMILIES = frozenset({"vr", "mdx", "demucs"})
-_SECONDARY_FIELDS = frozenset({
-    "voc_inst_secondary_model",
-    "other_secondary_model",
-    "bass_secondary_model",
-    "drums_secondary_model",
-})
+_SECONDARY_FIELDS = frozenset(
+    {
+        "voc_inst_secondary_model",
+        "other_secondary_model",
+        "bass_secondary_model",
+        "drums_secondary_model",
+    }
+)
 
 
 def add_run_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("manifest", help="Manifest JSON produced by --manifest")
     parser.add_argument("-o", "--output", help="Override the recorded output directory")
     parser.add_argument(
-        "--on-exists", choices=("fail", "overwrite", "rename", "skip"),
+        "--on-exists",
+        choices=("fail", "overwrite", "rename", "skip"),
         help="Override the recorded collision policy",
     )
     parser.add_argument("--allow-model-change", action="store_true")
@@ -77,7 +80,8 @@ def _hashes(plan: dict[str, Any]) -> dict[str, str]:
     if plan.get("models"):
         return {
             str(model.get("id")): str(model.get("checkpoint_hash") or "")
-            for model in plan["models"] if model.get("id")
+            for model in plan["models"]
+            if model.get("id")
         }
     identity = plan.get("identity") or {}
     if identity.get("id"):
@@ -102,7 +106,7 @@ def _ensemble_member_index(path: str) -> int | None:
     prefix = "ensemble.selected_models["
     if not path.startswith(prefix) or not path.endswith("]"):
         return None
-    token = path[len(prefix):-1]
+    token = path[len(prefix) : -1]
     if not token.isdigit() or (len(token) > 1 and token.startswith("0")):
         return None
     return int(token)
@@ -115,7 +119,9 @@ def _allowed_dependency_families(path: str, command: str) -> frozenset[str]:
         raise ValueError(f"invalid audio model dependency path {path!r}")
 
     if command == "separate" and path in {
-        "vr.model", "mdx.model", "demucs.model",
+        "vr.model",
+        "mdx.model",
+        "demucs.model",
     }:
         return frozenset({path.partition(".")[0]})
     if command == "ensemble" and _ensemble_member_index(path) is not None:
@@ -140,29 +146,23 @@ def _validated_identity_contract(
         raise ValueError("schema 3 manifest requires model_identity_digest")
     digest = manifest["model_identity_digest"]
     if not isinstance(digest, str) or not _is_identity_digest(digest):
-        raise ValueError(
-            "schema 3 manifest model_identity_digest must be a sha256: digest"
-        )
+        raise ValueError("schema 3 manifest model_identity_digest must be a sha256: digest")
     if not raw_dependencies and digest != EMPTY_MODEL_IDENTITY_DIGEST:
         raise ValueError(
-            "an empty model dependency map requires the canonical empty "
-            "model identity digest"
+            "an empty model dependency map requires the canonical empty model identity digest"
         )
 
     dependencies: dict[str, str] = {}
     for raw_path, raw_model_id in sorted(raw_dependencies.items()):
         if not isinstance(raw_path, str) or not isinstance(raw_model_id, str):
             raise ValueError(
-                "schema 3 manifest model_dependencies must map string paths "
-                "to canonical model IDs"
+                "schema 3 manifest model_dependencies must map string paths to canonical model IDs"
             )
         allowed = _allowed_dependency_families(raw_path, command)
         try:
             parsed = parse_stored_model_id(raw_model_id)
         except ValueError as exc:
-            raise ValueError(
-                f"{raw_path} must contain a canonical model ID: {exc}"
-            ) from exc
+            raise ValueError(f"{raw_path} must contain a canonical model ID: {exc}") from exc
         if parsed.family not in allowed:
             expected = ", ".join(sorted(allowed))
             raise ValueError(
@@ -180,7 +180,9 @@ def _profile_identity(
     settings: dict[str, str] = {}
     for path, model_id in dependencies.items():
         if command == "separate" and path in {
-            "vr.model", "mdx.model", "demucs.model",
+            "vr.model",
+            "mdx.model",
+            "demucs.model",
         }:
             if model is not None:
                 raise ValueError("separate manifest has multiple primary model dependencies")
@@ -199,24 +201,20 @@ def _validate_command_dependency_topology(
 ) -> None:
     if command == "separate":
         primaries = dependencies.keys() & {
-            "vr.model", "mdx.model", "demucs.model",
+            "vr.model",
+            "mdx.model",
+            "demucs.model",
         }
         if len(primaries) != 1:
-            raise ValueError(
-                "a separate manifest requires exactly one primary model dependency"
-            )
+            raise ValueError("a separate manifest requires exactly one primary model dependency")
         return
 
     if command == "ensemble":
         indices = sorted(
-            index
-            for path in dependencies
-            if (index := _ensemble_member_index(path)) is not None
+            index for path in dependencies if (index := _ensemble_member_index(path)) is not None
         )
         if len(indices) < 2:
-            raise ValueError(
-                "an ensemble manifest requires at least two model dependencies"
-            )
+            raise ValueError("an ensemble manifest requires at least two model dependencies")
         if indices != list(range(len(indices))):
             raise ValueError(
                 "ensemble model dependencies must use contiguous indices starting at 0"
@@ -226,9 +224,7 @@ def _validate_command_dependency_topology(
     apollo_path = "audio_tools.apollo_model"
     if spec.get("tool") == "restore":
         if set(dependencies) != {apollo_path}:
-            raise ValueError(
-                "Apollo restore requires exactly one Apollo model dependency"
-            )
+            raise ValueError("Apollo restore requires exactly one Apollo model dependency")
     elif dependencies:
         raise ValueError("model-free audio tools must not have model dependencies")
 
@@ -244,7 +240,9 @@ def _primary_dependency_records(
     primary_items: list[tuple[int, str]] = []
     for path, model_id in dependencies.items():
         if command == "separate" and path in {
-            "vr.model", "mdx.model", "demucs.model",
+            "vr.model",
+            "mdx.model",
+            "demucs.model",
         }:
             primary_items.append((0, model_id))
         elif command == "ensemble" and (index := _ensemble_member_index(path)) is not None:
@@ -260,19 +258,23 @@ def _primary_dependency_records(
             version = raw_demucs.get("version")
             layout = raw_demucs.get("source_layout")
             if version in {"v1", "v2", "v3", "v4"} and layout in {
-                "2_stem", "4_stem", "6_stem",
+                "2_stem",
+                "4_stem",
+                "6_stem",
             }:
                 demucs = DemucsSpec(version, layout)
-        records.append(ModelRecord(
-            id=model_id,
-            family=parsed.family,
-            basename=parsed.basename,
-            display=model_id,
-            backend_name=parsed.basename,
-            artifacts=ModelArtifacts(parsed.basename),
-            installed=True,
-            demucs=demucs,
-        ))
+        records.append(
+            ModelRecord(
+                id=model_id,
+                family=parsed.family,
+                basename=parsed.basename,
+                display=model_id,
+                backend_name=parsed.basename,
+                artifacts=ModelArtifacts(parsed.basename),
+                installed=True,
+                demucs=demucs,
+            )
+        )
     return tuple(records)
 
 
@@ -281,15 +283,11 @@ def _validate_active_dependency_paths(
 ) -> None:
     if command == "audio":
         return
-    raw_settings = manifest.get("settings") or (manifest.get("plan") or {}).get(
-        "settings"
-    )
+    raw_settings = manifest.get("settings") or (manifest.get("plan") or {}).get("settings")
     if not isinstance(raw_settings, dict):
         raise ValueError("schema 3 manifest settings must be an object")
     settings = Settings.from_json_dict(raw_settings)
-    records = _primary_dependency_records(
-        command, dependencies, manifest.get("plan") or {}
-    )
+    records = _primary_dependency_records(command, dependencies, manifest.get("plan") or {})
     if command == "separate":
         primary = records[0]
         getattr(settings, primary.family).model = primary.id
@@ -308,21 +306,20 @@ def _validate_active_dependency_paths(
             index = _ensemble_member_index(path)
             if index is not None:
                 indexed_primary_paths.append((index, path))
-        primary_paths = [
-            path for _index, path in sorted(indexed_primary_paths)
-        ]
+        primary_paths = [path for _index, path in sorted(indexed_primary_paths)]
     primary_stems = {
         path: str(descriptor_by_id[record.id]["primary_stem"])
         for path, record in zip(primary_paths, records, strict=True)
-        if record.id in descriptor_by_id
-        and descriptor_by_id[record.id].get("primary_stem")
+        if record.id in descriptor_by_id and descriptor_by_id[record.id].get("primary_stem")
     }
-    expected = set(active_model_paths(
-        settings,
-        command=command,
-        primary=records,
-        primary_stems=primary_stems,
-    ))
+    expected = set(
+        active_model_paths(
+            settings,
+            command=command,
+            primary=records,
+            primary_stems=primary_stems,
+        )
+    )
     actual = set(dependencies)
     if expected == actual:
         return
@@ -334,8 +331,7 @@ def _validate_active_dependency_paths(
     if extra:
         details.append("extra " + ", ".join(extra))
     raise ValueError(
-        "manifest model dependencies do not match active settings: "
-        + "; ".join(details)
+        "manifest model dependencies do not match active settings: " + "; ".join(details)
     )
 
 
@@ -376,9 +372,7 @@ def _child_env() -> dict[str, str]:
 
 
 def _run(argv: list[str]) -> tuple[int, dict[str, Any], str]:
-    proc = subprocess.run(
-        argv, env=_child_env(), capture_output=True, text=True, check=False
-    )
+    proc = subprocess.run(argv, env=_child_env(), capture_output=True, text=True, check=False)
     try:
         payload = json.loads(proc.stdout)
     except json.JSONDecodeError:
@@ -402,9 +396,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         command = manifest.get("command")
         if command not in {"separate", "ensemble", "audio"}:
             raise ValueError(f"manifest command {command!r} cannot be replayed")
-        dependencies, recorded_digest = _validated_identity_contract(
-            manifest, command
-        )
+        dependencies, recorded_digest = _validated_identity_contract(manifest, command)
         _validate_command_dependency_topology(command, spec, dependencies)
         _validate_active_dependency_paths(manifest, command, dependencies)
         profile_model, profile_members, dependency_settings = _profile_identity(
@@ -450,18 +442,42 @@ def cmd_run(args: argparse.Namespace) -> int:
             if spec.get("name") and tool == "ensemble":
                 child.extend(["--name", spec["name"]])
         else:
-            child = [sys.executable, "-m", "cli", command, *inputs, "-o", output, "--profile", profile_path, "--accept-inherited"]
+            child = [
+                sys.executable,
+                "-m",
+                "cli",
+                command,
+                *inputs,
+                "-o",
+                output,
+                "--profile",
+                profile_path,
+                "--accept-inherited",
+            ]
         if command == "separate" and profile_model:
             child.extend(["--model", profile_model])
         elif command == "ensemble":
             for member in profile_members:
                 child.extend(["--model", member])
-        child.extend(["--on-exists", args.on_exists or spec.get("collision_policy") or "fail", "--report", "json", "--quiet"])
+        child.extend(
+            [
+                "--on-exists",
+                args.on_exists or spec.get("collision_policy") or "fail",
+                "--report",
+                "json",
+                "--quiet",
+            ]
+        )
         if getattr(args, "offline", False):
             child.append("--offline")
         check_code, checked, _check_stderr = _run([*child, "--dry-run"])
         if check_code:
-            return fail(args, "manifest replay validation failed", exit_code=2, extra={"validation": checked})
+            return fail(
+                args,
+                "manifest replay validation failed",
+                exit_code=2,
+                extra={"validation": checked},
+            )
         current_plan = checked.get("plan") or {}
         try:
             current_dependencies, current_digest = _validated_identity_contract(
@@ -509,7 +525,9 @@ def cmd_run(args: argparse.Namespace) -> int:
             )
         code, result, stderr = _run(child)
         if not result:
-            return fail(args, stderr.strip() or "manifest replay produced no result", exit_code=code or 1)
+            return fail(
+                args, stderr.strip() or "manifest replay produced no result", exit_code=code or 1
+            )
         response = {
             "ok": code == 0,
             "status": "success" if code == 0 else "failed",

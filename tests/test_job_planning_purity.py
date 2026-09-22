@@ -207,11 +207,15 @@ class ObservationOrderTests(unittest.TestCase):
             with (
                 patch(
                     "core.stem_pairs.load_bundled_stem_semantics",
-                    side_effect=lambda observed=seen, registry=registry: observed.append("pair") or registry,
+                    side_effect=lambda observed=seen, registry=registry: (
+                        observed.append("pair") or registry
+                    ),
                 ),
                 patch(
                     "core.job_route_observations.load_bundled_stem_semantics",
-                    side_effect=lambda observed=seen, registry=registry: observed.append("role") or registry,
+                    side_effect=lambda observed=seen, registry=registry: (
+                        observed.append("role") or registry
+                    ),
                 ),
             ):
                 evidence = collect_output_route_evidence(settings, (), command="ensemble")

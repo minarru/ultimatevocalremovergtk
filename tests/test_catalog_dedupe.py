@@ -38,12 +38,8 @@ class NormalizeLabelTests(unittest.TestCase):
         self.assertEqual(a, b)
 
     def test_scnet_prefix_and_inline_family_variants_match(self) -> None:
-        curated = normalize_catalogue_label(
-            "SCnet: 4-stems Huge SCNet Fullness by Aname"
-        )
-        mvsepless = normalize_catalogue_label(
-            "SCNet 4 Stems Huge Fullness by Aname"
-        )
+        curated = normalize_catalogue_label("SCnet: 4-stems Huge SCNet Fullness by Aname")
+        mvsepless = normalize_catalogue_label("SCNet 4 Stems Huge Fullness by Aname")
         self.assertEqual(curated, mvsepless)
 
     def test_hq_variant_remains_distinct(self) -> None:
@@ -62,9 +58,7 @@ class NormalizeLabelTests(unittest.TestCase):
 class PrimaryCheckpointTests(unittest.TestCase):
     def test_dict_skips_yaml(self) -> None:
         self.assertEqual(
-            primary_checkpoint_name(
-                {"a.yaml": "https://x/a.yaml", "a.ckpt": "https://x/a.ckpt"}
-            ),
+            primary_checkpoint_name({"a.yaml": "https://x/a.yaml", "a.ckpt": "https://x/a.ckpt"}),
             "a.ckpt",
         )
 
@@ -251,9 +245,7 @@ class DownloadManagerDedupeTests(unittest.TestCase):
             {
                 "First": {"same.ckpt": "https://a/same.ckpt"},
                 "Second": {"same.ckpt": "https://b/same.ckpt"},
-                "Mel-Band Roformer Vocals by Kimberley Jensen": {
-                    "mbr.ckpt": "https://m/mbr.ckpt"
-                },
+                "Mel-Band Roformer Vocals by Kimberley Jensen": {"mbr.ckpt": "https://m/mbr.ckpt"},
                 "Roformer Model: MelBand Roformer | Vocals by Kimberley Jensen": {
                     "kim.ckpt": "https://k/kim.ckpt"
                 },

@@ -12,7 +12,9 @@ from ml.apollo_model_data.base_model import BaseModel
 
 
 class _TinyApollo(BaseModel):
-    def __init__(self, sr: int = 44100, win: int = 20, feature_dim: int = 4, layer: int = 1) -> None:
+    def __init__(
+        self, sr: int = 44100, win: int = 20, feature_dim: int = 4, layer: int = 1
+    ) -> None:
         super().__init__(sample_rate=sr)
         self.lin = nn.Linear(feature_dim, feature_dim)
 
@@ -44,9 +46,7 @@ class ApolloFromPretrainTests(unittest.TestCase):
             "state_dict": weights,
         }
         with patch("ml.apollo_model_data.get", return_value=_TinyApollo) as get_mock:
-            loaded = BaseModel.from_checkpoint(
-                lightning, sr=44100, win=20, feature_dim=4, layer=1
-            )
+            loaded = BaseModel.from_checkpoint(lightning, sr=44100, win=20, feature_dim=4, layer=1)
         get_mock.assert_called_once_with("Apollo")
         self.assertIsInstance(loaded, _TinyApollo)
         for key, tensor in model.state_dict().items():

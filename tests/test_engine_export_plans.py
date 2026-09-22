@@ -49,10 +49,15 @@ class DemucsExportPlanTests(unittest.TestCase):
         routes = with_instrumental_mix(manifest_routes('demucs:htdemucs'))
         instrumental = next(r for r in routes if r.concept == 'mix.instrumental')
         blended = {name: self.source[index].T * 2 for name, index in self.mapping.items()}
-        plan = plan_demucs_export(replace(
-            self.request, routes=(instrumental,), available_routes=routes,
-            write_all_sources=True, blended_sources=blended,
-        ))
+        plan = plan_demucs_export(
+            replace(
+                self.request,
+                routes=(instrumental,),
+                available_routes=routes,
+                write_all_sources=True,
+                blended_sources=blended,
+            )
+        )
         self.assertEqual(list(plan.sources), ['mix.instrumental'])
         np.testing.assert_array_equal(plan.sources['mix.instrumental'], np.full((8, 2), 12.0))
         np.testing.assert_array_equal(self.source[0], np.full((2, 8), 1.0))
@@ -173,9 +178,16 @@ class MDXCExportPlanTests(unittest.TestCase):
 
         routes = with_instrumental_mix(manifest_routes('mdx:SCNet-large_starrytong_fixed'))
         instrumental = next(r for r in routes if r.concept == 'mix.instrumental')
-        plan = self.plan(replace(self.request, available_routes=routes,
-                                export_routes=(instrumental,), exports_primary=False,
-                                exports_secondary=True, selected_stems=()))
+        plan = self.plan(
+            replace(
+                self.request,
+                available_routes=routes,
+                export_routes=(instrumental,),
+                exports_primary=False,
+                exports_secondary=True,
+                selected_stems=(),
+            )
+        )
         self.assertEqual(list(plan.sources), ['mix.instrumental'])
         np.testing.assert_array_equal(plan.sources['mix.instrumental'], np.full((8, 2), 9.0))
 

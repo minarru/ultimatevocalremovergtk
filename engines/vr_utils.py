@@ -1,4 +1,5 @@
 """VR denoiser and multi-band mix loading."""
+
 import os
 import typing
 
@@ -34,8 +35,8 @@ def multiband_waves_to_spectrogram(
     X_wave: typing.Any,
     mp: typing.Any,
     *,
-    is_v51_model: typing.Any=False,
-    use_model_res_type: typing.Any=True,
+    is_v51_model: typing.Any = False,
+    use_model_res_type: typing.Any = True,
 ):
     """Convert a multiband wave dict into a combined VR spectrogram."""
     X_spec_s = {}
@@ -65,12 +66,12 @@ def multiband_waves_to_spectrogram(
 def vr_denoiser(
     X: typing.Any,
     device: typing.Any,
-    hop_length: typing.Any=1024,
-    n_fft: typing.Any=2048,
-    cropsize: typing.Any=256,
-    is_deverber: typing.Any=False,
-    model_path: typing.Any=None,
-    settings: typing.Any=None,
+    hop_length: typing.Any = 1024,
+    n_fft: typing.Any = 2048,
+    cropsize: typing.Any = 256,
+    is_deverber: typing.Any = False,
+    model_path: typing.Any = None,
+    settings: typing.Any = None,
     on_batch: typing.Callable[[int, int], None] | None = None,
     check_run_control: typing.Callable[[], None] | None = None,
 ) -> typing.Any:
@@ -87,7 +88,7 @@ def vr_denoiser(
         n_fft = mp.param['bins'] * 2
     else:
         mp = None
-        hop_length=1024
+        hop_length = 1024
         nout, nout_lstm = 16, 128
 
     from engines.model_weight_cache import (
@@ -119,12 +120,12 @@ def vr_denoiser(
         X_spec = spec_utils.wave_to_spectrogram_old(X, hop_length, n_fft)
     else:
         X_spec = loading_mix(X.T, mp)
-   
-    #PreProcess
+
+    # PreProcess
     X_mag = np.abs(X_spec)
     X_phase = np.angle(X_spec)
 
-    #Sep
+    # Sep
     n_frame = X_mag.shape[2]
     pad_l, pad_r, roi_size = spec_utils.make_padding(n_frame, cropsize, model.offset)
     X_mag_pad = np.pad(X_mag, ((0, 0), (0, 0), (pad_l, pad_r)), mode='constant')
@@ -144,10 +145,7 @@ def vr_denoiser(
                 check_run_control()
             end = min(i + batchsize, patches)
             X_batch = np.stack(
-                [
-                    X_mag_pad[:, :, j * roi_size : j * roi_size + cropsize]
-                    for j in range(i, end)
-                ],
+                [X_mag_pad[:, :, j * roi_size : j * roi_size + cropsize] for j in range(i, end)],
                 axis=0,
             )
             X_batch = torch.from_numpy(X_batch).to(device)
@@ -167,11 +165,11 @@ def vr_denoiser(
 
     mask = mask[:, :, :n_frame]
 
-    #Post Proc
+    # Post Proc
     if is_deverber:
-        v_spec = mask * X_mag * np.exp(1.j * X_phase)
+        v_spec = mask * X_mag * np.exp(1.0j * X_phase)
     else:
-        v_spec = (1 - mask) * X_mag * np.exp(1.j * X_phase)
+        v_spec = (1 - mask) * X_mag * np.exp(1.0j * X_phase)
 
     if mp is None:
         wave = spec_utils.spectrogram_to_wave_old(v_spec, hop_length=1024)
@@ -183,12 +181,13 @@ def vr_denoiser(
     if is_deverber:
         # ``mask`` / ``X_mag`` / ``X_phase`` are untouched above, so deriving the
         # reverb-only spectrogram here is equivalent to hoisting it.
-        y_spec = (1 - mask) * X_mag * np.exp(1.j * X_phase)
+        y_spec = (1 - mask) * X_mag * np.exp(1.0j * X_phase)
         wave_2 = spec_utils.cmb_spectrogram_to_wave(y_spec, mp, is_v51_model=True).T
         wave_2 = spec_utils.match_array_shapes(wave_2, X)
         return wave, wave_2
     else:
         return wave
+
 
 def loading_mix(X: typing.Any, mp: typing.Any):
 

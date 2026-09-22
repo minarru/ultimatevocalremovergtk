@@ -21,9 +21,8 @@ from core import paths as core_paths
 from core.catalogue_types import SourceId
 
 
-
-
 # isort: on
+
 
 class DemucsBagArtifactTests(unittest.TestCase):
     def test_representative_weight_is_stable_across_json_key_order(self) -> None:
@@ -820,8 +819,10 @@ class FetchHelperTests(unittest.TestCase):
                 ),
                 patch("core.mdx_config_fetch._urlopen", return_value=_Response()),
             ):
-                instruments, target, _arch, source, _digest = catalogue_config_evidence._load_yaml_meta(
-                    yaml_name, "https://example.invalid/x.yaml"
+                instruments, target, _arch, source, _digest = (
+                    catalogue_config_evidence._load_yaml_meta(
+                        yaml_name, "https://example.invalid/x.yaml"
+                    )
                 )
 
             self.assertEqual(instruments, ["vocals", "other"])

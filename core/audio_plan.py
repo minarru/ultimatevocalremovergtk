@@ -35,8 +35,12 @@ from .paths import APOLLO_MODELS_DIR
 from .settings import Settings
 
 AUDIO_TOOL_IDS = (
-    MANUAL_ENSEMBLE, TIME_STRETCH, CHANGE_PITCH,
-    ALIGN_INPUTS, MATCH_INPUTS, APOLLO_RESTORE,
+    MANUAL_ENSEMBLE,
+    TIME_STRETCH,
+    CHANGE_PITCH,
+    ALIGN_INPUTS,
+    MATCH_INPUTS,
+    APOLLO_RESTORE,
 )
 _APOLLO_DEPENDENCY_PATH = "audio_tools.apollo_model"
 
@@ -103,8 +107,7 @@ class ResolvedAudioJob:
             "device": self.device,
             "model": dataclasses.asdict(self.model) if self.model else None,
             "model_dependencies": {
-                path: record.id
-                for path, record in sorted(self.model_dependencies.items())
+                path: record.id for path, record in sorted(self.model_dependencies.items())
             },
             "model_identity_digest": self.model_identity_digest,
             "units": [dataclasses.asdict(unit) for unit in self.units],
@@ -151,10 +154,16 @@ class AudioJobResolver:
                 diagnostics.append(Diagnostic("audio.load", str(exc)))
         units = self._plan_units(spec, settings)
         plan = ResolvedAudioJob(
-            spec.tool, settings, settings.process.export_path, units,
-            dict(spec.provenance), tuple(diagnostics), level,
+            spec.tool,
+            settings,
+            settings.process.export_path,
+            units,
+            dict(spec.provenance),
+            tuple(diagnostics),
+            level,
             int(getattr(self.repo, "inventory_generation", 0)),
-            settings_fingerprint(settings), DeviceRequest.from_settings(settings.process).id,
+            settings_fingerprint(settings),
+            DeviceRequest.from_settings(settings.process).id,
             model,
             dependencies,
             compute_model_identity_digest(dependencies),
@@ -190,15 +199,15 @@ class AudioJobResolver:
             return False
         if plan.model is not None and not current_dependencies:
             return False
-        if (
-            compute_model_identity_digest(current_dependencies)
-            != plan.model_identity_digest
-        ):
+        if compute_model_identity_digest(current_dependencies) != plan.model_identity_digest:
             return False
         if plan.model and plan.model.checkpoint and plan.model.checkpoint_hash:
             from .apollo import checkpoint_md5
 
-            return os.path.isfile(plan.model.checkpoint) and checkpoint_md5(plan.model.checkpoint) == plan.model.checkpoint_hash
+            return (
+                os.path.isfile(plan.model.checkpoint)
+                and checkpoint_md5(plan.model.checkpoint) == plan.model.checkpoint_hash
+            )
         return True
 
     @staticmethod
@@ -209,17 +218,25 @@ class AudioJobResolver:
                 result.append(Diagnostic("audio.pairs.empty", "Provide at least one input pair"))
             for left, right in spec.pairs:
                 if left == right:
-                    result.append(Diagnostic("audio.pair.same", f"Pair uses the same file twice: {left}"))
+                    result.append(
+                        Diagnostic("audio.pair.same", f"Pair uses the same file twice: {left}")
+                    )
                 for path in (left, right):
                     if not os.path.isfile(path):
-                        result.append(Diagnostic("input.missing", f"Input not found: {path}", path=path))
+                        result.append(
+                            Diagnostic("input.missing", f"Input not found: {path}", path=path)
+                        )
         else:
             minimum = 2 if spec.tool == MANUAL_ENSEMBLE else 1
             if len(spec.inputs) < minimum:
-                result.append(Diagnostic("inputs.empty", f"Select at least {minimum} input file(s)"))
+                result.append(
+                    Diagnostic("inputs.empty", f"Select at least {minimum} input file(s)")
+                )
             for path in spec.inputs:
                 if not os.path.isfile(path):
-                    result.append(Diagnostic("input.missing", f"Input not found: {path}", path=path))
+                    result.append(
+                        Diagnostic("input.missing", f"Input not found: {path}", path=path)
+                    )
         return result
 
     @staticmethod
@@ -230,18 +247,19 @@ class AudioJobResolver:
         if tool == CHANGE_PITCH and not -10 <= audio.pitch_rate <= 10:
             return [Diagnostic("audio.pitch", "Pitch must be between -10 and 10 semitones")]
         if tool == APOLLO_RESTORE and (audio.apollo_overlap < 0 or audio.apollo_chunk_size <= 0):
-            return [Diagnostic("audio.apollo.options", "Apollo overlap must be non-negative and chunk size positive")]
+            return [
+                Diagnostic(
+                    "audio.apollo.options",
+                    "Apollo overlap must be non-negative and chunk size positive",
+                )
+            ]
         return []
 
     def _resolve_apollo(
         self, settings: Settings, diagnostics: list[Diagnostic], level: ValidationLevel
     ) -> ModelDescriptor | None:
         record = self._resolve_apollo_record(settings, diagnostics)
-        return (
-            self._apollo_descriptor(record, diagnostics, level)
-            if record is not None
-            else None
-        )
+        return self._apollo_descriptor(record, diagnostics, level) if record is not None else None
 
     def _resolve_apollo_record(
         self, settings: Settings, diagnostics: list[Diagnostic]
@@ -306,7 +324,9 @@ class AudioJobResolver:
             required.add("matchering")
         missing = sorted(name for name in required if importlib.util.find_spec(name) is None)
         if missing:
-            return [Diagnostic("runtime.dependencies", f"Missing Python packages: {', '.join(missing)}")]
+            return [
+                Diagnostic("runtime.dependencies", f"Missing Python packages: {', '.join(missing)}")
+            ]
         if tool in {TIME_STRETCH, CHANGE_PITCH}:
             from .external_tools import resolve_rubberband
 
@@ -320,18 +340,34 @@ class AudioJobResolver:
 
     @staticmethod
     def _plan_units(spec: AudioJobSpec, settings: Settings) -> tuple[PlannedAudioUnit, ...]:
-        extension = str(getattr(settings.process.save_format, "value", settings.process.save_format)).casefold()
+        extension = str(
+            getattr(settings.process.save_format, "value", settings.process.save_format)
+        ).casefold()
         output = settings.process.export_path
         testing = "preview " if settings.process.testing_audio else ""
 
         def clean(path: str) -> str:
-            return sanitize_filename_component(os.path.splitext(os.path.basename(path))[0]) or "audio"
+            return (
+                sanitize_filename_component(os.path.splitext(os.path.basename(path))[0]) or "audio"
+            )
 
         if spec.tool == MANUAL_ENSEMBLE:
             base = sanitize_filename_component(spec.name or clean(spec.inputs[0])) or "audio"
-            algorithm = str(getattr(settings.audio_tools.choose_algorithm, "value", settings.audio_tools.choose_algorithm))
+            algorithm = str(
+                getattr(
+                    settings.audio_tools.choose_algorithm,
+                    "value",
+                    settings.audio_tools.choose_algorithm,
+                )
+            )
             suffix = f" ({sanitize_filename_component(algorithm)})" if algorithm else ""
-            return (PlannedAudioUnit(spec.inputs, (os.path.join(output, f"{testing}{base}{suffix}.{extension}"),), base),)
+            return (
+                PlannedAudioUnit(
+                    spec.inputs,
+                    (os.path.join(output, f"{testing}{base}{suffix}.{extension}"),),
+                    base,
+                ),
+            )
         result: list[PlannedAudioUnit] = []
         if spec.tool in {ALIGN_INPUTS, MATCH_INPUTS}:
             for left, right in spec.pairs:
@@ -341,7 +377,13 @@ class AudioJobResolver:
                     names = [f"{testing}{clean(right)} (Aligned).{extension}"]
                     if settings.mdx.is_save_align:
                         names.append(f"{testing}{clean(left)} (Inverted).{extension}")
-                result.append(PlannedAudioUnit((left, right), tuple(os.path.join(output, name) for name in names), clean(left)))
+                result.append(
+                    PlannedAudioUnit(
+                        (left, right),
+                        tuple(os.path.join(output, name) for name in names),
+                        clean(left),
+                    )
+                )
             return tuple(result)
         suffix = {
             TIME_STRETCH: " time stretched",
@@ -350,11 +392,18 @@ class AudioJobResolver:
         }.get(spec.tool, "")
         for path in spec.inputs:
             base = clean(path)
-            result.append(PlannedAudioUnit((path,), (os.path.join(output, f"{testing}{base}{suffix}.{extension}"),), base))
+            result.append(
+                PlannedAudioUnit(
+                    (path,), (os.path.join(output, f"{testing}{base}{suffix}.{extension}"),), base
+                )
+            )
         return tuple(result)
 
 
 __all__ = [
-    "AUDIO_TOOL_IDS", "AudioJobResolver", "AudioJobSpec",
-    "PlannedAudioUnit", "ResolvedAudioJob",
+    "AUDIO_TOOL_IDS",
+    "AudioJobResolver",
+    "AudioJobSpec",
+    "PlannedAudioUnit",
+    "ResolvedAudioJob",
 ]

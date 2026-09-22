@@ -28,8 +28,6 @@ from core.stem_roles import (
 )
 
 
-
-
 # isort: on
 
 from tests.diagnostic_fixtures import expected_stderr_line
@@ -102,7 +100,12 @@ class ReferenceTsvOptInTests(unittest.TestCase):
             )
             for flag in ("--write-tsv", "--write-display-reference"):
                 if flag in argv:
-                    stack.enter_context(expected_stderr_line(self, f"Warning: {flag} is deprecated and has no effect; all generated references are always synchronized."))
+                    stack.enter_context(
+                        expected_stderr_line(
+                            self,
+                            f"Warning: {flag} is deprecated and has no effect; all generated references are always synchronized.",
+                        )
+                    )
             return cli.main(argv)
 
     def test_a_default_run_writes_the_tsv(self) -> None:
@@ -197,7 +200,12 @@ class DisplayReferenceCliTests(unittest.TestCase):
             )
             for flag in ("--write-tsv", "--write-display-reference"):
                 if flag in argv:
-                    stack.enter_context(expected_stderr_line(self, f"Warning: {flag} is deprecated and has no effect; all generated references are always synchronized."))
+                    stack.enter_context(
+                        expected_stderr_line(
+                            self,
+                            f"Warning: {flag} is deprecated and has no effect; all generated references are always synchronized.",
+                        )
+                    )
             return cli.main(argv)
 
     def test_flag_writes_the_complete_reference(self) -> None:
@@ -352,7 +360,12 @@ class CheckModeTests(unittest.TestCase):
             )
             for flag in ("--write-tsv", "--write-display-reference"):
                 if flag in argv:
-                    stack.enter_context(expected_stderr_line(self, f"Warning: {flag} is deprecated and has no effect; all generated references are always synchronized."))
+                    stack.enter_context(
+                        expected_stderr_line(
+                            self,
+                            f"Warning: {flag} is deprecated and has no effect; all generated references are always synchronized.",
+                        )
+                    )
             return cli.main(argv)
 
     def test_check_on_an_up_to_date_document_exits_zero(self) -> None:
@@ -389,6 +402,7 @@ class CheckModeTests(unittest.TestCase):
     def test_check_and_write_are_mutually_exclusive(self) -> None:
         import io
         from contextlib import redirect_stderr
+
         output = io.StringIO()
         with redirect_stderr(output), self.assertRaises(SystemExit):
             cli._parse_args(["--check", "--write"])
@@ -685,7 +699,9 @@ class SummaryModeTests(unittest.TestCase):
             with (
                 mock.patch.object(cli, "OUTPUT_PATH", out),
                 mock.patch.object(
-                    catalogue, "_build_catalogue_context", lambda **k: catalogue_types.CatalogueContext()
+                    catalogue,
+                    "_build_catalogue_context",
+                    lambda **k: catalogue_types.CatalogueContext(),
                 ),
                 mock.patch.object(
                     catalogue, "_snapshot_and_payloads", lambda **k: (_Snapshot(), ({}, {}, {}, {}))
@@ -738,7 +754,9 @@ class CollectEntriesIsTheRealPathTests(unittest.TestCase):
                     side_effect=fixtures._clean_stem_audit,
                 ),
                 mock.patch.object(
-                    catalogue, "_build_catalogue_context", lambda **k: catalogue_types.CatalogueContext()
+                    catalogue,
+                    "_build_catalogue_context",
+                    lambda **k: catalogue_types.CatalogueContext(),
                 ),
                 mock.patch.object(
                     catalogue, "_snapshot_and_payloads", lambda **k: (_Snapshot(), ({}, {}, {}, {}))
@@ -812,6 +830,7 @@ class StemConfidenceAuditModeTests(unittest.TestCase):
     def test_audit_only_filters_are_rejected_outside_audit_mode(self) -> None:
         import io
         from contextlib import redirect_stderr
+
         output = io.StringIO()
         with redirect_stderr(output), self.assertRaises(SystemExit):
             cli._parse_args(["--guessed-only"])
@@ -821,6 +840,7 @@ class StemConfidenceAuditModeTests(unittest.TestCase):
     def test_offline_rejects_hash_cache_bypass(self) -> None:
         import io
         from contextlib import redirect_stderr
+
         output = io.StringIO()
         with redirect_stderr(output), self.assertRaises(SystemExit):
             cli._parse_args(["--audit-stem-confidence", "--offline", "--no-cache"])

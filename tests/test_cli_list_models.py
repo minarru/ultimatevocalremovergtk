@@ -518,7 +518,10 @@ class DiscoveryTests(unittest.TestCase):
 
     def test_profile_list_contains_virtual_profiles(self) -> None:
         out = io.StringIO()
-        with patch("cli.commands.settings.list_profiles", return_value=["fast"]), redirect_stdout(out):
+        with (
+            patch("cli.commands.settings.list_profiles", return_value=["fast"]),
+            redirect_stdout(out),
+        ):
             self.assertEqual(cmd_profile_list(self.args()), 0)
         names = [item["name"] for item in json.loads(out.getvalue())["items"]]
         self.assertEqual(names, ["defaults", "gui", "fast"])
@@ -873,7 +876,9 @@ class ModelsListInstalledDefaultTests(unittest.TestCase):
         with (
             patch("cli.commands.models.iter_model_records", return_value=(installed, alias)),
             patch("core.model_repository.ModelRepository"),
-            patch("cli.commands.models._model_info", side_effect=lambda record, repo: record.to_dict()),
+            patch(
+                "cli.commands.models._model_info", side_effect=lambda record, repo: record.to_dict()
+            ),
             redirect_stdout(out),
         ):
             code = cmd_models_list(args)
@@ -1126,7 +1131,9 @@ class ModelsListInstalledDefaultTests(unittest.TestCase):
                         "core.model_identity.ModelIdentityService._published_index",
                         return_value=IdentityIndex({record.id: record}),
                     ),
-                    patch("cli.commands.models._model_info", return_value=record.to_dict()) as detail,
+                    patch(
+                        "cli.commands.models._model_info", return_value=record.to_dict()
+                    ) as detail,
                     patch(
                         "core.mdx_config_fetch.ensure_mdx_c_config",
                         side_effect=AssertionError("list rendering fetched a config"),

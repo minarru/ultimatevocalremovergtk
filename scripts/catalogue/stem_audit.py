@@ -6,6 +6,7 @@ supplemental context, rendered reference candidate, and checked-in reference.
 That keeps every renderer and validator on one authoritative snapshot and
 lets later CLI code distinguish structural manifest failures from repairable
 generated-reference drift without parsing human-readable audit output."""
+
 from __future__ import annotations
 
 from typing import (
@@ -196,7 +197,8 @@ def audit_catalogue_stems(
                 )
             )
         assessment = assess_model_contexts(
-            model_id, declaration,
+            model_id,
+            declaration,
             {semantics.context: semantics for semantics in reconciled.contexts},
         )
         diagnostics.extend(assessment.diagnostics)
@@ -288,7 +290,6 @@ def audit_catalogue_stems(
         native_to_role_ambiguities=native_to_role_ambiguities,
         role_to_native_variants=role_to_native_variants,
     )
-
 
 
 __all__ = [

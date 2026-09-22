@@ -83,9 +83,7 @@ def load_extra_models() -> Dict:
     return _cached
 
 
-def _merge_missing(
-    base: Mapping[str, Any], extra: Mapping[str, Any]
-) -> Dict[str, Any]:
+def _merge_missing(base: Mapping[str, Any], extra: Mapping[str, Any]) -> Dict[str, Any]:
     """Add entries from ``extra`` that ``base`` does not already define."""
     merged = dict(base)
     for key, value in extra.items():

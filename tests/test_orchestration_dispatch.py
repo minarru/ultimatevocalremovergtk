@@ -39,9 +39,7 @@ class OrchestrationDispatchTests(unittest.TestCase):
         self.assertEqual(result, {"Vocals": [1]})
 
     @mock.patch("core.separator_run.release_separator")
-    def test_run_seperator_releases_on_exception(
-        self, release_mock: mock.MagicMock
-    ) -> None:
+    def test_run_seperator_releases_on_exception(self, release_mock: mock.MagicMock) -> None:
         separator = mock.MagicMock()
         separator.seperate.side_effect = RuntimeError("boom")
         with self.assertRaises(RuntimeError):

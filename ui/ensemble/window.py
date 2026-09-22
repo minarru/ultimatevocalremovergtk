@@ -311,7 +311,9 @@ class EnsemblePage:
         set_tooltip(self.member_options_row, ENSEMBLE_MEMBER_MODEL_OPTIONS_HINT)
         self.member_options_row.connect("activated", self._open_member_model_options)
 
-        self._layout_object("blend_options_row", Adw.ActionRow).connect("activated", self._open_blend_options)
+        self._layout_object("blend_options_row", Adw.ActionRow).connect(
+            "activated", self._open_blend_options
+        )
 
         self.preset_row = configure_combo_row(
             self._layout_object("preset_row", Adw.ComboRow),

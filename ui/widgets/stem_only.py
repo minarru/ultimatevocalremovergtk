@@ -663,9 +663,7 @@ class SaveStemsSection:
         if not focus or focus in {"primary", "secondary"}:
             self._clear_refresh_repick()
             return False
-        valid = (
-            select_stem_routes(self._state.routes, focus).status is StemSelectionStatus.MATCHED
-        )
+        valid = select_stem_routes(self._state.routes, focus).status is StemSelectionStatus.MATCHED
         if valid:
             self._clear_refresh_repick()
             return False

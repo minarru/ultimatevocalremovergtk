@@ -1,4 +1,5 @@
 """Shared helpers for modal ``Adw.Dialog`` presentation."""
+
 import typing
 from collections.abc import Callable
 from typing import Any
@@ -88,7 +89,9 @@ def parent_window_width(parent: WindowSizing | None, *, fallback: int = 440) -> 
     return fallback
 
 
-def configure_dialog_width(dialog: Adw.Dialog, parent: Gtk.Window | None, *, fallback: int = 440) -> None:
+def configure_dialog_width(
+    dialog: Adw.Dialog, parent: Gtk.Window | None, *, fallback: int = 440
+) -> None:
     """Pin dialog content width to ``parent`` instead of shrinking to natural size."""
     dialog.set_content_width(parent_window_width(parent, fallback=fallback))
     dialog.set_follows_content_size(False)
@@ -178,7 +181,9 @@ def run_blocking_dialog(
                     if callable(parent_toast):
                         parent_toast(toast)
                     else:
-                        window_toast = getattr(parent, "toast", None) if parent is not None else None
+                        window_toast = (
+                            getattr(parent, "toast", None) if parent is not None else None
+                        )
                         if callable(window_toast):
                             window_toast(exc.message)
                 return

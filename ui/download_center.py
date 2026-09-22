@@ -352,7 +352,9 @@ class DownloadCenterWindow:
         self.direction_button.set_tooltip_text(f"{label} — switch to {opposite}")
         # The supplied 'down' asset emphasizes the upward arrow.
         self.direction_icon.set_from_icon_name(
-            "uvr-vertical-arrows-down-symbolic" if self._descending else "uvr-vertical-arrows-up-symbolic"
+            "uvr-vertical-arrows-down-symbolic"
+            if self._descending
+            else "uvr-vertical-arrows-up-symbolic"
         )
 
     def _on_breakpoint_changed(self, *_args: object) -> None:

@@ -26,7 +26,7 @@ from ml.vr_network.model_param_init import ModelParameters
 # engines/vr_utils.py (which MDX's denoise option calls), neither of which
 # always supplies the high-end ``extra_bins`` that would overwrite the gap.
 _PARAM_FILES = (
-    "4band_v3.json",              # vr_denoiser: 98 of 481 top-band bins unwritten
+    "4band_v3.json",  # vr_denoiser: 98 of 481 top-band bins unwritten
     "4band_44100.json",
     "3band_44100.json",
     "2band_48000.json",

@@ -76,8 +76,12 @@ class JobCallbacks:
             self._phase = phase
         self._fraction = clamped
         self._progress_metadata = dict(
-            local_step=local_step, pass_index=pass_index, pass_total=pass_total,
-            detail=detail, combine_index=combine_index, combine_total=combine_total,
+            local_step=local_step,
+            pass_index=pass_index,
+            pass_total=pass_total,
+            detail=detail,
+            combine_index=combine_index,
+            combine_total=combine_total,
         )
         if not self.on_progress:
             return
@@ -113,7 +117,9 @@ class JobCallbacks:
             self.on_input_start(tuple(paths))
 
     def input_finished(
-        self, paths: typing.Sequence[str], generated: typing.Sequence[str] = (),
+        self,
+        paths: typing.Sequence[str],
+        generated: typing.Sequence[str] = (),
         error: BaseException | None = None,
     ) -> None:
         if self.on_input_finished:

@@ -231,14 +231,21 @@ class SeparationNetTran(nn.Module):
         time_rotary_embed = RotaryEmbedding(dim=tran_params["rotary_embedding_dim"])
         freq_rotary_embed = RotaryEmbedding(dim=tran_params["rotary_embedding_dim"])
 
-        self.dp_modules = nn.ModuleList([
-            DualPathTran(channels * (2 if i % 2 == 1 else 1), time_rotary_embed, freq_rotary_embed, tran_params)
-            for i in range(num_layers)
-        ])
+        self.dp_modules = nn.ModuleList(
+            [
+                DualPathTran(
+                    channels * (2 if i % 2 == 1 else 1),
+                    time_rotary_embed,
+                    freq_rotary_embed,
+                    tran_params,
+                )
+                for i in range(num_layers)
+            ]
+        )
 
-        self.feature_conversion = nn.ModuleList([
-            FeatureConversion(channels * 2, inverse=i % 2 != 0) for i in range(num_layers)
-        ])
+        self.feature_conversion = nn.ModuleList(
+            [FeatureConversion(channels * 2, inverse=i % 2 != 0) for i in range(num_layers)]
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         for i in range(self.num_layers):
@@ -394,7 +401,10 @@ class SCNetTran(nn.Module):
         x = torch.stft(x, **stft_kwargs, return_complex=True)
         x = torch.view_as_real(x)
         x = x.permute(0, 3, 1, 2).reshape(
-            x.shape[0] // self.audio_channels, x.shape[3] * self.audio_channels, x.shape[1], x.shape[2]
+            x.shape[0] // self.audio_channels,
+            x.shape[3] * self.audio_channels,
+            x.shape[1],
+            x.shape[2],
         )
 
         B, _C, Fr, T = x.shape
@@ -428,7 +438,9 @@ class SCNetTran(nn.Module):
         x = x.reshape(-1, 2, Fr, T).permute(0, 2, 3, 1)
         x = torch.view_as_complex(x.contiguous())
         istft_kwargs = dict(self.stft_config)
-        istft_kwargs["window"] = torch.hann_window(self.win_size, device=x.device, dtype=x.real.dtype)
+        istft_kwargs["window"] = torch.hann_window(
+            self.win_size, device=x.device, dtype=x.real.dtype
+        )
         x = torch.istft(x, **istft_kwargs)
         x = x.reshape(B, len(self.sources), self.audio_channels, -1)
 

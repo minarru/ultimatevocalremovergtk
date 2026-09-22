@@ -1,4 +1,5 @@
 """Tests for cooperative download cancellation."""
+
 import os
 import tempfile
 import threading
@@ -64,9 +65,7 @@ class DownloadCancelTests(unittest.TestCase):
         manager = DownloadManager()
         with tempfile.TemporaryDirectory() as tmp:
             part_path = os.path.join(tmp, "model.onnx.part")
-            with mock.patch(
-                "core.downloads._urlopen", return_value=_Response(b"short", 10)
-            ):
+            with mock.patch("core.downloads._urlopen", return_value=_Response(b"short", 10)):
                 with self.assertRaises(OSError):
                     manager._download_file_url("https://example.com/model", part_path, None, None)
             self.assertFalse(os.path.exists(part_path))
@@ -75,9 +74,7 @@ class DownloadCancelTests(unittest.TestCase):
         manager = DownloadManager()
         with tempfile.TemporaryDirectory() as tmp:
             part_path = os.path.join(tmp, "model.onnx.part")
-            with mock.patch(
-                "core.downloads._urlopen", return_value=_Response(b"payload", None)
-            ):
+            with mock.patch("core.downloads._urlopen", return_value=_Response(b"payload", None)):
                 manager._download_file_url("https://example.com/model", part_path, None, None)
             with open(part_path, "rb") as handle:
                 self.assertEqual(handle.read(), b"payload")
@@ -87,8 +84,11 @@ class DownloadCancelTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             save_path = os.path.join(tmp, "model.onnx")
             responses = [_Response(b"short", 10), _Response(b"complete", 8)]
-            with mock.patch("core.downloads._urlopen", side_effect=responses), mock.patch(
-                "core.downloads.hf_fallback_url", return_value="https://hf.example/model"
+            with (
+                mock.patch("core.downloads._urlopen", side_effect=responses),
+                mock.patch(
+                    "core.downloads.hf_fallback_url", return_value="https://hf.example/model"
+                ),
             ):
                 manager._download_file("https://example.com/model", save_path, None, None)
             with open(save_path, "rb") as handle:
@@ -102,7 +102,9 @@ class DownloadCancelTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             save_path = os.path.join(tmp, "model.onnx")
 
-            def fake_download_url(_url: typing.Any, tmp_path: typing.Any, *_args: typing.Any, **_kwargs: typing.Any) -> None:
+            def fake_download_url(
+                _url: typing.Any, tmp_path: typing.Any, *_args: typing.Any, **_kwargs: typing.Any
+            ) -> None:
                 stop_event.set()
                 if os.path.exists(tmp_path):
                     os.remove(tmp_path)
@@ -110,7 +112,9 @@ class DownloadCancelTests(unittest.TestCase):
             with mock.patch.object(
                 manager._transfer, "_download_file_url", side_effect=fake_download_url
             ):
-                with mock.patch("core.downloads.hf_fallback_url", return_value="https://hf.example/x"):
+                with mock.patch(
+                    "core.downloads.hf_fallback_url", return_value="https://hf.example/x"
+                ):
                     manager._download_file(
                         "https://example.com/model.onnx",
                         save_path,

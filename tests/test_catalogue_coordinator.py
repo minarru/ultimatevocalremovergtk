@@ -466,16 +466,29 @@ class CatalogueCoordinatorTests(unittest.TestCase):
         with mock.patch.object(ModelRepository, "reload_mappers"):
             repo = ModelRepository(catalogue=coordinator)
         with (
-            mock.patch.object(coordinator, "ensure", side_effect=AssertionError("refreshed snapshot")),
+            mock.patch.object(
+                coordinator, "ensure", side_effect=AssertionError("refreshed snapshot")
+            ),
             mock.patch.object(repo, "_model_artifact_files", return_value=[]),
             mock.patch("core.model_scores.load_model_scores", return_value={}),
         ):
             self.assertEqual(repo.catalogue_revision, snapshot.revision.digest())
-            self.assertIs(catalogue_entry_meta(manager, "mdx", "Kept"), snapshot.meta_by_family["mdx"]["Kept"])
+            self.assertIs(
+                catalogue_entry_meta(manager, "mdx", "Kept"), snapshot.meta_by_family["mdx"]["Kept"]
+            )
             catalogue = ModelCatalogueService(manager)
-            self.assertEqual([row.selection for row in catalogue.records() if row.family == "mdx"], ["Kept"])
+            self.assertEqual(
+                [row.selection for row in catalogue.records() if row.family == "mdx"], ["Kept"]
+            )
             self.assertIs(catalogue.records(), catalogue.records())
-            self.assertEqual([record.id for record in ModelIdentityService(repo).records() if record.family == "mdx"], ["mdx:kept"])
+            self.assertEqual(
+                [
+                    record.id
+                    for record in ModelIdentityService(repo).records()
+                    if record.family == "mdx"
+                ],
+                ["mdx:kept"],
+            )
         self.assertEqual(coordinator.builds, 1)
 
     def test_default_upstream_loads_bundled_data_offline_without_download_manager(self) -> None:

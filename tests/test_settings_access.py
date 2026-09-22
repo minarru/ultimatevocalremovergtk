@@ -41,9 +41,7 @@ class SettingsAccessTests(unittest.TestCase):
 class ImportWeightTests(unittest.TestCase):
     def test_helpers_import_without_torch(self) -> None:
         code = (
-            "import sys;"
-            "import core.oom_markers, core.settings.access;"
-            "print('torch' in sys.modules)"
+            "import sys;import core.oom_markers, core.settings.access;print('torch' in sys.modules)"
         )
         out = subprocess.run(
             [sys.executable, "-c", code], capture_output=True, text=True, check=True

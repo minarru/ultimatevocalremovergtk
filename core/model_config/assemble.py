@@ -38,7 +38,10 @@ def assemble_model(
         records = [identities.lookup(model_id) for model_id in selected]
         models = [
             ModelConfig(
-                settings, repo, record.display, identity=record,
+                settings,
+                repo,
+                record.display,
+                identity=record,
                 model_dependencies=model_dependencies,
             )
             for record in records
@@ -65,28 +68,45 @@ def assemble_model(
         raise ValueError(f"assemble_model requires a model name for {arch_type}")
     record = identities.lookup(model)
     if arch_type == ENSEMBLE_CHECK:
-        return [ModelConfig(
-            settings, repo, record.display, identity=record,
-            model_dependencies=model_dependencies,
-        )]
+        return [
+            ModelConfig(
+                settings,
+                repo,
+                record.display,
+                identity=record,
+                model_dependencies=model_dependencies,
+            )
+        ]
     if arch_type in (VR_ARCH_TYPE, VR_ARCH_PM):
         return [
             ModelConfig(
-                settings, repo, record.display, VR_ARCH_TYPE, identity=record,
+                settings,
+                repo,
+                record.display,
+                VR_ARCH_TYPE,
+                identity=record,
                 model_dependencies=model_dependencies,
             )
         ]
     if arch_type == MDX_ARCH_TYPE:
         return [
             ModelConfig(
-                settings, repo, record.display, MDX_ARCH_TYPE, identity=record,
+                settings,
+                repo,
+                record.display,
+                MDX_ARCH_TYPE,
+                identity=record,
                 model_dependencies=model_dependencies,
             )
         ]
     if arch_type == DEMUCS_ARCH_TYPE:
         return [
             ModelConfig(
-                settings, repo, record.display, DEMUCS_ARCH_TYPE, identity=record,
+                settings,
+                repo,
+                record.display,
+                DEMUCS_ARCH_TYPE,
+                identity=record,
                 model_dependencies=model_dependencies,
             )
         ]

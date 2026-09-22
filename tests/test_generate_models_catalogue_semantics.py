@@ -25,9 +25,8 @@ from core.stem_roles import (
 )
 
 
-
-
 # isort: on
+
 
 class RuntimeStemSignatureTests(unittest.TestCase):
     def test_exact_non_config_signatures_outrank_conflicting_summary_hints(self) -> None:
@@ -46,8 +45,12 @@ class RuntimeStemSignatureTests(unittest.TestCase):
 
         for model_id, hints, expected in fixtures:
             with self.subTest(model_id=model_id):
-                self.assertEqual(catalogue_evidence.reviewed_stem_signature(model_id, hints), expected)
-                self.assertEqual(catalogue_evidence.runtime_stem_signature(model_id, hints), expected)
+                self.assertEqual(
+                    catalogue_evidence.reviewed_stem_signature(model_id, hints), expected
+                )
+                self.assertEqual(
+                    catalogue_evidence.runtime_stem_signature(model_id, hints), expected
+                )
 
     def test_config_backed_signature_keeps_parsed_config_precedence(self) -> None:
         self.assertEqual(
@@ -134,7 +137,9 @@ class RuntimeStemSignatureTests(unittest.TestCase):
         reviewed_semantics = [
             cast(catalogue_types.ReconciledStemEvidence, entry.stem_semantics) for entry in entries
         ]
-        unreviewed_semantics = cast(catalogue_types.ReconciledStemEvidence, unreviewed.stem_semantics)
+        unreviewed_semantics = cast(
+            catalogue_types.ReconciledStemEvidence, unreviewed.stem_semantics
+        )
 
         self.assertEqual([entry.flags for entry in entries], [[], [], []])
         self.assertEqual(

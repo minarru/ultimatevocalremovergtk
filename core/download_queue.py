@@ -51,7 +51,12 @@ class DownloadQueueItem:
 class DownloadQueue:
     """Sequential download queue shared by the app (survives window close)."""
 
-    def __init__(self, manager: typing.Any, on_changed: Optional[Callable[[], None]] = None, repo: typing.Any=None):
+    def __init__(
+        self,
+        manager: typing.Any,
+        on_changed: Optional[Callable[[], None]] = None,
+        repo: typing.Any = None,
+    ):
         self.manager = manager
         self.repo = repo
         self._on_changed = on_changed
@@ -66,7 +71,9 @@ class DownloadQueue:
     def set_on_changed(self, callback: Optional[Callable[[], None]]) -> None:
         self._on_changed = callback
 
-    def clear_callbacks(self, *, on_changed: Callable[[], None], on_batch_complete: Callable[[], None]) -> None:
+    def clear_callbacks(
+        self, *, on_changed: Callable[[], None], on_batch_complete: Callable[[], None]
+    ) -> None:
         """Detach only callbacks still owned by the disposing consumer."""
         if self._on_changed is on_changed:
             self._on_changed = None

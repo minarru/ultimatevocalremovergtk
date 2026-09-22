@@ -39,9 +39,7 @@ class ResidualRNN(nn.Module):
             bidirectional=bidirectional,
         )
 
-        self.fc = nn.Linear(
-            in_features=rnn_dim * (2 if bidirectional else 1), out_features=emb_dim
-        )
+        self.fc = nn.Linear(in_features=rnn_dim * (2 if bidirectional else 1), out_features=emb_dim)
 
         self.use_batch_trick = use_batch_trick
         if not self.use_batch_trick:

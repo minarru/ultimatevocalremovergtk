@@ -92,29 +92,43 @@ class StemControlsTests(unittest.TestCase):
             with self.subTest(model=model_id):
                 settings = Settings.defaults()
                 controls = self.controller(selection_state(model_id), settings)
-                mix = next(ident for ident, label in controls.snapshot().presets if label == 'Instrumental mix')
+                mix = next(
+                    ident
+                    for ident, label in controls.snapshot().presets
+                    if label == 'Instrumental mix'
+                )
                 self.assertTrue(controls.choose_preset(mix))
                 controls.persist_to_settings(settings)
                 self.assertEqual(settings.process.stem_focus, 'mix.instrumental')
                 controls.sync_from_settings(settings)
                 self.assertFalse(controls.snapshot().review_required)
                 self.assertEqual(controls.snapshot().main_count, 1)
-                resolve = resolved_demucs_model if model_id.startswith('demucs:') else resolved_mdx_model
+                resolve = (
+                    resolved_demucs_model if model_id.startswith('demucs:') else resolved_mdx_model
+                )
                 model = resolve(model_id, settings)
-                self.assertEqual([r.concept for r in model.selected_stem_routes], ['mix.instrumental'])
+                self.assertEqual(
+                    [r.concept for r in model.selected_stem_routes], ['mix.instrumental']
+                )
                 self.assertTrue(controls.choose_preset('separate_non_vocal'))
                 controls.persist_to_settings(settings)
                 self.assertEqual(settings.process.stem_focus, '')
                 self.assertGreater(controls.snapshot().main_count, 1)
                 model = resolve(model_id, settings)
-                self.assertTrue(all(r.native is not None and r.concept != 'vocal.vocals'
-                                    for r in model.selected_stem_routes))
+                self.assertTrue(
+                    all(
+                        r.native is not None and r.concept != 'vocal.vocals'
+                        for r in model.selected_stem_routes
+                    )
+                )
 
     def test_karaoke_presets_and_separate_backing_instrumental(self):
         settings = Settings.defaults()
         controls = self.controller(subset_state(karaoke_routes()), settings)
-        self.assertEqual([label for _, label in controls.snapshot().presets],
-                         ['All', 'Lead Vocals', 'Instrumental + BGV'])
+        self.assertEqual(
+            [label for _, label in controls.snapshot().presets],
+            ['All', 'Lead Vocals', 'Instrumental + BGV'],
+        )
         self.assertTrue(controls.choose_preset('separate_backing_instrumental'))
         controls.persist_to_settings(settings)
         self.assertEqual(settings.mdx.stems_selected, ['Backing', 'Instrumental'])

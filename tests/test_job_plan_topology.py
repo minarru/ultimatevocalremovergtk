@@ -609,9 +609,18 @@ class PlannedOutputStemTests(unittest.TestCase):
             stem_count=4,
             routes=routes,
         )
-        selected = select_output_routes(settings, (desc,), command='separate', evidence=collect_output_route_evidence(settings, (desc,), command='separate'))
-        planned = project_input("/tmp/song.wav", OutputNamingContext(
-            "/tmp/song.wav", "song", "song", "/tmp/out", "wav"), selected.routes, command="separate")
+        selected = select_output_routes(
+            settings,
+            (desc,),
+            command='separate',
+            evidence=collect_output_route_evidence(settings, (desc,), command='separate'),
+        )
+        planned = project_input(
+            "/tmp/song.wav",
+            OutputNamingContext("/tmp/song.wav", "song", "song", "/tmp/out", "wav"),
+            selected.routes,
+            command="separate",
+        )
         self.assertEqual(
             [(output.stem, output.conditional) for output in planned.outputs],
             [("Bass", False), ("No bass", True)],
@@ -622,9 +631,20 @@ class PlannedOutputStemTests(unittest.TestCase):
         settings.process.method = ProcessMethod.ENSEMBLE
         settings.ensemble.main_stem = "pair.vocals_instrumental"
         settings.ensemble.selected_models = ["mdx:a", "mdx:b"]
-        selected = select_output_routes(settings, (_desc('Drums', 'Bass'), _desc('Vocals')), command='ensemble', evidence=collect_output_route_evidence(settings, (_desc('Drums', 'Bass'), _desc('Vocals')), command='ensemble'))
-        planned = project_input("/tmp/song.wav", OutputNamingContext(
-            "/tmp/song.wav", "song", "song", "/tmp/out", "wav"), selected.routes, command="ensemble")
+        selected = select_output_routes(
+            settings,
+            (_desc('Drums', 'Bass'), _desc('Vocals')),
+            command='ensemble',
+            evidence=collect_output_route_evidence(
+                settings, (_desc('Drums', 'Bass'), _desc('Vocals')), command='ensemble'
+            ),
+        )
+        planned = project_input(
+            "/tmp/song.wav",
+            OutputNamingContext("/tmp/song.wav", "song", "song", "/tmp/out", "wav"),
+            selected.routes,
+            command="ensemble",
+        )
         self.assertEqual(
             [output.stem for output in planned.outputs],
             [VOCAL_STEM, "Instrumental"],
@@ -634,9 +654,20 @@ class PlannedOutputStemTests(unittest.TestCase):
         settings = Settings.defaults()
         settings.process.method = ProcessMethod.ENSEMBLE
         settings.ensemble.main_stem = "pair.karaoke"
-        selected = select_output_routes(settings, (_desc('Vocals'), _desc('Vocals')), command='ensemble', evidence=collect_output_route_evidence(settings, (_desc('Vocals'), _desc('Vocals')), command='ensemble'))
-        planned = project_input("/tmp/song.wav", OutputNamingContext(
-            "/tmp/song.wav", "song", "song", "/tmp/out", "wav"), selected.routes, command="ensemble")
+        selected = select_output_routes(
+            settings,
+            (_desc('Vocals'), _desc('Vocals')),
+            command='ensemble',
+            evidence=collect_output_route_evidence(
+                settings, (_desc('Vocals'), _desc('Vocals')), command='ensemble'
+            ),
+        )
+        planned = project_input(
+            "/tmp/song.wav",
+            OutputNamingContext("/tmp/song.wav", "song", "song", "/tmp/out", "wav"),
+            selected.routes,
+            command="ensemble",
+        )
         self.assertEqual(
             [output.stem for output in planned.outputs],
             ["Instrumental_with_Backing_Vocals", "Lead_Vocals"],
@@ -705,7 +736,12 @@ class MdxCOfflinePlanningTests(unittest.TestCase):
         seen: list[tuple[bool, bool]] = []
 
         def fake_assemble(*_args: object, **_kwargs: object) -> list[object]:
-            seen.append((current_access_policy().allow_network, current_access_policy().allow_metadata_writes))
+            seen.append(
+                (
+                    current_access_policy().allow_network,
+                    current_access_policy().allow_metadata_writes,
+                )
+            )
             return []
 
         resolver = resolver_with_ports(Mock())
@@ -719,12 +755,24 @@ class MdxCOfflinePlanningTests(unittest.TestCase):
             installed=True,
         )
         with patch("core.job_materialization.assemble_model", side_effect=fake_assemble):
-            resolver.materializer.assemble(Settings.defaults(), "separate", [record], allow_network=True, model_dependencies=None)
+            resolver.materializer.assemble(
+                Settings.defaults(),
+                "separate",
+                [record],
+                allow_network=True,
+                model_dependencies=None,
+            )
         self.assertEqual(seen, [(True, True)])
 
         seen.clear()
         with patch("core.job_materialization.assemble_model", side_effect=fake_assemble):
-            resolver.materializer.assemble(Settings.defaults(), "separate", [record], allow_network=False, model_dependencies=None)
+            resolver.materializer.assemble(
+                Settings.defaults(),
+                "separate",
+                [record],
+                allow_network=False,
+                model_dependencies=None,
+            )
         self.assertEqual(seen, [(False, False)])
 
     def test_resolve_unavailable_model_status_is_configuration_diagnostic(self) -> None:

@@ -89,7 +89,9 @@ class SeperateDemucs(SeperateAttributes):
                 self.demucs_stems == ALL_STEMS and not self.process_data.is_ensemble_master
             ) or (self.is_4_stem_ensemble and not self.is_return_dual)
 
-        if any(route.derived_from and route.concept == 'mix.instrumental' for route in export_routes):
+        if any(
+            route.derived_from and route.concept == 'mix.instrumental' for route in export_routes
+        ):
             write_all_sources = True
         if write_all_sources:
             if isinstance(source, np.ndarray) and (

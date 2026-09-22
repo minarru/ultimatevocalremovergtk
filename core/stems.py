@@ -1049,7 +1049,9 @@ def _semantic_routes(semantics: ModelStemSemantics) -> tuple[StemRoute, ...]:
     raw_scope = _raw_selection_scope(semantics)
     legacy_scope = ""
     if semantics.reconciled_native_stems and not semantics.runtime_error:
-        signature = "\x1f".join(StemId(name).casefold() for name in semantics.reconciled_native_stems)
+        signature = "\x1f".join(
+            StemId(name).casefold() for name in semantics.reconciled_native_stems
+        )
         identity = "\x1f".join((semantics.model_id, semantics.context.value, signature))
         legacy_scope = sha256(identity.encode("utf-8")).hexdigest()
     for output in sorted(semantics.outputs, key=lambda output: not output.logical_primary):
@@ -1070,8 +1072,11 @@ def _semantic_routes(semantics: ModelStemSemantics) -> tuple[StemRoute, ...]:
         routes.append(
             StemRoute(
                 native=output.native,
-                legacy_focus=(f"raw:{output.native.casefold()}{_RAW_SCOPE_MARKER}{legacy_scope}"
-                              if output.native is not None and legacy_scope else ""),
+                legacy_focus=(
+                    f"raw:{output.native.casefold()}{_RAW_SCOPE_MARKER}{legacy_scope}"
+                    if output.native is not None and legacy_scope
+                    else ""
+                ),
                 role=output.role,
                 label=label,
                 filename_tag=tag,

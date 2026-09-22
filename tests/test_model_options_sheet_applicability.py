@@ -29,7 +29,7 @@ class SheetApplicabilityTests(unittest.TestCase):
         cls._app = Adw.Application(application_id="org.uvr.test.sheet-applicability")
         cls._app.register()
 
-    def _sheet(self, on_switch_method: typing.Any=None):
+    def _sheet(self, on_switch_method: typing.Any = None):
         from ui.model_options.sheet import ModelOptionsSheet
         from ui.window import MainWindow
 
@@ -113,9 +113,7 @@ class SheetApplicabilityTests(unittest.TestCase):
             selected_models=[],
         )
         for stack_name in ("vr", "mdx", "demucs"):
-            self.assertEqual(
-                sheet._tab_stack_pages[stack_name].get_badge_number(), 0, stack_name
-            )
+            self.assertEqual(sheet._tab_stack_pages[stack_name].get_badge_number(), 0, stack_name)
 
     def test_activating_the_banner_calls_back_with_the_stack_name(self):
         switched = []

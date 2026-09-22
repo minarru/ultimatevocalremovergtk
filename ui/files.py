@@ -63,7 +63,9 @@ def _report_error(
         toast(message)
 
 
-def _on_folder_launch_finished(launcher: Gtk.FileLauncher, result: typing.Any, data: typing.Any) -> None:
+def _on_folder_launch_finished(
+    launcher: Gtk.FileLauncher, result: typing.Any, data: typing.Any
+) -> None:
     window = data["window"]
     on_error = data.get("on_error")
     try:
@@ -76,7 +78,9 @@ def _on_folder_launch_finished(launcher: Gtk.FileLauncher, result: typing.Any, d
         )
 
 
-def _on_uri_launch_finished(launcher: Gtk.UriLauncher, result: typing.Any, data: typing.Any) -> None:
+def _on_uri_launch_finished(
+    launcher: Gtk.UriLauncher, result: typing.Any, data: typing.Any
+) -> None:
     window = data["window"]
     on_error = data.get("on_error")
     try:

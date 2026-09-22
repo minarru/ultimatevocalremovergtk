@@ -145,24 +145,20 @@ def _catalogues_from_source(source: Dict) -> List[Dict[str, object]]:
     return catalogues
 
 
-def load_mdx_catalog_index(*, allow_network: bool | None = None, coordinator: Any = None) -> Dict[str, str]:
+def load_mdx_catalog_index(
+    *, allow_network: bool | None = None, coordinator: Any = None
+) -> Dict[str, str]:
     """Build checkpoint→yaml index from bundled and cached download catalogues."""
     from .catalog_sources import merged_catalogues
     from .catalogue_coordinator import flatten_upstream_lists
 
-    network = (
-        current_access_policy().allow_network
-        if allow_network is None
-        else allow_network
-    )
+    network = current_access_policy().allow_network if allow_network is None else allow_network
     if coordinator is not None:
         snapshot = coordinator.ensure(allow_network=network)
         return dict(snapshot.checkpoint_yaml_index)
     payload = _load_manual_download_cache()
     _vr, mdx, _demucs = flatten_upstream_lists(payload)
-    merged = merged_catalogues(
-        vr=_vr, mdx=mdx, demucs=_demucs, allow_network=network
-    )
+    merged = merged_catalogues(vr=_vr, mdx=mdx, demucs=_demucs, allow_network=network)
     catalogue = {
         meta.label: meta.files
         for meta in merged.meta.values()

@@ -196,8 +196,11 @@ class GatedSeparationPlanTests(unittest.TestCase):
             page.output_row = SimpleNamespace(path="/tmp/out")
 
             from ui.shared_settings import SharedSettingsSession, shared_settings_bindings
+
             page._shared_session = SharedSettingsSession(
-                settings, shared_settings_bindings(vocal_row=row), can_commit=lambda: True,
+                settings,
+                shared_settings_bindings(vocal_row=row),
+                can_commit=lambda: True,
             )
             page._shared_session.refresh(lambda: None)
             spec = EnsemblePage.build_job_spec(page)
@@ -234,7 +237,10 @@ class GatedEnsemblePlanTests(unittest.TestCase):
         page.save_stems = SimpleNamespace(controls=None, persist_to_settings=lambda: None)
 
         from ui.shared_settings import SharedSettingsSession, shared_settings_bindings
-        page._shared_session = SharedSettingsSession(settings, shared_settings_bindings(), can_commit=lambda: True)
+
+        page._shared_session = SharedSettingsSession(
+            settings, shared_settings_bindings(), can_commit=lambda: True
+        )
         EnsemblePage._flush_run_settings(page)
         plan = _resolve(
             settings,

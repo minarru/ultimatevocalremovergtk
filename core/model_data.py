@@ -22,7 +22,6 @@ def _mdx_c_yaml_loader() -> typing.Any:
 
     global _MDX_C_YAML_LOADER
     if _MDX_C_YAML_LOADER is None:
-
         try:
             from yaml import CSafeLoader as SafeLoader
         except ImportError:

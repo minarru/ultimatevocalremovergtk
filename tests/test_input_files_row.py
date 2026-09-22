@@ -7,7 +7,9 @@ from pathlib import Path
 from unittest.mock import Mock
 
 
-@unittest.skipUnless(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"), "GTK needs a display")
+@unittest.skipUnless(
+    os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"), "GTK needs a display"
+)
 class InputFilesRowTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

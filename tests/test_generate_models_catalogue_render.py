@@ -19,11 +19,10 @@ from catalogue.audit_types import (
 from core.model_stem_manifest import load_stem_manifest_document
 
 
-
-
 # isort: on
 
 cli = fixtures.cli
+
 
 class DisplayReferenceRenderTests(unittest.TestCase):
     """The presentation reference is deterministic data, not prose scraping."""

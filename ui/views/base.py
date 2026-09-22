@@ -358,9 +358,13 @@ class MethodView:
     def select_model(self, model_id: str) -> bool:
         """Apply an explicit canonical choice from the unified Separation browser."""
         family = FAMILY_BY_ARCH[self.method_key_for_resolution]
-        if not any(record.id == model_id and record.family == family
-                   and record.installed and record.identity_complete
-                   for record in ModelIdentityService(self.context.repo).records()):
+        if not any(
+            record.id == model_id
+            and record.family == family
+            and record.installed
+            and record.identity_complete
+            for record in ModelIdentityService(self.context.repo).records()
+        ):
             return False
         self._loading = True
         try:
@@ -460,8 +464,11 @@ class MethodView:
         scope = (
             self.method_key,
             model_id,
-            self.settings.demucs.stems if self.method_key == DEMUCS_ARCH_TYPE
-            else self.settings.mdx.stems if self.method_key == MDX_ARCH_TYPE else None,
+            self.settings.demucs.stems
+            if self.method_key == DEMUCS_ARCH_TYPE
+            else self.settings.mdx.stems
+            if self.method_key == MDX_ARCH_TYPE
+            else None,
         )
         cached = hasattr(self, "_stem_workload_estimate")
         workload = getattr(self, "_stem_workload_estimate", None)

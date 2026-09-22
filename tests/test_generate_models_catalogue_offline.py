@@ -30,9 +30,8 @@ from core import paths as core_paths
 from core.catalogue_types import SourceId
 
 
-
-
 # isort: on
+
 
 class OfflinePolicyTests(unittest.TestCase):
     """--offline must be cache-only: no fetch, no writes into model config storage."""
@@ -96,8 +95,12 @@ class OfflinePolicyTests(unittest.TestCase):
         return [
             mock.patch("core.mdx_config_fetch._urlopen", record_urlopen),
             mock.patch("core.mdx_config_fetch.fetch_mdx_config_url", record_fetch_config),
-            mock.patch.object(catalogue_locations, "COMMUNITY_CACHE_DIR", os.path.join(self.tmp, "cm")),
-            mock.patch.object(catalogue_locations, "YAML_CACHE_DIR", os.path.join(self.tmp, "yaml")),
+            mock.patch.object(
+                catalogue_locations, "COMMUNITY_CACHE_DIR", os.path.join(self.tmp, "cm")
+            ),
+            mock.patch.object(
+                catalogue_locations, "YAML_CACHE_DIR", os.path.join(self.tmp, "yaml")
+            ),
             mock.patch.object(cli, "REFERENCE_TSV_PATH", os.path.join(self.tmp, "ref.tsv")),
             mock.patch.object(cli, "OUTPUT_PATH", os.path.join(self.tmp, "out.md")),
             mock.patch.object(
@@ -211,7 +214,9 @@ class CommunitySupplementAvailabilityTests(unittest.TestCase):
                 policy=catalogue_cache.FetchPolicy(allow_network=False)
             )
 
-    def _context_from_fetched_community_bytes(self, data: bytes) -> catalogue_types.CatalogueContext:
+    def _context_from_fetched_community_bytes(
+        self, data: bytes
+    ) -> catalogue_types.CatalogueContext:
         from unittest import mock
 
         class _Response:
@@ -281,7 +286,9 @@ class CommunitySupplementAvailabilityTests(unittest.TestCase):
 
     def test_malformed_community_text_is_unavailable_from_cache(self) -> None:
         malformed = b"this is not a models.txt row\n"
-        self.assertEqual(catalogue_entry_rules._parse_community_models_bytes(malformed), ({}, False))
+        self.assertEqual(
+            catalogue_entry_rules._parse_community_models_bytes(malformed), ({}, False)
+        )
 
         context = self._context_from_cached_community_bytes(malformed)
         self.assertIn(
@@ -387,9 +394,13 @@ class CacheIdentityTests(unittest.TestCase):
     def test_same_basename_from_different_urls_does_not_alias(self) -> None:
         """Two models can both ship a 'config.yaml'."""
         with self._opener(b"first"):
-            a = catalogue_cache.fetch_cached("https://a.invalid/x/config.yaml", self.tmp, "config.yaml")
+            a = catalogue_cache.fetch_cached(
+                "https://a.invalid/x/config.yaml", self.tmp, "config.yaml"
+            )
         with self._opener(b"second"):
-            b = catalogue_cache.fetch_cached("https://b.invalid/y/config.yaml", self.tmp, "config.yaml")
+            b = catalogue_cache.fetch_cached(
+                "https://b.invalid/y/config.yaml", self.tmp, "config.yaml"
+            )
         self.assertNotEqual(a, b)
         assert a is not None and b is not None
         with open(a, "rb") as handle:
@@ -620,7 +631,9 @@ class OfflineYamlCacheTests(unittest.TestCase):
             os.path.dirname(runtime_path),
         ):
             candidates = catalogue_config_evidence._yaml_paths("model_test.yaml", self._URL)
-        expected = catalogue_cache._cache_path(catalogue_locations.YAML_CACHE_DIR, self._URL, "model_test.yaml")
+        expected = catalogue_cache._cache_path(
+            catalogue_locations.YAML_CACHE_DIR, self._URL, "model_test.yaml"
+        )
         self.assertIn(expected, candidates)
         self.assertNotIn(runtime_path, candidates)
 
@@ -910,7 +923,9 @@ class StrictCatalogueInputIsolationTests(unittest.TestCase):
                 "STEM_SEMANTICS_REFERENCE_TSV_PATH",
                 os.path.join(self.tmp, "cold-stems.tsv"),
             ),
-            mock.patch.object(catalogue_locations, "YAML_CACHE_DIR", os.path.join(self.tmp, "cold-yaml")),
+            mock.patch.object(
+                catalogue_locations, "YAML_CACHE_DIR", os.path.join(self.tmp, "cold-yaml")
+            ),
             mock.patch.object(
                 core_paths,
                 "MDX_C_CONFIG_PATH",

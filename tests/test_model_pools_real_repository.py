@@ -327,7 +327,9 @@ class RealModelPoolTests(unittest.TestCase):
 
         with (
             mock.patch("cli.commands.models.Settings.load", return_value=settings),
-            mock.patch("cli.commands.models._list_model_info", side_effect=inspect_under_policy) as inspect_row,
+            mock.patch(
+                "cli.commands.models._list_model_info", side_effect=inspect_under_policy
+            ) as inspect_row,
             mock.patch(
                 "core.mdx_config_fetch._fetch_url_to_file",
                 side_effect=AssertionError("models list fetched YAML"),

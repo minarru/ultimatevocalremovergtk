@@ -24,9 +24,7 @@ def register_model(custom_model: type) -> None:
         custom_model.__name__ in globals().keys()
         or custom_model.__name__.lower() in globals().keys()
     ):
-        raise ValueError(
-            f"Model {custom_model.__name__} already exists. Choose another name."
-        )
+        raise ValueError(f"Model {custom_model.__name__} already exists. Choose another name.")
     globals().update({custom_model.__name__: custom_model})
 
 

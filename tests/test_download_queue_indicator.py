@@ -125,14 +125,9 @@ class ChipRingStateTests(unittest.TestCase):
         total = 4
         for done in range(total):
             for fraction in (0.0, 0.5, 1.0):
-                items = [
-                    _item(f"done{i}", status="complete", progress=1.0)
-                    for i in range(done)
-                ]
+                items = [_item(f"done{i}", status="complete", progress=1.0) for i in range(done)]
                 items.append(_item("cur", status="downloading", progress=fraction))
-                items += [
-                    _item(f"q{i}", status="queued") for i in range(done + 1, total)
-                ]
+                items += [_item(f"q{i}", status="queued") for i in range(done + 1, total)]
                 seen.append(chip_ring_state(items, summarize_queue(items)).progress)
         self.assertEqual(seen, sorted(seen))
 

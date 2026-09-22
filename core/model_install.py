@@ -37,11 +37,7 @@ class ModelInstallResult:
 
 
 def _missing_targets(jobs: Sequence[tuple[str, str]]) -> list[str]:
-    return [
-        os.path.basename(path)
-        for _url, path in jobs
-        if not os.path.isfile(path)
-    ]
+    return [os.path.basename(path) for _url, path in jobs if not os.path.isfile(path)]
 
 
 def _register_family(family: str, jobs: Sequence[tuple[str, str]]) -> bool:
@@ -146,9 +142,7 @@ def finalize_downloaded_model(
             ready=False,
             published=False,
             metadata_changed=metadata_changed,
-            detail=(
-                f"no catalogue record for {family}:{selection} after download"
-            ),
+            detail=(f"no catalogue record for {family}:{selection} after download"),
         )
     if not record.installed:
         return ModelInstallResult(
@@ -162,10 +156,7 @@ def finalize_downloaded_model(
             ready=False,
             published=False,
             metadata_changed=metadata_changed,
-            detail=(
-                record.identity_error
-                or f"{record.id} is installed but not identity-complete"
-            ),
+            detail=(record.identity_error or f"{record.id} is installed but not identity-complete"),
         )
 
     from .model_registry import ModelRegistryService

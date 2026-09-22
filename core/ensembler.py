@@ -223,7 +223,9 @@ class Ensembler:
         if path:
             self._path_member_ids[path] = model_id
 
-    def _blend_options(self, inputs: Sequence[typing.Any], stem: CollectedStem, *, arrays: bool) -> dict:
+    def _blend_options(
+        self, inputs: Sequence[typing.Any], stem: CollectedStem, *, arrays: bool
+    ) -> dict:
         from core.ensemble_blend import blend_kwargs
 
         identities = getattr(self, "_array_member_ids" if arrays else "_path_member_ids", {})
@@ -235,7 +237,9 @@ class Ensembler:
             for value in member_ids:
                 parse_stored_model_id(value)
         if sum(weight > 0 for weight in options["weights"]) < 2:
-            raise ValueError(f"Ensemble output {stem.filename_tag!r} requires two positive-weight members")
+            raise ValueError(
+                f"Ensemble output {stem.filename_tag!r} requires two positive-weight members"
+            )
         return options
 
     def _algorithm_for_stem(

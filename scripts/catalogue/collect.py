@@ -3,6 +3,7 @@
 Membership comes from ``CatalogueCoordinator`` (TRvlvr → Politrees → extras →
 mvsepless, plus Apollo). The CLI renders this into Markdown; this module is
 the one collection path."""
+
 from __future__ import annotations
 
 import os

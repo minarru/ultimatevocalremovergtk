@@ -169,9 +169,17 @@ class OutputStemsSection:
         self.row.set_sensitive(snapshot.mode != "unavailable")
         self.row.set_tooltip_text(self.section.active_hint())
         self._review.set_visible(snapshot.review_required)
-        self._review.set_label(snapshot.runtime_error or "Outputs changed. Choose the stems to save.")
-        for control in (self.quick.widget, self.dialog_quick.widget, self._mode,
-                        self._focus, self._select_all, self._separate_actions):
+        self._review.set_label(
+            snapshot.runtime_error or "Outputs changed. Choose the stems to save."
+        )
+        for control in (
+            self.quick.widget,
+            self.dialog_quick.widget,
+            self._mode,
+            self._focus,
+            self._select_all,
+            self._separate_actions,
+        ):
             control.set_sensitive(not snapshot.runtime_error)
         preset_ids = {ident for ident, _ in snapshot.presets}
         has_extra_modes = any(

@@ -91,9 +91,7 @@ class AppContext:
             return
         from .dialogs.model_params import make_unrecognized_handler
 
-        repo.on_unrecognized_model = make_unrecognized_handler(
-            self, self._get_dialog_parent
-        )
+        repo.on_unrecognized_model = make_unrecognized_handler(self, self._get_dialog_parent)
         self._unrecognized_hook_installed = True
 
     @property
@@ -120,7 +118,10 @@ class AppContext:
     def download_queue(self) -> "DownloadQueue":
         if self._download_queue is None:
             from core.download_queue import DownloadQueue
-            self._download_queue = DownloadQueue(self.download_manager, on_changed=lambda: None, repo=self.repo)
+
+            self._download_queue = DownloadQueue(
+                self.download_manager, on_changed=lambda: None, repo=self.repo
+            )
         return self._download_queue
 
     @property
@@ -129,9 +130,7 @@ class AppContext:
             with self._repo_lock:
                 if self._repo is None:
                     repo = ModelRepository(catalogue=self.catalogue)
-                    repo.bind_model_hash_table(
-                        lambda: self.settings.process.model_hash_table
-                    )
+                    repo.bind_model_hash_table(lambda: self.settings.process.model_hash_table)
                     self._repo = repo
                     self._install_unrecognized_model_hook()
         return self._repo

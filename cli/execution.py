@@ -26,6 +26,7 @@ from .reporting import emit_event, ensure_job_id, finish_progress, make_progress
 
 MANIFEST_SCHEMA_VERSION = 3
 
+
 @dataclass
 class BatchOutcome:
     status: str
@@ -82,10 +83,11 @@ def run_runner_cli(
             timeout=join_timeout,
             on_progress=on_progress,
             on_console=(
-                lambda value: print(
-                    value, file=sys.stderr, end="" if value.endswith("\n") else "\n"
+                lambda value: (
+                    print(value, file=sys.stderr, end="" if value.endswith("\n") else "\n")
+                    if print_console
+                    else None
                 )
-                if print_console else None
             ),
         )
     finally:
@@ -140,16 +142,25 @@ def run_batch(args: Any, job: ResolvedJob) -> BatchOutcome:
         for index, planned_item in enumerate(planned_all, start=1):
             input_path = planned_item.path
             if input_path in collided and args.on_exists == "skip":
-                record({
-                    "input": input_path, "status": "skipped", "outputs": [],
-                    "elapsed_s": 0.0,
-                })
+                record(
+                    {
+                        "input": input_path,
+                        "status": "skipped",
+                        "outputs": [],
+                        "elapsed_s": 0.0,
+                    }
+                )
                 continue
             stage = os.path.join(temp_root, str(index))
             os.makedirs(stage, exist_ok=True)
             emit_event(
-                args, "progress", fraction=0.0, phase="input_started",
-                input=input_path, index=index, total=total,
+                args,
+                "progress",
+                fraction=0.0,
+                phase="input_started",
+                input=input_path,
+                index=index,
+                total=total,
             )
             item_job = cast(
                 CoreResolvedJob,
@@ -175,46 +186,47 @@ def run_batch(args: Any, job: ResolvedJob) -> BatchOutcome:
             last_outcomes = tuple(getattr(shared_runner, "last_outcomes", ()) or ())
             outcome = last_outcomes[0] if last_outcomes else None
             stop_requested = bool(
-                result.interrupted
-                or result.stopped
-                or (outcome is not None and outcome.stopped)
+                result.interrupted or result.stopped or (outcome is not None and outcome.stopped)
             )
-            elapsed = (
-                float(outcome.elapsed_s) if outcome is not None
-                else float(result.elapsed_s)
-            )
+            elapsed = float(outcome.elapsed_s) if outcome is not None else float(result.elapsed_s)
             failure: str | None = None
             if result.error is not None:
                 # An unexpected runner failure belongs to the in-flight input.
                 failure = f"{type(result.error).__name__}: {result.error}"
             elif outcome is None:
-                failure = (
-                    "interrupted" if stop_requested
-                    else "runner produced no result"
-                )
+                failure = "interrupted" if stop_requested else "runner produced no result"
             elif outcome.stopped:
                 failure = "interrupted"
             elif outcome.status == "failed":
                 failure = outcome.error or "failed"
 
             if failure is not None:
-                record({
-                    "input": input_path, "status": "failed", "error": failure,
-                    "outputs": [], "elapsed_s": elapsed,
-                })
+                record(
+                    {
+                        "input": input_path,
+                        "status": "failed",
+                        "error": failure,
+                        "outputs": [],
+                        "elapsed_s": elapsed,
+                    }
+                )
             elif outcome is not None and outcome.status == "skipped":
-                record({
-                    "input": input_path, "status": "skipped", "outputs": [],
-                    "elapsed_s": elapsed,
-                })
+                record(
+                    {
+                        "input": input_path,
+                        "status": "skipped",
+                        "outputs": [],
+                        "elapsed_s": elapsed,
+                    }
+                )
             else:
                 try:
                     promoted = _promote(
-                        stage, job.output, args.on_exists,
+                        stage,
+                        job.output,
+                        args.on_exists,
                         destinations=[
-                            output.path
-                            for output in planned_item.outputs
-                            if not output.conditional
+                            output.path for output in planned_item.outputs if not output.conditional
                         ],
                         expected_track_base=planned_item.naming.track_base,
                         ensemble_member_prefix=(
@@ -224,31 +236,41 @@ def run_batch(args: Any, job: ResolvedJob) -> BatchOutcome:
                                 file_total=planned_item.naming.file_total,
                                 timestamp=planned_item.naming.timestamp,
                             )
-                            if job.command == "ensemble"
-                            and job.settings.ensemble.save_all_outputs
+                            if job.command == "ensemble" and job.settings.ensemble.save_all_outputs
                             else None
                         ),
                     )
                     if not promoted:
-                        raise OSError(
-                            "separation completed without generating output files"
-                        )
+                        raise OSError("separation completed without generating output files")
                 except PromotionSkipped:
-                    record({
-                        "input": input_path, "status": "skipped", "outputs": [],
-                        "elapsed_s": elapsed,
-                    })
+                    record(
+                        {
+                            "input": input_path,
+                            "status": "skipped",
+                            "outputs": [],
+                            "elapsed_s": elapsed,
+                        }
+                    )
                 except OSError as exc:
                     failure = f"{type(exc).__name__}: {exc}"
-                    record({
-                        "input": input_path, "status": "failed", "error": failure,
-                        "outputs": [], "elapsed_s": elapsed,
-                    })
+                    record(
+                        {
+                            "input": input_path,
+                            "status": "failed",
+                            "error": failure,
+                            "outputs": [],
+                            "elapsed_s": elapsed,
+                        }
+                    )
                 else:
-                    record({
-                        "input": input_path, "status": "success",
-                        "outputs": promoted, "elapsed_s": elapsed,
-                    })
+                    record(
+                        {
+                            "input": input_path,
+                            "status": "success",
+                            "outputs": promoted,
+                            "elapsed_s": elapsed,
+                        }
+                    )
             shutil.rmtree(stage, ignore_errors=True)
 
             if stop_requested:
@@ -256,10 +278,15 @@ def run_batch(args: Any, job: ResolvedJob) -> BatchOutcome:
                 if failure != "interrupted" and index < total:
                     # Attribute the stop to the next unprocessed input — never
                     # re-label a completed success as interrupted.
-                    record({
-                        "input": planned_all[index].path, "status": "failed",
-                        "error": "interrupted", "outputs": [], "elapsed_s": 0.0,
-                    })
+                    record(
+                        {
+                            "input": planned_all[index].path,
+                            "status": "failed",
+                            "error": "interrupted",
+                            "outputs": [],
+                            "elapsed_s": 0.0,
+                        }
+                    )
                 break
             if failure is not None and getattr(args, "fail_fast", False):
                 break
@@ -301,9 +328,7 @@ def write_manifest(
         return None
     settings_payload = job.settings.to_json_dict()
     for setting_path, identity in (
-        job.plan.get("model_chains")
-        or (job.plan.get("metadata") or {}).get("model_chains")
-        or {}
+        job.plan.get("model_chains") or (job.plan.get("metadata") or {}).get("model_chains") or {}
     ).items():
         section, field_name = setting_path.split(".", 1)
         if section in settings_payload:
@@ -312,12 +337,9 @@ def write_manifest(
     if not isinstance(dependencies, dict):
         raise ValueError("resolved plan model_dependencies must be an object")
     model_dependencies = {
-        str(path): str(model_id)
-        for path, model_id in sorted(dependencies.items())
+        str(path): str(model_id) for path, model_id in sorted(dependencies.items())
     }
-    identity_digest = job.plan.get(
-        "model_identity_digest", EMPTY_MODEL_IDENTITY_DIGEST
-    )
+    identity_digest = job.plan.get("model_identity_digest", EMPTY_MODEL_IDENTITY_DIGEST)
     if not isinstance(identity_digest, str):
         raise ValueError("resolved plan model_identity_digest must be a string")
     payload = {

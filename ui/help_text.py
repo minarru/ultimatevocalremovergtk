@@ -56,7 +56,9 @@ def validate_help_text(text: str, *, name: str = "") -> List[str]:
                 issues.append(f"{prefix}line {index}: consecutive blank lines")
             continue
         if raw_line != raw_line.lstrip() and not raw_line.startswith("  "):
-            issues.append(f"{prefix}line {index}: use two spaces before sub-bullets, not other indentation")
+            issues.append(
+                f"{prefix}line {index}: use two spaces before sub-bullets, not other indentation"
+            )
         if "\t" in raw_line or raw_line.startswith("\t"):
             issues.append(f"{prefix}line {index}: use spaces, not tabs")
         if line.endswith(".") and not line.endswith("..."):
@@ -145,9 +147,7 @@ SAVE_STEM_ONLY_HELP = (
     "Choose outputs to write. Choices depend on the selected model or ensemble stem pair"
 )
 
-RUN_WORKLOAD_HINT = (
-    "Passes = model runs; outputs = saved files; speed labels are relative"
-)
+RUN_WORKLOAD_HINT = "Passes = model runs; outputs = saved files; speed labels are relative"
 
 PROGRESS_ETA_HINT = (
     "The bar pulses while loading, then fills during inference, save, and "
@@ -235,9 +235,7 @@ IS_DEMUCS_COMBINE_STEMS_HELP = (
     "subtracting the primary stem from the mixture"
 )
 
-COMPENSATE_HELP = (
-    "Classic MDX-Net only: scale the primary output before deriving its complement"
-)
+COMPENSATE_HELP = "Classic MDX-Net only: scale the primary output before deriving its complement"
 
 IS_DENOISE_HELP = (
     "Standard averages positive and negative classic MDX-Net predictions. "
@@ -312,11 +310,17 @@ IS_CREATE_MODEL_FOLDER_HELP = (
     "directory (export / <model> / <track> / file(s))"
 )
 
-MDX_DIM_T_SET_HELP = "Internal time-dimension setting — leave the default unless you know the training value"
+MDX_DIM_T_SET_HELP = (
+    "Internal time-dimension setting — leave the default unless you know the training value"
+)
 
-MDX_DIM_F_SET_HELP = "Internal frequency-dimension setting — leave the default unless you know the training value"
+MDX_DIM_F_SET_HELP = (
+    "Internal frequency-dimension setting — leave the default unless you know the training value"
+)
 
-MDX_N_FFT_SCALE_SET_HELP = "N_FFT size used when the model was trained — leave the default unless you know it"
+MDX_N_FFT_SCALE_SET_HELP = (
+    "N_FFT size used when the model was trained — leave the default unless you know it"
+)
 
 POPUP_COMPENSATE_HELP = (
     "Select the appropriate volume compensation for the chosen model\n\n"
@@ -490,9 +494,7 @@ VIEW_TAB_HINTS: Dict[str, str] = {
     "separation": (
         "Separate vocals, instrumentals, and other stems using VR, MDX-Net, or Demucs models"
     ),
-    "ensemble": (
-        "Combine outputs from multiple compatible models with selectable algorithms"
-    ),
+    "ensemble": ("Combine outputs from multiple compatible models with selectable algorithms"),
     "audio_tools": (
         "Time stretch, change pitch, align tracks, matchering, manual ensemble, and Apollo audio restoration"
     ),
@@ -522,13 +524,9 @@ DEMUCS_STEMS_SAVE_HELP = (
     "output; other focuses can write the stem, its complement, or both"
 )
 
-QUICK_EXPORT_INSTRUMENTAL_HINT = (
-    "Export a single derived Instrumental file (mixture minus vocals)"
-)
+QUICK_EXPORT_INSTRUMENTAL_HINT = "Export a single derived Instrumental file (mixture minus vocals)"
 
-QUICK_EXPORT_VOCALS_HINT = (
-    "Export a single native Vocals stem file"
-)
+QUICK_EXPORT_VOCALS_HINT = "Export a single native Vocals stem file"
 
 SAVE_STEMS_NO_MODEL_HELP = "Choose a model to configure stem export"
 
@@ -565,7 +563,9 @@ FLAC_BIT_DEPTH_HINT = "Bit depth used when saving FLAC output (16-bit or 24-bit)
 MAIN_MENU_HINT = "Main menu"
 VIEW_INPUTS_BUTTON_HINT = "Review and verify inputs"
 MODEL_OPTIONS_BUTTON_HINT = "Open inference, extra-model, and model-maintenance options"
-MODEL_OPTIONS_ROW_HINT = "Open inference, extra-model, and model-maintenance options for each architecture"
+MODEL_OPTIONS_ROW_HINT = (
+    "Open inference, extra-model, and model-maintenance options for each architecture"
+)
 ENSEMBLE_MEMBER_MODEL_OPTIONS_HINT = (
     "Adjust architecture-level inference and extra-model options used by selected ensemble members"
 )

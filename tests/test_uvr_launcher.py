@@ -44,7 +44,10 @@ class UvrLauncherTests(unittest.TestCase):
             [
                 f"cwd={caller}",
                 f"pythonpath={project}:existing-path",
-                "arg=-m", "arg=cli", "arg=audio", "arg=inspect",
+                "arg=-m",
+                "arg=cli",
+                "arg=audio",
+                "arg=inspect",
                 "arg=relative/input.wav",
             ],
         )
@@ -58,8 +61,11 @@ class UvrLauncherTests(unittest.TestCase):
             link.parent.mkdir()
             link.symlink_to(project / "uvr")
             completed = subprocess.run(
-                [str(link), "--version"], cwd=caller, check=True,
-                capture_output=True, text=True,
+                [str(link), "--version"],
+                cwd=caller,
+                check=True,
+                capture_output=True,
+                text=True,
             )
         self.assertIn(f"pythonpath={project}", completed.stdout)
 
@@ -74,8 +80,11 @@ class UvrLauncherTests(unittest.TestCase):
             )
             repair.chmod(0o755)
             completed = subprocess.run(
-                [str(project / "uvr"), "gui", "--example"], cwd=caller,
-                check=True, capture_output=True, text=True,
+                [str(project / "uvr"), "gui", "--example"],
+                cwd=caller,
+                check=True,
+                capture_output=True,
+                text=True,
             )
         self.assertEqual(
             completed.stdout.splitlines(),

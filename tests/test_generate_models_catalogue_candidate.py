@@ -17,10 +17,8 @@ from catalogue import manifest_candidate as catalogue_manifest_candidate
 from catalogue import types as catalogue_types
 
 
-
-
-
 # isort: on
+
 
 class ManifestCandidateContractTests(unittest.TestCase):
     """The generator changes machine evidence without fabricating review decisions."""
@@ -87,7 +85,9 @@ class ManifestCandidateContractTests(unittest.TestCase):
                 registry,
                 runtime=SimpleNamespace(contracts={"mdx:model": object()}),
             )
-        return catalogue_manifest_candidate.build_manifest_candidate(entries, document, registry=registry)
+        return catalogue_manifest_candidate.build_manifest_candidate(
+            entries, document, registry=registry
+        )
 
     def test_new_catalogue_id_requires_a_reviewed_record(self) -> None:
         result = self._candidate([fixtures._generator_manifest_entry(weight_file="new.ckpt")])
@@ -148,9 +148,9 @@ class ManifestCandidateContractTests(unittest.TestCase):
             {item.code for item in result.diagnostics},
         )
         self.assertEqual(
-            fixtures._candidate_document(result)["models"]["mdx:model"]["config_evidence"]["model.yaml"][
-                "content_sha256"
-            ],
+            fixtures._candidate_document(result)["models"]["mdx:model"]["config_evidence"][
+                "model.yaml"
+            ]["content_sha256"],
             "a" * 64,
         )
 
@@ -182,7 +182,9 @@ class ManifestCandidateContractTests(unittest.TestCase):
         self.assertFalse(result.structurally_valid)
         self.assertTrue(result.degraded)
         self.assertEqual(
-            fixtures._candidate_document(result)["models"]["mdx:model"]["catalogue_evidence"]["config_yaml"],
+            fixtures._candidate_document(result)["models"]["mdx:model"]["catalogue_evidence"][
+                "config_yaml"
+            ],
             "model.yaml",
         )
 

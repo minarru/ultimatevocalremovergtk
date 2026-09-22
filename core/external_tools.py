@@ -17,6 +17,7 @@ __all__ = [
     "resolve_rubberband",
 ]
 
+
 class _FrozenRuntime(Protocol):
     _MEIPASS: str
 

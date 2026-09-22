@@ -12,7 +12,7 @@ from typing import Any
 import torch
 import torch.nn as nn
 
-#from huggingface_hub import PyTorchModelHubMixin
+# from huggingface_hub import PyTorchModelHubMixin
 
 
 def _unsqueeze_to_3d(x: torch.Tensor) -> torch.Tensor:
@@ -30,8 +30,7 @@ def pad_to_appropriate_length(x: torch.Tensor, lcm: int) -> torch.Tensor:
     if values_to_pad:
         appropriate_shape = x.shape
         padded_x = torch.zeros(
-            list(appropriate_shape[:-1])
-            + [appropriate_shape[-1] + lcm - values_to_pad],
+            list(appropriate_shape[:-1]) + [appropriate_shape[-1] + lcm - values_to_pad],
             dtype=torch.float32,
         ).to(x.device)
         padded_x[..., : x.shape[-1]] = x
@@ -48,11 +47,15 @@ class BaseModel(nn.Module):
     def forward(self, *args: Any, **kwargs: Any) -> torch.Tensor:
         raise NotImplementedError
 
-    def sample_rate(self,) -> int:
+    def sample_rate(
+        self,
+    ) -> int:
         return self._sample_rate
 
     @staticmethod
-    def load_state_dict_in_audio(model: nn.Module, pretrained_dict: dict[str, torch.Tensor]) -> nn.Module:
+    def load_state_dict_in_audio(
+        model: nn.Module, pretrained_dict: dict[str, torch.Tensor]
+    ) -> nn.Module:
         model_dict = model.state_dict()
         update_dict: dict[str, torch.Tensor] = {}
         prefix = "audio_model."
@@ -83,9 +86,7 @@ class BaseModel(nn.Module):
         from . import get
 
         if not isinstance(conf, dict):
-            raise TypeError(
-                f"Apollo checkpoint must be a dict, got {type(conf).__name__}"
-            )
+            raise TypeError(f"Apollo checkpoint must be a dict, got {type(conf).__name__}")
 
         state_dict = conf.get("state_dict")
         if not isinstance(state_dict, dict):

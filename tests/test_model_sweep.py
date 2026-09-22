@@ -26,9 +26,7 @@ class DiscoveryTests(unittest.TestCase):
     ALL = {"mdx", "vr", "demucs", "apollo", "composite"}
 
     def test_one_job_per_installed_weight(self) -> None:
-        installed = _installed(
-            mdx=["a.ckpt", "b.onnx"], vr=["v.pth"], demucs=["hdemucs_mmi.yaml"]
-        )
+        installed = _installed(mdx=["a.ckpt", "b.onnx"], vr=["v.pth"], demucs=["hdemucs_mmi.yaml"])
         jobs = model_sweep.discover_jobs(installed, methods={"mdx", "vr", "demucs"})
         self.assertEqual(
             [(j.method, j.model) for j in jobs],
@@ -53,9 +51,7 @@ class DiscoveryTests(unittest.TestCase):
 
     def test_skip_filter_drops_named_model(self) -> None:
         installed = _installed(mdx=["a.ckpt", "b.ckpt"])
-        jobs = model_sweep.discover_jobs(
-            installed, methods={"mdx"}, skip=frozenset({"a.ckpt"})
-        )
+        jobs = model_sweep.discover_jobs(installed, methods={"mdx"}, skip=frozenset({"a.ckpt"}))
         self.assertEqual([j.model for j in jobs], ["b.ckpt"])
 
     def test_apollo_models_become_tool_jobs(self) -> None:
@@ -75,13 +71,9 @@ class DiscoveryTests(unittest.TestCase):
         jobs = model_sweep.discover_jobs(installed, methods={"composite"})
         ensemble = [j for j in jobs if j.kind == model_sweep.KIND_ENSEMBLE]
         self.assertEqual(len(ensemble), 1)
-        self.assertEqual(
-            ensemble[0].overrides["selected_models"], ["MDX-Net: A", "MDX-Net: B"]
-        )
+        self.assertEqual(ensemble[0].overrides["selected_models"], ["MDX-Net: A", "MDX-Net: B"])
         self.assertEqual(ensemble[0].overrides["ensemble_type"], "Max Spec/Min Spec")
-        self.assertEqual(
-            ensemble[0].overrides["ensemble_main_stem"], "vocals_instrumental"
-        )
+        self.assertEqual(ensemble[0].overrides["ensemble_main_stem"], "vocals_instrumental")
         self.assertFalse(ensemble[0].overrides["is_save_all_outputs_ensemble"])
 
     def test_ensemble_composite_skips_with_one_member(self) -> None:
@@ -306,9 +298,7 @@ class ScratchEnvTests(unittest.TestCase):
             )
 
             self.assertTrue(os.path.islink(os.path.join(data_dir, "models")))
-            self.assertTrue(
-                os.path.isdir(os.path.join(data_dir, "models", "VR_Models"))
-            )
+            self.assertTrue(os.path.isdir(os.path.join(data_dir, "models", "VR_Models")))
             self.assertTrue(os.path.isfile(settings_path))
             self.assertNotEqual(os.path.abspath(settings_path), os.path.abspath(src))
 
@@ -437,10 +427,14 @@ class RunChildTests(unittest.TestCase):
             settings.process.export_path = export_dir
             record = mock.Mock(id="mdx:test.onnx", family="mdx", method="MDX-Net")
             plan = mock.Mock(diagnostics=[], settings=settings)
-            with mock.patch("core.settings.Settings.load", return_value=settings), \
-                 mock.patch("core.model_identity.ModelIdentityService.resolve", return_value=record), \
-                 mock.patch("core.job_plan.JobResolver.resolve", return_value=plan), \
-                 mock.patch("core.blocking_runner.run_blocking", return_value=RunResult(0.1, completed=True)):
+            with (
+                mock.patch("core.settings.Settings.load", return_value=settings),
+                mock.patch("core.model_identity.ModelIdentityService.resolve", return_value=record),
+                mock.patch("core.job_plan.JobResolver.resolve", return_value=plan),
+                mock.patch(
+                    "core.blocking_runner.run_blocking", return_value=RunResult(0.1, completed=True)
+                ),
+            ):
                 rc = model_sweep.run_child(spec_path)
 
             with open(os.path.join(tmp, "result.json")) as handle:
@@ -488,10 +482,12 @@ class RunChildTests(unittest.TestCase):
             settings.process.export_path = export_dir
             record = mock.Mock(id="mdx:test.onnx", family="mdx", method="MDX-Net")
             plan = mock.Mock(diagnostics=[], settings=settings)
-            with mock.patch("core.settings.Settings.load", return_value=settings), \
-                 mock.patch("core.model_identity.ModelIdentityService.resolve", return_value=record), \
-                 mock.patch("core.job_plan.JobResolver.resolve", return_value=plan), \
-                 mock.patch("core.blocking_runner.run_blocking", side_effect=_fake_run_blocking):
+            with (
+                mock.patch("core.settings.Settings.load", return_value=settings),
+                mock.patch("core.model_identity.ModelIdentityService.resolve", return_value=record),
+                mock.patch("core.job_plan.JobResolver.resolve", return_value=plan),
+                mock.patch("core.blocking_runner.run_blocking", side_effect=_fake_run_blocking),
+            ):
                 rc = model_sweep.run_child(spec_path)
 
             with open(os.path.join(tmp, "result.json")) as handle:
@@ -557,18 +553,22 @@ class RunChildTests(unittest.TestCase):
 
             fake_runner.start.side_effect = capture_start
 
-            def fake_run_blocking(runner: object, start_runner: Any, **_kwargs: object) -> RunResult:
+            def fake_run_blocking(
+                runner: object, start_runner: Any, **_kwargs: object
+            ) -> RunResult:
                 start_runner(mock.Mock())
                 os.makedirs(export_dir, exist_ok=True)
                 with open(os.path.join(export_dir, "out (Vocals).wav"), "wb") as handle:
                     handle.write(b"RIFFdata")
                 return RunResult(0.1, completed=True)
 
-            with mock.patch("core.settings.Settings.load", return_value=settings), \
-                 mock.patch("core.model_identity.ModelIdentityService.resolve", return_value=record), \
-                 mock.patch("core.job_plan.JobResolver.resolve", return_value=plan), \
-                 mock.patch("core.job_runner.JobRunner", return_value=fake_runner), \
-                 mock.patch("core.blocking_runner.run_blocking", side_effect=fake_run_blocking):
+            with (
+                mock.patch("core.settings.Settings.load", return_value=settings),
+                mock.patch("core.model_identity.ModelIdentityService.resolve", return_value=record),
+                mock.patch("core.job_plan.JobResolver.resolve", return_value=plan),
+                mock.patch("core.job_runner.JobRunner", return_value=fake_runner),
+                mock.patch("core.blocking_runner.run_blocking", side_effect=fake_run_blocking),
+            ):
                 rc = model_sweep.run_child(spec_path)
 
         self.assertEqual(rc, 0)
@@ -635,17 +635,21 @@ class RunChildTests(unittest.TestCase):
 
             fake_runner.start.side_effect = capture_start
 
-            def fake_run_blocking(runner: object, start_runner: Any, **_kwargs: object) -> RunResult:
+            def fake_run_blocking(
+                runner: object, start_runner: Any, **_kwargs: object
+            ) -> RunResult:
                 start_runner(mock.Mock())
                 os.makedirs(export_dir, exist_ok=True)
                 with open(os.path.join(export_dir, "out (Vocals).wav"), "wb") as handle:
                     handle.write(b"RIFFdata")
                 return RunResult(0.1, completed=True)
 
-            with mock.patch("core.settings.Settings.load", return_value=settings), \
-                 mock.patch("core.job_plan.JobResolver.resolve", return_value=plan), \
-                 mock.patch("core.job_runner.JobRunner", return_value=fake_runner), \
-                 mock.patch("core.blocking_runner.run_blocking", side_effect=fake_run_blocking):
+            with (
+                mock.patch("core.settings.Settings.load", return_value=settings),
+                mock.patch("core.job_plan.JobResolver.resolve", return_value=plan),
+                mock.patch("core.job_runner.JobRunner", return_value=fake_runner),
+                mock.patch("core.blocking_runner.run_blocking", side_effect=fake_run_blocking),
+            ):
                 rc = model_sweep.run_child(spec_path)
 
         self.assertEqual(rc, 0)
@@ -680,16 +684,14 @@ class RunChildTests(unittest.TestCase):
             start_runner(mock.Mock())
             return outcome
 
-        with mock.patch(
-            "core.apollo.ApolloModelData", return_value=fake_model_data
-        ) as model_data_cls, mock.patch(
-            "core.audio_tools.AudioToolRunner", return_value=fake_runner
-        ) as runner_cls, mock.patch(
-            "core.audio_plan.AudioJobResolver.resolve", return_value=plan
-        ), mock.patch(
-            "core.blocking_runner.run_blocking", side_effect=fake_run_blocking
-        ), mock.patch(
-            "os.makedirs"
+        with (
+            mock.patch(
+                "core.apollo.ApolloModelData", return_value=fake_model_data
+            ) as model_data_cls,
+            mock.patch("core.audio_tools.AudioToolRunner", return_value=fake_runner) as runner_cls,
+            mock.patch("core.audio_plan.AudioJobResolver.resolve", return_value=plan),
+            mock.patch("core.blocking_runner.run_blocking", side_effect=fake_run_blocking),
+            mock.patch("os.makedirs"),
         ):
             result = model_sweep._run_tool(settings, "/tmp/in.wav", 0.01, repo=fake_repo)
         self.assertIs(result, outcome)
@@ -787,10 +789,19 @@ class ReportMetadataTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as root:
             return model_sweep.sweep(
-                jobs, spawn=spawn, root=root, settings_path="/s.json",
-                input_path="/in.wav", data_dir="/data", cpu=False, cpu_retry=False,
-                strict=False, fail_fast=fail_fast, json_path=json_path,
-                keep_outputs=False, run_meta=run_meta,
+                jobs,
+                spawn=spawn,
+                root=root,
+                settings_path="/s.json",
+                input_path="/in.wav",
+                data_dir="/data",
+                cpu=False,
+                cpu_retry=False,
+                strict=False,
+                fail_fast=fail_fast,
+                json_path=json_path,
+                keep_outputs=False,
+                run_meta=run_meta,
             )
 
     def _read(self, path: str) -> dict:
@@ -819,6 +830,7 @@ class ReportMetadataTests(unittest.TestCase):
             path = os.path.join(tmp, "r.json")
             import io
             from contextlib import redirect_stdout
+
             output = io.StringIO()
             with redirect_stdout(output):
                 self._sweep(jobs, [fail, ok, ok], path, fail_fast=True)
@@ -861,9 +873,7 @@ class RunMetadataTests(unittest.TestCase):
         from unittest import mock
 
         args = model_sweep.build_parser().parse_args([])
-        with mock.patch.object(
-            model_sweep, "_git_commit", side_effect=OSError("no git")
-        ):
+        with mock.patch.object(model_sweep, "_git_commit", side_effect=OSError("no git")):
             meta = model_sweep.run_metadata(args)
         self.assertEqual(meta["commit"], "")
 
@@ -878,7 +888,8 @@ class ManifestTests(unittest.TestCase):
                 id="mdx:a", kind=model_sweep.KIND_SINGLE, method="mdx", model="a.ckpt"
             ),
             model_sweep.SweepJob(
-                id="ens:x", kind=model_sweep.KIND_ENSEMBLE,
+                id="ens:x",
+                kind=model_sweep.KIND_ENSEMBLE,
                 timeout=model_sweep.ENSEMBLE_TIMEOUT,
             ),
         ]
@@ -908,12 +919,17 @@ class CompositeTimeoutGroupTests(unittest.TestCase):
             ),
             # A composite job that happens to carry the per-model default.
             model_sweep.SweepJob(
-                id="composite:4-stem", kind=model_sweep.KIND_SINGLE,
-                method="demucs", model="h.th", composite=True,
+                id="composite:4-stem",
+                kind=model_sweep.KIND_SINGLE,
+                method="demucs",
+                model="h.th",
+                composite=True,
             ),
             model_sweep.SweepJob(
-                id="composite:ensemble", kind=model_sweep.KIND_ENSEMBLE,
-                timeout=model_sweep.ENSEMBLE_TIMEOUT, composite=True,
+                id="composite:ensemble",
+                kind=model_sweep.KIND_ENSEMBLE,
+                timeout=model_sweep.ENSEMBLE_TIMEOUT,
+                composite=True,
             ),
         ]
 
@@ -943,7 +959,9 @@ class CompositeTimeoutGroupTests(unittest.TestCase):
 
     def test_discovered_composite_jobs_are_marked(self) -> None:
         installed = _installed(
-            demucs=["hdemucs_mmi.th"], mdx=["a.ckpt", "b.ckpt"], vr=["v.pth"],
+            demucs=["hdemucs_mmi.th"],
+            mdx=["a.ckpt", "b.ckpt"],
+            vr=["v.pth"],
         )
         jobs = model_sweep.discover_jobs(installed, methods={"composite"})
         self.assertTrue(jobs, "no composite jobs discovered")
@@ -988,7 +1006,10 @@ class SecondaryChainDiscoveryTests(unittest.TestCase):
 
     def _installed(self, **kw: Any):
         base = dict(
-            mdx=["a.ckpt"], vr=["v.pth"], demucs=[], apollo=[],
+            mdx=["a.ckpt"],
+            vr=["v.pth"],
+            demucs=[],
+            apollo=[],
             # Real format, as repo.model_list produces: family-prefixed tags.
             ensemble_tags=["vr:9_HP2-UVR", "mdx:BS_Inst_EXP_VRL"],
             karaoke_tags=[],
@@ -1003,9 +1024,7 @@ class SecondaryChainDiscoveryTests(unittest.TestCase):
         jobs = model_sweep.discover_jobs(self._installed(), methods={"composite"})
         job = self._job(jobs, "composite:secondary-chain")
         self.assertNotEqual(job.kind, model_sweep.KIND_SKIP, job.detail)
-        self.assertEqual(
-            job.overrides["vr_voc_inst_secondary_model"], "mdx:BS_Inst_EXP_VRL"
-        )
+        self.assertEqual(job.overrides["vr_voc_inst_secondary_model"], "mdx:BS_Inst_EXP_VRL")
 
     def test_it_skips_only_when_no_mdx_tag_is_available(self) -> None:
         jobs = model_sweep.discover_jobs(
@@ -1023,9 +1042,7 @@ class SecondaryChainDiscoveryTests(unittest.TestCase):
         self.assertIn("ensemble", job.detail.lower())
 
     def test_no_vr_model_still_skips(self) -> None:
-        jobs = model_sweep.discover_jobs(
-            self._installed(vr=[]), methods={"composite"}
-        )
+        jobs = model_sweep.discover_jobs(self._installed(vr=[]), methods={"composite"})
         job = self._job(jobs, "composite:secondary-chain")
         self.assertEqual(job.kind, model_sweep.KIND_SKIP)
 
@@ -1047,9 +1064,7 @@ class ErrorDetailTests(unittest.TestCase):
         self.assertIn("Unexpected key", detail)
 
     def test_keeps_the_first_line_too(self) -> None:
-        self.assertIn(
-            "Error(s) in loading state_dict", model_sweep._error_detail(self._LOAD_ERROR)
-        )
+        self.assertIn("Error(s) in loading state_dict", model_sweep._error_detail(self._LOAD_ERROR))
 
     def test_is_bounded(self) -> None:
         detail = model_sweep._error_detail("\n".join(f"line {i}" for i in range(50)))
@@ -1114,12 +1129,12 @@ class SpawnChildProcessGroupTests(unittest.TestCase):
         killpg_calls: List[Any] = []
 
         with tempfile.TemporaryDirectory() as tmp:
-            with mock.patch(
-                "subprocess.Popen", side_effect=fake_popen
-            ), mock.patch(
-                "os.getpgid", return_value=9999
-            ), mock.patch(
-                "os.killpg", side_effect=lambda pgid, sig: killpg_calls.append((pgid, sig))
+            with (
+                mock.patch("subprocess.Popen", side_effect=fake_popen),
+                mock.patch("os.getpgid", return_value=9999),
+                mock.patch(
+                    "os.killpg", side_effect=lambda pgid, sig: killpg_calls.append((pgid, sig))
+                ),
             ):
                 exit_code, result, timed_out = model_sweep.spawn_child(
                     spec={"kind": "single"}, job_dir=tmp, env={}, timeout=1.0
@@ -1155,12 +1170,10 @@ class SpawnChildProcessGroupTests(unittest.TestCase):
         proc = FakeProc()
 
         with tempfile.TemporaryDirectory() as tmp:
-            with mock.patch(
-                "subprocess.Popen", return_value=proc
-            ), mock.patch(
-                "os.getpgid", return_value=9999
-            ), mock.patch(
-                "os.killpg", side_effect=ProcessLookupError()
+            with (
+                mock.patch("subprocess.Popen", return_value=proc),
+                mock.patch("os.getpgid", return_value=9999),
+                mock.patch("os.killpg", side_effect=ProcessLookupError()),
             ):
                 exit_code, result, timed_out = model_sweep.spawn_child(
                     spec={"kind": "single"}, job_dir=tmp, env={}, timeout=1.0
@@ -1191,22 +1204,36 @@ class ParentControlFlowTests(unittest.TestCase):
         ok = {"ok": True, "outputs": [["x.wav", 10]], "error_type": None, "message": ""}
         spawn, calls = self._spawner([(0, ok, False)])
         verdict, _, _ = model_sweep.run_one(
-            self._job(), spawn=spawn, job_dir="/tmp/j", settings_path="/tmp/s.json",
-            input_path="/tmp/in.wav", data_dir="/tmp/d", cpu=False, cpu_retry=True,
+            self._job(),
+            spawn=spawn,
+            job_dir="/tmp/j",
+            settings_path="/tmp/s.json",
+            input_path="/tmp/in.wav",
+            data_dir="/tmp/d",
+            cpu=False,
+            cpu_retry=True,
         )
         self.assertEqual(verdict, model_sweep.PASS)
         self.assertEqual(len(calls), 1)
 
     def test_oom_retries_on_cpu_and_reports_cpu_ok(self) -> None:
         oom = {
-            "ok": False, "outputs": [], "error_type": "OutOfMemoryError",
+            "ok": False,
+            "outputs": [],
+            "error_type": "OutOfMemoryError",
             "message": "CUDA out of memory",
         }
         ok = {"ok": True, "outputs": [["x.wav", 10]], "error_type": None, "message": ""}
         spawn, calls = self._spawner([(1, oom, False), (0, ok, False)])
         verdict, _, _ = model_sweep.run_one(
-            self._job(), spawn=spawn, job_dir="/tmp/j", settings_path="/tmp/s.json",
-            input_path="/tmp/in.wav", data_dir="/tmp/d", cpu=False, cpu_retry=True,
+            self._job(),
+            spawn=spawn,
+            job_dir="/tmp/j",
+            settings_path="/tmp/s.json",
+            input_path="/tmp/in.wav",
+            data_dir="/tmp/d",
+            cpu=False,
+            cpu_retry=True,
         )
         self.assertEqual(verdict, model_sweep.OOM_CPU_OK)
         self.assertEqual(len(calls), 2)
@@ -1215,53 +1242,89 @@ class ParentControlFlowTests(unittest.TestCase):
 
     def test_oom_that_also_fails_on_cpu_reports_the_cpu_failure(self) -> None:
         oom = {
-            "ok": False, "outputs": [], "error_type": "OutOfMemoryError",
+            "ok": False,
+            "outputs": [],
+            "error_type": "OutOfMemoryError",
             "message": "CUDA out of memory",
         }
         broken = {
-            "ok": False, "outputs": [], "error_type": "RuntimeError",
+            "ok": False,
+            "outputs": [],
+            "error_type": "RuntimeError",
             "message": "shape mismatch",
         }
         spawn, _ = self._spawner([(1, oom, False), (1, broken, False)])
         verdict, detail, _ = model_sweep.run_one(
-            self._job(), spawn=spawn, job_dir="/tmp/j", settings_path="/tmp/s.json",
-            input_path="/tmp/in.wav", data_dir="/tmp/d", cpu=False, cpu_retry=True,
+            self._job(),
+            spawn=spawn,
+            job_dir="/tmp/j",
+            settings_path="/tmp/s.json",
+            input_path="/tmp/in.wav",
+            data_dir="/tmp/d",
+            cpu=False,
+            cpu_retry=True,
         )
         self.assertEqual(verdict, "FAIL(RuntimeError)")
         self.assertIn("shape mismatch", detail)
 
     def test_cpu_retry_disabled_keeps_bare_oom(self) -> None:
         oom = {
-            "ok": False, "outputs": [], "error_type": "OutOfMemoryError",
+            "ok": False,
+            "outputs": [],
+            "error_type": "OutOfMemoryError",
             "message": "CUDA out of memory",
         }
         spawn, calls = self._spawner([(1, oom, False)])
         verdict, _, _ = model_sweep.run_one(
-            self._job(), spawn=spawn, job_dir="/tmp/j", settings_path="/tmp/s.json",
-            input_path="/tmp/in.wav", data_dir="/tmp/d", cpu=False, cpu_retry=False,
+            self._job(),
+            spawn=spawn,
+            job_dir="/tmp/j",
+            settings_path="/tmp/s.json",
+            input_path="/tmp/in.wav",
+            data_dir="/tmp/d",
+            cpu=False,
+            cpu_retry=False,
         )
         self.assertEqual(verdict, model_sweep.OOM)
         self.assertEqual(len(calls), 1)
 
     def test_no_retry_when_already_on_cpu(self) -> None:
         oom = {
-            "ok": False, "outputs": [], "error_type": "OutOfMemoryError",
+            "ok": False,
+            "outputs": [],
+            "error_type": "OutOfMemoryError",
             "message": "CUDA out of memory",
         }
         spawn, calls = self._spawner([(1, oom, False)])
         model_sweep.run_one(
-            self._job(), spawn=spawn, job_dir="/tmp/j", settings_path="/tmp/s.json",
-            input_path="/tmp/in.wav", data_dir="/tmp/d", cpu=True, cpu_retry=True,
+            self._job(),
+            spawn=spawn,
+            job_dir="/tmp/j",
+            settings_path="/tmp/s.json",
+            input_path="/tmp/in.wav",
+            data_dir="/tmp/d",
+            cpu=True,
+            cpu_retry=True,
         )
         self.assertEqual(len(calls), 1)
 
     def test_skip_jobs_are_not_spawned(self) -> None:
         spawn, calls = self._spawner([])
         verdict, _detail, _ = model_sweep.run_one(
-            self._job(id="composite:ensemble", kind=model_sweep.KIND_SKIP,
-                      method=None, model=None, detail="needs two models"),
-            spawn=spawn, job_dir="/tmp/j", settings_path="/tmp/s.json",
-            input_path="/tmp/in.wav", data_dir="/tmp/d", cpu=False, cpu_retry=True,
+            self._job(
+                id="composite:ensemble",
+                kind=model_sweep.KIND_SKIP,
+                method=None,
+                model=None,
+                detail="needs two models",
+            ),
+            spawn=spawn,
+            job_dir="/tmp/j",
+            settings_path="/tmp/s.json",
+            input_path="/tmp/in.wav",
+            data_dir="/tmp/d",
+            cpu=False,
+            cpu_retry=True,
         )
         self.assertTrue(verdict.startswith("SKIP"))
         self.assertEqual(calls, [])
@@ -1313,16 +1376,16 @@ class InterpreterGuardTests(unittest.TestCase):
         venv = model_sweep.venv_python()
         self.assertIsNotNone(venv)
         assert venv is not None
-        with self._hide_soundfile(), mock.patch("os.execv") as execv, mock.patch.object(
-            sys, "executable", "/usr/bin/python"
+        with (
+            self._hide_soundfile(),
+            mock.patch("os.execv") as execv,
+            mock.patch.object(sys, "executable", "/usr/bin/python"),
         ):
             execv.side_effect = SystemExit(0)
             with self.assertRaises(SystemExit):
                 model_sweep.ensure_sweep_interpreter(allow_reexec=True)
         self.assertEqual(execv.call_count, 1)
-        self.assertEqual(
-            os.path.realpath(execv.call_args[0][0]), os.path.realpath(venv)
-        )
+        self.assertEqual(os.path.realpath(execv.call_args[0][0]), os.path.realpath(venv))
 
     def test_in_process_callers_are_not_reexecd(self) -> None:
         from unittest import mock
@@ -1336,9 +1399,12 @@ class InterpreterGuardTests(unittest.TestCase):
 
         venv = model_sweep.venv_python()
         self.assertIsNotNone(venv)
-        with self._hide_soundfile(), mock.patch("os.execv") as execv, mock.patch.object(
-            sys, "executable", venv
-        ), mock.patch("sys.stderr", new_callable=lambda: __import__("io").StringIO()):
+        with (
+            self._hide_soundfile(),
+            mock.patch("os.execv") as execv,
+            mock.patch.object(sys, "executable", venv),
+            mock.patch("sys.stderr", new_callable=lambda: __import__("io").StringIO()),
+        ):
             with self.assertRaises(SystemExit) as raised:
                 model_sweep.ensure_sweep_interpreter(allow_reexec=True)
         execv.assert_not_called()
@@ -1347,23 +1413,27 @@ class InterpreterGuardTests(unittest.TestCase):
     def test_main_cli_path_allows_reexec(self) -> None:
         from unittest import mock
 
-        with mock.patch.object(model_sweep, "ensure_sweep_interpreter") as guard, \
-             mock.patch.object(sys, "argv", ["model_sweep.py", "--list"]), \
-             mock.patch("core.ModelRepository"), \
-             mock.patch("core.settings.Settings.load"), \
-             mock.patch.object(model_sweep, "collect_installed", return_value=_installed()), \
-             mock.patch.object(model_sweep, "discover_jobs", return_value=[]):
+        with (
+            mock.patch.object(model_sweep, "ensure_sweep_interpreter") as guard,
+            mock.patch.object(sys, "argv", ["model_sweep.py", "--list"]),
+            mock.patch("core.ModelRepository"),
+            mock.patch("core.settings.Settings.load"),
+            mock.patch.object(model_sweep, "collect_installed", return_value=_installed()),
+            mock.patch.object(model_sweep, "discover_jobs", return_value=[]),
+        ):
             self.assertEqual(model_sweep.main(), 0)
         guard.assert_called_once_with(allow_reexec=True)
 
     def test_main_with_argv_does_not_allow_reexec(self) -> None:
         from unittest import mock
 
-        with mock.patch.object(model_sweep, "ensure_sweep_interpreter") as guard, \
-             mock.patch("core.ModelRepository"), \
-             mock.patch("core.settings.Settings.load"), \
-             mock.patch.object(model_sweep, "collect_installed", return_value=_installed()), \
-             mock.patch.object(model_sweep, "discover_jobs", return_value=[]):
+        with (
+            mock.patch.object(model_sweep, "ensure_sweep_interpreter") as guard,
+            mock.patch("core.ModelRepository"),
+            mock.patch("core.settings.Settings.load"),
+            mock.patch.object(model_sweep, "collect_installed", return_value=_installed()),
+            mock.patch.object(model_sweep, "discover_jobs", return_value=[]),
+        ):
             self.assertEqual(model_sweep.main(["--list"]), 0)
         guard.assert_called_once_with(allow_reexec=False)
 
@@ -1390,12 +1460,14 @@ class ScratchCleanupTests(unittest.TestCase):
             return 0
 
         job = model_sweep.SweepJob(id="fake", kind="mdx", method="mdx", model="Fake")
-        with mock.patch.object(model_sweep, "collect_installed", return_value=_installed()), \
-             mock.patch.object(model_sweep, "discover_jobs", return_value=[job]), \
-             mock.patch.object(model_sweep, "sweep", fake_sweep), \
-             mock.patch("core.ModelRepository"), \
-             mock.patch("core.settings.Settings.load"), \
-             mock.patch.dict(sys.modules):
+        with (
+            mock.patch.object(model_sweep, "collect_installed", return_value=_installed()),
+            mock.patch.object(model_sweep, "discover_jobs", return_value=[job]),
+            mock.patch.object(model_sweep, "sweep", fake_sweep),
+            mock.patch("core.ModelRepository"),
+            mock.patch("core.settings.Settings.load"),
+            mock.patch.dict(sys.modules),
+        ):
             sys.modules.pop("torch", None)
             rc = model_sweep.main(argv)
         return rc, captured["root"]
@@ -1423,18 +1495,18 @@ class ScratchCleanupTests(unittest.TestCase):
             raise RuntimeError("sweep exploded")
 
         job = model_sweep.SweepJob(id="fake", kind="mdx", method="mdx", model="Fake")
-        with mock.patch.object(model_sweep, "collect_installed", return_value=_installed()), \
-             mock.patch.object(model_sweep, "discover_jobs", return_value=[job]), \
-             mock.patch.object(model_sweep, "sweep", boom), \
-             mock.patch("core.ModelRepository"), \
-             mock.patch("core.settings.Settings.load"), \
-             mock.patch.dict(sys.modules):
+        with (
+            mock.patch.object(model_sweep, "collect_installed", return_value=_installed()),
+            mock.patch.object(model_sweep, "discover_jobs", return_value=[job]),
+            mock.patch.object(model_sweep, "sweep", boom),
+            mock.patch("core.ModelRepository"),
+            mock.patch("core.settings.Settings.load"),
+            mock.patch.dict(sys.modules),
+        ):
             sys.modules.pop("torch", None)
             with self.assertRaises(RuntimeError):
                 model_sweep.main([])
-        self.assertFalse(
-            os.path.exists(captured["root"]), "scratch dir leaked on exception"
-        )
+        self.assertFalse(os.path.exists(captured["root"]), "scratch dir leaked on exception")
 
 
 @unittest.skipUnless(

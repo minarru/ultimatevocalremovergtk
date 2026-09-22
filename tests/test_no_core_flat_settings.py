@@ -42,9 +42,7 @@ class NoCoreFlatSettingsTests(unittest.TestCase):
                     and isinstance(node.args[0], ast.Constant)
                     and isinstance(node.args[0].value, str)
                 ):
-                    violations.append(
-                        f"{relative}:{node.lineno}: settings.{func.attr}"
-                    )
+                    violations.append(f"{relative}:{node.lineno}: settings.{func.attr}")
         self.assertEqual(violations, [], "\n".join(violations))
 
 

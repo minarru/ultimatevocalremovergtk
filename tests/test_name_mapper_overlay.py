@@ -37,9 +37,13 @@ class NameMapperOverlayTests(unittest.TestCase):
             _write(archive, {"prior.ckpt": "Preserved legacy name"})
             manager = downloads.DownloadManager()
             with (
-                mock.patch.object(downloads, "_MODEL_DATA_URLS", [("https://example.test/mapper", mapper)]),
+                mock.patch.object(
+                    downloads, "_MODEL_DATA_URLS", [("https://example.test/mapper", mapper)]
+                ),
                 mock.patch.object(downloads, "_NAME_MAPPER_DESTS", frozenset({mapper})),
-                mock.patch.object(downloads, "_urlopen", side_effect=lambda _url: io.StringIO("{}")),
+                mock.patch.object(
+                    downloads, "_urlopen", side_effect=lambda _url: io.StringIO("{}")
+                ),
                 warnings.catch_warnings(record=True) as caught,
             ):
                 warnings.simplefilter("always")
@@ -193,8 +197,9 @@ class NameMapperOverlayTests(unittest.TestCase):
                 _write(replacement, {"model.ckpt": "Concurrent replacement"})
                 os.replace(replacement, link_source)
 
-            with warnings.catch_warnings(record=True) as caught, mock.patch.object(
-                name_mapper.os, "link", side_effect=link_then_replace
+            with (
+                warnings.catch_warnings(record=True) as caught,
+                mock.patch.object(name_mapper.os, "link", side_effect=link_then_replace),
             ):
                 warnings.simplefilter("always")
                 changed = name_mapper.archive_legacy_local_overlay(mapper)
@@ -202,9 +207,7 @@ class NameMapperOverlayTests(unittest.TestCase):
             self.assertFalse(changed)
             self.assertEqual(_read(source), {"model.ckpt": "Concurrent replacement"})
             self.assertEqual(_read(archive), {"model.ckpt": "Original"})
-            self.assertTrue(
-                any("changed during archival" in str(item.message) for item in caught)
-            )
+            self.assertTrue(any("changed during archival" in str(item.message) for item in caught))
 
     def test_archival_serializes_real_local_overlay_writer(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -229,9 +232,7 @@ class NameMapperOverlayTests(unittest.TestCase):
 
             def archive_overlay() -> None:
                 try:
-                    archive_results.append(
-                        name_mapper.archive_legacy_local_overlay(mapper)
-                    )
+                    archive_results.append(name_mapper.archive_legacy_local_overlay(mapper))
                 except BaseException as exc:
                     failures.append(exc)
 
@@ -246,9 +247,7 @@ class NameMapperOverlayTests(unittest.TestCase):
                 finally:
                     writer_done.set()
 
-            with mock.patch.object(
-                name_mapper.os, "link", side_effect=pause_after_link
-            ):
+            with mock.patch.object(name_mapper.os, "link", side_effect=pause_after_link):
                 archive_thread = threading.Thread(target=archive_overlay)
                 writer_thread = threading.Thread(target=add_name)
                 archive_thread.start()
@@ -278,9 +277,7 @@ class NameMapperOverlayTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             mapper = os.path.join(tmp, "model_name_mapper.json")
             _write(mapper, {"a.ckpt": "Upstream A"})
-            self.assertEqual(
-                name_mapper.load_name_mapper(mapper), {"a.ckpt": "Upstream A"}
-            )
+            self.assertEqual(name_mapper.load_name_mapper(mapper), {"a.ckpt": "Upstream A"})
 
     def test_add_local_name_writes_overlay_not_mirror(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -322,9 +319,7 @@ class NameMapperOverlayTests(unittest.TestCase):
             mapper = os.path.join(tmp, "model_name_mapper.json")
             _write(mapper, {"a.ckpt": "Upstream A", "fork.ckpt": "Fork"})
             name_mapper.migrate_local_only_keys(mapper, {"a.ckpt": "Upstream A"})
-            self.assertEqual(
-                _read(name_mapper.local_overlay_path(mapper)), {"fork.ckpt": "Fork"}
-            )
+            self.assertEqual(_read(name_mapper.local_overlay_path(mapper)), {"fork.ckpt": "Fork"})
 
             # Upstream later drops a.ckpt; the mirror still holds it at this point.
             self.assertFalse(name_mapper.migrate_local_only_keys(mapper, {}))
@@ -366,10 +361,10 @@ class NameMapperOverlayTests(unittest.TestCase):
             remote = {"keep.ckpt": "Keep"}
             urls = [("https://example.test/mdx_name.json", mapper)]
 
-            with mock.patch.object(downloads_mod, "_MODEL_DATA_URLS", urls), (
-                mock.patch.object(downloads_mod, "_NAME_MAPPER_DESTS", frozenset({mapper}))
-            ), mock.patch.object(
-                downloads_mod, "_urlopen", side_effect=[_Resp(remote)]
+            with (
+                mock.patch.object(downloads_mod, "_MODEL_DATA_URLS", urls),
+                mock.patch.object(downloads_mod, "_NAME_MAPPER_DESTS", frozenset({mapper})),
+                mock.patch.object(downloads_mod, "_urlopen", side_effect=[_Resp(remote)]),
             ):
                 downloads_mod.DownloadManager.update_model_settings(
                     downloads_mod.DownloadManager.__new__(downloads_mod.DownloadManager)

@@ -98,8 +98,7 @@ def applicability_banner(
     if context == OPEN_CONTEXT_ENSEMBLE:
         if not applicable:
             return (
-                "Select ensemble member models before editing "
-                "architecture-specific options.",
+                "Select ensemble member models before editing architecture-specific options.",
                 None,
             )
         if stack_name in applicable:

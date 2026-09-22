@@ -46,8 +46,10 @@ class DownloadCenterStateTests(unittest.TestCase):
 
         win = object.__new__(DownloadCenterWindow)
         from ui.catalogue_browser import CatalogueBrowserState
+
         win.browser = CatalogueBrowserState()
         from ui.lifetime import UiLifetime
+
         win._lifetime = UiLifetime()
         win._listening = False
         win._sort_mode = "name"
@@ -146,6 +148,7 @@ class DownloadCenterStateTests(unittest.TestCase):
                 a_release.set()
 
         from ui.widget_state import fetch
+
         self.assertIn("12 MB", fetch(win._row_actions[key_a], "_uvr_status_label").get_label())
         self.assertIn("5 MB", fetch(win._row_actions[key_b], "_uvr_status_label").get_label())
 

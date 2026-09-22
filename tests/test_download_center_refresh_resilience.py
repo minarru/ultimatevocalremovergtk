@@ -15,8 +15,10 @@ from ui.download_center import DownloadCenterWindow
 def _bare_refresh_window() -> DownloadCenterWindow:
     win = object.__new__(DownloadCenterWindow)
     from ui.catalogue_browser import CatalogueBrowserState
+
     win.browser = CatalogueBrowserState()
     from ui.lifetime import UiLifetime
+
     win._lifetime = UiLifetime()
     win._listening = False
     win._sort_mode = "name"
@@ -90,8 +92,10 @@ class MatchingCountTests(unittest.TestCase):
     def test_count_honors_purpose_and_includes_visible_unsupported_rows(self) -> None:
         win = object.__new__(DownloadCenterWindow)
         from ui.catalogue_browser import CatalogueBrowserState
+
         win.browser = CatalogueBrowserState()
         from ui.lifetime import UiLifetime
+
         win._lifetime = UiLifetime()
         win._listening = False
         win._sort_mode = "name"
@@ -101,17 +105,22 @@ class MatchingCountTests(unittest.TestCase):
         win._hide_unsupported = False
         win._purpose = PURPOSE_VOCALS
         win._arch_filter = ARCH_FILTER_ALL
-        cast(Any, win).manager = SimpleNamespace(latest_snapshot=None,catalogue_meta_by_family={},catalogue_meta={})
+        cast(Any, win).manager = SimpleNamespace(
+            latest_snapshot=None, catalogue_meta_by_family={}, catalogue_meta={}
+        )
 
         from tests.browser_ui_helpers import seed_browser_sources
+
         seed_browser_sources(win)
         self.assertEqual(win._matching_count(MDX_ARCH_TYPE, "model"), 2)
 
     def test_purpose_only_filter_reports_the_visible_count(self) -> None:
         win = object.__new__(DownloadCenterWindow)
         from ui.catalogue_browser import CatalogueBrowserState
+
         win.browser = CatalogueBrowserState()
         from ui.lifetime import UiLifetime
+
         win._lifetime = UiLifetime()
         win._listening = False
         win._sort_mode = "name"
@@ -132,9 +141,12 @@ class MatchingCountTests(unittest.TestCase):
         search.get_text.return_value = ""
         win._search_entries = {MDX_ARCH_TYPE: search}
         win._search_entry = search
-        cast(Any, win).manager = SimpleNamespace(latest_snapshot=None,catalogue_meta_by_family={},catalogue_meta={})
+        cast(Any, win).manager = SimpleNamespace(
+            latest_snapshot=None, catalogue_meta_by_family={}, catalogue_meta={}
+        )
 
         from tests.browser_ui_helpers import seed_browser_sources
+
         seed_browser_sources(win)
         win._update_download_button()
 

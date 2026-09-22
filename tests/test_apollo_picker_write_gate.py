@@ -83,15 +83,14 @@ class ApolloPickerWriteGateTests(unittest.TestCase):
         from ui.widgets.rows import get_combo_value
 
         record = self._record()
-        with mock.patch.object(
-            ModelIdentityService, "records", return_value=(record,)
-        ), mock.patch("core.apollo.list_apollo_models", return_value=["restorer.ckpt"]):
+        with (
+            mock.patch.object(ModelIdentityService, "records", return_value=(record,)),
+            mock.patch("core.apollo.list_apollo_models", return_value=["restorer.ckpt"]),
+        ):
             page, settings = self._page("Apollo: Apollo Universal Restorer")
             page._refresh_apollo_models()
 
-        self.assertEqual(
-            settings.audio_tools.apollo_model, "Apollo: Apollo Universal Restorer"
-        )
+        self.assertEqual(settings.audio_tools.apollo_model, "Apollo: Apollo Universal Restorer")
         self.assertEqual(get_combo_value(page.apollo_model_row), CHOOSE_MODEL)
 
     def test_bare_basename_value_is_left_alone_too(self) -> None:
@@ -100,9 +99,10 @@ class ApolloPickerWriteGateTests(unittest.TestCase):
         from ui.widgets.rows import get_combo_value
 
         record = self._record()
-        with mock.patch.object(
-            ModelIdentityService, "records", return_value=(record,)
-        ), mock.patch("core.apollo.list_apollo_models", return_value=["restorer.ckpt"]):
+        with (
+            mock.patch.object(ModelIdentityService, "records", return_value=(record,)),
+            mock.patch("core.apollo.list_apollo_models", return_value=["restorer.ckpt"]),
+        ):
             page, settings = self._page("restorer")
             page._refresh_apollo_models()
 
@@ -116,9 +116,10 @@ class ApolloPickerWriteGateTests(unittest.TestCase):
 
         illegal = "Apollo: Apollo Universal Restorer"
         record = self._record()
-        with mock.patch.object(
-            ModelIdentityService, "records", return_value=(record,)
-        ), mock.patch("core.apollo.list_apollo_models", return_value=["restorer.ckpt"]):
+        with (
+            mock.patch.object(ModelIdentityService, "records", return_value=(record,)),
+            mock.patch("core.apollo.list_apollo_models", return_value=["restorer.ckpt"]),
+        ):
             page, settings = self._page(illegal)
             page._refresh_apollo_models()
             page._refresh_apollo_models()
@@ -129,9 +130,7 @@ class ApolloPickerWriteGateTests(unittest.TestCase):
             self.assertIn(illegal, page._audio_banner.get_title())
 
             displayed = combo_values(page.apollo_model_row)
-            page.apollo_model_row.set_selected(
-                displayed.index("Apollo Universal Restorer")
-            )
+            page.apollo_model_row.set_selected(displayed.index("Apollo Universal Restorer"))
 
         self.assertEqual(settings.audio_tools.apollo_model, record.id)
         self.assertFalse(page._audio_banner.get_revealed())
@@ -141,18 +140,19 @@ class ApolloPickerWriteGateTests(unittest.TestCase):
         from core.model_identity import ModelIdentityService
         from ui.widgets.rows import combo_values, get_combo_value
 
-        missing = self._record(
-            "apollo:later", "Apollo Later", "later.ckpt"
-        )
+        missing = self._record("apollo:later", "Apollo Later", "later.ckpt")
         records = [self._record()]
         filenames = ["restorer.ckpt"]
-        with mock.patch.object(
-            ModelIdentityService,
-            "records",
-            side_effect=lambda: tuple(records),
-        ), mock.patch(
-            "core.apollo.list_apollo_models",
-            side_effect=lambda: list(filenames),
+        with (
+            mock.patch.object(
+                ModelIdentityService,
+                "records",
+                side_effect=lambda: tuple(records),
+            ),
+            mock.patch(
+                "core.apollo.list_apollo_models",
+                side_effect=lambda: list(filenames),
+            ),
         ):
             page, settings = self._page(missing.id)
             page._refresh_apollo_models()
@@ -180,11 +180,12 @@ class ApolloPickerWriteGateTests(unittest.TestCase):
 
         original = "apollo:missing-original"
         replacement = self._record()
-        with mock.patch.object(
-            ModelIdentityService, "records", return_value=(replacement,)
-        ), mock.patch(
-            "core.apollo.list_apollo_models",
-            return_value=[replacement.backend_name],
+        with (
+            mock.patch.object(ModelIdentityService, "records", return_value=(replacement,)),
+            mock.patch(
+                "core.apollo.list_apollo_models",
+                return_value=[replacement.backend_name],
+            ),
         ):
             page, settings = self._page(original)
             page._refresh_apollo_models()
@@ -209,9 +210,10 @@ class ApolloPickerWriteGateTests(unittest.TestCase):
         from ui.widgets.rows import get_combo_value
 
         record = self._record()
-        with mock.patch.object(
-            ModelIdentityService, "records", return_value=(record,)
-        ), mock.patch("core.apollo.list_apollo_models", return_value=["restorer.ckpt"]):
+        with (
+            mock.patch.object(ModelIdentityService, "records", return_value=(record,)),
+            mock.patch("core.apollo.list_apollo_models", return_value=["restorer.ckpt"]),
+        ):
             page, settings = self._page(record.id)
             page._refresh_apollo_models()
 

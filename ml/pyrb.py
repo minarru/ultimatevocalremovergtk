@@ -65,16 +65,19 @@ def __rubberband(y: np.ndarray, sr: int, **kwargs: Any) -> np.ndarray:
             y_out = np.squeeze(y_out)
 
     except OSError as exc:
-        six.raise_from(RuntimeError('Failed to execute rubberband. '
-                                    'Please verify that rubberband-cli '
-                                    'is installed.'),
-                       exc)
+        six.raise_from(
+            RuntimeError(
+                'Failed to execute rubberband. Please verify that rubberband-cli is installed.'
+            ),
+            exc,
+        )
 
     finally:
         os.unlink(infile)
         os.unlink(outfile)
 
     return y_out
+
 
 def time_stretch(
     y: np.ndarray, sr: int, rate: float, rbargs: dict[str, Any] | None = None
@@ -91,6 +94,7 @@ def time_stretch(
     rbargs.setdefault('--tempo', rate)
 
     return __rubberband(y, sr, **rbargs)
+
 
 def pitch_shift(
     y: np.ndarray, sr: int, n_steps: float, rbargs: dict[str, Any] | None = None

@@ -31,7 +31,7 @@ class _FakeInputRow:
         self.paths = None
         self.notify = None
 
-    def set_paths(self, paths: typing.Any, notify: typing.Any=True):
+    def set_paths(self, paths: typing.Any, notify: typing.Any = True):
         self.paths = list(paths)
         self.notify = notify
 
@@ -41,7 +41,7 @@ class _FakeOutputRow:
         self.path = None
         self.notify = None
 
-    def set_path(self, path: typing.Any, notify: typing.Any=True):
+    def set_path(self, path: typing.Any, notify: typing.Any = True):
         self.path = path
         self.notify = notify
 
@@ -142,9 +142,7 @@ class InputPathValidationTests(unittest.TestCase):
             self.assertEqual(remaining, [good_path])
             pruned = prune_unreadable_paths(unreadable, remaining)
             self.assertEqual(pruned, set())
-            self.assertIsNone(
-                input_paths_blocked_reason(remaining, unreadable_paths=pruned)
-            )
+            self.assertIsNone(input_paths_blocked_reason(remaining, unreadable_paths=pruned))
         finally:
             os.remove(good_path)
             os.remove(bad_path)
@@ -153,9 +151,7 @@ class InputPathValidationTests(unittest.TestCase):
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as handle:
             path = handle.name
         try:
-            self.assertIsNone(
-                input_paths_blocked_reason([path], unreadable_paths=set())
-            )
+            self.assertIsNone(input_paths_blocked_reason([path], unreadable_paths=set()))
         finally:
             os.remove(path)
 
@@ -309,11 +305,13 @@ class ApplySharedFileOptionsTests(unittest.TestCase):
             os.remove(input_path)
 
 
-
 class SharedSessionTests(unittest.TestCase):
     def setUp(self):
         import ui.shared_settings as shared
-        self.assertTrue(hasattr(shared, "SharedSettingsSession"), "shared edit ownership is missing")
+
+        self.assertTrue(
+            hasattr(shared, "SharedSettingsSession"), "shared edit ownership is missing"
+        )
         self.shared = shared
         self.settings = Settings.defaults()
         self.settings.process.save_format = self.SaveFormat.WAV
@@ -322,19 +320,30 @@ class SharedSessionTests(unittest.TestCase):
 
     def session(self):
         from types import SimpleNamespace
-        row = SimpleNamespace(gpu=False, format=self.SaveFormat.WAV, paths=[], available=True, active=True)
+
+        row = SimpleNamespace(
+            gpu=False, format=self.SaveFormat.WAV, paths=[], available=True, active=True
+        )
+
         def write_gpu(settings: Settings, value: bool):
             settings.process.use_gpu = value
+
         def write_format(settings: Settings, value: SharedSessionTests.SaveFormat):
             settings.process.save_format = value
+
         def write_paths(settings: Settings, value: tuple[str, ...]):
             settings.process.input_paths = list(value)
+
         bindings = self.shared.SharedSettingsBindings(
-            use_gpu=self.shared.SharedBinding(lambda: row.gpu, write_gpu, available=lambda: row.available),
+            use_gpu=self.shared.SharedBinding(
+                lambda: row.gpu, write_gpu, available=lambda: row.available
+            ),
             save_format=self.shared.SharedBinding(lambda: row.format, write_format),
             input_paths=self.shared.SharedBinding(lambda: tuple(row.paths), write_paths),
         )
-        session = self.shared.SharedSettingsSession(self.settings, bindings, can_commit=lambda: row.active)
+        session = self.shared.SharedSettingsSession(
+            self.settings, bindings, can_commit=lambda: row.active
+        )
         session.refresh(lambda: None)
         return row, bindings, session
 
@@ -369,11 +378,13 @@ class SharedSessionTests(unittest.TestCase):
 
     def test_refresh_suppresses_notifying_callbacks_and_adopts_display(self):
         a, ab, sa = self.session()
+
         def load():
             a.gpu = True
             sa.commit(edited=(ab.use_gpu,))
             sa.refresh(lambda: sa.commit(edited=(ab.use_gpu,)))
             self.assertTrue(sa.loading)
+
         sa.refresh(load)
         sa.commit()
         self.assertFalse(self.settings.process.use_gpu)
@@ -417,6 +428,7 @@ class SharedSessionTests(unittest.TestCase):
         self.assertEqual(self.settings.process.method, method)
         self.assertEqual(self.settings.process.stem_focus, "mix.instrumental")
         self.assertEqual(self.settings.mdx.segment_size, 512)
+
 
 if __name__ == "__main__":
     unittest.main()

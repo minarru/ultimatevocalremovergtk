@@ -1,4 +1,5 @@
 """Tests for MDX-C catalogue auto-registration."""
+
 import json
 import os
 import shutil
@@ -127,7 +128,8 @@ class RegisterMdxCCheckpointTests(unittest.TestCase):
 
             yaml_name = "config_musdb18_scnet.yaml"
             shutil.copyfile(
-                os.path.join(paths.MDX_C_CONFIG_PATH, yaml_name), os.path.join(config_dir, yaml_name)
+                os.path.join(paths.MDX_C_CONFIG_PATH, yaml_name),
+                os.path.join(config_dir, yaml_name),
             )
 
             original_hash_dir = paths.MDX_HASH_DIR
@@ -177,16 +179,12 @@ class RegisterMdxCCheckpointTests(unittest.TestCase):
             try:
                 paths.MDX_HASH_DIR = hash_dir
                 paths.MDX_C_CONFIG_PATH = config_dir
-                with access_policy(
-                    allow_network=False, allow_metadata_writes=False
-                ):
+                with access_policy(allow_network=False, allow_metadata_writes=False):
                     params = register_mdx_c_checkpoint(checkpoint, yaml_name)
                 self.assertIsNotNone(params)
                 model_hash = compute_checkpoint_hash(checkpoint)
                 assert model_hash is not None
-                self.assertFalse(
-                    os.path.exists(os.path.join(hash_dir, f"{model_hash}.json"))
-                )
+                self.assertFalse(os.path.exists(os.path.join(hash_dir, f"{model_hash}.json")))
             finally:
                 paths.MDX_HASH_DIR = original_hash_dir
                 paths.MDX_C_CONFIG_PATH = original_config_dir
@@ -205,7 +203,8 @@ class TryRegisterFromCatalogTests(unittest.TestCase):
 
             yaml_name = "config_musdb18_scnet.yaml"
             shutil.copyfile(
-                os.path.join(paths.MDX_C_CONFIG_PATH, yaml_name), os.path.join(config_dir, yaml_name)
+                os.path.join(paths.MDX_C_CONFIG_PATH, yaml_name),
+                os.path.join(config_dir, yaml_name),
             )
 
             original_hash_dir = paths.MDX_HASH_DIR
@@ -257,7 +256,8 @@ class RegisterFromDownloadJobsTests(unittest.TestCase):
             with open(checkpoint, "wb") as handle:
                 handle.write(b"batch download checkpoint")
             shutil.copyfile(
-                os.path.join(paths.MDX_C_CONFIG_PATH, yaml_name), os.path.join(config_dir, yaml_name)
+                os.path.join(paths.MDX_C_CONFIG_PATH, yaml_name),
+                os.path.join(config_dir, yaml_name),
             )
 
             jobs = [
@@ -274,11 +274,12 @@ class RegisterFromDownloadJobsTests(unittest.TestCase):
                 paths.MDX_C_CONFIG_PATH = config_dir
                 paths.MDX_MODELS_DIR = models_dir
                 paths.MDX_MODEL_NAME_SELECT = mapper_path
-                with patch(
-                    "core.model_display._merged_for_display", return_value=object()
-                ), patch(
-                    "core.model_display._index_from_meta",
-                    return_value={"batch_model": "Friendly Batch Model"},
+                with (
+                    patch("core.model_display._merged_for_display", return_value=object()),
+                    patch(
+                        "core.model_display._index_from_meta",
+                        return_value={"batch_model": "Friendly Batch Model"},
+                    ),
                 ):
                     self.assertTrue(register_mdx_c_from_download_jobs(jobs))
                     self.assertFalse(register_mdx_c_from_download_jobs(jobs))
@@ -309,7 +310,8 @@ class ModelDataCatalogFallbackTests(unittest.TestCase):
             with open(checkpoint, "wb") as handle:
                 handle.write(b"fallback catalogue checkpoint")
             shutil.copyfile(
-                os.path.join(paths.MDX_C_CONFIG_PATH, yaml_name), os.path.join(config_dir, yaml_name)
+                os.path.join(paths.MDX_C_CONFIG_PATH, yaml_name),
+                os.path.join(config_dir, yaml_name),
             )
 
             model_data = model_config_shell()
@@ -348,9 +350,7 @@ class LoadMdxCatalogIndexTests(unittest.TestCase):
                 }
             }
         }
-        with patch(
-            "core.catalog_sources._supplemental_sources", return_value=({}, {}, {}, {})
-        ):
+        with patch("core.catalog_sources._supplemental_sources", return_value=({}, {}, {}, {})):
             index = load_mdx_catalog_index()
         self.assertEqual(index["sample.ckpt"], "sample.yaml")
 
@@ -361,11 +361,12 @@ class LoadMdxCatalogIndexTests(unittest.TestCase):
                 "extra.yaml": "https://ex/extra.yaml",
             }
         }
-        with patch(
-            "core.mdx_c_registry._load_manual_download_cache", return_value={}
-        ), patch(
-            "core.catalog_sources._supplemental_sources",
-            return_value=({}, extras, {}, {}),
+        with (
+            patch("core.mdx_c_registry._load_manual_download_cache", return_value={}),
+            patch(
+                "core.catalog_sources._supplemental_sources",
+                return_value=({}, extras, {}, {}),
+            ),
         ):
             index = load_mdx_catalog_index()
         self.assertEqual(index["extra.ckpt"], "extra.yaml")

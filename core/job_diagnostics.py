@@ -362,22 +362,36 @@ def ensemble_pair_diagnostics(
     from .job_route_observations import collect_output_route_evidence
 
     route_evidence = collect_output_route_evidence(settings, descriptors, command=command)
-    selected = select_output_routes(settings, descriptors, command=command, evidence=route_evidence).routes
-    if settings.ensemble.derive_complement_from_mix and evidence is not None and evidence.definition is not None:
+    selected = select_output_routes(
+        settings, descriptors, command=command, evidence=route_evidence
+    ).routes
+    if (
+        settings.ensemble.derive_complement_from_mix
+        and evidence is not None
+        and evidence.definition is not None
+    ):
         from .ensemble_pair_consistent import resolve_pair_consistent_plan
 
-        plan = resolve_pair_consistent_plan(evidence.definition.roles, [d.routes for d in descriptors])
+        plan = resolve_pair_consistent_plan(
+            evidence.definition.roles, [d.routes for d in descriptors]
+        )
         if plan is not None:
-            selected = tuple(route for route in route_evidence.routes if route.role == plan.stacked_role)
+            selected = tuple(
+                route for route in route_evidence.routes if route.role == plan.stacked_role
+            )
     failures = []
     for route in selected:
         member_ids = [d.id for d in descriptors if any(r.role == route.role for r in d.routes)]
         weights = blend_kwargs(settings, member_ids, str(route.role))["weights"]
         if sum(weight > 0 for weight in weights) < 2:
-            failures.append(Diagnostic(
-                "ensemble.weights_insufficient", f"{route.label} needs at least two positive-weight members",
-                "error", path="ensemble.member_weights",
-            ))
+            failures.append(
+                Diagnostic(
+                    "ensemble.weights_insufficient",
+                    f"{route.label} needs at least two positive-weight members",
+                    "error",
+                    path="ensemble.member_weights",
+                )
+            )
     return (*diagnostics, *failures)
 
 

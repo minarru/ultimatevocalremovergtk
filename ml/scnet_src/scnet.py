@@ -30,18 +30,20 @@ class ConvolutionModule(nn.Module):
         depth (int): number of layers in the residual branch. Each layer has its own
         compress (float): amount of channel compression.
         kernel (int): kernel size for the convolutions.
-        """
+    """
 
     def __init__(self, channels: int, depth: int = 2, compress: float = 4, kernel: int = 3) -> None:
         super().__init__()
         assert kernel % 2 == 1
         self.depth = abs(depth)
         hidden_size = int(channels / compress)
+
         def norm(d: int) -> nn.GroupNorm:
             return nn.GroupNorm(1, d)
+
         self.layers = nn.ModuleList([])
         for _ in range(self.depth):
-            padding = (kernel // 2)
+            padding = kernel // 2
             mods = [
                 norm(channels),
                 nn.Conv1d(channels, hidden_size * 2, kernel, padding=padding),
@@ -71,9 +73,13 @@ class FusionLayer(nn.Module):
     - padding (int, optional): Padding for the convolutional layer, defaults to 1.
     """
 
-    def __init__(self, channels: int, kernel_size: int = 3, stride: int = 1, padding: int = 1) -> None:
+    def __init__(
+        self, channels: int, kernel_size: int = 3, stride: int = 1, padding: int = 1
+    ) -> None:
         super(FusionLayer, self).__init__()
-        self.conv = nn.Conv2d(channels * 2, channels * 2, kernel_size, stride=stride, padding=padding)
+        self.conv = nn.Conv2d(
+            channels * 2, channels * 2, kernel_size, stride=stride, padding=padding
+        )
 
     def forward(self, x: torch.Tensor, skip: torch.Tensor | None = None) -> torch.Tensor:
         if skip is not None:
@@ -108,7 +114,8 @@ class SDlayer(nn.Module):
             kernel = int(config['kernel'])
             stride = int(config['stride'])
             self.convs.append(
-                nn.Conv2d(channels_in, channels_out, (kernel, 1), (stride, 1), (0, 0)))
+                nn.Conv2d(channels_in, channels_out, (kernel, 1), (stride, 1), (0, 0))
+            )
             self.strides.append(stride)
             self.kernels.append(kernel)
 
@@ -122,13 +129,15 @@ class SDlayer(nn.Module):
         splits = [
             (0, math.ceil(Fr * self.SR_low)),
             (math.ceil(Fr * self.SR_low), math.ceil(Fr * (self.SR_low + self.SR_mid))),
-            (math.ceil(Fr * (self.SR_low + self.SR_mid)), Fr)
+            (math.ceil(Fr * (self.SR_low + self.SR_mid)), Fr),
         ]
 
         # Processing each band with the corresponding convolution
         outputs: list[torch.Tensor] = []
         original_lengths: list[int] = []
-        for conv, stride, kernel, (start, end) in zip(self.convs, self.strides, self.kernels, splits, strict=True):
+        for conv, stride, kernel, (start, end) in zip(
+            self.convs, self.strides, self.kernels, splits, strict=True
+        ):
             extracted = x[:, :, start:end, :]
             original_lengths.append(end - start)
             current_length = extracted.shape[2]
@@ -163,15 +172,17 @@ class SUlayer(nn.Module):
         super(SUlayer, self).__init__()
 
         # Initializing convolutional layers for each band
-        self.convtrs = nn.ModuleList([
-            nn.ConvTranspose2d(
-                channels_in,
-                channels_out,
-                (int(config['kernel']), 1),
-                (int(config['stride']), 1),
-            )
-            for _, config in band_configs.items()
-        ])
+        self.convtrs = nn.ModuleList(
+            [
+                nn.ConvTranspose2d(
+                    channels_in,
+                    channels_out,
+                    (int(config['kernel']), 1),
+                    (int(config['stride']), 1),
+                )
+                for _, config in band_configs.items()
+            ]
+        )
 
     def forward(
         self,
@@ -184,7 +195,7 @@ class SUlayer(nn.Module):
         splits = [
             (0, lengths[0]),
             (lengths[0], lengths[0] + lengths[1]),
-            (lengths[0] + lengths[1], None)
+            (lengths[0] + lengths[1], None),
         ]
         # Processing each band with the corresponding convolution
         outputs: list[torch.Tensor] = []
@@ -195,7 +206,7 @@ class SUlayer(nn.Module):
             dist = abs(origin_lengths[idx] - current_Fr_length) // 2
 
             # Trim the output to the original length symmetrically
-            trimmed_out = out[:, :, dist:dist + origin_lengths[idx], :]
+            trimmed_out = out[:, :, dist : dist + origin_lengths[idx], :]
 
             outputs.append(trimmed_out)
 
@@ -230,15 +241,15 @@ class SDblock(nn.Module):
         self.SDlayer = SDlayer(channels_in, channels_out, band_configs)
 
         # Dynamically create convolution modules for each band based on depths
-        self.conv_modules = nn.ModuleList([
-            ConvolutionModule(channels_out, depth, **conv_config) for depth in depths
-        ])
+        self.conv_modules = nn.ModuleList(
+            [ConvolutionModule(channels_out, depth, **conv_config) for depth in depths]
+        )
         # Set the kernel_size to an odd number.
-        self.globalconv = nn.Conv2d(channels_out, channels_out, kernel_size, 1, (kernel_size - 1) // 2)
+        self.globalconv = nn.Conv2d(
+            channels_out, channels_out, kernel_size, 1, (kernel_size - 1) // 2
+        )
 
-    def forward(
-        self, x: torch.Tensor
-    ) -> tuple[torch.Tensor, torch.Tensor, list[int], list[int]]:
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, list[int], list[int]]:
         bands, original_lengths = self.SDlayer(x)
         # B, C, f, T = band.shape
         bands = [
@@ -248,7 +259,6 @@ class SDblock(nn.Module):
                 .permute(0, 2, 1, 3)
             )
             for conv, band in zip(self.conv_modules, bands, strict=True)
-
         ]
         lengths = [band.size(-2) for band in bands]
         full_band = torch.cat(bands, dim=2)
@@ -312,8 +322,10 @@ class SCNet(nn.Module):
         self.audio_channels = audio_channels
         self.dims = dims
         band_keys = ['low', 'mid', 'high']
-        self.band_configs = {band_keys[i]: {'SR': band_SR[i], 'stride': band_stride[i], 'kernel': band_kernel[i]} for i
-                             in range(len(band_keys))}
+        self.band_configs = {
+            band_keys[i]: {'SR': band_SR[i], 'stride': band_stride[i], 'kernel': band_kernel[i]}
+            for i in range(len(band_keys))
+        }
         self.hop_length = hop_size
         self.win_size = win_size
         self.conv_config = {
@@ -326,7 +338,7 @@ class SCNet(nn.Module):
             'hop_length': hop_size,
             'win_length': win_size,
             'center': True,
-            'normalized': normalized
+            'normalized': normalized,
         }
 
         self.encoder = nn.ModuleList()
@@ -338,7 +350,7 @@ class SCNet(nn.Module):
                 channels_out=dims[index + 1],
                 band_configs=self.band_configs,
                 conv_config=self.conv_config,
-                depths=conv_depths
+                depths=conv_depths,
             )
             self.encoder.append(enc)
 
@@ -348,7 +360,7 @@ class SCNet(nn.Module):
                     channels_in=dims[index + 1],
                     channels_out=dims[index] if index != 0 else dims[index] * len(sources),
                     band_configs=self.band_configs,
-                )
+                ),
             )
             self.decoder.insert(0, dec)
 
@@ -375,8 +387,12 @@ class SCNet(nn.Module):
         stft_kwargs["window"] = torch.hann_window(self.win_size, device=x.device, dtype=x.dtype)
         x = torch.stft(x, **stft_kwargs, return_complex=True)
         x = torch.view_as_real(x)
-        x = x.permute(0, 3, 1, 2).reshape(x.shape[0] // self.audio_channels, x.shape[3] * self.audio_channels,
-                                          x.shape[1], x.shape[2])
+        x = x.permute(0, 3, 1, 2).reshape(
+            x.shape[0] // self.audio_channels,
+            x.shape[3] * self.audio_channels,
+            x.shape[1],
+            x.shape[2],
+        )
 
         B, _C, Fr, T = x.shape
 
@@ -409,7 +425,9 @@ class SCNet(nn.Module):
         x = x.reshape(-1, 2, Fr, T).permute(0, 2, 3, 1)
         x = torch.view_as_complex(x.contiguous())
         istft_kwargs = dict(self.stft_config)
-        istft_kwargs["window"] = torch.hann_window(self.win_size, device=x.device, dtype=x.real.dtype)
+        istft_kwargs["window"] = torch.hann_window(
+            self.win_size, device=x.device, dtype=x.real.dtype
+        )
         x = torch.istft(x, **istft_kwargs)
         x = x.reshape(B, len(self.sources), self.audio_channels, -1)
 

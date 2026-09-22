@@ -218,25 +218,20 @@ class PrefetchRemoteSizesTests(unittest.TestCase):
 
             try:
                 with patch("core.download_sizes._cache_path", return_value=cache_path):
-                    with patch(
-                        "core.download_sizes._head_remote_meta", side_effect=fake_head
-                    ):
+                    with patch("core.download_sizes._head_remote_meta", side_effect=fake_head):
                         with patch.dict(os.environ, {"UVR_SIZE_HEAD_WORKERS": "2"}):
                             prefetch_remote_sizes(urls)
             finally:
                 download_sizes._shutdown.clear()
 
-        self.assertLessEqual(
-            len(calls), 2, f"kept submitting after shutdown: {len(calls)} HEADs"
-        )
+        self.assertLessEqual(len(calls), 2, f"kept submitting after shutdown: {len(calls)} HEADs")
 
     def test_identity_pass_stops_submitting_once_shutdown_requested(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             cache_path = os.path.join(tmp, "download_size_cache.json")
             now = time.time()
             payload = {
-                f"https://example.com/{i}.ckpt": {"size": 100, "fetched_at": now}
-                for i in range(20)
+                f"https://example.com/{i}.ckpt": {"size": 100, "fetched_at": now} for i in range(20)
             }
             with open(cache_path, "w", encoding="utf-8") as handle:
                 json.dump(payload, handle)
@@ -249,17 +244,13 @@ class PrefetchRemoteSizesTests(unittest.TestCase):
 
             try:
                 with patch("core.download_sizes._cache_path", return_value=cache_path):
-                    with patch(
-                        "core.download_sizes._head_remote_meta", side_effect=fake_head
-                    ):
+                    with patch("core.download_sizes._head_remote_meta", side_effect=fake_head):
                         with patch.dict(os.environ, {"UVR_SIZE_HEAD_WORKERS": "2"}):
                             prefetch_same_size_identity(list(payload))
             finally:
                 download_sizes._shutdown.clear()
 
-        self.assertLessEqual(
-            len(calls), 2, f"kept submitting after shutdown: {len(calls)} HEADs"
-        )
+        self.assertLessEqual(len(calls), 2, f"kept submitting after shutdown: {len(calls)} HEADs")
 
     def test_identity_pass_targets_oldest_entries_first(self) -> None:
         """The capped window must follow staleness, not URL order.
@@ -366,8 +357,9 @@ class RequestUrlSizeCoalesceTests(unittest.TestCase):
             return 123
 
         seen: list[int | None] = []
-        with patch("core.download_sizes.fetch_remote_size", side_effect=fetch), patch(
-            "core.download_sizes._cache_get", return_value=None
+        with (
+            patch("core.download_sizes.fetch_remote_size", side_effect=fetch),
+            patch("core.download_sizes._cache_get", return_value=None),
         ):
             request_url_size("https://example.com/a.ckpt", lambda _u, size: seen.append(size))
             self.assertTrue(started.wait(timeout=2))

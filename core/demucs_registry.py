@@ -43,9 +43,7 @@ def _read_json(path: str) -> Mapping[str, Any]:
 
 
 def _bundled_path(filename: str) -> str:
-    return os.path.join(
-        paths.BUNDLED_MODELS_DIR, "Demucs_Models", "model_data", filename
-    )
+    return os.path.join(paths.BUNDLED_MODELS_DIR, "Demucs_Models", "model_data", filename)
 
 
 def _registered_models_path(models_dir: str) -> str:
@@ -67,24 +65,16 @@ def validate_demucs_registration_config(config: Mapping[str, Any]) -> dict[str, 
         raise ValueError("invalid Demucs version; expected v1, v2, v3, or v4")
     source_layout = config.get("source_layout")
     if source_layout not in _DEMUCS_LAYOUTS:
-        raise ValueError(
-            "invalid Demucs source layout; expected 2_stem, 4_stem, or 6_stem"
-        )
+        raise ValueError("invalid Demucs source layout; expected 2_stem, 4_stem, or 6_stem")
     display_name = config.get("display_name")
-    if display_name is not None and (
-        not isinstance(display_name, str) or not display_name.strip()
-    ):
+    if display_name is not None and (not isinstance(display_name, str) or not display_name.strip()):
         raise ValueError("Demucs display_name must be a non-empty string")
     if any(key in config for key in ("id", "model_id", "backend_name")):
         raise ValueError("Demucs ID and backend name derive from the entrypoint")
     return {
         "demucs_version": demucs_version,
         "source_layout": source_layout,
-        **(
-            {"display_name": display_name.strip()}
-            if isinstance(display_name, str)
-            else {}
-        ),
+        **({"display_name": display_name.strip()} if isinstance(display_name, str) else {}),
     }
 
 
@@ -139,11 +129,7 @@ def _capture_artifact(path: str, *, include_content: bool = False) -> _ArtifactS
     return _ArtifactSnapshot(
         content_fingerprint=content_digest.hexdigest(),
         checkpoint_fingerprint=md5(b"".join(checkpoint_chunks)).hexdigest(),
-        content=(
-            b"".join(captured_chunks)
-            if captured_chunks is not None
-            else None
-        ),
+        content=(b"".join(captured_chunks) if captured_chunks is not None else None),
     )
 
 
@@ -175,9 +161,7 @@ def _v3_v4_weight_signature(path: str, content_fingerprint: str) -> str:
     return signature
 
 
-def _yaml_bag_members(
-    source: str, content: bytes
-) -> tuple[tuple[str, ...], tuple[str, ...]]:
+def _yaml_bag_members(source: str, content: bytes) -> tuple[tuple[str, ...], tuple[str, ...]]:
     try:
         document = yaml.safe_load(content.decode("utf-8"))
     except (UnicodeDecodeError, yaml.YAMLError) as exc:
@@ -236,27 +220,16 @@ def prepare_demucs_registration(
     from .model_identity import ModelId
 
     model_id = ModelId("demucs", basename).value
-    source_snapshot = _capture_artifact(
-        source, include_content=source.endswith(".yaml")
-    )
+    source_snapshot = _capture_artifact(source, include_content=source.endswith(".yaml"))
     if source.endswith(".yaml"):
         assert source_snapshot.content is not None
-        support, bag_signatures = _yaml_bag_members(
-            source, source_snapshot.content
-        )
+        support, bag_signatures = _yaml_bag_members(source, source_snapshot.content)
         support_snapshots = tuple(_capture_artifact(path) for path in support)
         for signature, path, snapshot in zip(
             bag_signatures, support, support_snapshots, strict=True
         ):
-            if (
-                _v3_v4_weight_signature(
-                    path, snapshot.content_fingerprint
-                )
-                != signature
-            ):
-                raise ValueError(
-                    f"Demucs YAML member does not match signature {signature!r}"
-                )
+            if _v3_v4_weight_signature(path, snapshot.content_fingerprint) != signature:
+                raise ValueError(f"Demucs YAML member does not match signature {signature!r}")
     else:
         support = ()
         bag_signatures = ()
@@ -264,26 +237,19 @@ def prepare_demucs_registration(
     backend_name = (
         basename
         if source.endswith(".yaml") or version in {"v1", "v2"}
-        else _v3_v4_weight_signature(
-            source, source_snapshot.content_fingerprint
-        )
+        else _v3_v4_weight_signature(source, source_snapshot.content_fingerprint)
     )
 
     root = os.path.abspath(models_dir or paths.DEMUCS_MODELS_DIR)
-    destination_dir = (
-        root if version in {"v1", "v2"} else os.path.join(root, "v3_v4_repo")
-    )
+    destination_dir = root if version in {"v1", "v2"} else os.path.join(root, "v3_v4_repo")
     source_paths = (source, *support)
     snapshots = (source_snapshot, *support_snapshots)
-    content_fingerprints = tuple(
-        snapshot.content_fingerprint for snapshot in snapshots
-    )
+    content_fingerprints = tuple(snapshot.content_fingerprint for snapshot in snapshots)
     destination_paths = tuple(
         os.path.join(destination_dir, os.path.basename(path)) for path in source_paths
     )
     relative_paths = tuple(
-        _normalize_demucs_registry_relative_path(root, path)
-        for path in destination_paths
+        _normalize_demucs_registry_relative_path(root, path) for path in destination_paths
     )
     entry = {
         "display_name": str(normalized.get("display_name") or basename),
@@ -349,12 +315,9 @@ def _normalize_demucs_registry_model(
     return {
         "display_name": display_name,
         "backend_name": backend_name,
-        "entrypoint": _normalize_demucs_registry_relative_path(
-            models_dir, raw.get("entrypoint")
-        ),
+        "entrypoint": _normalize_demucs_registry_relative_path(models_dir, raw.get("entrypoint")),
         "supporting_artifacts": [
-            _normalize_demucs_registry_relative_path(models_dir, path)
-            for path in supporting_raw
+            _normalize_demucs_registry_relative_path(models_dir, path) for path in supporting_raw
         ],
         "primary_hash": primary_hash,
         "demucs_version": demucs_version,
@@ -493,9 +456,7 @@ class DemucsRegistry:
             payload = read_json_object(self.path)
         except FileNotFoundError:
             return _empty_registry_document()
-        return _normalize_demucs_registry_document(
-            payload, models_dir=self.models_dir
-        )
+        return _normalize_demucs_registry_document(payload, models_dir=self.models_dir)
 
     def load(self) -> dict[str, Any]:
         with locked_json_path(self.lock_path):
@@ -514,17 +475,13 @@ class DemucsRegistry:
             return self._load_unlocked()
 
     def save(self, payload: Mapping[str, Any]) -> dict[str, Any]:
-        normalized = _normalize_demucs_registry_document(
-            payload, models_dir=self.models_dir
-        )
+        normalized = _normalize_demucs_registry_document(payload, models_dir=self.models_dir)
         with locked_json_path(self.lock_path):
             write_json_atomic(self.path, normalized)
         return normalized
 
     @staticmethod
-    def _assert_artifact_matches(
-        expected_fingerprint: str, destination: str
-    ) -> None:
+    def _assert_artifact_matches(expected_fingerprint: str, destination: str) -> None:
         if not os.path.isfile(destination):
             raise ValueError(f"Demucs artifact is missing: {destination}")
         if _content_fingerprint(destination) != expected_fingerprint:
@@ -535,9 +492,7 @@ class DemucsRegistry:
     @staticmethod
     def _assert_unit_snapshot(unit: DemucsRegistrationUnit) -> None:
         if not (
-            len(unit.source_paths)
-            == len(unit.destination_paths)
-            == len(unit.content_fingerprints)
+            len(unit.source_paths) == len(unit.destination_paths) == len(unit.content_fingerprints)
         ):
             raise ValueError("invalid Demucs registration snapshot")
         expected_member_count = len(unit.source_paths) - 1
@@ -545,13 +500,9 @@ class DemucsRegistry:
         if entrypoint.endswith(".yaml"):
             if len(unit.bag_signatures) != expected_member_count:
                 raise ValueError("invalid Demucs YAML member snapshot")
-            for signature, source in zip(
-                unit.bag_signatures, unit.source_paths[1:], strict=True
-            ):
+            for signature, source in zip(unit.bag_signatures, unit.source_paths[1:], strict=True):
                 member = os.path.basename(source)
-                if not member.startswith(f"{signature}-") or not member.endswith(
-                    ".th"
-                ):
+                if not member.startswith(f"{signature}-") or not member.endswith(".th"):
                     raise ValueError("invalid Demucs YAML member snapshot")
         elif unit.bag_signatures:
             raise ValueError("direct Demucs weights cannot have YAML members")
@@ -559,13 +510,9 @@ class DemucsRegistry:
     @classmethod
     def _assert_sources_unchanged(cls, unit: DemucsRegistrationUnit) -> None:
         cls._assert_unit_snapshot(unit)
-        for source, expected in zip(
-            unit.source_paths, unit.content_fingerprints, strict=True
-        ):
+        for source, expected in zip(unit.source_paths, unit.content_fingerprints, strict=True):
             if _content_fingerprint(source) != expected:
-                raise ValueError(
-                    f"Demucs artifact changed since validation: {source}"
-                )
+                raise ValueError(f"Demucs artifact changed since validation: {source}")
 
     def _assert_registry_available(
         self,
@@ -585,9 +532,7 @@ class DemucsRegistry:
             raise ValueError("Demucs registry is missing by_primary_hash")
         claimed_id = by_primary_hash.get(unit.entry["primary_hash"])
         if claimed_id is not None and claimed_id != unit.model_id:
-            raise ValueError(
-                f"Demucs primary hash is already registered as {claimed_id}"
-            )
+            raise ValueError(f"Demucs primary hash is already registered as {claimed_id}")
 
         claimed_paths: dict[str, str] = {}
         for model_id, raw in models.items():
@@ -601,13 +546,9 @@ class DemucsRegistry:
         ):
             claimed_id = claimed_paths.get(str(path))
             if claimed_id is not None:
-                raise ValueError(
-                    f"Demucs artifact {path!r} is already claimed by {claimed_id}"
-                )
+                raise ValueError(f"Demucs artifact {path!r} is already claimed by {claimed_id}")
 
-    def _commit_unit(
-        self, unit: DemucsRegistrationUnit, *, replace: bool
-    ) -> dict[str, Any]:
+    def _commit_unit(self, unit: DemucsRegistrationUnit, *, replace: bool) -> dict[str, Any]:
         with locked_json_path(self.lock_path):
             document = self._load_unlocked()
             self._assert_registry_available(document, unit, replace=replace)
@@ -619,9 +560,7 @@ class DemucsRegistry:
             models = document["models"]
             assert isinstance(models, dict)
             models[unit.model_id] = unit.entry
-            normalized = _normalize_demucs_registry_document(
-                document, models_dir=self.models_dir
-            )
+            normalized = _normalize_demucs_registry_document(document, models_dir=self.models_dir)
             write_json_atomic(self.path, normalized)
             return normalized
 
@@ -647,9 +586,7 @@ class DemucsRegistry:
                 )
             }
             for destination in created_paths:
-                relative = _normalize_demucs_registry_relative_path(
-                    self.models_dir, destination
-                )
+                relative = _normalize_demucs_registry_relative_path(self.models_dir, destination)
                 if relative in claimed:
                     continue
                 try:
@@ -695,9 +632,7 @@ class DemucsRegistry:
                     raise
                 if _content_fingerprint(temporary) != expected:
                     os.remove(temporary)
-                    raise ValueError(
-                        f"Demucs artifact changed since validation: {source}"
-                    )
+                    raise ValueError(f"Demucs artifact changed since validation: {source}")
                 temporary_paths.append((temporary, destination))
 
             for temporary, destination in temporary_paths:
@@ -721,9 +656,7 @@ class DemucsRegistry:
             self._rollback_created_paths(created_paths)
             raise
 
-    def configure(
-        self, unit: DemucsRegistrationUnit, *, replace: bool
-    ) -> dict[str, Any]:
+    def configure(self, unit: DemucsRegistrationUnit, *, replace: bool) -> dict[str, Any]:
         """Attach or update metadata for artifacts already installed in place."""
         return self._commit_unit(unit, replace=replace)
 

@@ -244,7 +244,9 @@ class _EnsembleRunHooks:
             if collected is None:
                 return
             scratch["ensemble_stem_arrays"].setdefault(collected.group_key, []).append(value)
-            self.ensemble.remember_member(str(getattr(model, "canonical_id", "") or ""), array=value)
+            self.ensemble.remember_member(
+                str(getattr(model, "canonical_id", "") or ""), array=value
+            )
 
         if chunked:
             for stem_tag, arr in stems.items():
@@ -265,7 +267,9 @@ class _EnsembleRunHooks:
             for collected, parts in scratch["member_stem_parts"].items():
                 concat = concat_stems(parts, overlap_samples=state.ov_samples)
                 scratch["ensemble_stem_arrays"].setdefault(collected.group_key, []).append(concat)
-                self.ensemble.remember_member(str(getattr(model, "canonical_id", "") or ""), array=concat)
+                self.ensemble.remember_member(
+                    str(getattr(model, "canonical_id", "") or ""), array=concat
+                )
                 salvage_arrays[collected.group_key] = concat
             if runner.settings.ensemble.save_all_outputs and salvage_arrays:
                 state.callbacks.report_phase(ProcessingPhase.SAVING)

@@ -55,11 +55,7 @@ def set_flat(settings: Settings, key: str, value: Any) -> None:
 
 
 def _section_names(settings: Settings) -> list[str]:
-    return sorted(
-        f.name
-        for f in fields(settings)
-        if is_dataclass(getattr(settings, f.name, None))
-    )
+    return sorted(f.name for f in fields(settings) if is_dataclass(getattr(settings, f.name, None)))
 
 
 def _setting_paths(settings: Settings) -> list[str]:
@@ -87,9 +83,7 @@ def validate_setting_path(
     section = getattr(settings, section_name, None)
     if section is None or not is_dataclass(section):
         known = ", ".join(_section_names(settings))
-        raise ValueError(
-            f"unknown settings section {section_name!r}; known sections: {known}"
-        )
+        raise ValueError(f"unknown settings section {section_name!r}; known sections: {known}")
 
     if field_name not in {f.name for f in fields(section)}:
         matches = difflib.get_close_matches(path, _setting_paths(settings), n=5)
@@ -100,9 +94,7 @@ def validate_setting_path(
         )
 
     if not allow_containers and isinstance(getattr(section, field_name), (list, dict)):
-        raise ValueError(
-            f"setting {path!r} is a container and cannot be set from a single value"
-        )
+        raise ValueError(f"setting {path!r} is a container and cannot be set from a single value")
 
     return section_name, field_name
 
@@ -124,11 +116,12 @@ def _container_mismatch(current: Any, value: Any) -> bool:
 
 def validate_setting_value(settings: Settings, path: str, value: Any) -> None:
     """Reject scalar values that permissive GUI migration coercion would hide."""
-    section_name, field_name = validate_setting_path(
-        settings, path, allow_containers=True
-    )
+    section_name, field_name = validate_setting_path(settings, path, allow_containers=True)
     if section_name == "ensemble" and field_name in {
-        "member_weights", "smoothing", "soft_strength", "hybrid_balance",
+        "member_weights",
+        "smoothing",
+        "soft_strength",
+        "hybrid_balance",
     }:
         from core.ensemble_blend import validate_blend_value
 
@@ -157,7 +150,15 @@ def validate_setting_value(settings: Settings, path: str, value: Any) -> None:
         valid = isinstance(value, bool) or value in (0, 1)
         if isinstance(value, str):
             valid = value.strip().lower() in {
-                "0", "1", "false", "true", "no", "yes", "off", "on", "",
+                "0",
+                "1",
+                "false",
+                "true",
+                "no",
+                "yes",
+                "off",
+                "on",
+                "",
             }
         if not valid:
             raise ValueError(f"invalid boolean for {path}: {value!r}")
@@ -192,9 +193,7 @@ def validate_setting_value(settings: Settings, path: str, value: Any) -> None:
             raise ValueError(f"invalid value for {path}: {value!r}")
 
 
-def apply_settings_overrides(
-    settings: Settings, overrides: Iterable[tuple[str, Any]]
-) -> None:
+def apply_settings_overrides(settings: Settings, overrides: Iterable[tuple[str, Any]]) -> None:
     """Apply validated ``(path, value)`` pairs in order (does not persist).
 
     Every path is validated before the first write, so a typo aborts the run
@@ -219,7 +218,5 @@ def parse_setting_assignment(text: str) -> tuple[str, str]:
     path, sep, value = str(text).partition("=")
     path = path.strip()
     if not sep or not path:
-        raise ValueError(
-            f"invalid setting override {text!r}; expected section.field=value"
-        )
+        raise ValueError(f"invalid setting override {text!r}; expected section.field=value")
     return path, value

@@ -113,7 +113,9 @@ class SeperateMDX(SeperateAttributes):
                         self.model_run = (
                             MdxnetSet.ConvTDFNet.load_from_checkpoint(
                                 self.model_path, num_layers=model_params["l"]
-                            ).to(self.device).eval()
+                            )
+                            .to(self.device)
+                            .eval()
                         )
                         self._weight_cache_meta = {"dim_c": self.dim_c, "hop": self.hop}
                 else:
@@ -327,9 +329,7 @@ class SeperateMDX(SeperateAttributes):
                         if smaller is None:
                             raise
                         effective_batch = smaller
-                        self.write_to_console(
-                            mdx_oom_reduce_batch_message(effective_batch)
-                        )
+                        self.write_to_console(mdx_oom_reduce_batch_message(effective_batch))
                         continue
 
                     for _ in range(take):

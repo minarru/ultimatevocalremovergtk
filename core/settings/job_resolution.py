@@ -29,6 +29,7 @@ METHOD_ALIASES = {
     "ensemble mode": ENSEMBLE_MODE,
 }
 
+
 def coerce_process_method(value: str | None) -> str | None:
     if value is None:
         return None
@@ -49,10 +50,7 @@ def resolve_splitter_identity(reference: str, settings: Settings, repo: Any) -> 
     record = service.index.lookup(reference)
     if record.family not in {"vr", "mdx"}:
         raise ValueError(f"model {record.id} is not eligible for this setting")
-    pool = {
-        service.canonical_id_from_member_tag(tag)
-        for tag in repo.karaoke_model_list(settings)
-    }
+    pool = {service.canonical_id_from_member_tag(tag) for tag in repo.karaoke_model_list(settings)}
     if record.id not in pool:
         raise ValueError(f"model {record.id} is not an installed vocal splitter")
     return record.id
@@ -110,6 +108,8 @@ class SettingsResolver:
 
 
 __all__ = [
-    "SettingsLayer", "SettingsResolver",
-    "coerce_process_method", "resolve_splitter_identity",
+    "SettingsLayer",
+    "SettingsResolver",
+    "coerce_process_method",
+    "resolve_splitter_identity",
 ]

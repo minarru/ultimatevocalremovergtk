@@ -12,7 +12,6 @@ except ImportError:
     ConfigDict = None
 
 
-
 @unittest.skipIf(ConfigDict is None, "ml_collections not installed")
 class MdxArchDispatchTests(unittest.TestCase):
     def test_scnet_factory(self) -> None:
@@ -100,7 +99,11 @@ class MdxArchDispatchTests(unittest.TestCase):
         config = self._scnet_config()
         model = build_mdx_c_model(
             config,
-            state_dict_keys=["pos_embed_f", "mask_layer.0.weight", "encoder.0.SDlayer.convs.0.weight"],
+            state_dict_keys=[
+                "pos_embed_f",
+                "mask_layer.0.weight",
+                "encoder.0.SDlayer.convs.0.weight",
+            ],
         )
         self.assertEqual(model.__class__.__name__, "SCNetMasked")
 
@@ -179,7 +182,7 @@ class MdxArchDispatchTests(unittest.TestCase):
     def test_bs_roformer_without_declared_bands_still_dispatches_as_bs_roformer(
         self,
     ) -> None:
-        """"BS Roformer SW" (shared-weight, multi-stem) yamls omit
+        """ "BS Roformer SW" (shared-weight, multi-stem) yamls omit
         freqs_per_bands entirely and rely on BSRoformer's own
         DEFAULT_FREQS_PER_BANDS. Missing the fallback here used to fall
         through every architecture check and land on TFC_TDF_net, which
@@ -390,12 +393,23 @@ class ConstructorDiagnosticTests(unittest.TestCase):
                 self.dim = dim
 
         bands = [2, 4]
-        config = SimpleNamespace(model={"freqs_per_bands": bands, "dim": 7, "use_value_residual": "private-config-value"})
-        with mock.patch("engines.mdx_c.BSRoformer", ExplicitRoformer), mock.patch("engines.mdx_c.log_event", create=True) as event:
+        config = SimpleNamespace(
+            model={"freqs_per_bands": bands, "dim": 7, "use_value_residual": "private-config-value"}
+        )
+        with (
+            mock.patch("engines.mdx_c.BSRoformer", ExplicitRoformer),
+            mock.patch("engines.mdx_c.log_event", create=True) as event,
+        ):
             model = build_mdx_c_model(config)
         self.assertIs(model.bands, bands)
         self.assertEqual(model.dim, 7)
-        event.assert_called_once_with("model", "model_config_keys_ignored", level="warning", architecture="ExplicitRoformer", dropped_keys=("use_value_residual",))
+        event.assert_called_once_with(
+            "model",
+            "model_config_keys_ignored",
+            level="warning",
+            architecture="ExplicitRoformer",
+            dropped_keys=("use_value_residual",),
+        )
         self.assertNotIn("private-config-value", repr(event.call_args))
 
     def test_no_drop_emits_no_event_and_constructor_errors_propagate(self) -> None:
@@ -425,4 +439,10 @@ class ConstructorDiagnosticTests(unittest.TestCase):
         with mock.patch("engines.mdx_c.log_event", create=True) as event:
             result = filter_init_kwargs(Explicit, {"accepted": 3, 1: 7, "unsupported": 4})
         self.assertEqual(result, {"accepted": 3})
-        event.assert_called_once_with("model", "model_config_keys_ignored", level="warning", architecture="Explicit", dropped_keys=("1", "unsupported"))
+        event.assert_called_once_with(
+            "model",
+            "model_config_keys_ignored",
+            level="warning",
+            architecture="Explicit",
+            dropped_keys=("1", "unsupported"),
+        )

@@ -43,8 +43,6 @@ BASS = StemRoleId("instrument.bass")
 NO_BASS = StemRoleId("instrument.bass_removed")
 
 
-
-
 def _role(
     role_id: StemRoleId,
     display: str,
@@ -602,7 +600,9 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
             logical_secondary_role=INSTRUMENTAL,
         )
 
-        with patch.object(catalogue_evidence, "resolve_catalogue_stem_semantics", return_value=stale):
+        with patch.object(
+            catalogue_evidence, "resolve_catalogue_stem_semantics", return_value=stale
+        ):
             result = self._audit([entry], registry)
 
         self.assertIn("reference-logical-secondary", _codes(result))
@@ -1253,7 +1253,13 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
                 ("strings", ("instrument.bowed_strings", "instrument.strings")),
                 (
                     "vocals",
-                    ("cinematic.speech", "effect.effects.removed", "vocal.backing", "vocal.lead", "vocal.vocals"),
+                    (
+                        "cinematic.speech",
+                        "effect.effects.removed",
+                        "vocal.backing",
+                        "vocal.lead",
+                        "vocal.vocals",
+                    ),
                 ),
             ],
         )
@@ -1282,7 +1288,14 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
                 ("spatial.side", ("side", "wide")),
                 (
                     "vocal.backing",
-                    ("back-instrum", "back-vocal", "backing_vocal", "instrumental", "other", "vocals"),
+                    (
+                        "back-instrum",
+                        "back-vocal",
+                        "backing_vocal",
+                        "instrumental",
+                        "other",
+                        "vocals",
+                    ),
                 ),
                 (
                     "vocal.lead",

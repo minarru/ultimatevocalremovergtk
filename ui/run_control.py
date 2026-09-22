@@ -124,8 +124,12 @@ class RunController:
 
     def can_edit_configuration(self) -> bool:
         """Whether a new model selection can still change the pending run."""
-        return not (self._closing or self.is_running() or self._preflight_in_progress
-                    or self._plan_dialog is not None)
+        return not (
+            self._closing
+            or self.is_running()
+            or self._preflight_in_progress
+            or self._plan_dialog is not None
+        )
 
     def handle_close_request(self, on_complete: Callable[[bool], None]) -> bool:
         """Handle the main window close gesture.
@@ -164,7 +168,12 @@ class RunController:
 
     def handle_start(self, target: RunTarget | None) -> None:
         """Validate readiness, then hand off to the active run target."""
-        if self._closing or self.is_running() or self._preflight_in_progress or self._plan_dialog is not None:
+        if (
+            self._closing
+            or self.is_running()
+            or self._preflight_in_progress
+            or self._plan_dialog is not None
+        ):
             return
         reason = target_blocked_reason(target)
         if reason is not None:
@@ -212,13 +221,14 @@ class RunController:
             on_oom_choice=oom_choice,
         )
 
-    def _start_target(self, target: RunTarget, plan: typing.Any=None) -> None:
+    def _start_target(self, target: RunTarget, plan: typing.Any = None) -> None:
         from core.audio_plan import ResolvedAudioJob
         from core.job_plan import ResolvedJob
 
         operation_id = self._ensure_operation()
         if plan is not None:
             import copy
+
             plan_settings = copy.deepcopy(plan.settings)
             self._host.bind_run_settings(plan_settings)
             self._apply_page_runner_settings(target, plan_settings)
@@ -299,23 +309,27 @@ class RunController:
                             spec, ValidationLevel.RUNTIME
                         )
                     else:
-                        plan = JobResolver(self._host.repo).resolve(
-                            spec, ValidationLevel.RUNTIME
-                        )
+                        plan = JobResolver(self._host.repo).resolve(spec, ValidationLevel.RUNTIME)
                     error: BaseException | None = None
                 except Exception as exc:  # marshalled to GTK
                     plan, error = None, exc
             idle_on_main(
-                self._deliver_operation, operation_id,
-                self._finish_preflight, target, fingerprint, plan, error
+                self._deliver_operation,
+                operation_id,
+                self._finish_preflight,
+                target,
+                fingerprint,
+                plan,
+                error,
             )
 
-        threading.Thread(
-            target=worker, name="uvr-job-preflight", daemon=True
-        ).start()
+        threading.Thread(target=worker, name="uvr-job-preflight", daemon=True).start()
 
     def _finish_preflight(
-        self, target: RunTarget, fingerprint: str, plan: typing.Any,
+        self,
+        target: RunTarget,
+        fingerprint: str,
+        plan: typing.Any,
         error: BaseException | None,
     ) -> None:
         self._set_preflight_busy(False)
@@ -372,9 +386,7 @@ class RunController:
         self.refresh_start_readiness()
         dialog.present(self._host.dialog_parent)
 
-    def _accept_plan(
-        self, target: RunTarget, fingerprint: str, plan: typing.Any
-    ) -> None:
+    def _accept_plan(self, target: RunTarget, fingerprint: str, plan: typing.Any) -> None:
         from core.job_plan import settings_fingerprint
 
         try:
@@ -394,9 +406,7 @@ class RunController:
             self._begin_preflight(target)
             return
         if not _resolved_job_matches_spec(plan, current):
-            self._host.toast(
-                "Input files or output folder changed; reviewing the updated plan"
-            )
+            self._host.toast("Input files or output folder changed; reviewing the updated plan")
             self._begin_preflight(target)
             return
         self._set_preflight_busy(True)
@@ -417,17 +427,25 @@ class RunController:
                 except Exception as exc:  # marshalled to GTK
                     is_current, error = False, exc
             idle_on_main(
-                self._deliver_operation, operation_id, self._finish_plan_recheck,
-                target, fingerprint, plan, is_current, error,
+                self._deliver_operation,
+                operation_id,
+                self._finish_plan_recheck,
+                target,
+                fingerprint,
+                plan,
+                is_current,
+                error,
             )
 
-        threading.Thread(
-            target=worker, name="uvr-plan-recheck", daemon=True
-        ).start()
+        threading.Thread(target=worker, name="uvr-plan-recheck", daemon=True).start()
 
     def _finish_plan_recheck(
-        self, target: RunTarget, fingerprint: str, plan: typing.Any,
-        is_current: bool, error: BaseException | None,
+        self,
+        target: RunTarget,
+        fingerprint: str,
+        plan: typing.Any,
+        is_current: bool,
+        error: BaseException | None,
     ) -> None:
         from core.job_plan import settings_fingerprint
 
@@ -444,9 +462,7 @@ class RunController:
             return
         try:
             current = target.build_job_spec()
-            settings_unchanged = (
-                settings_fingerprint(current.settings) == fingerprint
-            )
+            settings_unchanged = settings_fingerprint(current.settings) == fingerprint
         except Exception as exc:
             self._host.toast(f"Could not recheck processing plan: {exc}")
             self._finish_operation(
@@ -458,15 +474,11 @@ class RunController:
             )
             return
         if not is_current or not settings_unchanged:
-            self._host.toast(
-                "Processing settings or models changed; reviewing the updated plan"
-            )
+            self._host.toast("Processing settings or models changed; reviewing the updated plan")
             self._begin_preflight(target)
             return
         if not _resolved_job_matches_spec(plan, current):
-            self._host.toast(
-                "Input files or output folder changed; reviewing the updated plan"
-            )
+            self._host.toast("Input files or output folder changed; reviewing the updated plan")
             self._begin_preflight(target)
             return
         self._start_target(target, plan)
@@ -603,6 +615,7 @@ class RunController:
                 return
             if response == "stop":
                 captured = self._running_target or target
+
                 def stop_current() -> None:
                     if self._operation_is_current(operation_id):
                         self._confirm_stop(captured)
@@ -614,13 +627,16 @@ class RunController:
                 pending["run"] = None
             else:
                 if target is not None:
+
                     def resume() -> None:
                         self._deliver_operation(
                             operation_id, self._resume_after_dialog_cancel, target
                         )
                 else:
+
                     def resume() -> None:
                         self._deliver_operation(operation_id, self._resume_run_ui_after_dialog)
+
                 pending["run"] = resume
                 self._defer_dialog_action(resume, label="stop-cancel")
                 pending["run"] = None
@@ -683,13 +699,16 @@ class RunController:
                 self._close_deferred = False
                 self._on_close_complete = None
                 if target is not None:
+
                     def resume() -> None:
                         self._deliver_operation(
                             operation_id, self._resume_after_dialog_cancel, target
                         )
                 else:
+
                     def resume() -> None:
                         self._deliver_operation(operation_id, self._resume_run_ui_after_dialog)
+
                 pending["run"] = resume
                 self._defer_dialog_action(resume, label="shutdown-cancel")
                 pending["run"] = None
@@ -996,9 +1015,16 @@ class RunController:
         **_extra: typing.Any,
     ) -> None:
         presentation = self.progress.update(
-            fraction, time.monotonic(), suspended=self._run_ui_suspended,
-            local_step=local_step, pass_index=pass_index, pass_total=pass_total,
-            detail=detail, combine_index=combine_index, combine_total=combine_total, phase=phase,
+            fraction,
+            time.monotonic(),
+            suspended=self._run_ui_suspended,
+            local_step=local_step,
+            pass_index=pass_index,
+            pass_total=pass_total,
+            detail=detail,
+            combine_index=combine_index,
+            combine_total=combine_total,
+            phase=phase,
         )
         if presentation is None:
             return
@@ -1016,9 +1042,7 @@ class RunController:
         from .errorlog import log_error, present_error_dialog
 
         target = target or self._running_target or self._host.target
-        key = (
-            target.error_key if target is not None else self._host.fallback_error_key
-        )
+        key = target.error_key if target is not None else self._host.fallback_error_key
         formatted = log_error(key, exc)
         label = self._run_label_for(target) if target is not None else "Process"
         present_error_dialog(
@@ -1140,8 +1164,10 @@ class RunController:
             f"park_weights={park_weights}",
         )
         self._host.release_inference_memory(
-            wait_for_stop=wait_for_stop, force_if_alive=force_if_alive,
-            clear_weight_cache=clear_weight_cache, park_weights=park_weights,
+            wait_for_stop=wait_for_stop,
+            force_if_alive=force_if_alive,
+            clear_weight_cache=clear_weight_cache,
+            park_weights=park_weights,
         )
 
 
@@ -1154,9 +1180,7 @@ def _resolved_job_matches_spec(plan: typing.Any, spec: typing.Any) -> bool:
     if getattr(spec, "command", None) != plan.command:
         return False
     planned_paths = tuple(os.path.normpath(item.path) for item in plan.inputs)
-    spec_paths = tuple(
-        os.path.normpath(path) for path in getattr(spec, "inputs", ())
-    )
+    spec_paths = tuple(os.path.normpath(path) for path in getattr(spec, "inputs", ()))
     if planned_paths != spec_paths:
         return False
     return os.path.normpath(plan.output or "") == os.path.normpath(

@@ -89,6 +89,7 @@ class FlushSettingsTabGuardTests(unittest.TestCase):
         window.vocal_split_row = VocalSplitRow(None, lambda _event: None)
         window._install_shared_session()
         from ui.shared_settings import SharedSettingsSession
+
         assert isinstance(window._shared_session, SharedSettingsSession)
         window._shared_session.refresh(lambda: None)
         return window
@@ -153,7 +154,6 @@ class FlushSettingsTabGuardTests(unittest.TestCase):
         self.assertTrue(window.settings.get("is_set_vocal_splitter"))
 
 
-
 @unittest.skipUnless(
     os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"),
     "GTK widget construction needs a display",
@@ -162,8 +162,10 @@ class ConnectedSharedSettingsTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         from tests.private_gtk import require_private_gtk
+
         require_private_gtk()
         from gi.repository import Adw
+
         cls.app = Adw.Application(application_id="org.uvr.test.shared-sessions")
         cls.app.register()
 
@@ -173,6 +175,7 @@ class ConnectedSharedSettingsTests(unittest.TestCase):
 
         from core.settings import Settings
         from ui.window import MainWindow
+
         self.settings = Settings.defaults()
         self.settings.process.save_format = self.SaveFormat.WAV
         self.tmp = tempfile.TemporaryDirectory()
@@ -184,7 +187,9 @@ class ConnectedSharedSettingsTests(unittest.TestCase):
         # Keep the real close/save path, but direct persistence to a test file.
         save = self.settings.save
         self.saved_path = os.path.join(self.tmp.name, "settings.json")
-        self.save_patch = patch.object(self.settings, "save", side_effect=lambda: save(self.saved_path))
+        self.save_patch = patch.object(
+            self.settings, "save", side_effect=lambda: save(self.saved_path)
+        )
         self.save_patch.start()
         self.addCleanup(self.save_patch.stop)
 
@@ -194,6 +199,7 @@ class ConnectedSharedSettingsTests(unittest.TestCase):
         from core.settings import Settings
         from core.types.settings_enums import WavType
         from ui.widgets.format_row import quality_spec
+
         window = self.window
         window.content_stack.set_visible_child_name("ensemble")
         page = window._ensemble_page
@@ -228,6 +234,7 @@ class ConnectedSharedSettingsTests(unittest.TestCase):
         from core.settings import Settings
         from core.types.settings_enums import OpusBitrate
         from ui.widgets.format_row import quality_spec
+
         window = self.window
         window.content_stack.set_visible_child_name("audio_tools")
         page = window._audio_tools_page
@@ -249,6 +256,7 @@ class ConnectedSharedSettingsTests(unittest.TestCase):
 
     def test_refresh_and_inactive_connected_callbacks_cannot_persist(self):
         from unittest.mock import patch
+
         window = self.window
         window.content_stack.set_visible_child_name("ensemble")
         page = window._ensemble_page
@@ -278,6 +286,7 @@ class ConnectedSharedSettingsTests(unittest.TestCase):
 
     def test_verify_inputs_retains_global_authority_on_another_tab(self):
         from pathlib import Path
+
         window = self.window
         path = str(Path(self.tmp.name) / "input.wav")
         Path(path).touch()
@@ -294,6 +303,7 @@ class ConnectedSharedSettingsTests(unittest.TestCase):
 
     def test_audio_spec_and_start_flush_pending_shared_edits(self):
         from unittest.mock import Mock, patch
+
         window = self.window
         window.content_stack.set_visible_child_name("audio_tools")
         page = window._audio_tools_page
@@ -307,11 +317,14 @@ class ConnectedSharedSettingsTests(unittest.TestCase):
         page.output_row.set_path(second, notify=False)
         observed = []
         page._runner = Mock()
-        page._runner.start.side_effect = lambda *_args, **_kw: observed.append(self.settings.process.export_path)
+        page._runner.start.side_effect = lambda *_args, **_kw: observed.append(
+            self.settings.process.export_path
+        )
         with patch.object(window, "begin_run"):
             page.start(Mock())
         self.assertEqual(observed, [second])
         self.assertEqual(self.settings.process.export_path, second)
+
 
 if __name__ == "__main__":
     unittest.main()

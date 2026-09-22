@@ -1,4 +1,5 @@
 """Tests for Politrees catalogue merge and download resolution."""
+
 import typing
 import unittest
 from unittest.mock import patch

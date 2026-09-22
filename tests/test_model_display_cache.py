@@ -60,17 +60,13 @@ class MergedForDisplayCacheTests(unittest.TestCase):
         first = md._merged_for_display()
         clear_politrees_cache()
         second = md._merged_for_display()
-        self.assertIsNot(
-            first, second, "politrees feeds _display_base; its cache must invalidate"
-        )
+        self.assertIsNot(first, second, "politrees feeds _display_base; its cache must invalidate")
 
     def test_clear_mvsepless_cache_invalidates_display_cache(self) -> None:
         first = md._merged_for_display()
         clear_mvsepless_cache()
         second = md._merged_for_display()
-        self.assertIsNot(
-            first, second, "mvsepless feeds the merge; its clear must invalidate"
-        )
+        self.assertIsNot(first, second, "mvsepless feeds the merge; its clear must invalidate")
 
     def test_clear_extra_catalog_cache_invalidates_display_cache(self) -> None:
         from core.extra_catalog import clear_extra_catalog_cache
@@ -78,9 +74,7 @@ class MergedForDisplayCacheTests(unittest.TestCase):
         first = md._merged_for_display()
         clear_extra_catalog_cache()
         second = md._merged_for_display()
-        self.assertIsNot(
-            first, second, "extras feed the merge; their clear must invalidate"
-        )
+        self.assertIsNot(first, second, "extras feed the merge; their clear must invalidate")
 
     def test_mid_flight_clear_cannot_repin_stale_merge(self) -> None:
         """A clear during an in-flight miss must not become the live entry.
@@ -255,9 +249,7 @@ class CatalogueRefreshInvalidatesDisplayCacheTests(unittest.TestCase):
         import core.politrees_catalog as pc
 
         payload = {
-            "vr_download_list": {
-                "Politrees Same": {"same.pth": "https://example.com/same.pth"}
-            }
+            "vr_download_list": {"Politrees Same": {"same.pth": "https://example.com/same.pth"}}
         }
 
         def _fetch(_url: str):

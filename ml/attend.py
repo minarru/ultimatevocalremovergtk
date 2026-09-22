@@ -8,23 +8,24 @@ from packaging import version
 
 # helpers
 
+
 def exists(val: object) -> bool:
     return val is not None
 
+
 # main class
 
+
 class Attend(nn.Module):
-    def __init__(
-        self,
-        dropout: float = 0.,
-        flash: bool = False
-    ) -> None:
+    def __init__(self, dropout: float = 0.0, flash: bool = False) -> None:
         super().__init__()
         self.dropout = dropout
         self.attn_dropout = nn.Dropout(dropout)
 
         self.flash = flash
-        assert not (flash and version.parse(torch.__version__) < version.parse('2.0.0')), 'in order to use flash attention, you must be using pytorch 2.0 or above'
+        assert not (flash and version.parse(torch.__version__) < version.parse('2.0.0')), (
+            'in order to use flash attention, you must be using pytorch 2.0 or above'
+        )
 
     def flash_attn(self, q: Tensor, k: Tensor, v: Tensor) -> Tensor:
         # Let PyTorch pick the SDPA backend.
@@ -38,8 +39,7 @@ class Attend(nn.Module):
         # shapes in fp16 and fp32, the unpinned heuristic matched or beat every
         # pinned combination — up to 1.26x on long fp16 chunks.
         return F.scaled_dot_product_attention(
-            q, k, v,
-            dropout_p = self.dropout if self.training else 0.
+            q, k, v, dropout_p=self.dropout if self.training else 0.0
         )
 
     def forward(self, q: Tensor, k: Tensor, v: Tensor) -> Tensor:

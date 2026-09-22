@@ -22,6 +22,7 @@ class BaseEndToEndModule(nn.Module):
 class BaseBandit(BaseEndToEndModule):
     stems: List[str]
     _spectral: SpectralComponent
+
     def __init__(
         self,
         in_channels: int,
@@ -125,9 +126,7 @@ class BaseBandit(BaseEndToEndModule):
     ) -> Any:
         assert band_type == "musical"
 
-        self.band_specs = MusicalBandsplitSpecification(
-            nfft=n_fft, fs=fs, n_bands=n_bands
-        )
+        self.band_specs = MusicalBandsplitSpecification(nfft=n_fft, fs=fs, n_bands=n_bands)
 
         self.band_split = BandSplitModule(
             in_channels=in_channels,
@@ -160,26 +159,22 @@ class BaseBandit(BaseEndToEndModule):
             )
         except Exception:
             self.tf_model = SeqBandModellingModule(
-                    n_modules=n_sqm_modules,
-                    emb_dim=emb_dim,
-                    rnn_dim=rnn_dim,
-                    bidirectional=bidirectional,
-                    rnn_type=rnn_type,
-                )
+                n_modules=n_sqm_modules,
+                emb_dim=emb_dim,
+                rnn_dim=rnn_dim,
+                bidirectional=bidirectional,
+                rnn_type=rnn_type,
+            )
 
     def mask(self, x: Any, m: Any) -> Any:
         return x * m
 
-    def forward(self, batch: Any, mode: Any="train") -> Any:
+    def forward(self, batch: Any, mode: Any = "train") -> Any:
         # Model takes mono as input we give stereo, so we do process of each channel independently
         init_shape = batch.shape
         if not isinstance(batch, dict):
             mono = batch.view(-1, 1, batch.shape[-1])
-            batch = {
-                "mixture": {
-                    "audio": mono
-                }
-            }
+            batch = {"mixture": {"audio": mono}}
 
         mixture = batch["mixture"]["audio"]
         with mps_compatible_module_device(self, mixture) as orig_device:
@@ -259,10 +254,10 @@ class Bandit(BaseBandit):
         pad_mode: str = "constant",
         onesided: bool = True,
         fs: int = 44100,
-        stft_precisions: Any="32",
-        bandsplit_precisions: Any="bf16",
-        tf_model_precisions: Any="bf16",
-        mask_estim_precisions: Any="bf16",
+        stft_precisions: Any = "32",
+        bandsplit_precisions: Any = "bf16",
+        tf_model_precisions: Any = "bf16",
+        mask_estim_precisions: Any = "bf16",
     ) -> None:
         super().__init__(
             in_channels=in_channels,
@@ -355,4 +350,3 @@ class Bandit(BaseBandit):
             }
 
         return batch
-

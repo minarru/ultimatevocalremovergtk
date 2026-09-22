@@ -973,13 +973,16 @@ class StemSubtitleDebounceTests(unittest.TestCase):
         win.window = mock.MagicMock()
         win.window.get_visible.return_value = True
         from ui.catalogue_browser import CatalogueBrowserState
+
         win.browser = CatalogueBrowserState()
         from ui.lifetime import UiLifetime
+
         win._lifetime = UiLifetime()
         win._listening = False
         win._sort_mode = "name"
         win._arch_filter = "all"
-        win.manager = SimpleNamespace(latest_snapshot=None,
+        win.manager = SimpleNamespace(
+            latest_snapshot=None,
             catalogue_meta={shared: vr},
             catalogue_meta_by_family={"mdx": {shared: mdx}, "vr": {shared: vr}},
         )
@@ -1201,8 +1204,10 @@ class StemSubtitleDebounceTests(unittest.TestCase):
         win.window = mock.MagicMock()
         win.window.get_visible.return_value = True
         from ui.catalogue_browser import CatalogueBrowserState
+
         win.browser = CatalogueBrowserState()
         from ui.lifetime import UiLifetime
+
         win._lifetime = UiLifetime()
         win._listening = False
         win._sort_mode = "name"
@@ -1239,7 +1244,10 @@ class StemSubtitleDebounceTests(unittest.TestCase):
         action = mock.MagicMock(spec=["get_subtitle", "set_tooltip_text"])
         win._row_actions[(MDX_ARCH_TYPE, "M")] = action
         from ui.catalogue_browser import BrowserRow
-        win.browser.rows[(MDX_ARCH_TYPE, "M")] = BrowserRow((MDX_ARCH_TYPE, "M"), "M", MDX_ARCH_TYPE)
+
+        win.browser.rows[(MDX_ARCH_TYPE, "M")] = BrowserRow(
+            (MDX_ARCH_TYPE, "M"), "M", MDX_ARCH_TYPE
+        )
         win.manager.apply_catalogue_stem_cache.return_value = {"M"}
         win.manager.catalogue_meta = {
             "M": EntryMeta(
@@ -1272,7 +1280,10 @@ class StemSubtitleDebounceTests(unittest.TestCase):
         stash(action, "_uvr_unsupported", False)
         win._row_actions[(MDX_ARCH_TYPE, "M")] = action
         from ui.catalogue_browser import BrowserRow
-        win.browser.rows[(MDX_ARCH_TYPE, "M")] = BrowserRow((MDX_ARCH_TYPE, "M"), "M", MDX_ARCH_TYPE)
+
+        win.browser.rows[(MDX_ARCH_TYPE, "M")] = BrowserRow(
+            (MDX_ARCH_TYPE, "M"), "M", MDX_ARCH_TYPE
+        )
         win.manager.apply_catalogue_stem_cache.return_value = {"M"}
         win.manager.catalogue_meta = {
             "M": EntryMeta(
@@ -1334,7 +1345,8 @@ class DownloadCenterGtkEvidenceTransitionTests(unittest.TestCase):
             files={"model.ckpt": "https://example.test/model.ckpt", "model.yaml": _YAML_URL},
             catalogue_evidence_status=CatalogueEvidenceState.PENDING,
         )
-        manager = SimpleNamespace(latest_snapshot=None,
+        manager = SimpleNamespace(
+            latest_snapshot=None,
             catalogue_meta={meta.label: meta},
             catalogue_meta_by_family={"mdx": {meta.label: meta}},
             mdx_download_list={meta.label: meta.files},
@@ -1344,8 +1356,10 @@ class DownloadCenterGtkEvidenceTransitionTests(unittest.TestCase):
         win.window = mock.MagicMock()
         win.window.get_visible.return_value = True
         from ui.catalogue_browser import CatalogueBrowserState
+
         win.browser = CatalogueBrowserState()
         from ui.lifetime import UiLifetime
+
         win._lifetime = UiLifetime()
         win._listening = False
         win._sort_mode = "name"
@@ -1446,8 +1460,10 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
         win.window = mock.MagicMock()
         win.window.get_visible.return_value = True
         from ui.catalogue_browser import CatalogueBrowserState
+
         win.browser = CatalogueBrowserState()
         from ui.lifetime import UiLifetime
+
         win._lifetime = UiLifetime()
         win._listening = False
         win._sort_mode = "name"
@@ -1472,8 +1488,10 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
         win.window = mock.MagicMock()
         win.window.get_visible.return_value = True
         from ui.catalogue_browser import CatalogueBrowserState
+
         win.browser = CatalogueBrowserState()
         from ui.lifetime import UiLifetime
+
         win._lifetime = UiLifetime()
         win._listening = False
         win._sort_mode = "name"
@@ -1512,8 +1530,10 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
         win.window = mock.MagicMock()
         win.window.get_visible.return_value = True
         from ui.catalogue_browser import CatalogueBrowserState
+
         win.browser = CatalogueBrowserState()
         from ui.lifetime import UiLifetime
+
         win._lifetime = UiLifetime()
         win._listening = False
         win._sort_mode = "name"
@@ -1548,8 +1568,10 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
         win.window = mock.MagicMock()
         win.window.get_visible.return_value = True
         from ui.catalogue_browser import CatalogueBrowserState
+
         win.browser = CatalogueBrowserState()
         from ui.lifetime import UiLifetime
+
         win._lifetime = UiLifetime()
         win._listening = False
         win._sort_mode = "name"
@@ -1574,8 +1596,10 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
         win.window = mock.MagicMock()
         win.window.get_visible.return_value = True
         from ui.catalogue_browser import CatalogueBrowserState
+
         win.browser = CatalogueBrowserState()
         from ui.lifetime import UiLifetime
+
         win._lifetime = UiLifetime()
         win._listening = False
         win._sort_mode = "name"
@@ -1616,8 +1640,10 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
         win.window = mock.MagicMock()
         win.window.get_visible.return_value = True
         from ui.catalogue_browser import CatalogueBrowserState
+
         win.browser = CatalogueBrowserState()
         from ui.lifetime import UiLifetime
+
         win._lifetime = UiLifetime()
         win._listening = False
         win._sort_mode = "name"
@@ -1672,13 +1698,16 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
         win.window = mock.MagicMock()
         win.window.get_visible.return_value = True
         from ui.catalogue_browser import CatalogueBrowserState
+
         win.browser = CatalogueBrowserState()
         from ui.lifetime import UiLifetime
+
         win._lifetime = UiLifetime()
         win._listening = False
         win._sort_mode = "name"
         win._arch_filter = "all"
-        win.manager = SimpleNamespace(latest_snapshot=None,
+        win.manager = SimpleNamespace(
+            latest_snapshot=None,
             catalogue_meta={shared: vr},
             catalogue_meta_by_family={"mdx": {shared: mdx}, "vr": {shared: vr}},
         )
@@ -1712,8 +1741,10 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
         win.window = mock.MagicMock()
         win.window.get_visible.return_value = True
         from ui.catalogue_browser import CatalogueBrowserState
+
         win.browser = CatalogueBrowserState()
         from ui.lifetime import UiLifetime
+
         win._lifetime = UiLifetime()
         win._listening = False
         win._sort_mode = "name"
@@ -1752,7 +1783,10 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
                 csc.clear_catalogue_stem_cache()
                 try:
                     _write_legacy_success_cache(cache_path, _YAML_URL)
-                    with mock.patch.object(csc, "enqueue_missing") as enqueue, mock.patch.object(csc, "ensure_worker_started"):
+                    with (
+                        mock.patch.object(csc, "enqueue_missing") as enqueue,
+                        mock.patch.object(csc, "ensure_worker_started"),
+                    ):
                         manager.queue_catalogue_evidence((("mdx", meta.label),), priority=True)
                         pending = list(enqueue.call_args.args[0])
                 finally:
@@ -1840,8 +1874,10 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
         win.window = mock.MagicMock()
         win.window.get_visible.return_value = True
         from ui.catalogue_browser import CatalogueBrowserState
+
         win.browser = CatalogueBrowserState()
         from ui.lifetime import UiLifetime
+
         win._lifetime = UiLifetime()
         win._listening = False
         win._sort_mode = "name"

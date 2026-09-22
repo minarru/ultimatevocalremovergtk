@@ -24,8 +24,11 @@ class RebaseOutputNamingTests(unittest.TestCase):
 
     def test_root_export_stays_at_stage_root(self) -> None:
         naming = OutputNamingContext(
-            input_path="/in/song.wav", track="song", track_base="song",
-            export_directory="/out", extension="wav",
+            input_path="/in/song.wav",
+            track="song",
+            track_base="song",
+            export_directory="/out",
+            extension="wav",
         )
         rebased = rebase_output_naming(naming, "/stage/1", "/out")
         self.assertEqual(rebased.export_directory, "/stage/1")

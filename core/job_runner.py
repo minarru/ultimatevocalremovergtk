@@ -470,9 +470,7 @@ class JobRunner:
                     error=f"Missing required output after processing: {missing_required!r}",
                     elapsed_s=time.perf_counter() - started,
                 )
-            box["outputs"] = tuple(
-                path for _output, path in output_paths if os.path.isfile(path)
-            )
+            box["outputs"] = tuple(path for _output, path in output_paths if os.path.isfile(path))
 
         return InputOutcome(
             path=planned.path,

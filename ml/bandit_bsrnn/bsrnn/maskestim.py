@@ -33,9 +33,7 @@ class BaseNormMLP(nn.Module):
         self.hidden = torch.jit.script(
             nn.Sequential(
                 nn.Linear(in_features=emb_dim, out_features=mlp_dim),
-                activation.__dict__[hidden_activation](
-                    **self.hidden_activation_kwargs
-                ),
+                activation.__dict__[hidden_activation](**self.hidden_activation_kwargs),
             )
         )
 

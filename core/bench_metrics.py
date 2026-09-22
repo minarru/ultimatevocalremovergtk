@@ -59,8 +59,7 @@ def list_stem_basenames(directory: str) -> set[str]:
     return {
         name
         for name in os.listdir(directory)
-        if os.path.isfile(os.path.join(directory, name))
-        and name.lower().endswith(AUDIO_EXTENSIONS)
+        if os.path.isfile(os.path.join(directory, name)) and name.lower().endswith(AUDIO_EXTENSIONS)
     }
 
 

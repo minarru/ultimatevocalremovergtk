@@ -50,7 +50,9 @@ def prepare_input_paths(
             prepared.append(clip_path)
             continue
 
-        debug("model", f"sample clip generating file={os.path.basename(path)!r} duration={duration}s")
+        debug(
+            "model", f"sample clip generating file={os.path.basename(path)!r} duration={duration}s"
+        )
         try:
             import librosa
             import soundfile as sf

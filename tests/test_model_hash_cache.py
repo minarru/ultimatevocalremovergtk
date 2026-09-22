@@ -163,9 +163,7 @@ class ModelHashWireTests(unittest.TestCase):
         cfg.model_hash = None
         cfg.is_dry_check = True
 
-        with mock.patch(
-            "core.model_config.config.compute_checkpoint_hash", return_value="abc123"
-        ):
+        with mock.patch("core.model_config.config.compute_checkpoint_hash", return_value="abc123"):
             cfg.get_model_hash()
 
         self.assertEqual(repo.model_hash_table[path], "abc123")
@@ -209,9 +207,7 @@ class ModelHashWireTests(unittest.TestCase):
         cfg.model_hash = None
         cfg.is_dry_check = True
 
-        with mock.patch(
-            "core.model_config.config.compute_checkpoint_hash", return_value="NEWHASH"
-        ):
+        with mock.patch("core.model_config.config.compute_checkpoint_hash", return_value="NEWHASH"):
             cfg.get_model_hash()
 
         self.assertEqual(cfg.model_hash, "NEWHASH")
@@ -322,9 +318,7 @@ class ModelHashPersistTests(unittest.TestCase):
             i = 0
             while not stop.is_set():
                 try:
-                    mhc.remember(
-                        settings.process.model_hash_table, f"{checkpoint}.{i}", "h"
-                    )
+                    mhc.remember(settings.process.model_hash_table, f"{checkpoint}.{i}", "h")
                 except BaseException as exc:  # pragma: no cover - failure path
                     errors.append(exc)
                     return

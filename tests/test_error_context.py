@@ -87,7 +87,9 @@ class ErrorContextTests(unittest.TestCase):
         set_run_error_context(
             process="MDX-Net",
             models=["Test Model"],
-            non_default_settings=[f"mdx_segment_size={DEFAULT_DATA['mdx_segment_size']!r} (default)"],
+            non_default_settings=[
+                f"mdx_segment_size={DEFAULT_DATA['mdx_segment_size']!r} (default)"
+            ],
         )
         formatted = log_error("MDX-Net", RuntimeError("boom"))
         self.assertIn("Run Context:", formatted)
@@ -96,7 +98,9 @@ class ErrorContextTests(unittest.TestCase):
     def test_build_separation_context_uses_display_model_name(self) -> None:
         settings = Settings.defaults()
         settings.set("chosen_process_method", MDX_ARCH_TYPE)
-        settings.set("mdx_net_model", "model_MelBand-Roformer_Karaoke_Fusion_Standard_by-Gonza.ckpt")
+        settings.set(
+            "mdx_net_model", "model_MelBand-Roformer_Karaoke_Fusion_Standard_by-Gonza.ckpt"
+        )
         ctx = build_separation_context(settings, ModelRepository(), ["song.wav"], MDX_ARCH_TYPE)
         self.assertEqual(ctx["process"], MDX_ARCH_TYPE)
         self.assertEqual(ctx["input_files"], ["song.wav"])
@@ -111,9 +115,7 @@ class ErrorContextTests(unittest.TestCase):
         settings.set("chosen_process_method", MDX_ARCH_TYPE)
         settings.set("mdx_net_model", "mdx:UVR-MDX-NET-Inst_HQ_3")
 
-        ctx = build_separation_context(
-            settings, ModelRepository(), ["song.wav"], MDX_ARCH_TYPE
-        )
+        ctx = build_separation_context(settings, ModelRepository(), ["song.wav"], MDX_ARCH_TYPE)
 
         self.assertEqual(ctx["models"], ["Inst HQ 3"])
 

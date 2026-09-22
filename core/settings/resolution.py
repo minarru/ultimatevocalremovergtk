@@ -56,4 +56,3 @@ def resolve_settings_layers(
         provenance[path] = "environment"
     validate_processing_settings(base)
     return base, provenance
-

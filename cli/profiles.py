@@ -14,28 +14,38 @@ from core.settings.access import set_path, validate_setting_path, validate_setti
 
 PROFILE_SCHEMA_VERSION = 1
 PROFILE_DIR = os.path.join(SETTINGS_CACHE_DIR, "cli")
-IDENTITY_SETTING_PATHS = frozenset({
-    "process.method",
-    "process.export_path",
-    "process.input_paths",
-    "process.model_hash_table",
-    "vr.model",
-    "mdx.model",
-    "demucs.model",
-    "ensemble.chosen_ensemble",
-    "ensemble.selected_models",
-})
-MODEL_REFERENCE_SETTING_PATHS = frozenset({
-    "audio_tools.apollo_model",
-    "process.vocal_splitter",
-    "vr.voc_inst_secondary_model", "vr.other_secondary_model",
-    "vr.bass_secondary_model", "vr.drums_secondary_model",
-    "mdx.voc_inst_secondary_model", "mdx.other_secondary_model",
-    "mdx.bass_secondary_model", "mdx.drums_secondary_model",
-    "demucs.voc_inst_secondary_model", "demucs.other_secondary_model",
-    "demucs.bass_secondary_model", "demucs.drums_secondary_model",
-    "demucs.pre_proc_model",
-})
+IDENTITY_SETTING_PATHS = frozenset(
+    {
+        "process.method",
+        "process.export_path",
+        "process.input_paths",
+        "process.model_hash_table",
+        "vr.model",
+        "mdx.model",
+        "demucs.model",
+        "ensemble.chosen_ensemble",
+        "ensemble.selected_models",
+    }
+)
+MODEL_REFERENCE_SETTING_PATHS = frozenset(
+    {
+        "audio_tools.apollo_model",
+        "process.vocal_splitter",
+        "vr.voc_inst_secondary_model",
+        "vr.other_secondary_model",
+        "vr.bass_secondary_model",
+        "vr.drums_secondary_model",
+        "mdx.voc_inst_secondary_model",
+        "mdx.other_secondary_model",
+        "mdx.bass_secondary_model",
+        "mdx.drums_secondary_model",
+        "demucs.voc_inst_secondary_model",
+        "demucs.other_secondary_model",
+        "demucs.bass_secondary_model",
+        "demucs.drums_secondary_model",
+        "demucs.pre_proc_model",
+    }
+)
 
 
 @dataclass
@@ -47,9 +57,7 @@ class LoadedProfile:
     ensemble: Optional[str] = None
     members: list[str] = field(default_factory=list)
     settings: dict[str, Any] = field(default_factory=dict)
-    validation_warnings: list[str] = field(
-        default_factory=list, repr=False, compare=False
-    )
+    validation_warnings: list[str] = field(default_factory=list, repr=False, compare=False)
 
     @property
     def inherited_identity(self) -> bool:
@@ -70,11 +78,7 @@ class LoadedProfile:
 
 def profile_path(name: str) -> str:
     clean = str(name).strip()
-    if (
-        not clean
-        or clean in {".", "..", "defaults", "gui"}
-        or os.path.basename(clean) != clean
-    ):
+    if not clean or clean in {".", "..", "defaults", "gui"} or os.path.basename(clean) != clean:
         raise ValueError(f"invalid profile name {name!r}")
     return safe_json_path(PROFILE_DIR, clean)
 
@@ -82,9 +86,7 @@ def profile_path(name: str) -> str:
 def _model_syntax_warning(path: str, value: Any) -> str | None:
     from bundled.constants import CHOOSE_MODEL, NO_MODEL
 
-    if value is None or (
-        isinstance(value, str) and value in {"", CHOOSE_MODEL, NO_MODEL}
-    ):
+    if value is None or (isinstance(value, str) and value in {"", CHOOSE_MODEL, NO_MODEL}):
         return None
     if isinstance(value, str):
         try:
@@ -99,16 +101,11 @@ def _model_syntax_warning(path: str, value: Any) -> str | None:
     )
 
 
-def _profile_syntax_warnings(
-    model: Any, members: list[str], values: dict[str, Any]
-) -> list[str]:
+def _profile_syntax_warnings(model: Any, members: list[str], values: dict[str, Any]) -> list[str]:
     references = [("model", model)]
+    references.extend((f"members[{index}]", member) for index, member in enumerate(members))
     references.extend(
-        (f"members[{index}]", member) for index, member in enumerate(members)
-    )
-    references.extend(
-        (path, values[path])
-        for path in sorted(MODEL_REFERENCE_SETTING_PATHS.intersection(values))
+        (path, values[path]) for path in sorted(MODEL_REFERENCE_SETTING_PATHS.intersection(values))
     )
     return [
         warning

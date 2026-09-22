@@ -221,7 +221,10 @@ class SeperateMDXC(SeperateAttributes):
             key = request.cache_key(self.device)
             self._weight_cache_key = key
             model = acquire_mdx_c_model(
-                request, self.device, weight_cache=get_weight_cache(), cache_key=key,
+                request,
+                self.device,
+                weight_cache=get_weight_cache(),
+                cache_key=key,
             )
             self._inference_model = model
             mix = torch.as_tensor(mix, dtype=torch.float32, device=self.device)
@@ -290,9 +293,7 @@ class SeperateMDXC(SeperateAttributes):
                             if smaller is None:
                                 raise
                             batch_size = smaller
-                            self.write_to_console(
-                                mdx_oom_reduce_batch_message(batch_size)
-                            )
+                            self.write_to_console(mdx_oom_reduce_batch_message(batch_size))
                             continue
                         if torch.is_tensor(x) and x.dtype != torch.float32:
                             x = x.float()
@@ -368,7 +369,10 @@ class SeperateMDXC(SeperateAttributes):
             key = request.cache_key(device)
             self._weight_cache_key = key
             model = acquire_mdx_c_model(
-                request, device, weight_cache=get_weight_cache(), cache_key=key,
+                request,
+                device,
+                weight_cache=get_weight_cache(),
+                cache_key=key,
             )
             self._inference_model = model
             mix = torch.as_tensor(mix, dtype=torch.float32, device=device)
@@ -461,9 +465,7 @@ class SeperateMDXC(SeperateAttributes):
                                         raise
                                     sub_batch = smaller
                                     batch_size = smaller
-                                    self.write_to_console(
-                                        mdx_oom_reduce_batch_message(batch_size)
-                                    )
+                                    self.write_to_console(mdx_oom_reduce_batch_message(batch_size))
                                     continue
                                 if torch.is_tensor(x) and x.dtype != torch.float32:
                                     x = x.float()

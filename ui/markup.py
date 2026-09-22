@@ -1,4 +1,5 @@
 """Set user-provided strings on ``Adw`` rows as plain text (not Pango markup)."""
+
 import typing
 
 

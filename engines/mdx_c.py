@@ -56,7 +56,9 @@ def filter_init_kwargs(model_cls: typing.Any, cfg: typing.Any) -> dict:
     analysis = analyze_constructor_kwargs(model_cls, cfg)
     if analysis.dropped:
         log_event(
-            "model", "model_config_keys_ignored", level="warning",
+            "model",
+            "model_config_keys_ignored",
+            level="warning",
             architecture=model_cls.__name__,
             dropped_keys=tuple(sorted(str(key) for key in analysis.dropped)),
         )
@@ -451,9 +453,7 @@ def derive_mdx_complement(
     match_frequency_pitch: typing.Any = None,
 ):
     raw_mix = match_frequency_pitch(mix) if match_frequency_pitch is not None else mix
-    return spec_utils.mix_complement(
-        raw_mix, native_source, invert_spec=bool(invert_spec)
-    )
+    return spec_utils.mix_complement(raw_mix, native_source, invert_spec=bool(invert_spec))
 
 
 def derive_mdx_multi_complement(

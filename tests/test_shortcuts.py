@@ -29,9 +29,7 @@ class ShortcutsConsistencyTests(unittest.TestCase):
         from ui.shortcuts import _SECTIONS
 
         self.assertIn("win.model_options", KEYBOARD_ACCELERATORS)
-        documented = {
-            action for _section, items in _SECTIONS for action, _title in items
-        }
+        documented = {action for _section, items in _SECTIONS for action, _title in items}
         self.assertIn("win.model_options", documented)
 
 

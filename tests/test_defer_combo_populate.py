@@ -50,9 +50,7 @@ class DeferComboPopulateTests(unittest.TestCase):
         def populate_now() -> None:
             ran["n"] += 1
 
-        view._populator = LazyPopulator(
-            is_expanded=lambda: True, populate=populate_now
-        )
+        view._populator = LazyPopulator(is_expanded=lambda: True, populate=populate_now)
         with mock.patch("ui.widgets.lazy_populate.idle_on_main") as idle:
             view._ensure_model_combos_populated()
         idle.assert_not_called()

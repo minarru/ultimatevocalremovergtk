@@ -138,7 +138,8 @@ class DownloadQueueUiBinding:
         # queued/downloading UI deliveries can be coalesced away.
         self.reported_terminal_attempts = {
             item.item_id: item.stop_event
-            for item in self.queue.items() if item.status in self.terminal_statuses
+            for item in self.queue.items()
+            if item.status in self.terminal_statuses
         }
         self._changed_callback = latest_main_thread(self.refresh)
         self._batch_callback = lambda: idle_on_main(self.after_batch)

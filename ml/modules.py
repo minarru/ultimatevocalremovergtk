@@ -17,7 +17,9 @@ class TFC(nn.Module):
         for _i in range(num_layers):
             self.H.append(
                 nn.Sequential(
-                    nn.Conv2d(in_channels=c, out_channels=c, kernel_size=k, stride=1, padding=k // 2),
+                    nn.Conv2d(
+                        in_channels=c, out_channels=c, kernel_size=k, stride=1, padding=k // 2
+                    ),
                     norm(c),
                     nn.ReLU(),
                 )
@@ -37,7 +39,9 @@ class DenseTFC(nn.Module):
         for _i in range(num_layers):
             self.conv.append(
                 nn.Sequential(
-                    nn.Conv2d(in_channels=c, out_channels=c, kernel_size=k, stride=1, padding=k // 2),
+                    nn.Conv2d(
+                        in_channels=c, out_channels=c, kernel_size=k, stride=1, padding=k // 2
+                    ),
                     norm(c),
                     nn.ReLU(),
                 )
@@ -71,11 +75,7 @@ class TFC_TDF(nn.Module):
         if self.use_tdf:
             assert bn is not None
             if bn == 0:
-                self.tdf = nn.Sequential(
-                    nn.Linear(f, f, bias=bias),
-                    norm(c),
-                    nn.ReLU()
-                )
+                self.tdf = nn.Sequential(nn.Linear(f, f, bias=bias), norm(c), nn.ReLU())
             else:
                 self.tdf = nn.Sequential(
                     nn.Linear(f, f // bn, bias=bias),
@@ -83,7 +83,7 @@ class TFC_TDF(nn.Module):
                     nn.ReLU(),
                     nn.Linear(f // bn, f, bias=bias),
                     norm(c),
-                    nn.ReLU()
+                    nn.ReLU(),
                 )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:

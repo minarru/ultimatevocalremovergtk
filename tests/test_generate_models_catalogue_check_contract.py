@@ -20,9 +20,8 @@ from core import paths as core_paths
 from core.catalogue_types import SourceId
 
 
-
-
 # isort: on
+
 
 class CheckContractTests(unittest.TestCase):
     """--check must be genuinely read-only and must not lie about coverage."""
@@ -173,7 +172,9 @@ class CheckContractTests(unittest.TestCase):
             stack.enter_context(
                 mock.patch.object(catalogue_locations, "COMMUNITY_CACHE_DIR", community_cache)
             )
-            stack.enter_context(mock.patch.object(catalogue_locations, "YAML_CACHE_DIR", yaml_cache))
+            stack.enter_context(
+                mock.patch.object(catalogue_locations, "YAML_CACHE_DIR", yaml_cache)
+            )
             stack.enter_context(mock.patch.object(paths, "DATA_DIR", legacy_data))
             stack.enter_context(mock.patch.object(paths, "BASE_PATH", legacy_base))
             stack.enter_context(mock.patch.object(paths, "MDX_C_CONFIG_PATH", model_store))
@@ -348,10 +349,10 @@ class CheckContractTests(unittest.TestCase):
             stack.enter_context(
                 mock.patch.object(catalogue_locations, "COMMUNITY_CACHE_DIR", community_cache)
             )
-            stack.enter_context(mock.patch.object(catalogue_locations, "YAML_CACHE_DIR", yaml_cache))
             stack.enter_context(
-                mock.patch.object(core_paths, "MDX_C_CONFIG_PATH", model_store)
+                mock.patch.object(catalogue_locations, "YAML_CACHE_DIR", yaml_cache)
             )
+            stack.enter_context(mock.patch.object(core_paths, "MDX_C_CONFIG_PATH", model_store))
             stack.enter_context(
                 mock.patch.object(core_paths, "CATALOGUE_STEM_CACHE_FILE", stem_cache)
             )
@@ -508,7 +509,9 @@ class CheckContractTests(unittest.TestCase):
             stack.enter_context(mock.patch.object(cli, "OUTPUT_PATH", out))
             stack.enter_context(
                 mock.patch.object(
-                    catalogue, "_build_catalogue_context", lambda **k: catalogue_types.CatalogueContext()
+                    catalogue,
+                    "_build_catalogue_context",
+                    lambda **k: catalogue_types.CatalogueContext(),
                 )
             )
             stack.enter_context(
@@ -568,7 +571,9 @@ class CheckContractTests(unittest.TestCase):
             )
             stack.enter_context(
                 mock.patch.object(
-                    catalogue, "_build_catalogue_context", lambda **k: catalogue_types.CatalogueContext()
+                    catalogue,
+                    "_build_catalogue_context",
+                    lambda **k: catalogue_types.CatalogueContext(),
                 )
             )
             stack.enter_context(

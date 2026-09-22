@@ -6,7 +6,6 @@ mvsepless, plus Apollo). This script audits stem metadata against catalogue
 naming intent so mislabeled vocal vs instrumental models can be spotted.
 """
 
-
 from __future__ import annotations
 
 import argparse
@@ -58,8 +57,6 @@ from core.model_manifest.loader import _duplicate_aware_mapping  # noqa: E402
 # Kept as the generator's patchable publication target while callers migrate
 # from the former stem-only manifest name.
 BUNDLED_MANIFEST_PATH = BUNDLED_MODEL_MANIFEST_PATH
-
-
 
 
 def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:

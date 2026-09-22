@@ -61,6 +61,7 @@ class ViewInputsTests(unittest.TestCase):
         )
         changed = Mock()
         view = ViewInputs(parent, context, changed, on_verification_changed=Mock())
+
         def cleanup() -> None:
             if view._lifetime.disposed:
                 return
@@ -151,7 +152,9 @@ class ViewInputsTests(unittest.TestCase):
                 time.sleep(0.001)
             self.assertTrue(predicate())
 
-        wait_for(lambda: view._search.get_height() > 0 and scroll.get_upper() > scroll.get_page_size())
+        wait_for(
+            lambda: view._search.get_height() > 0 and scroll.get_upper() > scroll.get_page_size()
+        )
         self.assertFalse(view._search.is_ancestor(view._input_scroll))
         self.assertFalse(view._summary.is_ancestor(view._input_scroll))
         body = view.dialog.get_child()
@@ -286,10 +289,12 @@ class ViewInputsTests(unittest.TestCase):
         wait_for(lambda: 0 < body.get_height() < 400)
         # The status page must fit after its internal clamp applies typography.
         wait_for(
-            lambda: view._empty_state.get_height()
-            >= view._empty_state.measure(
-                Gtk.Orientation.VERTICAL, view._empty_state.get_width()
-            )[1]
+            lambda: (
+                view._empty_state.get_height()
+                >= view._empty_state.measure(
+                    Gtk.Orientation.VERTICAL, view._empty_state.get_width()
+                )[1]
+            )
         )
         self.assertLess(body.get_height(), expanded_height)
         self.assertEqual(body.get_width(), 620)

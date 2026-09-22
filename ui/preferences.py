@@ -226,7 +226,9 @@ class PreferencesDialog(Adw.PreferencesDialog):
         self._process_switches: dict[str, Adw.SwitchRow] = {}
         self.set_title("Settings")
         self.set_search_enabled(True)
-        self.set_content_width(round(Adw.length_unit_to_px(Adw.LengthUnit.SP, 700, self.get_settings())))
+        self.set_content_width(
+            round(Adw.length_unit_to_px(Adw.LengthUnit.SP, 700, self.get_settings()))
+        )
 
         builder = load_builder("preferences")
         for page in (
@@ -275,9 +277,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
         self.auto_expand_log_row = configure_switch_row(
             object_from_builder(builder, "auto_expand_log_row", Adw.SwitchRow)
         )
-        self.auto_expand_log_row.connect(
-            "notify::active", self._on_bool_changed, "auto_expand_log"
-        )
+        self.auto_expand_log_row.connect("notify::active", self._on_bool_changed, "auto_expand_log")
 
         self.profile_combo = configure_combo_row(
             object_from_builder(builder, "profile_combo", Adw.ComboRow),
@@ -290,7 +290,9 @@ class PreferencesDialog(Adw.PreferencesDialog):
         remove_button.connect("clicked", self._on_remove_profile)
 
         self.profile_name_row = object_from_builder(builder, "profile_name_row", Adw.EntryRow)
-        self.save_profile_dialog = object_from_builder(builder, "save_profile_dialog", Adw.AlertDialog)
+        self.save_profile_dialog = object_from_builder(
+            builder, "save_profile_dialog", Adw.AlertDialog
+        )
         self.profile_name_error = object_from_builder(builder, "profile_name_error", Gtk.Label)
         self.save_profile_dialog.add_response("cancel", "Cancel")
         self.save_profile_dialog.add_response("save", "Save")

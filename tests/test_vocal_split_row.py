@@ -48,6 +48,7 @@ class VocalSplitRowTests(unittest.TestCase):
     def _row(self):
         from core.model_identity import ModelArtifacts, ModelRecord
         from core.model_repository import ModelRepository
+
         repo = ModelRepository()
 
         # Mutable so a test can install a model mid-session, the way a download
@@ -107,16 +108,22 @@ class VocalSplitRowTests(unittest.TestCase):
         from ui.widgets.vocal_split_row import VocalSplitRow
 
         session: SharedSettingsSession | None = None
+
         def on_changed(event: VocalSplitEdit):
             if session is not None:
                 session.vocal_changed(event)
             changed()
+
         row = VocalSplitRow(repo, on_changed)
         apply = row.apply_from_settings
+
         def load(settings: Settings):
             nonlocal session
-            session = SharedSettingsSession(settings, shared_settings_bindings(vocal_row=row), can_commit=lambda: True)
+            session = SharedSettingsSession(
+                settings, shared_settings_bindings(vocal_row=row), can_commit=lambda: True
+            )
             session.refresh(lambda: apply(settings))
+
         row.apply_from_settings = load
         return row
 
@@ -141,6 +148,7 @@ class VocalSplitRowTests(unittest.TestCase):
     def test_deverb_option_edit_commits_typed_value_only(self):
         from core.types.settings_enums import DeverbVocalOpt
         from ui.widgets.rows import set_combo_value
+
         settings = self._settings()
         row = self._row()
         row.apply_from_settings(settings)
@@ -151,6 +159,7 @@ class VocalSplitRowTests(unittest.TestCase):
 
     def test_two_live_rows_merge_vocal_edits_without_refresh(self):
         from ui.widgets.rows import combo_values
+
         settings = self._settings(set_vocal_splitter="vr:UVR-BVE-4B")
         row_a = self._row()
         row_b = self._bind_row(row_a._repo, lambda: None)
@@ -173,7 +182,9 @@ class VocalSplitRowTests(unittest.TestCase):
         row_b.deverb_switch.set_active(True)
         row_b.deverb_switch.set_active(False)
         row_a.save_inst_switch.set_active(True)
-        self.assertFalse(settings.process.deverb_vocals, "a later unrelated edit must not replay the old True")
+        self.assertFalse(
+            settings.process.deverb_vocals, "a later unrelated edit must not replay the old True"
+        )
 
     def test_unrelated_edit_preserves_newer_shared_vocal_choices(self):
         settings = self._settings(set_vocal_splitter="vr:missing-id")

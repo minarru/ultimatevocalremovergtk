@@ -32,23 +32,25 @@ if TYPE_CHECKING:
 cpu = torch.device('cpu')
 
 
-
-class SeperateVR(SeperateAttributes):        
-
+class SeperateVR(SeperateAttributes):
     def seperate(self) -> ExportPlan:
         self.model_run: Any
-        if self.primary_model_name == self.model_cache_key and isinstance(self.primary_sources, tuple):
+        if self.primary_model_name == self.model_cache_key and isinstance(
+            self.primary_sources, tuple
+        ):
             y_spec, v_spec = self.primary_sources
             self.load_cached_sources()
         else:
-            with trace_phase("separate", "seperate", engine="SeperateVR", model=self.model_display_label):
+            with trace_phase(
+                "separate", "seperate", engine="SeperateVR", model=self.model_display_label
+            ):
                 self.start_inference_console_write()
                 self.write_to_console(LOADING_MODEL)
 
                 device = self.device
 
                 model_size = math.ceil(os.stat(self.model_path).st_size / 1024)
-                nn_arch_size = min(VR_ARCH_SIZES, key=lambda x:abs(x-model_size))
+                nn_arch_size = min(VR_ARCH_SIZES, key=lambda x: abs(x - model_size))
 
                 from engines.model_weight_cache import (
                     get_weight_cache,
@@ -71,35 +73,52 @@ class SeperateVR(SeperateAttributes):
                     if nn_arch_size in VR_5_1_ARCH_SIZES or self.is_vr_51_model:
                         self.is_vr_51_model = True
                 elif nn_arch_size in VR_5_1_ARCH_SIZES or self.is_vr_51_model:
-                    self.model_run = nets_new.CascadedNet(self.mp.param['bins'] * 2, 
-                                                          nn_arch_size, 
-                                                          nout=self.model_capacity[0], 
-                                                          nout_lstm=self.model_capacity[1])
+                    self.model_run = nets_new.CascadedNet(
+                        self.mp.param['bins'] * 2,
+                        nn_arch_size,
+                        nout=self.model_capacity[0],
+                        nout_lstm=self.model_capacity[1],
+                    )
                     self.is_vr_51_model = True
-                    self.model_run.load_state_dict(load_torch_checkpoint(self.model_path, map_location=cpu)) 
-                    self.model_run.to(device) 
+                    self.model_run.load_state_dict(
+                        load_torch_checkpoint(self.model_path, map_location=cpu)
+                    )
+                    self.model_run.to(device)
                 else:
-                    self.model_run = nets.determine_model_capacity(self.mp.param['bins'] * 2, nn_arch_size)
-                    self.model_run.load_state_dict(load_torch_checkpoint(self.model_path, map_location=cpu)) 
-                    self.model_run.to(device) 
+                    self.model_run = nets.determine_model_capacity(
+                        self.mp.param['bins'] * 2, nn_arch_size
+                    )
+                    self.model_run.load_state_dict(
+                        load_torch_checkpoint(self.model_path, map_location=cpu)
+                    )
+                    self.model_run.to(device)
 
                 self.running_inference_console_write()
-                            
+
                 self.check_run_control()
                 y_spec, v_spec = self.inference_vr(self.loading_mix(), device, self.aggressiveness)
                 if not self.is_vocal_split_model:
                     self.cache_source((y_spec, v_spec))
                 self.write_to_console(DONE, base_text='')
-            
+
         if self.is_secondary_model_activated and self.secondary_model:
-            self.secondary_source_primary, self.secondary_source_secondary = process_secondary_model(self.secondary_model, self.process_data, main_process_method=self.process_method, main_model_primary=self.primary_stem)
+            self.secondary_source_primary, self.secondary_source_secondary = (
+                process_secondary_model(
+                    self.secondary_model,
+                    self.process_data,
+                    main_process_method=self.process_method,
+                    main_model_primary=self.primary_stem,
+                )
+            )
 
         sources: dict[str, Any] = {}
         if exports_named_stem(self, self.primary_stem):
             if not isinstance(self.primary_source, np.ndarray):
                 self.primary_source = self.spec_to_wav(y_spec).T
                 if not self.model_samplerate == 44100:
-                    self.primary_source = librosa.resample(self.primary_source.T, orig_sr=self.model_samplerate, target_sr=44100).T
+                    self.primary_source = librosa.resample(
+                        self.primary_source.T, orig_sr=self.model_samplerate, target_sr=44100
+                    ).T
             sources[self.primary_stem] = self.process_secondary_stem(
                 self.primary_source, self.secondary_source_primary
             )
@@ -108,7 +127,9 @@ class SeperateVR(SeperateAttributes):
             if not isinstance(self.secondary_source, np.ndarray):
                 self.secondary_source = self.spec_to_wav(v_spec).T
                 if not self.model_samplerate == 44100:
-                    self.secondary_source = librosa.resample(self.secondary_source.T, orig_sr=self.model_samplerate, target_sr=44100).T
+                    self.secondary_source = librosa.resample(
+                        self.secondary_source.T, orig_sr=self.model_samplerate, target_sr=44100
+                    ).T
             sources[self.secondary_stem] = self.process_secondary_stem(
                 self.secondary_source, self.secondary_source_secondary
             )
@@ -116,14 +137,17 @@ class SeperateVR(SeperateAttributes):
         from engines.stem_writer import ExportPlan
 
         return ExportPlan(sources=sources, samplerate=44100)
+
     def loading_mix(self):
 
         self.check_run_control()
         bands_n = len(self.mp.param['band'])
         bp = self.mp.param['band'][bands_n]
         wav_resolution = (
-            'polyphase' if SYSTEM_PROC == ARM or ARM in SYSTEM_ARCH else bp['res_type']
-        ) if OPERATING_SYSTEM == 'Darwin' else bp['res_type']
+            ('polyphase' if SYSTEM_PROC == ARM or ARM in SYSTEM_ARCH else bp['res_type'])
+            if OPERATING_SYSTEM == 'Darwin'
+            else bp['res_type']
+        )
 
         if isinstance(self.audio_file, np.ndarray):
             # Vocal-split / chain paths already provide decoded audio — skip WAV round-trip.
@@ -134,7 +158,9 @@ class SeperateVR(SeperateAttributes):
                 wave = wave.T
             target_sr = bp['sr']
             if target_sr != 44100:
-                wave = librosa.resample(wave, orig_sr=44100, target_sr=target_sr, res_type=wav_resolution)
+                wave = librosa.resample(
+                    wave, orig_sr=44100, target_sr=target_sr, res_type=wav_resolution
+                )
             X_wave = {bands_n: wave}
         else:
             audio_file = spec_utils.write_array_to_mem(self.audio_file, subtype=self.wav_type_set)
@@ -167,17 +193,24 @@ class SeperateVR(SeperateAttributes):
                 self.mp.param['pre_filter_stop'] - self.mp.param['pre_filter_start']
             )
             self.input_high_end = X_spec_s[bands_n][
-                :, bp['n_fft'] // 2 - self.input_high_end_h:bp['n_fft'] // 2, :
+                :, bp['n_fft'] // 2 - self.input_high_end_h : bp['n_fft'] // 2, :
             ]
 
         del X_wave, X_spec_s
         return X_spec
 
     def inference_vr(self, X_spec: typing.Any, device: typing.Any, aggressiveness: typing.Any):
-        with trace_phase("separate", "inference_vr", engine="SeperateVR", model=self.model_display_label):
+        with trace_phase(
+            "separate", "inference_vr", engine="SeperateVR", model=self.model_display_label
+        ):
+
             def _execute(X_mag_pad: typing.Any, roi_size: typing.Any):
                 patches = (X_mag_pad.shape[2] - 2 * self.model_run.offset) // roi_size
-                total_iterations = patches//self.batch_size if not self.is_tta else (patches//self.batch_size)*2
+                total_iterations = (
+                    patches // self.batch_size
+                    if not self.is_tta
+                    else (patches // self.batch_size) * 2
+                )
                 self.model_run.eval()
                 with torch.inference_mode():
                     mask_parts = []
@@ -186,7 +219,7 @@ class SeperateVR(SeperateAttributes):
                         self.progress_value += 1
                         if self.progress_value >= total_iterations:
                             self.progress_value = total_iterations
-                        self.set_progress_bar(0.1, 0.8/total_iterations*self.progress_value)
+                        self.set_progress_bar(0.1, 0.8 / total_iterations * self.progress_value)
                         end = min(i + self.batch_size, patches)
                         # Stream patches per batch instead of materializing all windows.
                         X_batch = np.stack(
@@ -218,44 +251,60 @@ class SeperateVR(SeperateAttributes):
                 for stem in NON_ACCOM_STEMS:
                     if stem == self.primary_stem:
                         is_non_accom_stem = True
-                        
+
                 mask = spec_utils.adjust_aggr(mask, is_non_accom_stem, aggressiveness)
 
                 if self.is_post_process:
                     mask = spec_utils.merge_artifacts(mask, thres=self.post_process_threshold)
 
-                y_spec = mask * X_mag * np.exp(1.j * X_phase)
-                v_spec = (1 - mask) * X_mag * np.exp(1.j * X_phase)
-            
+                y_spec = mask * X_mag * np.exp(1.0j * X_phase)
+                v_spec = (1 - mask) * X_mag * np.exp(1.0j * X_phase)
+
                 return y_spec, v_spec
-            
+
             X_mag, X_phase = spec_utils.preprocess(X_spec)
             n_frame = X_mag.shape[2]
-            pad_l, pad_r, roi_size = spec_utils.make_padding(n_frame, self.window_size, self.model_run.offset)
+            pad_l, pad_r, roi_size = spec_utils.make_padding(
+                n_frame, self.window_size, self.model_run.offset
+            )
             X_mag_pad = np.pad(X_mag, ((0, 0), (0, 0), (pad_l, pad_r)), mode='constant')
             scale_mag_pad_inplace(X_mag_pad)
             mask = _execute(X_mag_pad, roi_size)
-            
+
             if self.is_tta:
                 pad_l += roi_size // 2
                 pad_r += roi_size // 2
                 X_mag_pad = np.pad(X_mag, ((0, 0), (0, 0), (pad_l, pad_r)), mode='constant')
                 scale_mag_pad_inplace(X_mag_pad)
                 mask_tta = _execute(X_mag_pad, roi_size)
-                mask_tta = mask_tta[:, :, roi_size // 2:]
+                mask_tta = mask_tta[:, :, roi_size // 2 :]
                 mask = (mask[:, :, :n_frame] + mask_tta[:, :, :n_frame]) * 0.5
             else:
                 mask = mask[:, :, :n_frame]
 
             y_spec, v_spec = postprocess(mask, X_mag, X_phase)
-            
+
             return y_spec, v_spec
 
     def spec_to_wav(self, spec: typing.Any):
-        if self.high_end_process.startswith('mirroring') and isinstance(self.input_high_end, np.ndarray) and self.input_high_end_h:        
-            input_high_end_ = spec_utils.mirroring(self.high_end_process, spec, self.input_high_end, self.mp)
-            wav = spec_utils.cmb_spectrogram_to_wave(spec, self.mp, self.input_high_end_h, input_high_end_, is_v51_model=self.is_vr_51_model)       
+        if (
+            self.high_end_process.startswith('mirroring')
+            and isinstance(self.input_high_end, np.ndarray)
+            and self.input_high_end_h
+        ):
+            input_high_end_ = spec_utils.mirroring(
+                self.high_end_process, spec, self.input_high_end, self.mp
+            )
+            wav = spec_utils.cmb_spectrogram_to_wave(
+                spec,
+                self.mp,
+                self.input_high_end_h,
+                input_high_end_,
+                is_v51_model=self.is_vr_51_model,
+            )
         else:
-            wav = spec_utils.cmb_spectrogram_to_wave(spec, self.mp, is_v51_model=self.is_vr_51_model)
-            
+            wav = spec_utils.cmb_spectrogram_to_wave(
+                spec, self.mp, is_v51_model=self.is_vr_51_model
+            )
+
         return wav

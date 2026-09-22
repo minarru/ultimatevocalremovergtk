@@ -1,4 +1,5 @@
 """Tests for download queue status helpers."""
+
 import typing
 import unittest
 

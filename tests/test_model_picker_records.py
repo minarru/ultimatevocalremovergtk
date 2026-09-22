@@ -698,8 +698,11 @@ class VocalSplitPickerGateTests(unittest.TestCase):
         row.deverb_row = _FakeControl()
         row.refresh_summary = lambda: None
         from ui.shared_settings import SharedSettingsSession, shared_settings_bindings
+
         settings.process.vocal_splitter_enabled = True
-        session = SharedSettingsSession(settings, shared_settings_bindings(vocal_row=row), can_commit=lambda: True)
+        session = SharedSettingsSession(
+            settings, shared_settings_bindings(vocal_row=row), can_commit=lambda: True
+        )
         row._on_changed = session.vocal_changed
         return row, settings
 

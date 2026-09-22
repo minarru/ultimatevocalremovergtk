@@ -651,7 +651,10 @@ class ExportSourceMapTests(unittest.TestCase):
         )
         sep = _FakeSep((route,))
 
-        with expected_event(self, "export_no_writes"), self.assertRaisesRegex(RuntimeError, "No audio writes"):
+        with (
+            expected_event(self, "export_no_writes"),
+            self.assertRaisesRegex(RuntimeError, "No audio writes"),
+        ):
             export_source_map(
                 sep,
                 {"Reverb Removed": object(), "Reverb_Removed": object()},
@@ -953,9 +956,12 @@ class ExportSourceMapTests(unittest.TestCase):
             debug_log.configure(level="errors", log_file=str(log_path))
             self.addCleanup(debug_log.configure, level="errors", log_file="")
 
-            with expected_event(self, "export_no_writes"), self.assertRaisesRegex(
-                RuntimeError,
-                r"Wanted.*available.*Other",
+            with (
+                expected_event(self, "export_no_writes"),
+                self.assertRaisesRegex(
+                    RuntimeError,
+                    r"Wanted.*available.*Other",
+                ),
             ):
                 export_source_map(sep, {"Other": object()}, samplerate=44100)
 
@@ -977,9 +983,12 @@ class ExportSourceMapTests(unittest.TestCase):
         sep.is_bv_model = False
         sep.mdx_stem_count = 2
 
-        with expected_event(self, "export_source_ambiguous"), self.assertRaisesRegex(
-            RuntimeError,
-            r"Ambiguous.*Instrumental.*Other",
+        with (
+            expected_event(self, "export_source_ambiguous"),
+            self.assertRaisesRegex(
+                RuntimeError,
+                r"Ambiguous.*Instrumental.*Other",
+            ),
         ):
             export_source_map(
                 sep,

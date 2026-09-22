@@ -29,10 +29,8 @@ from catalogue.audit_types import (
 )
 
 
-
-
-
 # isort: on
+
 
 class UnifiedPublicationCliTests(unittest.TestCase):
     """The generator publishes and compares one complete snapshot bundle."""
@@ -148,7 +146,6 @@ class UnifiedPublicationCliTests(unittest.TestCase):
 
     def test_one_collection_snapshot_feeds_validation_and_all_renderers(self) -> None:
         from unittest import mock
-
 
         audited: list[object] = []
         candidates: list[catalogue_audit_types.ManifestCandidateResult] = []
@@ -707,7 +704,9 @@ class UnifiedPublicationCliTests(unittest.TestCase):
             mock.patch.object(catalogue_locations, "YAML_CACHE_DIR", yaml_cache),
             mock.patch("core.mdx_config_fetch._urlopen", side_effect=record_network),
         ):
-            context = catalogue._build_catalogue_context(policy=catalogue_cache.OFFLINE_FETCH_POLICY)
+            context = catalogue._build_catalogue_context(
+                policy=catalogue_cache.OFFLINE_FETCH_POLICY
+            )
 
         self.assertEqual(network_calls, [])
         self.assertFalse(os.path.exists(unused_hash_cache))

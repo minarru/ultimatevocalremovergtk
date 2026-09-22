@@ -126,7 +126,10 @@ import {module}
             (root / 'second.th').write_bytes(b'second')
             (root / 'bag.yaml').write_text('models: [first, second]\nsegment: 7\n')
             output = io.StringIO()
-            with redirect_stdout(output), self.assertWarnsRegex(ResourceWarning, r"unclosed file.*bag\.yaml"):
+            with (
+                redirect_stdout(output),
+                self.assertWarnsRegex(ResourceWarning, r"unclosed file.*bag\.yaml"),
+            ):
                 bag = get_model('bag', repo=root, checkpoint_loader=loader)
             self.assertEqual(output.getvalue(), 'name_or_sig:  bag\n')
         self.assertEqual(calls, [('first.th', 'cpu'), ('second.th', 'cpu')])

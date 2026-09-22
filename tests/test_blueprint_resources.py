@@ -31,8 +31,11 @@ RESOURCE_PREFIX = "/org/uvr/UltimateVocalRemover"
 def _display_free_env(runtime_dir: str) -> dict[str, str]:
     env = os.environ.copy()
     for name in (
-        "DISPLAY", "WAYLAND_DISPLAY", "WAYLAND_SOCKET",
-        "DBUS_SESSION_BUS_ADDRESS", "XAUTHORITY",
+        "DISPLAY",
+        "WAYLAND_DISPLAY",
+        "WAYLAND_SOCKET",
+        "DBUS_SESSION_BUS_ADDRESS",
+        "XAUTHORITY",
     ):
         env.pop(name, None)
     # An unset WAYLAND_DISPLAY still probes $XDG_RUNTIME_DIR/wayland-0.

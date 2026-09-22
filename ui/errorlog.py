@@ -140,7 +140,9 @@ def _error_dialog_width(parent_window: WindowSizing) -> int:
 class ErrorLogViewSink:
     """Own a viewer subscription; queued main-loop work never owns widgets."""
 
-    def __init__(self, buffer: Gtk.TextBuffer, on_text: Callable[[str], None] | None = None) -> None:
+    def __init__(
+        self, buffer: Gtk.TextBuffer, on_text: Callable[[str], None] | None = None
+    ) -> None:
         self._buffer: Gtk.TextBuffer | None = buffer
         self._on_text = on_text
         self._closed = False

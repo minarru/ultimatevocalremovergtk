@@ -37,7 +37,10 @@ with patch.object(entry, "normalize_g_messages_debug_env", normalize):
         assert entry.main() == 17
 '''
         result = subprocess.run(
-            [sys.executable, "-c", script], capture_output=True, text=True, check=False,
+            [sys.executable, "-c", script],
+            capture_output=True,
+            text=True,
+            check=False,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
 
@@ -45,9 +48,19 @@ with patch.object(entry, "normalize_g_messages_debug_env", normalize):
         from bundled import constants
 
         expected = {}
-        for name in ("platform_info", "urls", "formats", "stems", "process", "messages", "defaults"):
+        for name in (
+            "platform_info",
+            "urls",
+            "formats",
+            "stems",
+            "process",
+            "messages",
+            "defaults",
+        ):
             module = importlib.import_module(f"bundled.constants.{name}")
-            expected.update({key: value for key, value in vars(module).items() if not key.startswith("_")})
+            expected.update(
+                {key: value for key, value in vars(module).items() if not key.startswith("_")}
+            )
         for name, value in expected.items():
             with self.subTest(name=name):
                 self.assertIs(getattr(constants, name), value)
@@ -55,6 +68,9 @@ with patch.object(entry, "normalize_g_messages_debug_env", normalize):
     def test_method_views_preserve_registration_order(self) -> None:
         script = "from ui.views import METHOD_VIEWS; assert [view.__module__ for view in METHOD_VIEWS[:3]] == ['ui.views.vr', 'ui.views.mdx', 'ui.views.demucs']"
         result = subprocess.run(
-            [sys.executable, "-c", script], capture_output=True, text=True, check=False,
+            [sys.executable, "-c", script],
+            capture_output=True,
+            text=True,
+            check=False,
         )
         self.assertEqual(result.returncode, 0, result.stderr)

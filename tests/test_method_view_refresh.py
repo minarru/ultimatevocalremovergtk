@@ -934,7 +934,9 @@ class StemEditWorkloadTests(unittest.TestCase):
     def test_mdx_native_focus_change_also_invalidates_secondary_graph_cost(self) -> None:
         view = self._metadata_view()
         model = SimpleNamespace(
-            model_status=True, process_method=MDX_ARCH_TYPE, is_mdx_c=True,
+            model_status=True,
+            process_method=MDX_ARCH_TYPE,
+            is_mdx_c=True,
             is_secondary_model_activated=True,
         )
         with mock.patch("core.model_config.assemble_model", return_value=[model]):

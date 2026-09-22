@@ -41,6 +41,7 @@ def _politrees_source() -> Any:
         )
     return _source
 
+
 _POLITREES_MDX_SOURCE_KEYS = (
     "mdx_download_list",
     "mdx23_download_list",
@@ -157,9 +158,7 @@ def _apply_politrees_content(content: Any) -> Optional[Dict]:
     return data
 
 
-def load_politrees_links(
-    *, force: bool = False, allow_network: bool = True
-) -> Optional[Dict]:
+def load_politrees_links(*, force: bool = False, allow_network: bool = True) -> Optional[Dict]:
     """Return Politrees ``model_list_links.json`` or ``None`` when disabled/offline."""
     global _cached_links, _cached_weight_index, _cached_loaded_at
 
@@ -207,9 +206,7 @@ def load_politrees_links(
     return _cached_links
 
 
-def merge_supplemental_list(
-    base: Mapping[str, Any], extra: Mapping[str, Any]
-) -> Dict[str, Any]:
+def merge_supplemental_list(base: Mapping[str, Any], extra: Mapping[str, Any]) -> Dict[str, Any]:
     """Add catalogue entries present in ``extra`` but not in ``base``."""
     merged = dict(base)
     for key, value in extra.items():
@@ -305,7 +302,9 @@ def resolve_vr_jobs(model: object, model_repo: str) -> List[Tuple[str, str]]:
             if is_remote_ref(ref):
                 jobs.append((ref, os.path.join(paths.VR_MODELS_DIR, filename)))
             else:
-                jobs.append((f"{model_repo}{filename}", os.path.join(paths.VR_MODELS_DIR, filename)))
+                jobs.append(
+                    (f"{model_repo}{filename}", os.path.join(paths.VR_MODELS_DIR, filename))
+                )
         return jobs
     filename = str(model)
     return [(f"{model_repo}{filename}", os.path.join(paths.VR_MODELS_DIR, filename))]

@@ -116,7 +116,9 @@ class EnsembleArrayInputTests(unittest.TestCase):
 
         a = np.ones((2, 100), dtype=np.float32)
         b = np.full((2, 80), 3.0, dtype=np.float32)
-        out, _rate = combine_ensemble_waveforms([a, b], AVERAGE, is_array=True, alignment_diagnostics=False)
+        out, _rate = combine_ensemble_waveforms(
+            [a, b], AVERAGE, is_array=True, alignment_diagnostics=False
+        )
         self.assertEqual(out.shape, (2, 100))
         # Average only present samples; the longer stem retains its tail.
         self.assertTrue(np.allclose(out[:, :80], 2.0))

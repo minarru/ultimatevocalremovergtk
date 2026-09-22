@@ -8,6 +8,7 @@ the Legal page and the release notes).
 
 Entry point: :func:`open_about`.
 """
+
 import typing
 
 from gi.repository import Adw, GLib, Gtk

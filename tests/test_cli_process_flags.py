@@ -21,12 +21,15 @@ class ProcessFlagTests(unittest.TestCase):
 
     def test_boolean_flags_are_symmetric(self) -> None:
         args = self.parse(["--no-normalize", "--no-match-mix", "--no-sample", "--no-autocast"])
-        self.assertEqual(dict(collect_overrides(args)), {
-            "process.autocast": False,
-            "process.normalization": False,
-            "process.match_mix_level": False,
-            "process.sample_mode": False,
-        })
+        self.assertEqual(
+            dict(collect_overrides(args)),
+            {
+                "process.autocast": False,
+                "process.normalization": False,
+                "process.match_mix_level": False,
+                "process.sample_mode": False,
+            },
+        )
 
     def test_set_is_applied_last(self) -> None:
         args = self.parse(["--normalize", "--set", "process.normalization=false"])

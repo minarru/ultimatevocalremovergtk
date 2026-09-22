@@ -97,16 +97,22 @@ def add_process_args(parser: argparse.ArgumentParser) -> None:
     )
     post = parser.add_argument_group("Post-processing")
     post.add_argument(
-        "--normalize", action=argparse.BooleanOptionalAction, default=None,
-        help="Enable or disable output normalization"
+        "--normalize",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Enable or disable output normalization",
     )
     post.add_argument(
-        "--match-mix", action=argparse.BooleanOptionalAction, default=None,
-        help="Enable or disable mix-level matching"
+        "--match-mix",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Enable or disable mix-level matching",
     )
     performance.add_argument(
-        "--sample", action=argparse.BooleanOptionalAction, default=None,
-        help="Enable or disable sample mode"
+        "--sample",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Enable or disable sample mode",
     )
     performance.add_argument(
         "--sample-seconds",
@@ -178,10 +184,12 @@ def collect_overrides(
             overrides.append((path, value))
 
     if resolved_vocal_splitter is not None:
-        overrides.extend([
-            ("process.vocal_splitter", resolved_vocal_splitter),
-            ("process.vocal_splitter_enabled", True),
-        ])
+        overrides.extend(
+            [
+                ("process.vocal_splitter", resolved_vocal_splitter),
+                ("process.vocal_splitter_enabled", True),
+            ]
+        )
 
     if getattr(args, "sample_seconds", None) is not None:
         # Duration without --sample would otherwise be stored and ignored.

@@ -37,9 +37,7 @@ def _snapshot(
     }
     return SimpleNamespace(
         **families,
-        meta_by_family={
-            family: dict((meta or {}).get(family, {})) for family in families
-        },
+        meta_by_family={family: dict((meta or {}).get(family, {})) for family in families},
         unsupported={},
         display_index_vr={},
         display_index_mdx={},
@@ -177,9 +175,7 @@ class SingleFilePublicationTests(_Base):
         arch = MDX_ARCH_TYPE if family == "mdx" else VR_ARCH_TYPE
         name = "solo.onnx" if family == "mdx" else "solo.pth"
         files = {name: "u1"}
-        entry = EntryMeta(
-            label=selectable, display="Solo", arch=arch, files=files, checkpoint=name
-        )
+        entry = EntryMeta(label=selectable, display="Solo", arch=arch, files=files, checkpoint=name)
         snapshot = _snapshot(**{family: {selectable: files}}, meta={family: {selectable: entry}})
         repo = _Repo(snapshot, files={family: [name]})
         result = finalize_downloaded_model(
@@ -263,9 +259,7 @@ class SingleFilePublicationTests(_Base):
             return original(*args, **kwargs)
 
         repo.invalidate_models = lambda: order.append("invalidate")
-        with mock.patch.object(
-            ModelRegistryService, "remember_presentation", side_effect=remember
-        ):
+        with mock.patch.object(ModelRegistryService, "remember_presentation", side_effect=remember):
             result = finalize_downloaded_model(
                 repo=repo,
                 family="mdx",
@@ -459,10 +453,11 @@ class RegistrationTests(_Base):
         repo = _Repo(_snapshot())
         jobs = [("u", self._file("apollo.ckpt"))]
 
-        with mock.patch(
-            "core.apollo_registry.register_apollo_from_download_jobs", return_value=False
-        ) as register, mock.patch(
-            "core.mdx_c_registry.register_mdx_c_from_download_jobs", return_value=False
+        with (
+            mock.patch(
+                "core.apollo_registry.register_apollo_from_download_jobs", return_value=False
+            ) as register,
+            mock.patch("core.mdx_c_registry.register_mdx_c_from_download_jobs", return_value=False),
         ):
             finalize_downloaded_model(
                 repo=repo,
@@ -478,10 +473,11 @@ class RegistrationTests(_Base):
         """The finalizer owns the single invalidation for the whole item."""
         repo = _Repo(_snapshot())
 
-        with mock.patch(
-            "core.mdx_c_registry.register_mdx_c_from_download_jobs", return_value=True
-        ), mock.patch(
-            "core.apollo_registry.register_apollo_from_download_jobs", return_value=True
+        with (
+            mock.patch("core.mdx_c_registry.register_mdx_c_from_download_jobs", return_value=True),
+            mock.patch(
+                "core.apollo_registry.register_apollo_from_download_jobs", return_value=True
+            ),
         ):
             finalize_downloaded_model(
                 repo=repo,
@@ -595,9 +591,7 @@ class OwnershipIndexTests(_Base):
         checkpoint = self._file("indexed.onnx")
         jobs = [("u", checkpoint)]
 
-        with mock.patch(
-            "core.mdx_c_registry.compute_checkpoint_hash", return_value="hash-1"
-        ):
+        with mock.patch("core.mdx_c_registry.compute_checkpoint_hash", return_value="hash-1"):
             first = ModelRegistryService.index_downloaded("mdx", jobs)
             second = ModelRegistryService.index_downloaded("mdx", jobs)
 

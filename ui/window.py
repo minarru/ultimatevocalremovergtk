@@ -183,7 +183,9 @@ class _SeparationTarget:
     def on_deactivated(self) -> None:
         pass
 
-    def start(self, callbacks: JobCallbacks, plan: ResolvedJob | ResolvedAudioJob | None = None) -> None:
+    def start(
+        self, callbacks: JobCallbacks, plan: ResolvedJob | ResolvedAudioJob | None = None
+    ) -> None:
         self.window._start_separation(callbacks, plan=plan)
 
     def start_blocked_reason(self) -> Optional[str]:
@@ -301,6 +303,7 @@ class MainWindow(Adw.ApplicationWindow):
         self.log_panel.set_margin_bottom(OVERLAY_MARGIN_BOTTOM)
 
         from .download import DownloadQueueUiBinding
+
         self._download_ui: DownloadQueueUiBinding | None = None
         self._download_queue_indicator = DownloadQueueIndicator()
 
@@ -346,9 +349,7 @@ class MainWindow(Adw.ApplicationWindow):
     def _build_header(self) -> Adw.HeaderBar:
         builder = load_builder("main-header")
         self._header = object_from_builder(builder, "header", Adw.HeaderBar)
-        self._view_switcher = object_from_builder(
-            builder, "view_switcher", Adw.ViewSwitcher
-        )
+        self._view_switcher = object_from_builder(builder, "view_switcher", Adw.ViewSwitcher)
         self._view_switcher.set_stack(self.content_stack)
         install_view_tab_tooltips(self._view_switcher)
         self._window_title = object_from_builder(builder, "window_title", Adw.WindowTitle)
@@ -447,6 +448,7 @@ class MainWindow(Adw.ApplicationWindow):
         }
         self._run_target = self._separation_target
         from .run_host import GtkRunHost
+
         self._run_controller = RunController(GtkRunHost(self))
         self.content_stack.connect("notify::visible-child", self._on_visible_child)
 
@@ -606,7 +608,9 @@ class MainWindow(Adw.ApplicationWindow):
 
     def _build_files_group(self) -> Adw.PreferencesGroup:
         group = object_from_builder(self._groups_builder, "files_group", Adw.PreferencesGroup)
-        view_inputs_button = object_from_builder(self._groups_builder, "view_inputs_button", Gtk.Button)
+        view_inputs_button = object_from_builder(
+            self._groups_builder, "view_inputs_button", Gtk.Button
+        )
         set_icon_button_a11y(view_inputs_button, VIEW_INPUTS_BUTTON_HINT)
         self.input_row = InputFilesRow(
             self._on_inputs_changed,
@@ -660,7 +664,9 @@ class MainWindow(Adw.ApplicationWindow):
 
         view = self._current_view
         model_id = str(get_flat(self.settings, view.model_key, "")) if view is not None else ""
-        record = next((r for r in ModelIdentityService(self.context.repo).records() if r.id == model_id), None)
+        record = next(
+            (r for r in ModelIdentityService(self.context.repo).records() if r.id == model_id), None
+        )
         if record is not None and record.installed:
             snapshot = getattr(self.context.repo.catalogue, "latest_snapshot", None)
             models = project_installed((record,), snapshot, {})
@@ -678,8 +684,9 @@ class MainWindow(Adw.ApplicationWindow):
 
     def _can_choose_model(self) -> bool:
         controller = getattr(self, "_run_controller", None)
-        return (self.content_stack.get_visible_child_name() == "separation"
-                and (controller is None or controller.can_edit_configuration()))
+        return self.content_stack.get_visible_child_name() == "separation" and (
+            controller is None or controller.can_edit_configuration()
+        )
 
     def _open_model_picker(self, *_args: object) -> None:
         if not self._can_choose_model():
@@ -688,7 +695,9 @@ class MainWindow(Adw.ApplicationWindow):
             from .model_picker import ModelPicker
 
             self._model_picker = ModelPicker(
-                self.context.repo, self._selected_model_id, self._choose_model,
+                self.context.repo,
+                self._selected_model_id,
+                self._choose_model,
                 lambda: self._on_download(None, None),
             )
         self._model_picker.present(self)
@@ -698,7 +707,9 @@ class MainWindow(Adw.ApplicationWindow):
 
         if not self._can_choose_model():
             return False
-        record = next((r for r in ModelIdentityService(self.context.repo).records() if r.id == model_id), None)
+        record = next(
+            (r for r in ModelIdentityService(self.context.repo).records() if r.id == model_id), None
+        )
         if record is None or not record.installed or not record.identity_complete:
             return False
         view = self._views_by_method.get(record.method)
@@ -712,8 +723,12 @@ class MainWindow(Adw.ApplicationWindow):
         return selected
 
     def _build_model_options_group(self) -> Adw.PreferencesGroup:
-        group = object_from_builder(self._groups_builder, "model_options_group", Adw.PreferencesGroup)
-        self.model_options_row = object_from_builder(self._groups_builder, "model_options_row", Adw.ActionRow)
+        group = object_from_builder(
+            self._groups_builder, "model_options_group", Adw.PreferencesGroup
+        )
+        self.model_options_row = object_from_builder(
+            self._groups_builder, "model_options_row", Adw.ActionRow
+        )
         self._model_options_host = group
         self.model_options_row.connect("activated", lambda *_: self._open_model_options())
         set_tooltip(self.model_options_row, MODEL_OPTIONS_ROW_HINT)
@@ -859,9 +874,12 @@ class MainWindow(Adw.ApplicationWindow):
         self._shared_session = SharedSettingsSession(
             self.settings,
             shared_settings_bindings(
-                input_row=self.input_row, output_row=self.output_row,
-                format_row=self.format_row, gpu_row=self.gpu_row,
-                autocast_row=self.autocast_row, sample_row=self.sample_row,
+                input_row=self.input_row,
+                output_row=self.output_row,
+                format_row=self.format_row,
+                gpu_row=self.gpu_row,
+                autocast_row=self.autocast_row,
+                sample_row=self.sample_row,
                 vocal_row=self.vocal_split_row,
             ),
             can_commit=lambda: self.content_stack.get_visible_child_name() == "separation",
@@ -870,9 +888,12 @@ class MainWindow(Adw.ApplicationWindow):
     def _apply_shared_widgets(self) -> None:
         apply_shared_file_options(
             self.settings,
-            input_row=self.input_row, output_row=self.output_row,
-            format_row=self.format_row, gpu_row=self.gpu_row,
-            autocast_row=self.autocast_row, sample_row=self.sample_row,
+            input_row=self.input_row,
+            output_row=self.output_row,
+            format_row=self.format_row,
+            gpu_row=self.gpu_row,
+            autocast_row=self.autocast_row,
+            sample_row=self.sample_row,
         )
         self.vocal_split_row.apply_from_settings(self.settings)
 
@@ -1402,7 +1423,9 @@ class MainWindow(Adw.ApplicationWindow):
                 window._refresh_start_readiness()
 
         open_view_inputs(
-            self, self.context, on_inputs_changed=self._on_external_inputs_changed,
+            self,
+            self.context,
+            on_inputs_changed=self._on_external_inputs_changed,
             on_verification_changed=verification_changed,
         )
 

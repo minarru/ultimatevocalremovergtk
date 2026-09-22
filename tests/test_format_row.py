@@ -74,6 +74,7 @@ class OutputFormatRowTests(unittest.TestCase):
 
     def test_format_and_quality_emit_distinct_events(self):
         from ui.widgets.format_row import OutputFormatRow
+
         events = []
         row = OutputFormatRow(lambda *event: events.append(event))
         row.apply_from_settings(self._settings(save_format=WAV))
@@ -86,14 +87,18 @@ class OutputFormatRowTests(unittest.TestCase):
     def _session_row(self, settings: typing.Any):
         from ui.shared_settings import SharedSettingsSession, shared_settings_bindings
         from ui.widgets.format_row import OutputFormatRow
+
         row = OutputFormatRow(lambda event: session.format_changed(event))
-        session = SharedSettingsSession(settings, shared_settings_bindings(format_row=row), can_commit=lambda: True)
+        session = SharedSettingsSession(
+            settings, shared_settings_bindings(format_row=row), can_commit=lambda: True
+        )
         session.refresh(lambda: row.apply_from_settings(settings))
         return row, session
 
     def test_quality_edit_does_not_revert_a_newer_format(self):
         from core.types import SaveFormat
         from core.types.settings_enums import WavType
+
         settings = self._settings(save_format=WAV, wav_type_set="PCM_16")
         row, session = self._session_row(settings)
         other, _ = self._session_row(settings)
@@ -105,6 +110,7 @@ class OutputFormatRowTests(unittest.TestCase):
 
     def test_format_adopts_restored_quality_without_claiming_an_edit(self):
         from core.types.settings_enums import WavType
+
         settings = self._settings(save_format=WAV, wav_type_set="PCM_24")
         row, session = self._session_row(settings)
         row.set_save_format(MP3)
@@ -120,6 +126,7 @@ class OutputFormatRowTests(unittest.TestCase):
     def test_session_round_trips_all_active_quality_enum_types(self):
         from core.types import SaveFormat
         from core.types.settings_enums import FlacBitDepth, Mp3Bitrate, OpusBitrate, WavType
+
         settings = self._settings(save_format=WAV)
         row, session = self._session_row(settings)
         for fmt, value in ((WAV, "PCM_24"), (MP3, "128k"), (FLAC, "24-bit"), (OPUS, "256k")):

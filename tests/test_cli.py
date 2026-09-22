@@ -22,18 +22,22 @@ class ParserSurfaceTests(unittest.TestCase):
     def test_runtime_hooks_install_before_parser_construction(self) -> None:
         order: list[str] = []
 
-        with patch(
-            "core.debug_log.configure_bootstrap",
-            side_effect=lambda: order.append("bootstrap"),
-        ), patch(
-            "core.debug_log.install_runtime_hooks",
-            side_effect=lambda: order.append("hooks"),
-        ), patch(
-            "cli.main.build_parser",
-            side_effect=lambda: (
-                order.append("parser"),
-                (_ for _ in ()).throw(RuntimeError("parser failed")),
-            )[1],
+        with (
+            patch(
+                "core.debug_log.configure_bootstrap",
+                side_effect=lambda: order.append("bootstrap"),
+            ),
+            patch(
+                "core.debug_log.install_runtime_hooks",
+                side_effect=lambda: order.append("hooks"),
+            ),
+            patch(
+                "cli.main.build_parser",
+                side_effect=lambda: (
+                    order.append("parser"),
+                    (_ for _ in ()).throw(RuntimeError("parser failed")),
+                )[1],
+            ),
         ):
             with self.assertRaisesRegex(RuntimeError, "parser failed"):
                 main([])
@@ -43,11 +47,14 @@ class ParserSurfaceTests(unittest.TestCase):
     def test_gui_command_preserves_cli_diagnostic_overrides(self) -> None:
         from cli.main import cmd_gui
 
-        with patch.object(
-            sys,
-            "argv",
-            ["uvr", "--trace", "--debug-sensitive", "gui"],
-        ), patch("ui.application.main", return_value=0) as gui_main:
+        with (
+            patch.object(
+                sys,
+                "argv",
+                ["uvr", "--trace", "--debug-sensitive", "gui"],
+            ),
+            patch("ui.application.main", return_value=0) as gui_main,
+        ):
             self.assertEqual(cmd_gui(argparse.Namespace()), 0)
 
         gui_main.assert_called_once_with(argv=["uvr"], configure_diagnostics=False)
@@ -113,11 +120,12 @@ class ParserSurfaceTests(unittest.TestCase):
         parser.parse_args.return_value = args
         settings = Settings.defaults()
 
-        with patch("cli.main.build_parser", return_value=parser), patch(
-            "core.settings.Settings.load", return_value=settings
-        ), patch("core.debug_log.configure_from_settings") as configure, patch(
-            "core.debug_log.install_runtime_hooks"
-        ) as install_hooks:
+        with (
+            patch("cli.main.build_parser", return_value=parser),
+            patch("core.settings.Settings.load", return_value=settings),
+            patch("core.debug_log.configure_from_settings") as configure,
+            patch("core.debug_log.install_runtime_hooks") as install_hooks,
+        ):
             self.assertEqual(main([]), 0)
 
         configure.assert_called_once_with(
@@ -135,6 +143,7 @@ class ParserSurfaceTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             log_path = os.path.join(tmp, "uvr.log")
+
             def command(_args: object) -> int:
                 debug_log.log_event("settings", "nested_command_work")
                 return 0
@@ -161,24 +170,23 @@ class ParserSurfaceTests(unittest.TestCase):
             parser = Mock()
             parser.parse_args.return_value = args
 
-            with warnings.catch_warnings(record=True) as captured, patch(
-                "cli.main.build_parser", return_value=parser
-            ), patch(
-                "core.settings.Settings.load", return_value=Settings.defaults()
+            with (
+                warnings.catch_warnings(record=True) as captured,
+                patch("cli.main.build_parser", return_value=parser),
+                patch("core.settings.Settings.load", return_value=Settings.defaults()),
             ):
                 warnings.simplefilter("always")
                 self.assertEqual(main([]), 0)
 
-            self.assertFalse(
-                any("requires PyGObject" in str(item.message) for item in captured)
-            )
+            self.assertFalse(any("requires PyGObject" in str(item.message) for item in captured))
 
             diagnostic = Path(log_path).read_text(encoding="utf-8")
             self.assertIn("event=command_started", diagnostic)
             self.assertIn("event=command_completed", diagnostic)
             self.assertIn("event=nested_command_work", diagnostic)
             lifecycle = [
-                line for line in diagnostic.splitlines()
+                line
+                for line in diagnostic.splitlines()
                 if any(
                     event in line
                     for event in (
@@ -189,9 +197,7 @@ class ParserSurfaceTests(unittest.TestCase):
                 )
             ]
             self.assertEqual(len(lifecycle), 3)
-            self.assertTrue(
-                all("operation=cli-operation" in line for line in lifecycle)
-            )
+            self.assertTrue(all("operation=cli-operation" in line for line in lifecycle))
             self.assertIsNone(debug_log.current_operation_id())
             debug_log.configure(level="errors", log_file="")
 
@@ -204,9 +210,7 @@ class ParserSurfaceTests(unittest.TestCase):
 
         def gui_command(_args: object) -> int:
             debug_log.update_policy(level="errors", include_sensitive=False)
-            observed.append(
-                (debug_log.current_level(), debug_log.include_sensitive())
-            )
+            observed.append((debug_log.current_level(), debug_log.include_sensitive()))
             return 0
 
         args = SimpleNamespace(
@@ -231,8 +235,9 @@ class ParserSurfaceTests(unittest.TestCase):
         parser = Mock()
         parser.parse_args.return_value = args
 
-        with patch("cli.main.build_parser", return_value=parser), patch(
-            "core.settings.Settings.load", return_value=Settings.defaults()
+        with (
+            patch("cli.main.build_parser", return_value=parser),
+            patch("core.settings.Settings.load", return_value=Settings.defaults()),
         ):
             self.assertEqual(main([]), 0)
 
@@ -255,8 +260,7 @@ class ParserSurfaceTests(unittest.TestCase):
     def test_separate_has_no_method_or_json_flag(self) -> None:
         parser = build_parser()
         subcommands = next(
-            action for action in parser._actions
-            if isinstance(action, argparse._SubParsersAction)
+            action for action in parser._actions if isinstance(action, argparse._SubParsersAction)
         )
         help_text = subcommands.choices["separate"].format_help()
         self.assertNotIn("--method", help_text)
@@ -269,10 +273,17 @@ class ParserSurfaceTests(unittest.TestCase):
     def test_apollo_registration_and_administration_commands_parse(self) -> None:
         parser = build_parser()
         self.assertEqual(
-            parser.parse_args([
-                "models", "register", "model.ckpt", "--family", "apollo",
-                "--config", "model.json",
-            ]).family,
+            parser.parse_args(
+                [
+                    "models",
+                    "register",
+                    "model.ckpt",
+                    "--family",
+                    "apollo",
+                    "--config",
+                    "model.json",
+                ]
+            ).family,
             "apollo",
         )
         for argv in (
@@ -290,7 +301,9 @@ class ParserSurfaceTests(unittest.TestCase):
         payload = json.loads(out.getvalue())
         self.assertFalse(payload["ok"])
         self.assertEqual(payload["error"]["kind"], "usage")
-        self.assertEqual(len([line for line in out.getvalue().splitlines() if line.startswith("{")]), 1)
+        self.assertEqual(
+            len([line for line in out.getvalue().splitlines() if line.startswith("{")]), 1
+        )
 
     def test_report_option_is_also_global(self) -> None:
         out = io.StringIO()
@@ -408,9 +421,13 @@ def _job(*, inherited: bool = False) -> ResolvedJob:
     effective.diagnostics = ()
     effective.to_dict.return_value = plan
     return ResolvedJob(
-        command="separate", settings=settings,
-        profile=LoadedProfile("defaults", "built-in"), inputs=["/input.wav"],
-        output="/out", plan=plan, identity_inherited=inherited,
+        command="separate",
+        settings=settings,
+        profile=LoadedProfile("defaults", "built-in"),
+        inputs=["/input.wav"],
+        output="/out",
+        plan=plan,
+        identity_inherited=inherited,
         resolved=effective,
     )
 
@@ -418,13 +435,24 @@ def _job(*, inherited: bool = False) -> ResolvedJob:
 class SeparateCommandTests(unittest.TestCase):
     def test_dry_run_emits_versioned_document_without_runner(self) -> None:
         out = io.StringIO()
-        with patch("cli.separate.resolve_separate_job", return_value=_job()), patch(
-            "cli.separate.run_batch"
-        ) as runner, redirect_stdout(out):
-            code = main([
-                "separate", "input.wav", "-o", "out", "--model", "mdx:test",
-                "--dry-run", "--report", "json",
-            ])
+        with (
+            patch("cli.separate.resolve_separate_job", return_value=_job()),
+            patch("cli.separate.run_batch") as runner,
+            redirect_stdout(out),
+        ):
+            code = main(
+                [
+                    "separate",
+                    "input.wav",
+                    "-o",
+                    "out",
+                    "--model",
+                    "mdx:test",
+                    "--dry-run",
+                    "--report",
+                    "json",
+                ]
+            )
         self.assertEqual(code, 0)
         self.assertFalse(runner.called)
         payload = json.loads(out.getvalue())
@@ -433,21 +461,36 @@ class SeparateCommandTests(unittest.TestCase):
 
     def test_machine_profile_identity_requires_acceptance(self) -> None:
         out = io.StringIO()
-        with patch("cli.separate.resolve_separate_job", return_value=_job(inherited=True)), redirect_stdout(out):
-            code = main([
-                "separate", "input.wav", "-o", "out", "--profile", "named",
-                "--report", "json",
-            ])
+        with (
+            patch("cli.separate.resolve_separate_job", return_value=_job(inherited=True)),
+            redirect_stdout(out),
+        ):
+            code = main(
+                [
+                    "separate",
+                    "input.wav",
+                    "-o",
+                    "out",
+                    "--profile",
+                    "named",
+                    "--report",
+                    "json",
+                ]
+            )
         self.assertEqual(code, 2)
         self.assertIn("accept-inherited", json.loads(out.getvalue())["error"]["message"])
 
     def test_negative_confirmation_does_not_run(self) -> None:
-        args = build_parser().parse_args(["separate", "input.wav", "-o", "out", "--profile", "named"])
+        args = build_parser().parse_args(
+            ["separate", "input.wav", "-o", "out", "--profile", "named"]
+        )
         fake_stdin = io.StringIO("\n")
         fake_stdin.isatty = lambda: True  # type: ignore[attr-defined]
-        with patch("cli.separate.resolve_separate_job", return_value=_job(inherited=True)), patch(
-            "cli.separate.run_batch"
-        ) as runner, patch("sys.stdin", fake_stdin):
+        with (
+            patch("cli.separate.resolve_separate_job", return_value=_job(inherited=True)),
+            patch("cli.separate.run_batch") as runner,
+            patch("sys.stdin", fake_stdin),
+        ):
             code = args.func(args)
         self.assertEqual(code, 2)
         self.assertFalse(runner.called)
@@ -456,16 +499,29 @@ class SeparateCommandTests(unittest.TestCase):
         from cli.execution import BatchOutcome
 
         out = io.StringIO()
-        outcome = BatchOutcome("success", 1.0, [{"input": "/input.wav", "status": "success", "outputs": []}])
-        with patch("cli.separate.resolve_separate_job", return_value=_job()), patch(
-            "cli.separate.check_runtime_deps", return_value=None
-        ), patch("cli.separate.run_batch", return_value=outcome), patch(
-            "cli.separate.write_manifest", return_value=None
-        ), redirect_stdout(out):
-            code = main([
-                "separate", "input.wav", "-o", "out", "--model", "mdx:test",
-                "--report", "jsonl", "--quiet",
-            ])
+        outcome = BatchOutcome(
+            "success", 1.0, [{"input": "/input.wav", "status": "success", "outputs": []}]
+        )
+        with (
+            patch("cli.separate.resolve_separate_job", return_value=_job()),
+            patch("cli.separate.check_runtime_deps", return_value=None),
+            patch("cli.separate.run_batch", return_value=outcome),
+            patch("cli.separate.write_manifest", return_value=None),
+            redirect_stdout(out),
+        ):
+            code = main(
+                [
+                    "separate",
+                    "input.wav",
+                    "-o",
+                    "out",
+                    "--model",
+                    "mdx:test",
+                    "--report",
+                    "jsonl",
+                    "--quiet",
+                ]
+            )
         self.assertEqual(code, 0)
         events = [json.loads(line)["event"] for line in out.getvalue().splitlines()]
         self.assertEqual(events, ["planned", "started", "finished"])
@@ -475,19 +531,31 @@ class SeparateCommandTests(unittest.TestCase):
 
         out, err = io.StringIO(), io.StringIO()
         outcome = BatchOutcome(
-            "failed", 0.25,
+            "failed",
+            0.25,
             [{"input": "/input.wav", "status": "failed", "error": "interrupted", "outputs": []}],
             interrupted=True,
         )
-        with patch("cli.separate.resolve_separate_job", return_value=_job()), patch(
-            "cli.separate.check_runtime_deps", return_value=None
-        ), patch("cli.separate.run_batch", return_value=outcome), patch(
-            "cli.separate.write_manifest", return_value=None
-        ), redirect_stdout(out), redirect_stderr(err):
-            code = main([
-                "separate", "input.wav", "-o", "out", "--model", "mdx:test",
-                "--report", "json",
-            ])
+        with (
+            patch("cli.separate.resolve_separate_job", return_value=_job()),
+            patch("cli.separate.check_runtime_deps", return_value=None),
+            patch("cli.separate.run_batch", return_value=outcome),
+            patch("cli.separate.write_manifest", return_value=None),
+            redirect_stdout(out),
+            redirect_stderr(err),
+        ):
+            code = main(
+                [
+                    "separate",
+                    "input.wav",
+                    "-o",
+                    "out",
+                    "--model",
+                    "mdx:test",
+                    "--report",
+                    "json",
+                ]
+            )
         payload = json.loads(out.getvalue())
         self.assertEqual(code, 130)
         self.assertFalse(payload["ok"])
@@ -496,13 +564,23 @@ class SeparateCommandTests(unittest.TestCase):
 
     def test_main_keyboard_interrupt_uses_same_json_contract(self) -> None:
         out, err = io.StringIO(), io.StringIO()
-        with patch(
-            "cli.separate.resolve_separate_job", side_effect=KeyboardInterrupt
-        ), redirect_stdout(out), redirect_stderr(err):
-            code = main([
-                "separate", "input.wav", "-o", "out", "--model", "mdx:test",
-                "--report", "json",
-            ])
+        with (
+            patch("cli.separate.resolve_separate_job", side_effect=KeyboardInterrupt),
+            redirect_stdout(out),
+            redirect_stderr(err),
+        ):
+            code = main(
+                [
+                    "separate",
+                    "input.wav",
+                    "-o",
+                    "out",
+                    "--model",
+                    "mdx:test",
+                    "--report",
+                    "json",
+                ]
+            )
         payload = json.loads(out.getvalue())
         self.assertEqual(code, 130)
         self.assertFalse(payload["ok"])
@@ -514,15 +592,26 @@ class SeparateCommandTests(unittest.TestCase):
 
         out = io.StringIO()
         outcome = BatchOutcome("failed", 0.1, [], interrupted=True)
-        with patch("cli.separate.resolve_separate_job", return_value=_job()), patch(
-            "cli.separate.check_runtime_deps", return_value=None
-        ), patch("cli.separate.run_batch", return_value=outcome), patch(
-            "cli.separate.write_manifest", return_value=None
-        ), redirect_stdout(out):
-            code = main([
-                "separate", "input.wav", "-o", "out", "--model", "mdx:test",
-                "--report", "jsonl", "--quiet",
-            ])
+        with (
+            patch("cli.separate.resolve_separate_job", return_value=_job()),
+            patch("cli.separate.check_runtime_deps", return_value=None),
+            patch("cli.separate.run_batch", return_value=outcome),
+            patch("cli.separate.write_manifest", return_value=None),
+            redirect_stdout(out),
+        ):
+            code = main(
+                [
+                    "separate",
+                    "input.wav",
+                    "-o",
+                    "out",
+                    "--model",
+                    "mdx:test",
+                    "--report",
+                    "jsonl",
+                    "--quiet",
+                ]
+            )
         finished = json.loads(out.getvalue().splitlines()[-1])
         self.assertEqual(code, 130)
         self.assertEqual(finished["event"], "finished")
@@ -532,14 +621,25 @@ class SeparateCommandTests(unittest.TestCase):
 class ValidationAndBenchmarkTests(unittest.TestCase):
     def test_config_validation_stops_before_model_assembly(self) -> None:
         out = io.StringIO()
-        with patch(
-            "cli.validate.resolve_separate_job", return_value=_job()
-        ) as resolver, redirect_stdout(out):
-            code = main([
-                "validate", "separate", "input.wav", "-o", "out",
-                "--model", "mdx:test", "--level", "config",
-                "--report", "json",
-            ])
+        with (
+            patch("cli.validate.resolve_separate_job", return_value=_job()) as resolver,
+            redirect_stdout(out),
+        ):
+            code = main(
+                [
+                    "validate",
+                    "separate",
+                    "input.wav",
+                    "-o",
+                    "out",
+                    "--model",
+                    "mdx:test",
+                    "--level",
+                    "config",
+                    "--report",
+                    "json",
+                ]
+            )
         self.assertEqual(code, 0)
         resolver.assert_called_once()
         from core.job_plan import ValidationLevel
@@ -553,9 +653,16 @@ class ValidationAndBenchmarkTests(unittest.TestCase):
     def test_benchmark_rejects_missing_identities_before_children(self) -> None:
         out = io.StringIO()
         with patch("cli.bench._run_child") as child, redirect_stdout(out):
-            code = main([
-                "bench", "input.wav", "-o", "out", "--report", "json",
-            ])
+            code = main(
+                [
+                    "bench",
+                    "input.wav",
+                    "-o",
+                    "out",
+                    "--report",
+                    "json",
+                ]
+            )
         self.assertEqual(code, 2)
         self.assertFalse(child.called)
         self.assertFalse(json.loads(out.getvalue())["ok"])
@@ -590,7 +697,9 @@ class ImportBoundaryTests(unittest.TestCase):
         import sys
 
         script = "import sys, cli.main; print(any(x in sys.modules for x in ('gi','torch','onnxruntime')))"
-        proc = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, check=True)
+        proc = subprocess.run(
+            [sys.executable, "-c", script], capture_output=True, text=True, check=True
+        )
         self.assertEqual(proc.stdout.strip(), "False")
 
 

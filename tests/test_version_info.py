@@ -1,4 +1,5 @@
 """Tests for fork release metadata and semver helpers."""
+
 import json
 import typing
 import unittest

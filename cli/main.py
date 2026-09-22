@@ -100,7 +100,9 @@ def build_parser() -> argparse.ArgumentParser:
     run.set_defaults(func=cmd_run)
 
     validate = sub.add_parser("validate", help="Validate a job without inference")
-    validate_sub = validate.add_subparsers(dest="validation_command", required=True, parser_class=UvrArgumentParser)
+    validate_sub = validate.add_subparsers(
+        dest="validation_command", required=True, parser_class=UvrArgumentParser
+    )
     validate_separate = validate_sub.add_parser("separate")
     add_separate_args(validate_separate)
     add_validation_level(validate_separate)
@@ -152,13 +154,10 @@ def _configure_diagnostics(args: argparse.Namespace) -> None:
         level = None
     include_sensitive = (
         True
-        if getattr(args, "debug_sensitive", False)
-        or getattr(args, "global_debug_sensitive", False)
+        if getattr(args, "debug_sensitive", False) or getattr(args, "global_debug_sensitive", False)
         else None
     )
-    log_file = getattr(args, "log_file", None) or getattr(
-        args, "global_log_file", None
-    )
+    log_file = getattr(args, "log_file", None) or getattr(args, "global_log_file", None)
     configure_from_settings(
         Settings.load(),
         level=level,

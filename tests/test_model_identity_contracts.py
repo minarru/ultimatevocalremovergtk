@@ -678,7 +678,9 @@ class CatalogueDisplayProjectionTests(unittest.TestCase):
         )
         manager = SimpleNamespace(
             _coordinator=SimpleNamespace(
-                latest_snapshot=SimpleNamespace(revision=None, meta_by_family={"vr": {selection: meta}})
+                latest_snapshot=SimpleNamespace(
+                    revision=None, meta_by_family={"vr": {selection: meta}}
+                )
             ),
             vr_download_list={selection: raw},
             mdx_download_list={},

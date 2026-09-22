@@ -699,7 +699,10 @@ class DownloadManager:
     ) -> tuple[str, ...]:
         """Queue exact config evidence for canonical family/selection pairs."""
         return self._evidence.queue_catalogue_evidence(
-            entries, priority=priority, force=force, on_complete=on_complete,
+            entries,
+            priority=priority,
+            force=force,
+            on_complete=on_complete,
         )
 
     def force_revalidate_catalogue_evidence(

@@ -238,7 +238,9 @@ class EnsembleFinalizationTests(unittest.TestCase):
                     "audio_file_base": "song Model",
                     "model_label": "Model",
                 },
-                callbacks=SimpleNamespace(console=lambda _text: None, report_phase=lambda _phase: None),
+                callbacks=SimpleNamespace(
+                    console=lambda _text: None, report_phase=lambda _phase: None
+                ),
             )
             hook = _EnsembleRunHooks(_ensembler(folder), is_multi_stem=False)
 

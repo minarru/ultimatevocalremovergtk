@@ -123,9 +123,7 @@ class StemCheckKeyTests(unittest.TestCase):
             return list(tags)
 
         with mock.patch.object(ModelRepository, "all_model_tags", fake_tags):
-            with mock.patch.object(
-                ModelConfig, "__init__", self._counting_stem_check(builds)
-            ):
+            with mock.patch.object(ModelConfig, "__init__", self._counting_stem_check(builds)):
                 self.repo.stem_check(self.settings)
                 self.settings.mdx.stems = "Vocals"
                 self.repo.stem_check(self.settings)
@@ -142,9 +140,7 @@ class StemCheckKeyTests(unittest.TestCase):
             return list(tags)
 
         with mock.patch.object(ModelRepository, "all_model_tags", fake_tags):
-            with mock.patch.object(
-                ModelConfig, "__init__", self._counting_stem_check(builds)
-            ):
+            with mock.patch.object(ModelConfig, "__init__", self._counting_stem_check(builds)):
                 self.repo.stem_check(self.settings)
                 self.repo.stem_check(self.settings)
 

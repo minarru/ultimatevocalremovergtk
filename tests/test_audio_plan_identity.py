@@ -87,9 +87,7 @@ class AudioPlanIdentityTests(unittest.TestCase):
             mutable_view[_APOLLO_PATH] = record
 
     def test_apollo_resolve_carries_exact_immutable_dependency_and_digest(self) -> None:
-        record = _apollo_record(
-            artifacts=ModelArtifacts("restorer.ckpt", ("restorer.yaml",))
-        )
+        record = _apollo_record(artifacts=ModelArtifacts("restorer.ckpt", ("restorer.yaml",)))
         settings = Settings.defaults()
         settings.audio_tools.apollo_model = record.id
         resolver = AudioJobResolver(mock.Mock(inventory_generation=7))
@@ -182,9 +180,12 @@ class AudioPlanIdentityTests(unittest.TestCase):
         resolver.identities = mock.Mock()
         resolver.identities.lookup.return_value = record
 
-        with tempfile.NamedTemporaryFile(suffix=".ckpt") as checkpoint, mock.patch(
-            "core.apollo.checkpoint_md5",
-            return_value="stable-checkpoint-md5",
+        with (
+            tempfile.NamedTemporaryFile(suffix=".ckpt") as checkpoint,
+            mock.patch(
+                "core.apollo.checkpoint_md5",
+                return_value="stable-checkpoint-md5",
+            ),
         ):
             self.assertTrue(resolver.is_current(_resolved_stub(record, checkpoint.name)))
 
@@ -210,9 +211,7 @@ class AudioPlanIdentityTests(unittest.TestCase):
             ):
                 for current in current_values:
                     with self.subTest(current=current):
-                        resolver = AudioJobResolver(
-                            mock.Mock(inventory_generation=7)
-                        )
+                        resolver = AudioJobResolver(mock.Mock(inventory_generation=7))
                         resolver.identities = mock.Mock()
                         if isinstance(current, Exception):
                             resolver.identities.lookup.side_effect = current

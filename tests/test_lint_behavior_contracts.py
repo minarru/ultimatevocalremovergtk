@@ -46,14 +46,20 @@ class CallbackBindingTests(unittest.TestCase):
         starts: list[Callable[[JobCallbacks], None]] = []
         runners = [Mock(), Mock()]
 
-        def capture(_runner: object, start: Callable[[JobCallbacks], None], **_kwargs: object) -> RunResult:
+        def capture(
+            _runner: object, start: Callable[[JobCallbacks], None], **_kwargs: object
+        ) -> RunResult:
             starts.append(start)
             return RunResult(0.0, error=RuntimeError("test stop"))
 
         with tempfile.TemporaryDirectory() as output:
             plan = SimpleNamespace(
-                tool=CHANGE_PITCH, output=output, settings=Settings.defaults(),
-                units=tuple(SimpleNamespace(inputs=(name,), outputs=()) for name in ("a.wav", "b.wav")),
+                tool=CHANGE_PITCH,
+                output=output,
+                settings=Settings.defaults(),
+                units=tuple(
+                    SimpleNamespace(inputs=(name,), outputs=()) for name in ("a.wav", "b.wav")
+                ),
             )
             args = argparse.Namespace(on_exists="fail", quiet=True, fail_fast=False, report="human")
             with (
@@ -66,7 +72,12 @@ class CallbackBindingTests(unittest.TestCase):
             start(callbacks)
         for runner, name in zip(runners, ("a.wav", "b.wav"), strict=True):
             runner.start.assert_called_once_with(
-                CHANGE_PITCH, [name], [], callbacks, apollo_params=None, output_name=None,
+                CHANGE_PITCH,
+                [name],
+                [],
+                callbacks,
+                apollo_params=None,
+                output_name=None,
             )
 
 
@@ -83,11 +94,15 @@ class ApolloClosureTests(unittest.TestCase):
                 with (
                     patch("engines.apollo.load_audio", return_value=(signal, 8)),
                     patch("core.torch_checkpoint.load_torch_checkpoint", return_value={}),
-                    patch("engines.apollo.models.BaseModel.from_checkpoint", return_value=model) as load,
+                    patch(
+                        "engines.apollo.models.BaseModel.from_checkpoint", return_value=model
+                    ) as load,
                     patch("engines.model_weight_cache.get_weight_cache", return_value=cache),
                     patch("engines.apollo.materialize_module", return_value=model),
                 ):
-                    result = restore_process("unused.wav", "unused.ckpt", chunk_size=1, overlap=2, device="cpu")
+                    result = restore_process(
+                        "unused.wav", "unused.ckpt", chunk_size=1, overlap=2, device="cpu"
+                    )
                 np.testing.assert_allclose(result, signal.numpy(), atol=1e-6)
                 self.assertEqual(load.call_count, 0 if cached else 1)
 
@@ -119,7 +134,9 @@ class PairingContractTests(unittest.TestCase):
         state = SimpleNamespace(
             _left=SimpleNamespace(paths=["a.wav", "b.wav"]),
             _right=SimpleNamespace(paths=["c.wav"]),
-            _on_confirm=Mock(), dialog=Mock(), _sync_pair_state=Mock(),
+            _on_confirm=Mock(),
+            dialog=Mock(),
+            _sync_pair_state=Mock(),
         )
         DualBatchDialog._on_save(cast(Any, state))
         state._on_confirm.assert_not_called()
@@ -141,8 +158,10 @@ class PairingContractTests(unittest.TestCase):
         page = SimpleNamespace(get_name=lambda: "one")
         stack = SimpleNamespace(get_pages=lambda: [page])
         host = SimpleNamespace(
-            get_stack=lambda: stack, get_first_child=lambda: first,
-            get_mapped=lambda: True, connect=Mock(),
+            get_stack=lambda: stack,
+            get_first_child=lambda: first,
+            get_mapped=lambda: True,
+            connect=Mock(),
         )
         with patch("ui.hints.Gtk.ToggleButton", Mock):
             install_view_tab_tooltips(host, {"one": "First page"})

@@ -19,9 +19,7 @@ class AttendDtypeTests(unittest.TestCase):
     """``Attend`` must work in fp32 as well as fp16 (autocast on *and* off)."""
 
     def _qkv(self, dtype: torch.dtype, device: str) -> tuple[torch.Tensor, ...]:
-        return tuple(
-            torch.randn(2, 4, 64, 32, device=device, dtype=dtype) for _ in range(3)
-        )
+        return tuple(torch.randn(2, 4, 64, 32, device=device, dtype=dtype) for _ in range(3))
 
     def test_flash_path_accepts_fp32(self) -> None:
         """The regression: fp32 + flash=True must not raise."""
@@ -52,9 +50,7 @@ class AttendDtypeTests(unittest.TestCase):
         import ml.attend as attend_mod
 
         tree = ast.parse(inspect.getsource(attend_mod))
-        used = {
-            node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)
-        }
+        used = {node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)}
         self.assertNotIn("sdp_kernel", used)
 
     @unittest.skipUnless(torch.cuda.is_available(), "CUDA required")
@@ -88,7 +84,9 @@ class DemucsEvalModeTests(unittest.TestCase):
                 model = torch.nn.BatchNorm1d(2)
                 self.assertTrue(model.training)
                 state = model.state_dict()
-                checkpoint = ((lambda model=model: model), (), {}, state) if version == DEMUCS_V1 else state
+                checkpoint = (
+                    ((lambda model=model: model), (), {}, state) if version == DEMUCS_V1 else state
+                )
                 request = DemucsAcquisitionRequest("/tmp/fixture.th", version, sources=["vocals"])
                 with (
                     patch("engines.demucs_runtime.load_torch_checkpoint", return_value=checkpoint),
@@ -96,10 +94,14 @@ class DemucsEvalModeTests(unittest.TestCase):
                     patch("engines.demucs_runtime._gm", return_value=model),
                     patch("engines.demucs_runtime.demucs_segments", return_value=model),
                 ):
-                    loaded = acquire_demucs_model(request, "cpu", weight_cache=SimpleNamespace(get=lambda _key: None), cache_key="fixture")
+                    loaded = acquire_demucs_model(
+                        request,
+                        "cpu",
+                        weight_cache=SimpleNamespace(get=lambda _key: None),
+                        cache_key="fixture",
+                    )
                 self.assertIs(loaded, model)
                 self.assertFalse(loaded.training)
-
 
 
 if __name__ == "__main__":

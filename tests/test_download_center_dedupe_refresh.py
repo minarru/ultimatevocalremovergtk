@@ -26,8 +26,10 @@ def _bare_window() -> Any:
     win.window = mock.MagicMock()
     win.window.get_visible.return_value = True
     from ui.catalogue_browser import CatalogueBrowserState
+
     win.browser = CatalogueBrowserState()
     from ui.lifetime import UiLifetime
+
     win._lifetime = UiLifetime()
     win._listening = False
     win._sort_mode = "name"
@@ -73,6 +75,7 @@ def _seed_row(win: Any, arch: str, name: str, *, checked: bool = False) -> Any:
     win._row_actions[(arch, name)] = action
     win._row_checks[(arch, name)] = check
     from ui.catalogue_browser import BrowserRow
+
     win.browser.rows[(arch, name)] = BrowserRow((arch, name), name, arch)
     win.browser.set_selected((arch, name), checked)
     win._size_lookup_ids[(arch, name)] = 1
@@ -87,11 +90,12 @@ class CatalogueRefreshDebounceTests(unittest.TestCase):
         win = _bare_window()
         timeout_calls: list[tuple[int, Any]] = []
 
-        with mock.patch(
-            "gi.repository.GLib.timeout_add",
-            side_effect=lambda ms, cb: (timeout_calls.append((ms, cb)), 1)[1],
-        ), mock.patch(
-            "ui.download_center.idle_on_main", side_effect=lambda fn: fn()
+        with (
+            mock.patch(
+                "gi.repository.GLib.timeout_add",
+                side_effect=lambda ms, cb: (timeout_calls.append((ms, cb)), 1)[1],
+            ),
+            mock.patch("ui.download_center.idle_on_main", side_effect=lambda fn: fn()),
         ):
             for _ in range(5):
                 DownloadCenterWindow._schedule_catalogue_row_refresh(win)
@@ -258,8 +262,9 @@ class CatalogueListenerWiringTests(unittest.TestCase):
 
         win = _bare_window()
 
-        with mock.patch("core.catalogue_stem_cache.subscribe"), mock.patch(
-            "core.catalogue_stem_cache.ensure_worker_started"
+        with (
+            mock.patch("core.catalogue_stem_cache.subscribe"),
+            mock.patch("core.catalogue_stem_cache.ensure_worker_started"),
         ):
             DownloadCenterWindow._ensure_background_listeners(win)
 
@@ -291,9 +296,7 @@ class PinnedSnapshotDeltaTests(unittest.TestCase):
 
         win = _bare_window()
         win._schedule_catalogue_row_refresh = mock.MagicMock()
-        delta = CatalogueDelta(
-            kind=DeltaKind.IDENTITY_REFINED, removed={"mdx": ("Rehosted Copy",)}
-        )
+        delta = CatalogueDelta(kind=DeltaKind.IDENTITY_REFINED, removed={"mdx": ("Rehosted Copy",)})
         DownloadCenterWindow._on_catalogue_delta(win, delta)
         win._schedule_catalogue_row_refresh.assert_called_once_with()
 
@@ -328,7 +331,10 @@ class PinnedSnapshotDeltaTests(unittest.TestCase):
         jobs = DownloadCenterWindow._resolve_pinned(win, "Pinned", MDX_ARCH_TYPE)
         win.manager.resolve.assert_called_once()
         kwargs = win.manager.resolve.call_args
-        self.assertEqual(kwargs.kwargs.get("catalogue") or kwargs[1].get("catalogue"), {"Pinned": {"p.ckpt": "https://pin/p.ckpt"}})
+        self.assertEqual(
+            kwargs.kwargs.get("catalogue") or kwargs[1].get("catalogue"),
+            {"Pinned": {"p.ckpt": "https://pin/p.ckpt"}},
+        )
         self.assertEqual(jobs, [("https://pin/p.ckpt", "/tmp/p.ckpt")])
 
     def test_present_adopts_pending_source_delta(self) -> None:
@@ -350,9 +356,7 @@ class ComposedPublicJourneyTests(unittest.TestCase):
 
     _PAYLOAD = {
         "mdx_download_list": {"Public": {"p.ckpt": "https://u/p.ckpt"}},
-        "mdx_download_vip_list": {
-            "MDX-Net Model VIP: Added": "added.onnx"
-        },
+        "mdx_download_vip_list": {"MDX-Net Model VIP: Added": "added.onnx"},
         "vr_download_list": {},
         "demucs_download_list": {},
     }
@@ -361,9 +365,7 @@ class ComposedPublicJourneyTests(unittest.TestCase):
         self.coordinator = _injected_coordinator(self._PAYLOAD)
         self.addCleanup(self.coordinator.close)
         self.policy = AccessPolicy(allow_network=False, allow_metadata_writes=False)
-        self.public = self.coordinator.snapshot(
-            mode=RefreshMode.OFFLINE, policy=self.policy
-        )
+        self.public = self.coordinator.snapshot(mode=RefreshMode.OFFLINE, policy=self.policy)
         self.manager = DownloadManager(self.coordinator)
         self.manager._apply_snapshot(self.public)
 

@@ -21,11 +21,13 @@ _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 def _run_cli(data_dir: str, *arguments: str) -> subprocess.CompletedProcess[str]:
     env = dict(os.environ)
-    env.update({
-        "UVR_DATA_DIR": data_dir,
-        "UVR_DISABLE_POLITREES": "1",
-        "UVR_DISABLE_MVSEPLESS": "1",
-    })
+    env.update(
+        {
+            "UVR_DATA_DIR": data_dir,
+            "UVR_DISABLE_POLITREES": "1",
+            "UVR_DISABLE_MVSEPLESS": "1",
+        }
+    )
     return subprocess.run(
         [sys.executable, "-m", "cli", *arguments, "--report", "json"],
         cwd=_PROJECT_ROOT,
@@ -225,16 +227,12 @@ class DemucsRegistrationTests(unittest.TestCase):
                 handle.write(b"custom checkpoint")
             data_dir = os.path.join(tmp, "data")
 
-            result = _run_cli(
-                data_dir, "models", "register", source, "--family", "demucs"
-            )
+            result = _run_cli(data_dir, "models", "register", source, "--family", "demucs")
 
             self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
             payload = json.loads(result.stdout)
             self.assertIn("--config is required", payload["error"]["message"])
-            self.assertFalse(
-                os.path.exists(os.path.join(data_dir, "models", "Demucs_Models"))
-            )
+            self.assertFalse(os.path.exists(os.path.join(data_dir, "models", "Demucs_Models")))
 
     def test_invalid_version_fails_before_creating_destination_directory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -243,9 +241,7 @@ class DemucsRegistrationTests(unittest.TestCase):
             with open(source, "wb") as handle:
                 handle.write(b"custom checkpoint")
             with open(config, "w", encoding="utf-8") as handle:
-                json.dump(
-                    {"demucs_version": "v5", "source_layout": "4_stem"}, handle
-                )
+                json.dump({"demucs_version": "v5", "source_layout": "4_stem"}, handle)
             data_dir = os.path.join(tmp, "data")
 
             result = _run_cli(
@@ -264,9 +260,7 @@ class DemucsRegistrationTests(unittest.TestCase):
                 "invalid Demucs version",
                 json.loads(result.stdout)["error"]["message"],
             )
-            self.assertFalse(
-                os.path.exists(os.path.join(data_dir, "models", "Demucs_Models"))
-            )
+            self.assertFalse(os.path.exists(os.path.join(data_dir, "models", "Demucs_Models")))
 
     def test_invalid_layout_fails_before_creating_destination_directory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -275,9 +269,7 @@ class DemucsRegistrationTests(unittest.TestCase):
             with open(source, "wb") as handle:
                 handle.write(b"custom checkpoint")
             with open(config, "w", encoding="utf-8") as handle:
-                json.dump(
-                    {"demucs_version": "v4", "source_layout": "5_stem"}, handle
-                )
+                json.dump({"demucs_version": "v4", "source_layout": "5_stem"}, handle)
             data_dir = os.path.join(tmp, "data")
 
             result = _run_cli(
@@ -296,9 +288,7 @@ class DemucsRegistrationTests(unittest.TestCase):
                 "invalid Demucs source layout",
                 json.loads(result.stdout)["error"]["message"],
             )
-            self.assertFalse(
-                os.path.exists(os.path.join(data_dir, "models", "Demucs_Models"))
-            )
+            self.assertFalse(os.path.exists(os.path.join(data_dir, "models", "Demucs_Models")))
 
     def test_invalid_extension_fails_before_creating_destination_directory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -307,9 +297,7 @@ class DemucsRegistrationTests(unittest.TestCase):
             with open(source, "wb") as handle:
                 handle.write(b"custom checkpoint")
             with open(config, "w", encoding="utf-8") as handle:
-                json.dump(
-                    {"demucs_version": "v4", "source_layout": "4_stem"}, handle
-                )
+                json.dump({"demucs_version": "v4", "source_layout": "4_stem"}, handle)
             data_dir = os.path.join(tmp, "data")
 
             result = _run_cli(
@@ -328,9 +316,7 @@ class DemucsRegistrationTests(unittest.TestCase):
                 "v3/v4 Demucs entrypoint must be .th or .yaml",
                 json.loads(result.stdout)["error"]["message"],
             )
-            self.assertFalse(
-                os.path.exists(os.path.join(data_dir, "models", "Demucs_Models"))
-            )
+            self.assertFalse(os.path.exists(os.path.join(data_dir, "models", "Demucs_Models")))
 
     def test_v4_uppercase_weight_extension_is_rejected_before_writes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -339,9 +325,7 @@ class DemucsRegistrationTests(unittest.TestCase):
             with open(source, "wb") as handle:
                 handle.write(b"custom checkpoint")
             with open(config, "w", encoding="utf-8") as handle:
-                json.dump(
-                    {"demucs_version": "v4", "source_layout": "4_stem"}, handle
-                )
+                json.dump({"demucs_version": "v4", "source_layout": "4_stem"}, handle)
             data_dir = os.path.join(tmp, "data")
 
             result = _run_cli(
@@ -360,9 +344,7 @@ class DemucsRegistrationTests(unittest.TestCase):
                 "v3/v4 Demucs entrypoint must be .th or .yaml",
                 json.loads(result.stdout)["error"]["message"],
             )
-            self.assertFalse(
-                os.path.exists(os.path.join(data_dir, "models", "Demucs_Models"))
-            )
+            self.assertFalse(os.path.exists(os.path.join(data_dir, "models", "Demucs_Models")))
 
     def test_v4_uppercase_yaml_extension_is_rejected_before_writes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -371,9 +353,7 @@ class DemucsRegistrationTests(unittest.TestCase):
             with open(source, "w", encoding="utf-8") as handle:
                 handle.write("models:\n  - abc12345\n")
             with open(config, "w", encoding="utf-8") as handle:
-                json.dump(
-                    {"demucs_version": "v4", "source_layout": "4_stem"}, handle
-                )
+                json.dump({"demucs_version": "v4", "source_layout": "4_stem"}, handle)
             data_dir = os.path.join(tmp, "data")
 
             result = _run_cli(
@@ -392,9 +372,7 @@ class DemucsRegistrationTests(unittest.TestCase):
                 "v3/v4 Demucs entrypoint must be .th or .yaml",
                 json.loads(result.stdout)["error"]["message"],
             )
-            self.assertFalse(
-                os.path.exists(os.path.join(data_dir, "models", "Demucs_Models"))
-            )
+            self.assertFalse(os.path.exists(os.path.join(data_dir, "models", "Demucs_Models")))
 
     def test_v4_uppercase_bag_member_extension_is_rejected_before_writes(
         self,
@@ -410,9 +388,7 @@ class DemucsRegistrationTests(unittest.TestCase):
             with open(member, "wb") as handle:
                 handle.write(member_data)
             with open(config, "w", encoding="utf-8") as handle:
-                json.dump(
-                    {"demucs_version": "v4", "source_layout": "4_stem"}, handle
-                )
+                json.dump({"demucs_version": "v4", "source_layout": "4_stem"}, handle)
             data_dir = os.path.join(tmp, "data")
 
             result = _run_cli(
@@ -431,9 +407,7 @@ class DemucsRegistrationTests(unittest.TestCase):
                 "must match exactly one",
                 json.loads(result.stdout)["error"]["message"],
             )
-            self.assertFalse(
-                os.path.exists(os.path.join(data_dir, "models", "Demucs_Models"))
-            )
+            self.assertFalse(os.path.exists(os.path.join(data_dir, "models", "Demucs_Models")))
 
     def test_complete_bag_copies_all_members_and_commits_registry(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -476,9 +450,7 @@ class DemucsRegistrationTests(unittest.TestCase):
             )
 
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            repo_dir = os.path.join(
-                data_dir, "models", "Demucs_Models", "v3_v4_repo"
-            )
+            repo_dir = os.path.join(data_dir, "models", "Demucs_Models", "v3_v4_repo")
             for name, expected in (
                 ("custom_bag.yaml", b"models:\n  - abc12345\n  - def67890\n"),
                 (first_name, first_data),
@@ -521,13 +493,9 @@ class DemucsRegistrationTests(unittest.TestCase):
             with open(member_source, "wb") as handle:
                 handle.write(member_data)
             with open(config, "w", encoding="utf-8") as handle:
-                json.dump(
-                    {"demucs_version": "v4", "source_layout": "4_stem"}, handle
-                )
+                json.dump({"demucs_version": "v4", "source_layout": "4_stem"}, handle)
             data_dir = os.path.join(tmp, "data")
-            repo_dir = os.path.join(
-                data_dir, "models", "Demucs_Models", "v3_v4_repo"
-            )
+            repo_dir = os.path.join(data_dir, "models", "Demucs_Models", "v3_v4_repo")
             os.makedirs(repo_dir)
             collision = os.path.join(repo_dir, member_name)
             with open(collision, "wb") as handle:
@@ -545,9 +513,7 @@ class DemucsRegistrationTests(unittest.TestCase):
             )
 
             self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
-            self.assertIn(
-                "different content", json.loads(result.stdout)["error"]["message"]
-            )
+            self.assertIn("different content", json.loads(result.stdout)["error"]["message"])
             with open(collision, "rb") as handle:
                 self.assertEqual(handle.read(), b"different installed member")
             self.assertEqual(os.listdir(repo_dir), [member_name])
@@ -644,9 +610,7 @@ class DemucsRegistrationTests(unittest.TestCase):
             with self.assertRaisesRegex(
                 ValueError, "invalid declared checksum|changed since validation"
             ):
-                with patch(
-                    "builtins.open", side_effect=mutate_on_second_source_read
-                ):
+                with patch("builtins.open", side_effect=mutate_on_second_source_read):
                     unit = prepare_demucs_registration(
                         source,
                         {"demucs_version": "v4", "source_layout": "4_stem"},
@@ -654,9 +618,7 @@ class DemucsRegistrationTests(unittest.TestCase):
                     )
                     registry.install(unit)
 
-            destination = os.path.join(
-                models_dir, "v3_v4_repo", os.path.basename(source)
-            )
+            destination = os.path.join(models_dir, "v3_v4_repo", os.path.basename(source))
             self.assertFalse(os.path.exists(destination))
             self.assertFalse(os.path.exists(registry.path))
 
@@ -694,9 +656,7 @@ class DemucsRegistrationTests(unittest.TestCase):
             with self.assertRaisesRegex(
                 ValueError, "membership|must match exactly one|changed since validation"
             ):
-                with patch(
-                    "builtins.open", side_effect=mutate_on_second_source_read
-                ):
+                with patch("builtins.open", side_effect=mutate_on_second_source_read):
                     unit = prepare_demucs_registration(
                         source,
                         {"demucs_version": "v4", "source_layout": "4_stem"},
@@ -743,9 +703,7 @@ class DemucsRegistrationTests(unittest.TestCase):
             with self.assertRaisesRegex(
                 ValueError, "invalid declared checksum|changed since validation"
             ):
-                with patch(
-                    "builtins.open", side_effect=mutate_on_second_member_read
-                ):
+                with patch("builtins.open", side_effect=mutate_on_second_member_read):
                     unit = prepare_demucs_registration(
                         source,
                         {"demucs_version": "v4", "source_layout": "4_stem"},
@@ -769,9 +727,7 @@ class DemucsRegistrationTests(unittest.TestCase):
             with open(source, "wb") as handle:
                 handle.write(b"custom checkpoint")
             with open(config, "w", encoding="utf-8") as handle:
-                json.dump(
-                    {"demucs_version": "v4", "source_layout": "4_stem"}, handle
-                )
+                json.dump({"demucs_version": "v4", "source_layout": "4_stem"}, handle)
             models_dir = os.path.join(tmp, "Demucs_Models")
             args = argparse.Namespace(
                 checkpoint=source,
@@ -795,24 +751,23 @@ class DemucsRegistrationTests(unittest.TestCase):
                 result = cmd_models_register(args)
 
             self.assertEqual(result, 0, output.getvalue())
-            self.assertTrue(
-                os.path.isfile(
-                    os.path.join(models_dir, "v3_v4_repo", "custom.th")
-                )
-            )
-            registry_path = os.path.join(
-                models_dir, "model_data", "registered_models.json"
-            )
+            self.assertTrue(os.path.isfile(os.path.join(models_dir, "v3_v4_repo", "custom.th")))
+            registry_path = os.path.join(models_dir, "model_data", "registered_models.json")
             with open(registry_path, encoding="utf-8") as handle:
                 document = json.load(handle)
             self.assertIn("demucs:custom", document["models"])
             payload = json.loads(output.getvalue())
-            self.assertEqual(payload["items"], [{
-                "id": "demucs:custom",
-                "family": "demucs",
-                "installed": True,
-                "registered": True,
-            }])
+            self.assertEqual(
+                payload["items"],
+                [
+                    {
+                        "id": "demucs:custom",
+                        "family": "demucs",
+                        "installed": True,
+                        "registered": True,
+                    }
+                ],
+            )
 
     def test_v2_th_gz_installs_in_legacy_directory_with_compound_stem(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -821,9 +776,7 @@ class DemucsRegistrationTests(unittest.TestCase):
             with open(source, "wb") as handle:
                 handle.write(b"legacy checkpoint")
             with open(config, "w", encoding="utf-8") as handle:
-                json.dump(
-                    {"demucs_version": "v2", "source_layout": "4_stem"}, handle
-                )
+                json.dump({"demucs_version": "v2", "source_layout": "4_stem"}, handle)
             data_dir = os.path.join(tmp, "data")
 
             result = _run_cli(
@@ -840,9 +793,7 @@ class DemucsRegistrationTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             item = json.loads(result.stdout)["items"][0]
             self.assertEqual(item["id"], "demucs:custom")
-            legacy_path = os.path.join(
-                data_dir, "models", "Demucs_Models", "custom.th.gz"
-            )
+            legacy_path = os.path.join(data_dir, "models", "Demucs_Models", "custom.th.gz")
             self.assertTrue(os.path.isfile(legacy_path))
             self.assertFalse(
                 os.path.exists(
@@ -865,9 +816,7 @@ class DemucsRegistrationTests(unittest.TestCase):
             with open(source, "wb") as handle:
                 handle.write(weight)
             with open(config, "w", encoding="utf-8") as handle:
-                json.dump(
-                    {"demucs_version": "v4", "source_layout": "2_stem"}, handle
-                )
+                json.dump({"demucs_version": "v4", "source_layout": "2_stem"}, handle)
             data_dir = os.path.join(tmp, "data")
 
             result = _run_cli(
@@ -894,13 +843,9 @@ class DemucsRegistrationTests(unittest.TestCase):
             with open(source, "wb") as handle:
                 handle.write(b"custom checkpoint")
             with open(config, "w", encoding="utf-8") as handle:
-                json.dump(
-                    {"demucs_version": "v4", "source_layout": "4_stem"}, handle
-                )
+                json.dump({"demucs_version": "v4", "source_layout": "4_stem"}, handle)
             data_dir = os.path.join(tmp, "data")
-            repo_dir = os.path.join(
-                data_dir, "models", "Demucs_Models", "v3_v4_repo"
-            )
+            repo_dir = os.path.join(data_dir, "models", "Demucs_Models", "v3_v4_repo")
             os.makedirs(repo_dir)
             orphan = os.path.join(repo_dir, "custom.th")
             with open(orphan, "wb") as handle:
@@ -967,9 +912,7 @@ class DemucsRegistrationTests(unittest.TestCase):
             with open(source, "w", encoding="utf-8") as handle:
                 handle.write("models:\n  - abc12345\n")
             with open(config, "w", encoding="utf-8") as handle:
-                json.dump(
-                    {"demucs_version": "v4", "source_layout": "4_stem"}, handle
-                )
+                json.dump({"demucs_version": "v4", "source_layout": "4_stem"}, handle)
             data_dir = os.path.join(tmp, "data")
 
             result = _run_cli(
@@ -988,9 +931,7 @@ class DemucsRegistrationTests(unittest.TestCase):
                 "must match exactly one",
                 json.loads(result.stdout)["error"]["message"],
             )
-            self.assertFalse(
-                os.path.exists(os.path.join(data_dir, "models", "Demucs_Models"))
-            )
+            self.assertFalse(os.path.exists(os.path.join(data_dir, "models", "Demucs_Models")))
 
     def test_ambiguous_bag_member_fails_before_creating_destination_directory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1000,14 +941,10 @@ class DemucsRegistrationTests(unittest.TestCase):
                 handle.write("models:\n  - abc12345\n")
             for content in (b"first", b"second"):
                 checksum = hashlib.sha256(content).hexdigest()[:8]
-                with open(
-                    os.path.join(tmp, f"abc12345-{checksum}.th"), "wb"
-                ) as handle:
+                with open(os.path.join(tmp, f"abc12345-{checksum}.th"), "wb") as handle:
                     handle.write(content)
             with open(config, "w", encoding="utf-8") as handle:
-                json.dump(
-                    {"demucs_version": "v4", "source_layout": "4_stem"}, handle
-                )
+                json.dump({"demucs_version": "v4", "source_layout": "4_stem"}, handle)
             data_dir = os.path.join(tmp, "data")
 
             result = _run_cli(
@@ -1026,9 +963,7 @@ class DemucsRegistrationTests(unittest.TestCase):
                 "must match exactly one",
                 json.loads(result.stdout)["error"]["message"],
             )
-            self.assertFalse(
-                os.path.exists(os.path.join(data_dir, "models", "Demucs_Models"))
-            )
+            self.assertFalse(os.path.exists(os.path.join(data_dir, "models", "Demucs_Models")))
 
     def test_invalid_declared_checksum_fails_before_creating_destination_directory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1037,9 +972,7 @@ class DemucsRegistrationTests(unittest.TestCase):
             with open(source, "wb") as handle:
                 handle.write(b"not deadbeef")
             with open(config, "w", encoding="utf-8") as handle:
-                json.dump(
-                    {"demucs_version": "v4", "source_layout": "4_stem"}, handle
-                )
+                json.dump({"demucs_version": "v4", "source_layout": "4_stem"}, handle)
             data_dir = os.path.join(tmp, "data")
 
             result = _run_cli(
@@ -1058,9 +991,7 @@ class DemucsRegistrationTests(unittest.TestCase):
                 "invalid declared checksum",
                 json.loads(result.stdout)["error"]["message"],
             )
-            self.assertFalse(
-                os.path.exists(os.path.join(data_dir, "models", "Demucs_Models"))
-            )
+            self.assertFalse(os.path.exists(os.path.join(data_dir, "models", "Demucs_Models")))
 
     def test_multi_hyphen_weight_fails_before_creating_destination_directory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1069,9 +1000,7 @@ class DemucsRegistrationTests(unittest.TestCase):
             with open(source, "wb") as handle:
                 handle.write(b"checkpoint")
             with open(config, "w", encoding="utf-8") as handle:
-                json.dump(
-                    {"demucs_version": "v4", "source_layout": "4_stem"}, handle
-                )
+                json.dump({"demucs_version": "v4", "source_layout": "4_stem"}, handle)
             data_dir = os.path.join(tmp, "data")
 
             result = _run_cli(
@@ -1090,9 +1019,7 @@ class DemucsRegistrationTests(unittest.TestCase):
                 "expected signature.th or signature-checksum.th",
                 json.loads(result.stdout)["error"]["message"],
             )
-            self.assertFalse(
-                os.path.exists(os.path.join(data_dir, "models", "Demucs_Models"))
-            )
+            self.assertFalse(os.path.exists(os.path.join(data_dir, "models", "Demucs_Models")))
 
     def test_losing_race_does_not_delete_artifact_claimed_by_winner(self) -> None:
         from core.demucs_registry import (
@@ -1175,18 +1102,14 @@ class DemucsRegistrationTests(unittest.TestCase):
             with open(destination, "rb") as handle:
                 self.assertEqual(handle.read(), b"shared checkpoint")
             stored = registry.load()
-            self.assertEqual(
-                stored["models"]["demucs:custom"]["display_name"], "Winner"
-            )
+            self.assertEqual(stored["models"]["demucs:custom"]["display_name"], "Winner")
 
 
 class DemucsConfigureTests(unittest.TestCase):
     def test_configure_attaches_metadata_to_incomplete_installed_id(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             data_dir = os.path.join(tmp, "data")
-            newer_dir = os.path.join(
-                data_dir, "models", "Demucs_Models", "v3_v4_repo"
-            )
+            newer_dir = os.path.join(data_dir, "models", "Demucs_Models", "v3_v4_repo")
             os.makedirs(newer_dir)
             installed = os.path.join(newer_dir, "custom.th")
             with open(installed, "wb") as handle:
@@ -1213,9 +1136,7 @@ class DemucsConfigureTests(unittest.TestCase):
 
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertTrue(os.path.isfile(installed))
-            listing = _run_cli(
-                data_dir, "models", "list", "--family", "demucs"
-            )
+            listing = _run_cli(data_dir, "models", "list", "--family", "demucs")
             self.assertEqual(listing.returncode, 0, listing.stdout + listing.stderr)
             rows = json.loads(listing.stdout)["items"]
             custom = next(row for row in rows if row["id"] == "demucs:custom")
@@ -1227,18 +1148,14 @@ class DemucsConfigureTests(unittest.TestCase):
     def test_version_change_that_would_move_directories_is_refused(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             data_dir = os.path.join(tmp, "data")
-            newer_dir = os.path.join(
-                data_dir, "models", "Demucs_Models", "v3_v4_repo"
-            )
+            newer_dir = os.path.join(data_dir, "models", "Demucs_Models", "v3_v4_repo")
             os.makedirs(newer_dir)
             installed = os.path.join(newer_dir, "custom.th")
             with open(installed, "wb") as handle:
                 handle.write(b"custom checkpoint")
             config = os.path.join(tmp, "config.json")
             with open(config, "w", encoding="utf-8") as handle:
-                json.dump(
-                    {"demucs_version": "v2", "source_layout": "4_stem"}, handle
-                )
+                json.dump({"demucs_version": "v2", "source_layout": "4_stem"}, handle)
 
             result = _run_cli(
                 data_dir,
@@ -1256,9 +1173,7 @@ class DemucsConfigureTests(unittest.TestCase):
             )
             self.assertTrue(os.path.isfile(installed))
             self.assertFalse(
-                os.path.exists(
-                    os.path.join(data_dir, "models", "Demucs_Models", "custom.th")
-                )
+                os.path.exists(os.path.join(data_dir, "models", "Demucs_Models", "custom.th"))
             )
             self.assertFalse(
                 os.path.exists(
@@ -1275,17 +1190,13 @@ class DemucsConfigureTests(unittest.TestCase):
     def test_configure_rejects_non_demucs_metadata_flags(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             data_dir = os.path.join(tmp, "data")
-            newer_dir = os.path.join(
-                data_dir, "models", "Demucs_Models", "v3_v4_repo"
-            )
+            newer_dir = os.path.join(data_dir, "models", "Demucs_Models", "v3_v4_repo")
             os.makedirs(newer_dir)
             with open(os.path.join(newer_dir, "custom.th"), "wb") as handle:
                 handle.write(b"custom checkpoint")
             config = os.path.join(tmp, "config.json")
             with open(config, "w", encoding="utf-8") as handle:
-                json.dump(
-                    {"demucs_version": "v4", "source_layout": "4_stem"}, handle
-                )
+                json.dump({"demucs_version": "v4", "source_layout": "4_stem"}, handle)
 
             result = _run_cli(
                 data_dir,
@@ -1314,6 +1225,7 @@ class DemucsConfigureTests(unittest.TestCase):
                     )
                 )
             )
+
     def test_reset_removes_metadata_but_keeps_artifact_incomplete(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             source = os.path.join(tmp, "custom.th")
@@ -1321,9 +1233,7 @@ class DemucsConfigureTests(unittest.TestCase):
             with open(source, "wb") as handle:
                 handle.write(b"custom checkpoint")
             with open(config, "w", encoding="utf-8") as handle:
-                json.dump(
-                    {"demucs_version": "v4", "source_layout": "4_stem"}, handle
-                )
+                json.dump({"demucs_version": "v4", "source_layout": "4_stem"}, handle)
             data_dir = os.path.join(tmp, "data")
             registered = _run_cli(
                 data_dir,
@@ -1335,13 +1245,9 @@ class DemucsConfigureTests(unittest.TestCase):
                 "--config",
                 config,
             )
-            self.assertEqual(
-                registered.returncode, 0, registered.stdout + registered.stderr
-            )
+            self.assertEqual(registered.returncode, 0, registered.stdout + registered.stderr)
 
-            reset = _run_cli(
-                data_dir, "models", "configure", "demucs:custom", "--reset"
-            )
+            reset = _run_cli(data_dir, "models", "configure", "demucs:custom", "--reset")
 
             self.assertEqual(reset.returncode, 0, reset.stdout + reset.stderr)
             installed = os.path.join(
@@ -1364,9 +1270,7 @@ class DemucsConfigureTests(unittest.TestCase):
             self.assertEqual(registry["models"], {})
             self.assertEqual(registry["by_primary_hash"], {})
 
-            listing = _run_cli(
-                data_dir, "models", "list", "--family", "demucs"
-            )
+            listing = _run_cli(data_dir, "models", "list", "--family", "demucs")
             self.assertEqual(listing.returncode, 0, listing.stdout + listing.stderr)
             rows = json.loads(listing.stdout)["items"]
             custom = next(row for row in rows if row["id"] == "demucs:custom")
@@ -1407,9 +1311,7 @@ class DemucsConfigureTests(unittest.TestCase):
                 json.dump(document, handle)
             config = os.path.join(tmp, "config.json")
             with open(config, "w", encoding="utf-8") as handle:
-                json.dump(
-                    {"demucs_version": "v4", "source_layout": "4_stem"}, handle
-                )
+                json.dump({"demucs_version": "v4", "source_layout": "4_stem"}, handle)
 
             result = _run_cli(
                 data_dir,
@@ -1441,9 +1343,7 @@ class DemucsInventoryRegistrationTests(unittest.TestCase):
             os.makedirs(model_data_dir)
             with open(os.path.join(newer_dir, "custom.th"), "wb") as handle:
                 handle.write(b"registered checkpoint")
-            registry_path = os.path.join(
-                model_data_dir, "registered_models.json"
-            )
+            registry_path = os.path.join(model_data_dir, "registered_models.json")
             original_bytes = json.dumps(
                 {
                     "schema_version": 1,
@@ -1465,9 +1365,7 @@ class DemucsInventoryRegistrationTests(unittest.TestCase):
             with open(registry_path, "wb") as handle:
                 handle.write(original_bytes)
 
-            listing = _run_cli(
-                data_dir, "models", "list", "--family", "demucs"
-            )
+            listing = _run_cli(data_dir, "models", "list", "--family", "demucs")
 
             self.assertEqual(listing.returncode, 0, listing.stdout + listing.stderr)
             with open(registry_path, "rb") as handle:
@@ -1507,9 +1405,7 @@ class DemucsInventoryRegistrationTests(unittest.TestCase):
                     handle,
                 )
 
-            listing = _run_cli(
-                data_dir, "models", "list", "--family", "demucs"
-            )
+            listing = _run_cli(data_dir, "models", "list", "--family", "demucs")
 
             self.assertEqual(listing.returncode, 0, listing.stdout + listing.stderr)
             rows = json.loads(listing.stdout)["items"]
@@ -1529,9 +1425,7 @@ class DemucsInventoryRegistrationTests(unittest.TestCase):
             with open(os.path.join(tmp, member_name), "wb") as handle:
                 handle.write(member_data)
             with open(config, "w", encoding="utf-8") as handle:
-                json.dump(
-                    {"demucs_version": "v4", "source_layout": "4_stem"}, handle
-                )
+                json.dump({"demucs_version": "v4", "source_layout": "4_stem"}, handle)
             data_dir = os.path.join(tmp, "data")
             registered = _run_cli(
                 data_dir,
@@ -1543,9 +1437,7 @@ class DemucsInventoryRegistrationTests(unittest.TestCase):
                 "--config",
                 config,
             )
-            self.assertEqual(
-                registered.returncode, 0, registered.stdout + registered.stderr
-            )
+            self.assertEqual(registered.returncode, 0, registered.stdout + registered.stderr)
             installed_yaml = os.path.join(
                 data_dir,
                 "models",
@@ -1556,9 +1448,7 @@ class DemucsInventoryRegistrationTests(unittest.TestCase):
             with open(installed_yaml, "w", encoding="utf-8") as handle:
                 handle.write("models:\n  - different\n")
 
-            listing = _run_cli(
-                data_dir, "models", "list", "--family", "demucs"
-            )
+            listing = _run_cli(data_dir, "models", "list", "--family", "demucs")
 
             self.assertEqual(listing.returncode, 0, listing.stdout + listing.stderr)
             rows = json.loads(listing.stdout)["items"]

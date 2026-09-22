@@ -385,8 +385,9 @@ def plan_mdx_c_export(resolved: MDXCExportSources) -> ExportPlan:
     return plan
 
 
-def vocal_split_pair_sources(sources: dict[str, Any], mix: Any, *,
-                             routes: Any = None) -> dict[str, Any]:
+def vocal_split_pair_sources(
+    sources: dict[str, Any], mix: Any, *, routes: Any = None
+) -> dict[str, Any]:
     """Resolve native/derived vocal-split arrays without changing the inputs."""
     if routes is not None:
         from engines.stem_writer import vocal_split_pair_routes

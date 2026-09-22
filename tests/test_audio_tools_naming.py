@@ -70,7 +70,8 @@ class ManualEnsembleNamingTests(unittest.TestCase):
                     thread.join(timeout=2)
 
             failed = next(
-                line for line in log_path.read_text(encoding="utf-8").splitlines()
+                line
+                for line in log_path.read_text(encoding="utf-8").splitlines()
                 if "event=callback_error" in line
             )
             self.assertIn("operation=audio-run-4", failed)
@@ -85,6 +86,7 @@ class ManualEnsembleNamingTests(unittest.TestCase):
         self.assertEqual(tool.apollo_model_location, "")
         with self.assertRaisesRegex(ValueError, "resolved Apollo backend"):
             tool.apollo_process("in.wav", "in", {}, {}, mock.Mock())
+
     def _run_manual_ensemble(self, algorithm: ManualEnsembleOption) -> str:
         with tempfile.TemporaryDirectory() as export_dir:
             settings = Settings.defaults()

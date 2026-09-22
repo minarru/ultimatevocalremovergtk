@@ -56,9 +56,9 @@ only the Python files touched by a change:
 .venv/bin/ruff format path/to/file.py
 ```
 
-The configured lint backlog is cleared: `ruff check .` should pass. Formatting
-still has an accepted backlog. Both commands remain local checks and are
-**not CI gates**:
+Both backlogs are cleared: `ruff check .` and `ruff format --check .` should
+pass, so format every Python file you touch. Both commands remain local checks
+and are **not CI gates**:
 
 ```bash
 .venv/bin/ruff check .

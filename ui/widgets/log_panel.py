@@ -196,10 +196,12 @@ class LogPanel(Gtk.Box):
             overhead += self._progressbar.measure(Gtk.Orientation.VERTICAL, width)[0]
         # Keep the log viewport stable across status and window-size changes.
         # Only constrain it when the complete panel would not fit the window.
-        height = round(min(
-            _LOG_BODY_HEIGHT * scale,
-            max(80, available_height - overhead - OVERLAY_MARGIN_BOTTOM),
-        ))
+        height = round(
+            min(
+                _LOG_BODY_HEIGHT * scale,
+                max(80, available_height - overhead - OVERLAY_MARGIN_BOTTOM),
+            )
+        )
         if height != self._log_height:
             self._log_height = height
             if height > self.console.get_max_content_height():
@@ -332,7 +334,9 @@ class LogPanel(Gtk.Box):
             detail = self._blocked_reason if self._result_status and self._blocked_reason else ""
         if title == "Unable to stop — restart required":
             detail = "Wait longer or quit and restart the app"
-        if self._result_error and not (self._preparing or self._waiting_status or self._progress_status):
+        if self._result_error and not (
+            self._preparing or self._waiting_status or self._progress_status
+        ):
             self._progress_label.add_css_class("error")
         else:
             self._progress_label.remove_css_class("error")
@@ -431,10 +435,14 @@ class LogPanel(Gtk.Box):
         return GLib.SOURCE_CONTINUE
 
     def _sync_progress_section_visible(self) -> None:
-        busy = not self._preparing and not self._result_status and (
-            bool(self._progress_status)
-            or self._progressbar.get_fraction() > 0.0
-            or self._pulse_source_id is not None
+        busy = (
+            not self._preparing
+            and not self._result_status
+            and (
+                bool(self._progress_status)
+                or self._progressbar.get_fraction() > 0.0
+                or self._pulse_source_id is not None
+            )
         )
         self._progress_revealer.set_reveal_child(busy)
         self._percentage.set_label(f"{round(self._progressbar.get_fraction() * 100)}%")

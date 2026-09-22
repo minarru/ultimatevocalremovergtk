@@ -19,7 +19,10 @@ from core.mdx_config_fetch import (
 
 class SafeConfigNameTests(unittest.TestCase):
     def test_accepts_yaml_basename(self) -> None:
-        self.assertEqual(_safe_config_name("config_melband_roformer_inst.yaml"), "config_melband_roformer_inst.yaml")
+        self.assertEqual(
+            _safe_config_name("config_melband_roformer_inst.yaml"),
+            "config_melband_roformer_inst.yaml",
+        )
 
     def test_rejects_path_traversal(self) -> None:
         self.assertIsNone(_safe_config_name("../secret.yaml"))

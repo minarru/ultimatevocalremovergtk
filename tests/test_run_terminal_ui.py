@@ -190,7 +190,9 @@ class RunTerminalUiTests(unittest.TestCase):
             self.assertNotEqual(status, "Done")
             self.complete_toast.assert_not_called()
             if outcome == "error":
-                self.assertEqual(self.window.log_panel._progress_label.get_text(), "Processing failed")
+                self.assertEqual(
+                    self.window.log_panel._progress_label.get_text(), "Processing failed"
+                )
                 self.assertFalse(self.window.log_panel._progress_revealer.get_reveal_child())
         self.target.start_blocked_reason.return_value = None
         self.controller.refresh_start_readiness()

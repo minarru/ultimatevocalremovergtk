@@ -77,17 +77,23 @@ class RunProgressPresenter:
         self._last_progress_pass = pass_index
         self._last_progress_combine = combine_index
 
-        title = self._reported_phase.label if self._reported_phase is not None else {
-            "loading": "Loading model",
-            "saving": "Saving stems",
-            "combining": "Combining ensemble",
-            "inference": "Processing",
-        }[phase_key]
+        title = (
+            self._reported_phase.label
+            if self._reported_phase is not None
+            else {
+                "loading": "Loading model",
+                "saving": "Saving stems",
+                "combining": "Combining ensemble",
+                "inference": "Processing",
+            }[phase_key]
+        )
         elapsed = max(0.0, now - self.started_at)
         text = self.tracker.format_text(fraction, elapsed, now=now)
 
         if fraction >= 1.0 - _PROGRESS_EPSILON:
-            return ProgressPresentation(text, 1.0, "stop", title if self._reported_phase else "Finishing")
+            return ProgressPresentation(
+                text, 1.0, "stop", title if self._reported_phase else "Finishing"
+            )
         if fraction <= _PROGRESS_EPSILON and self.tracker.held_display <= 0:
             return ProgressPresentation(text, None, "start", title)
 

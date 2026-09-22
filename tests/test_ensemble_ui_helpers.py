@@ -302,7 +302,12 @@ class PairConsistentPlanAvailabilityTests(unittest.TestCase):
         page._update_ensemble_options_summary = mock.Mock()
         page._update_algorithm_visibility = EnsemblePage._update_algorithm_visibility.__get__(page)
         builder = load_builder("ensemble-page")
-        for name in ("preset_row", "derive_complement_row", "primary_algo_row", "secondary_algo_row"):
+        for name in (
+            "preset_row",
+            "derive_complement_row",
+            "primary_algo_row",
+            "secondary_algo_row",
+        ):
             setattr(page, name, builder.get_object(name))
         vocal = (_native_route(_VOCALS, "vocals"), _complement_route(_INST, _VOCALS))
         page._dry_resolved_member_routes.return_value = (vocal, vocal)

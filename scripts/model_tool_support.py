@@ -178,9 +178,7 @@ def torch_checkpoint_keys(read: RangeReader, size: int) -> List[str]:
         with zipfile.ZipFile(_TailFile(read, size)) as archive:
             return parse_torch_pickle_keys(archive.read(_data_pkl_name(archive)))
     except zipfile.BadZipFile as exc:
-        raise ValueError(
-            f"not a zip archive (legacy torch pickle format?): {exc}"
-        ) from exc
+        raise ValueError(f"not a zip archive (legacy torch pickle format?): {exc}") from exc
 
 
 @dataclass
@@ -511,8 +509,6 @@ def cache_dir() -> str:
     from core import paths
 
     return os.path.join(paths.CACHE_DIR, "model_tools")
-
-
 
 
 def checkpoint_tail_hash(url: str, *, opener: Optional[Callable[[Any], Any]] = None) -> str:

@@ -442,7 +442,12 @@ class ProjectionBoundaryTests(unittest.TestCase):
         descriptor = ModelDescriptor(
             "mdx:x", "mdx", "x", "X", primary_stem="Vocals", secondary_stem="Instrumental"
         )
-        selected = select_output_routes(settings, (descriptor,), command='separate', evidence=collect_output_route_evidence(settings, (descriptor,), command='separate'))
+        selected = select_output_routes(
+            settings,
+            (descriptor,),
+            command='separate',
+            evidence=collect_output_route_evidence(settings, (descriptor,), command='separate'),
+        )
         naming = OutputNamingContext("/song.wav", "song", "song", "/out", "wav", 1, 1)
         planned = project_input("/song.wav", naming, selected.routes, command="separate")
         self.assertEqual(

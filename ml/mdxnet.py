@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 
 dim_s = 4
 
+
 class AbstractMDXNet(LightningModule):
     def __init__(
         self,
@@ -37,16 +38,21 @@ class AbstractMDXNet(LightningModule):
         self.n_fft = n_fft
         self.n_bins = n_fft // 2 + 1
         self.hop_length = hop_length
-        self.window = nn.Parameter(torch.hann_window(window_length=self.n_fft, periodic=True), requires_grad=False)
-        self.freq_pad = nn.Parameter(torch.zeros([1, dim_c, self.n_bins - self.dim_f, self.dim_t]), requires_grad=False)
+        self.window = nn.Parameter(
+            torch.hann_window(window_length=self.n_fft, periodic=True), requires_grad=False
+        )
+        self.freq_pad = nn.Parameter(
+            torch.zeros([1, dim_c, self.n_bins - self.dim_f, self.dim_t]), requires_grad=False
+        )
 
     def get_optimizer(self) -> Optimizer | None:
         if self.optimizer == 'rmsprop':
             return torch.optim.RMSprop(self.parameters(), self.lr)
-        
+
         if self.optimizer == 'adamw':
             return torch.optim.AdamW(self.parameters(), self.lr)
         return None
+
 
 class ConvTDFNet(AbstractMDXNet):
     def __init__(
@@ -69,8 +75,9 @@ class ConvTDFNet(AbstractMDXNet):
     ) -> None:
 
         super(ConvTDFNet, self).__init__(
-            target_name, lr, optimizer, dim_c, dim_f, dim_t, n_fft, hop_length, overlap)
-        #self.save_hyperparameters()
+            target_name, lr, optimizer, dim_c, dim_f, dim_t, n_fft, hop_length, overlap
+        )
+        # self.save_hyperparameters()
 
         self.num_blocks = num_blocks
         self.l = num_layers
@@ -83,6 +90,7 @@ class ConvTDFNet(AbstractMDXNet):
             norm: NormFactory = nn.BatchNorm2d
 
         elif optimizer == 'adamw':
+
             def group_norm(input: int) -> nn.GroupNorm:
                 return nn.GroupNorm(2, input)
 
@@ -93,7 +101,6 @@ class ConvTDFNet(AbstractMDXNet):
             raise ValueError(
                 f"Unsupported optimizer: {optimizer!r}. Expected 'rmsprop' or 'adamw'."
             )
-
 
         self.n = num_blocks // 2
         scale = (2, 2)
@@ -114,7 +121,7 @@ class ConvTDFNet(AbstractMDXNet):
                 nn.Sequential(
                     nn.Conv2d(in_channels=c, out_channels=c + g, kernel_size=scale, stride=scale),
                     norm(c + g),
-                    nn.ReLU()
+                    nn.ReLU(),
                 )
             )
             f = f // 2
@@ -127,9 +134,11 @@ class ConvTDFNet(AbstractMDXNet):
         for _i in range(self.n):
             self.us.append(
                 nn.Sequential(
-                    nn.ConvTranspose2d(in_channels=c, out_channels=c - g, kernel_size=scale, stride=scale),
+                    nn.ConvTranspose2d(
+                        in_channels=c, out_channels=c - g, kernel_size=scale, stride=scale
+                    ),
                     norm(c - g),
-                    nn.ReLU()
+                    nn.ReLU(),
                 )
             )
             f = f * 2
@@ -165,24 +174,28 @@ class ConvTDFNet(AbstractMDXNet):
         x = self.final_conv(x)
 
         return x
-    
+
+
 class Mixer(nn.Module):
-    def __init__(self, device: torch.device | str, mixer_path: str, *,
-                 checkpoint_loader: Callable[..., Any] | None = None) -> None:
-        
+    def __init__(
+        self,
+        device: torch.device | str,
+        mixer_path: str,
+        *,
+        checkpoint_loader: Callable[..., Any] | None = None,
+    ) -> None:
+
         super(Mixer, self).__init__()
-        
-        self.linear = nn.Linear((dim_s+1)*2, dim_s*2, bias=False)
-        
+
+        self.linear = nn.Linear((dim_s + 1) * 2, dim_s * 2, bias=False)
+
         if checkpoint_loader is None:
             from core.torch_checkpoint import load_torch_checkpoint
 
             checkpoint_loader = load_torch_checkpoint
-        self.load_state_dict(
-            checkpoint_loader(mixer_path, map_location=device)
-        )
+        self.load_state_dict(checkpoint_loader(mixer_path, map_location=device))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = x.reshape(1,(dim_s+1)*2,-1).transpose(-1,-2)
+        x = x.reshape(1, (dim_s + 1) * 2, -1).transpose(-1, -2)
         x = self.linear(x)
-        return x.transpose(-1,-2).reshape(dim_s,2,-1)
+        return x.transpose(-1, -2).reshape(dim_s, 2, -1)

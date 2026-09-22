@@ -15,6 +15,7 @@ so this module - and any view that imports it - stays importable on a bare
 Python (no torch / ML stack) install. Options are read from a
 :class:`~core.settings.Settings` through its flat compatibility accessors.
 """
+
 import os
 import time
 import typing
@@ -79,9 +80,7 @@ class AudioTools:
         self.wav_type_set = resolve_wav_type_set(settings)
         self.is_normalization = bool(process.normalization)
         try:
-            self.amplification_threshold = float(
-                process.amplification_threshold or 0.0
-            )
+            self.amplification_threshold = float(process.amplification_threshold or 0.0)
         except (TypeError, ValueError):
             self.amplification_threshold = 0.0
         self.is_wav_ensemble = bool(settings.ensemble.wav_ensemble)
@@ -109,8 +108,7 @@ class AudioTools:
         self.apollo_overlap_val = int(audio_tools.apollo_overlap)
         self.apollo_chunk_val = int(audio_tools.apollo_chunk_size)
         self.apollo_model_location = (
-            os.path.join(paths.APOLLO_MODELS_DIR, self.apollo_model)
-            if self.apollo_model else ""
+            os.path.join(paths.APOLLO_MODELS_DIR, self.apollo_model) if self.apollo_model else ""
         )
         self.use_gpu = bool(process.use_gpu)
         self.is_gpu_conversion = self.use_gpu  # back-compat alias
@@ -126,7 +124,8 @@ class AudioTools:
             self._on_phase(phase)
 
     def _operation_phases(
-        self, processing: ProcessingPhase,
+        self,
+        processing: ProcessingPhase,
     ) -> Callable[[Literal["reading", "processing", "saving"]], None]:
         """Translate scientific operation boundaries into presentation identities."""
         phases = {
@@ -211,9 +210,7 @@ class AudioTools:
         is_pitch = tool == CHANGE_PITCH
         if is_pitch:
             rate = float(self.settings.audio_tools.pitch_rate)
-            is_time_correction = bool(
-                self.settings.audio_tools.is_time_correction
-            )
+            is_time_correction = bool(self.settings.audio_tools.is_time_correction)
             file_text = " pitch shifted"
         else:
             rate = float(self.settings.audio_tools.time_stretch_rate)
@@ -251,11 +248,19 @@ class AudioTools:
     ) -> None:
         from ml import spec_utils
 
-        audio_file_base = f"{self.is_testing_audio}{sanitize_filename_component(audio_file_base) or 'audio'}"
-        audio_file_2_base = f"{self.is_testing_audio}{sanitize_filename_component(audio_file_2_base) or 'audio'}"
+        audio_file_base = (
+            f"{self.is_testing_audio}{sanitize_filename_component(audio_file_base) or 'audio'}"
+        )
+        audio_file_2_base = (
+            f"{self.is_testing_audio}{sanitize_filename_component(audio_file_2_base) or 'audio'}"
+        )
 
-        aligned_path = os.path.join(f"{self.main_export_path}", f"{audio_file_2_base} (Aligned).wav")
-        inverted_path = os.path.join(f"{self.main_export_path}", f"{audio_file_base} (Inverted).wav")
+        aligned_path = os.path.join(
+            f"{self.main_export_path}", f"{audio_file_2_base} (Aligned).wav"
+        )
+        inverted_path = os.path.join(
+            f"{self.main_export_path}", f"{audio_file_base} (Inverted).wav"
+        )
 
         spec_utils.align_audio(
             audio_inputs[0],
@@ -314,9 +319,7 @@ class AudioTools:
         set_progress_bar: Callable[[float, float], None],
     ) -> None:
         if not self.apollo_model_location:
-            raise ValueError(
-                "A resolved Apollo backend checkpoint is required for inference."
-            )
+            raise ValueError("A resolved Apollo backend checkpoint is required for inference.")
         self._report_phase(ProcessingPhase.LOADING_MODEL)
         import soundfile as sf
 
@@ -366,11 +369,7 @@ def _output_files(path: typing.Any) -> set[str]:
     root = str(path)
     if not os.path.isdir(root):
         return set()
-    return {
-        os.path.join(folder, name)
-        for folder, _dirs, files in os.walk(root)
-        for name in files
-    }
+    return {os.path.join(folder, name) for folder, _dirs, files in os.walk(root) for name in files}
 
 
 class AudioToolRunner:
@@ -412,9 +411,7 @@ class AudioToolRunner:
         if self.is_running():
             return
         if tool == APOLLO_RESTORE and not self.apollo_backend_name:
-            raise ValueError(
-                "A resolved Apollo backend checkpoint is required before start."
-            )
+            raise ValueError("A resolved Apollo backend checkpoint is required before start.")
         from kthread import KThread
 
         from .debug_log import current_operation_id, log_event
@@ -564,20 +561,23 @@ class AudioToolRunner:
         callbacks.input_started(paths)
 
     def _finish_active_unit(
-        self, callbacks: JobCallbacks, error: BaseException | None = None,
+        self,
+        callbacks: JobCallbacks,
+        error: BaseException | None = None,
         output: typing.Any = None,
     ) -> None:
         if self._active_unit is None:
             return
         generated = (
-            sorted(_output_files(output) - self._active_before)
-            if output is not None else []
+            sorted(_output_files(output) - self._active_before) if output is not None else []
         )
         callbacks.input_finished(self._active_unit, generated, error)
         self._active_unit = None
         self._active_before = set()
 
-    def _run_manual_ensemble(self, audio_tool: typing.Any, inputs: typing.Any, callbacks: typing.Any) -> None:
+    def _run_manual_ensemble(
+        self, audio_tool: typing.Any, inputs: typing.Any, callbacks: typing.Any
+    ) -> None:
         if inputs:
             self._start_unit(callbacks, inputs, audio_tool.main_export_path)
         if len(inputs) <= 1:
@@ -609,7 +609,9 @@ class AudioToolRunner:
         callbacks.console(" Done!\n")
         self._finish_active_unit(callbacks, output=audio_tool.main_export_path)
 
-    def _run_pitch_time(self, audio_tool: typing.Any, tool: typing.Any, inputs: typing.Any, callbacks: typing.Any) -> None:
+    def _run_pitch_time(
+        self, audio_tool: typing.Any, tool: typing.Any, inputs: typing.Any, callbacks: typing.Any
+    ) -> None:
         if not inputs:
             raise ValueError("Select at least one input file.")
         total = len(inputs)
@@ -629,14 +631,18 @@ class AudioToolRunner:
             callbacks.progress((file_num - 1) / total)
             audio_file_base = _basename_no_ext(audio_file)
             callbacks.report_phase(
-                ProcessingPhase.CHANGING_PITCH if tool == CHANGE_PITCH else ProcessingPhase.STRETCHING_TIME
+                ProcessingPhase.CHANGING_PITCH
+                if tool == CHANGE_PITCH
+                else ProcessingPhase.STRETCHING_TIME
             )
             audio_tool.pitch_or_time_shift(tool, audio_file, audio_file_base)
             callbacks.progress(file_num / total)
             callbacks.console(" Done!\n")
             self._finish_active_unit(callbacks, output=audio_tool.main_export_path)
 
-    def _run_apollo(self, audio_tool: typing.Any, inputs: typing.Any, callbacks: typing.Any) -> None:
+    def _run_apollo(
+        self, audio_tool: typing.Any, inputs: typing.Any, callbacks: typing.Any
+    ) -> None:
         if not inputs:
             raise ValueError("Select at least one input file.")
 
@@ -662,7 +668,11 @@ class AudioToolRunner:
             callbacks.console("Restoring audio...")
             audio_file_base = _basename_no_ext(audio_file)
 
-            def set_progress_bar(step: typing.Any, inference_iterations: typing.Any=0, _file_num: typing.Any=file_num):
+            def set_progress_bar(
+                step: typing.Any,
+                inference_iterations: typing.Any = 0,
+                _file_num: typing.Any = file_num,
+            ):
                 fraction = (_file_num - 1 + min(1.0, step + inference_iterations)) / total
                 callbacks.progress(fraction)
 
@@ -679,7 +689,13 @@ class AudioToolRunner:
             callbacks.console(" Done!\n")
             self._finish_active_unit(callbacks, output=audio_tool.main_export_path)
 
-    def _run_dual(self, audio_tool: typing.Any, tool: typing.Any, dual_pairs: typing.Any, callbacks: typing.Any) -> None:
+    def _run_dual(
+        self,
+        audio_tool: typing.Any,
+        tool: typing.Any,
+        dual_pairs: typing.Any,
+        callbacks: typing.Any,
+    ) -> None:
         if not dual_pairs:
             raise ValueError("Provide at least one input pair.")
         total = len(dual_pairs)
@@ -708,13 +724,15 @@ class AudioToolRunner:
                 callbacks.console(f"{text_labels[0]} & {text_labels[1]} are the same; skipping.\n")
                 continue
 
-            self._start_unit(
-                callbacks, (file_one, file_two), audio_tool.main_export_path
-            )
+            self._start_unit(callbacks, (file_one, file_two), audio_tool.main_export_path)
 
             command_text = pausable_callback(self, callbacks.console)
 
-            def set_progress_bar(step: typing.Any, inference_iterations: typing.Any=0, _file_num: typing.Any=file_num):
+            def set_progress_bar(
+                step: typing.Any,
+                inference_iterations: typing.Any = 0,
+                _file_num: typing.Any = file_num,
+            ):
                 fraction = (_file_num - 1 + min(1.0, step + inference_iterations)) / total
                 callbacks.progress(fraction)
 

@@ -60,13 +60,14 @@ else:
     from . import pyrb
 
 if OPERATING_SYSTEM == 'Darwin':
-    wav_resolution = "polyphase" if SYSTEM_PROC == ARM or ARM in SYSTEM_ARCH else "sinc_fastest" 
-    wav_resolution_float_resampling = "kaiser_best" if SYSTEM_PROC == ARM or ARM in SYSTEM_ARCH else wav_resolution 
+    wav_resolution = "polyphase" if SYSTEM_PROC == ARM or ARM in SYSTEM_ARCH else "sinc_fastest"
+    wav_resolution_float_resampling = (
+        "kaiser_best" if SYSTEM_PROC == ARM or ARM in SYSTEM_ARCH else wav_resolution
+    )
     is_macos = True
 else:
     wav_resolution = "sinc_fastest"
-    wav_resolution_float_resampling = wav_resolution 
-
+    wav_resolution_float_resampling = wav_resolution
 
 
 LIN_ENSE = 'Linear Ensemble'
@@ -74,12 +75,15 @@ LIN_ENSE = 'Linear Ensemble'
 MAX_WAV = MAX_SPEC
 MIN_WAV = MIN_SPEC
 
-_STFT_ONLY_ALGORITHMS = frozenset({
-    MEDIAN_SPEC,
-    SOFT_SPEC,
-    MAX_MAG_AVG_PHASE,
-    HYBRID_SPEC,
-})
+_STFT_ONLY_ALGORITHMS = frozenset(
+    {
+        MEDIAN_SPEC,
+        SOFT_SPEC,
+        MAX_MAG_AVG_PHASE,
+        HYBRID_SPEC,
+    }
+)
+
 
 def crop_center(h1: torch.Tensor, h2: torch.Tensor) -> torch.Tensor:
     h1_shape = h1.size()
@@ -96,11 +100,13 @@ def crop_center(h1: torch.Tensor, h2: torch.Tensor) -> torch.Tensor:
 
     return h1
 
+
 def preprocess(X_spec: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     X_mag = np.abs(X_spec)
     X_phase = np.angle(X_spec)
 
     return X_mag, X_phase
+
 
 def make_padding(width: int, cropsize: int, offset: int) -> tuple[int, int, int]:
     left = offset
@@ -110,6 +116,7 @@ def make_padding(width: int, cropsize: int, offset: int) -> tuple[int, int, int]
     right = roi_size - (width % roi_size) + left
 
     return left, right, roi_size
+
 
 def normalize(wave: np.ndarray, is_normalize: bool = False, min_peak: float = 0.0) -> np.ndarray:
     """Limit peaks above 1.0 and optionally amplify quiet peaks to ``min_peak``.
@@ -131,6 +138,7 @@ def normalize(wave: np.ndarray, is_normalize: bool = False, min_peak: float = 0.
         wave = wave * (min_peak_f / maxv)
     return wave
 
+
 def auto_transpose(audio_array: np.ndarray) -> np.ndarray:
     """
     Ensure that the audio array is in the (channels, samples) format.
@@ -141,11 +149,12 @@ def auto_transpose(audio_array: np.ndarray) -> np.ndarray:
     Returns:
         ndarray: Transposed audio array if necessary.
     """
-    
+
     # If the second dimension is 2 (indicating stereo channels), transpose the array
     if audio_array.shape[1] == 2:
         return audio_array.T
     return audio_array
+
 
 def write_array_to_mem(audio_data: np.ndarray | Any, subtype: str) -> io.BytesIO | Any:
     if isinstance(audio_data, np.ndarray):
@@ -156,13 +165,14 @@ def write_array_to_mem(audio_data: np.ndarray | Any, subtype: str) -> io.BytesIO
     else:
         return audio_data
 
+
 def spectrogram_to_image(spec: np.ndarray, mode: str = 'magnitude') -> np.ndarray:
     if mode == 'magnitude':
         if np.iscomplexobj(spec):
             y = np.abs(spec)
         else:
             y = spec
-        y = np.log10(y ** 2 + 1e-8)
+        y = np.log10(y**2 + 1e-8)
     elif mode == 'phase':
         if np.iscomplexobj(spec):
             y = np.angle(spec)
@@ -180,12 +190,16 @@ def spectrogram_to_image(spec: np.ndarray, mode: str = 'magnitude') -> np.ndarra
         # Both operands must be the transposed (H, W, C) view: the max is over
         # channels, not over W.
         img = img.transpose(1, 2, 0)
-        img = np.concatenate([
-            np.max(img, axis=2, keepdims=True),
-            img,
-        ], axis=2)
+        img = np.concatenate(
+            [
+                np.max(img, axis=2, keepdims=True),
+                img,
+            ],
+            axis=2,
+        )
 
     return img
+
 
 def reduce_vocal_aggressively(X: np.ndarray, y: np.ndarray, softmask: float) -> np.ndarray:
     v = X - y
@@ -195,11 +209,14 @@ def reduce_vocal_aggressively(X: np.ndarray, y: np.ndarray, softmask: float) -> 
     v_mask = v_mag_tmp > y_mag_tmp
     y_mag = np.clip(y_mag_tmp - v_mag_tmp * v_mask * softmask, 0, np.inf)
 
-    return y_mag * np.exp(1.j * np.angle(y))
+    return y_mag * np.exp(1.0j * np.angle(y))
 
-def merge_artifacts(y_mask: np.ndarray, thres: float = 0.01, min_range: int = 64, fade_size: int = 32) -> np.ndarray:
+
+def merge_artifacts(
+    y_mask: np.ndarray, thres: float = 0.01, min_range: int = 64, fade_size: int = 32
+) -> np.ndarray:
     mask = y_mask
-    
+
     try:
         if min_range < fade_size * 2:
             raise ValueError('min_range must be >= fade_size * 2')
@@ -218,87 +235,101 @@ def merge_artifacts(y_mask: np.ndarray, thres: float = 0.01, min_range: int = 64
                     s = old_e - fade_size * 2
 
                 if s != 0:
-                    weight[:, :, s:s + fade_size] = np.linspace(0, 1, fade_size)
+                    weight[:, :, s : s + fade_size] = np.linspace(0, 1, fade_size)
                 else:
                     s -= fade_size
 
                 if e != y_mask.shape[2]:
-                    weight[:, :, e - fade_size:e] = np.linspace(1, 0, fade_size)
+                    weight[:, :, e - fade_size : e] = np.linspace(1, 0, fade_size)
                 else:
                     e += fade_size
 
-                weight[:, :, s + fade_size:e - fade_size] = 1
+                weight[:, :, s + fade_size : e - fade_size] = 1
                 old_e = e
 
         v_mask = 1 - y_mask
         y_mask += weight * v_mask
-        
+
         mask = y_mask
     except Exception as e:
         error_name = f'{type(e).__name__}'
         traceback_text = ''.join(traceback.format_tb(e.__traceback__))
         message = f'{error_name}: "{e}"\n{traceback_text}"'
         print('Post Process Failed: ', message)
-        
+
     return mask
+
 
 def align_wave_head_and_tail(a: np.ndarray, b: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     length = min([a[0].size, b[0].size])
-    
-    return a[:length,:length], b[:length,:length]
-    
+
+    return a[:length, :length], b[:length, :length]
+
+
 def convert_channels(spec: np.ndarray, mp: Any, band: int) -> np.ndarray:
     cc = mp.param['band'][band].get('convert_channels')
 
     if 'mid_side_c' == cc:
-        spec_left = np.add(spec[0], spec[1] * .25)
-        spec_right = np.subtract(spec[1], spec[0] * .25)
+        spec_left = np.add(spec[0], spec[1] * 0.25)
+        spec_right = np.subtract(spec[1], spec[0] * 0.25)
     elif 'mid_side' == cc:
         spec_left = np.add(spec[0], spec[1]) / 2
         spec_right = np.subtract(spec[0], spec[1])
     elif 'stereo_n' == cc:
-        spec_left = np.add(spec[0], spec[1] * .25) / 0.9375
-        spec_right = np.add(spec[1], spec[0] * .25) / 0.9375
+        spec_left = np.add(spec[0], spec[1] * 0.25) / 0.9375
+        spec_right = np.add(spec[1], spec[0] * 0.25) / 0.9375
     else:
         return spec
-        
+
     return np.asfortranarray([spec_left, spec_right])
-    
-def combine_spectrograms(specs: Mapping[int, np.ndarray], mp: Any, is_v51_model: bool = False) -> np.ndarray:
+
+
+def combine_spectrograms(
+    specs: Mapping[int, np.ndarray], mp: Any, is_v51_model: bool = False
+) -> np.ndarray:
     length = min([specs[i].shape[2] for i in specs])
     spec_c = np.zeros(shape=(2, mp.param['bins'] + 1, length), dtype=np.complex64)
     offset = 0
     bands_n = len(mp.param['band'])
-    
+
     for d in range(1, bands_n + 1):
         h = mp.param['band'][d]['crop_stop'] - mp.param['band'][d]['crop_start']
-        spec_c[:, offset:offset+h, :length] = specs[d][:, mp.param['band'][d]['crop_start']:mp.param['band'][d]['crop_stop'], :length]
+        spec_c[:, offset : offset + h, :length] = specs[d][
+            :, mp.param['band'][d]['crop_start'] : mp.param['band'][d]['crop_stop'], :length
+        ]
         offset += h
-        
+
     if offset > mp.param['bins']:
         raise ValueError('Too much bins')
-        
+
     # lowpass fiter
-    
+
     if mp.param['pre_filter_start'] > 0:
         if is_v51_model:
-            spec_c *= get_lp_filter_mask(spec_c.shape[1], mp.param['pre_filter_start'], mp.param['pre_filter_stop'])
+            spec_c *= get_lp_filter_mask(
+                spec_c.shape[1], mp.param['pre_filter_start'], mp.param['pre_filter_stop']
+            )
         else:
             if bands_n == 1:
-                spec_c = fft_lp_filter(spec_c, mp.param['pre_filter_start'], mp.param['pre_filter_stop'])
+                spec_c = fft_lp_filter(
+                    spec_c, mp.param['pre_filter_start'], mp.param['pre_filter_stop']
+                )
             else:
-                gp = 1        
+                gp = 1
                 for b in range(mp.param['pre_filter_start'] + 1, mp.param['pre_filter_stop']):
                     g = math.pow(10, -(b - mp.param['pre_filter_start']) * (3.5 - gp) / 20.0)
                     gp = g
                     spec_c[:, b, :] *= g
-                
+
     return np.asfortranarray(spec_c)
-    
-def wave_to_spectrogram(wave: np.ndarray, hop_length: int, n_fft: int, mp: Any, band: int, is_v51_model: bool = False) -> np.ndarray:
+
+
+def wave_to_spectrogram(
+    wave: np.ndarray, hop_length: int, n_fft: int, mp: Any, band: int, is_v51_model: bool = False
+) -> np.ndarray:
 
     if wave.ndim == 1:
-        wave = np.asfortranarray([wave,wave])
+        wave = np.asfortranarray([wave, wave])
 
     if not is_v51_model:
         if mp.param['reverse']:
@@ -308,8 +339,8 @@ def wave_to_spectrogram(wave: np.ndarray, hop_length: int, n_fft: int, mp: Any, 
             wave_left = np.asfortranarray(np.add(wave[0], wave[1]) / 2)
             wave_right = np.asfortranarray(np.subtract(wave[0], wave[1]))
         elif mp.param['mid_side_b2']:
-            wave_left = np.asfortranarray(np.add(wave[1], wave[0] * .5))
-            wave_right = np.asfortranarray(np.subtract(wave[0], wave[1] * .5))
+            wave_left = np.asfortranarray(np.add(wave[1], wave[0] * 0.5))
+            wave_right = np.asfortranarray(np.subtract(wave[0], wave[1] * 0.5))
         else:
             wave_left = np.asfortranarray(wave[0])
             wave_right = np.asfortranarray(wave[1])
@@ -319,7 +350,7 @@ def wave_to_spectrogram(wave: np.ndarray, hop_length: int, n_fft: int, mp: Any, 
 
     spec_left = librosa.stft(wave_left, n_fft=n_fft, hop_length=hop_length)
     spec_right = librosa.stft(wave_right, n_fft=n_fft, hop_length=hop_length)
-    
+
     spec = np.asfortranarray([spec_left, spec_right])
 
     if is_v51_model:
@@ -327,35 +358,68 @@ def wave_to_spectrogram(wave: np.ndarray, hop_length: int, n_fft: int, mp: Any, 
 
     return spec
 
-def spectrogram_to_wave(spec: np.ndarray, hop_length: int = 1024, mp: Any = None, band: int = 0, is_v51_model: bool = True) -> np.ndarray:
+
+def spectrogram_to_wave(
+    spec: np.ndarray,
+    hop_length: int = 1024,
+    mp: Any = None,
+    band: int = 0,
+    is_v51_model: bool = True,
+) -> np.ndarray:
     if mp is None:
         raise ValueError("model parameters are required for spectrogram_to_wave")
     spec_left = np.asfortranarray(spec[0])
     spec_right = np.asfortranarray(spec[1])
-    
+
     wave_left = librosa.istft(spec_left, hop_length=hop_length)
     wave_right = librosa.istft(spec_right, hop_length=hop_length)
-    
+
     if is_v51_model:
         cc = mp.param['band'][band].get('convert_channels')
         if 'mid_side_c' == cc:
-            return np.asfortranarray([np.subtract(wave_left / 1.0625, wave_right / 4.25), np.add(wave_right / 1.0625, wave_left / 4.25)])    
+            return np.asfortranarray(
+                [
+                    np.subtract(wave_left / 1.0625, wave_right / 4.25),
+                    np.add(wave_right / 1.0625, wave_left / 4.25),
+                ]
+            )
         elif 'mid_side' == cc:
-            return np.asfortranarray([np.add(wave_left, wave_right / 2), np.subtract(wave_left, wave_right / 2)])
+            return np.asfortranarray(
+                [np.add(wave_left, wave_right / 2), np.subtract(wave_left, wave_right / 2)]
+            )
         elif 'stereo_n' == cc:
-            return np.asfortranarray([np.subtract(wave_left, wave_right * .25), np.subtract(wave_right, wave_left * .25)])
+            return np.asfortranarray(
+                [
+                    np.subtract(wave_left, wave_right * 0.25),
+                    np.subtract(wave_right, wave_left * 0.25),
+                ]
+            )
     else:
         if mp.param['reverse']:
             return np.asfortranarray([np.flip(wave_left), np.flip(wave_right)])
         elif mp.param['mid_side']:
-            return np.asfortranarray([np.add(wave_left, wave_right / 2), np.subtract(wave_left, wave_right / 2)])
+            return np.asfortranarray(
+                [np.add(wave_left, wave_right / 2), np.subtract(wave_left, wave_right / 2)]
+            )
         elif mp.param['mid_side_b2']:
-            return np.asfortranarray([np.add(wave_right / 1.25, .4 * wave_left), np.subtract(wave_left / 1.25, .4 * wave_right)])
-    
+            return np.asfortranarray(
+                [
+                    np.add(wave_right / 1.25, 0.4 * wave_left),
+                    np.subtract(wave_left / 1.25, 0.4 * wave_right),
+                ]
+            )
+
     return np.asfortranarray([wave_left, wave_right])
-    
-def cmb_spectrogram_to_wave(spec_m: np.ndarray, mp: Any, extra_bins_h: int | None = None, extra_bins: np.ndarray | None = None, is_v51_model: bool = False) -> np.ndarray:
-    bands_n = len(mp.param['band'])    
+
+
+def cmb_spectrogram_to_wave(
+    spec_m: np.ndarray,
+    mp: Any,
+    extra_bins_h: int | None = None,
+    extra_bins: np.ndarray | None = None,
+    is_v51_model: bool = False,
+) -> np.ndarray:
+    bands_n = len(mp.param['band'])
     offset = 0
     wave: np.ndarray = np.array([], dtype=np.float64)
 
@@ -367,17 +431,19 @@ def cmb_spectrogram_to_wave(spec_m: np.ndarray, mp: Any, extra_bins_h: int | Non
         # Uninitialized heap contents there reach the iSTFT and the waveform.
         spec_s = np.zeros(shape=(2, bp['n_fft'] // 2 + 1, spec_m.shape[2]), dtype=complex)
         h = bp['crop_stop'] - bp['crop_start']
-        spec_s[:, bp['crop_start']:bp['crop_stop'], :] = spec_m[:, offset:offset+h, :]
-                
+        spec_s[:, bp['crop_start'] : bp['crop_stop'], :] = spec_m[:, offset : offset + h, :]
+
         offset += h
-        if d == bands_n: # higher
-            if extra_bins_h: # if --high_end_process bypass
+        if d == bands_n:  # higher
+            if extra_bins_h:  # if --high_end_process bypass
                 assert extra_bins is not None
                 max_bin = bp['n_fft'] // 2
-                spec_s[:, max_bin-extra_bins_h:max_bin, :] = extra_bins[:, :extra_bins_h, :]
+                spec_s[:, max_bin - extra_bins_h : max_bin, :] = extra_bins[:, :extra_bins_h, :]
             if bp['hpf_start'] > 0:
                 if is_v51_model:
-                    spec_s *= get_hp_filter_mask(spec_s.shape[1], bp['hpf_start'], bp['hpf_stop'] - 1)
+                    spec_s *= get_hp_filter_mask(
+                        spec_s.shape[1], bp['hpf_start'], bp['hpf_stop'] - 1
+                    )
                 else:
                     spec_s = fft_hp_filter(spec_s, bp['hpf_start'], bp['hpf_stop'] - 1)
             if bands_n == 1:
@@ -385,63 +451,83 @@ def cmb_spectrogram_to_wave(spec_m: np.ndarray, mp: Any, extra_bins_h: int | Non
             else:
                 wave = np.add(wave, spectrogram_to_wave(spec_s, bp['hl'], mp, d, is_v51_model))
         else:
-            sr = mp.param['band'][d+1]['sr']
-            if d == 1: # lower
+            sr = mp.param['band'][d + 1]['sr']
+            if d == 1:  # lower
                 if is_v51_model:
                     spec_s *= get_lp_filter_mask(spec_s.shape[1], bp['lpf_start'], bp['lpf_stop'])
                 else:
                     spec_s = fft_lp_filter(spec_s, bp['lpf_start'], bp['lpf_stop'])
-                wave = librosa.resample(spectrogram_to_wave(spec_s, bp['hl'], mp, d, is_v51_model), orig_sr=bp['sr'], target_sr=sr, res_type=wav_resolution)
-            else: # mid
+                wave = librosa.resample(
+                    spectrogram_to_wave(spec_s, bp['hl'], mp, d, is_v51_model),
+                    orig_sr=bp['sr'],
+                    target_sr=sr,
+                    res_type=wav_resolution,
+                )
+            else:  # mid
                 if is_v51_model:
-                    spec_s *= get_hp_filter_mask(spec_s.shape[1], bp['hpf_start'], bp['hpf_stop'] - 1)
+                    spec_s *= get_hp_filter_mask(
+                        spec_s.shape[1], bp['hpf_start'], bp['hpf_stop'] - 1
+                    )
                     spec_s *= get_lp_filter_mask(spec_s.shape[1], bp['lpf_start'], bp['lpf_stop'])
                 else:
                     spec_s = fft_hp_filter(spec_s, bp['hpf_start'], bp['hpf_stop'] - 1)
                     spec_s = fft_lp_filter(spec_s, bp['lpf_start'], bp['lpf_stop'])
-                    
+
                 wave2 = np.add(wave, spectrogram_to_wave(spec_s, bp['hl'], mp, d, is_v51_model))
-                wave = librosa.resample(wave2, orig_sr=bp['sr'], target_sr=sr, res_type=wav_resolution)
-        
+                wave = librosa.resample(
+                    wave2, orig_sr=bp['sr'], target_sr=sr, res_type=wav_resolution
+                )
+
     return wave
 
+
 def get_lp_filter_mask(n_bins: int, bin_start: int, bin_stop: int) -> np.ndarray:
-    mask = np.concatenate([
-        np.ones((bin_start - 1, 1)),
-        np.linspace(1, 0, bin_stop - bin_start + 1)[:, None],
-        np.zeros((n_bins - bin_stop, 1))
-    ], axis=0)
+    mask = np.concatenate(
+        [
+            np.ones((bin_start - 1, 1)),
+            np.linspace(1, 0, bin_stop - bin_start + 1)[:, None],
+            np.zeros((n_bins - bin_stop, 1)),
+        ],
+        axis=0,
+    )
 
     return mask
-    
+
+
 def get_hp_filter_mask(n_bins: int, bin_start: int, bin_stop: int) -> np.ndarray:
-    mask = np.concatenate([
-        np.zeros((bin_stop + 1, 1)),
-        np.linspace(0, 1, 1 + bin_start - bin_stop)[:, None],
-        np.ones((n_bins - bin_start - 2, 1))
-    ], axis=0)
+    mask = np.concatenate(
+        [
+            np.zeros((bin_stop + 1, 1)),
+            np.linspace(0, 1, 1 + bin_start - bin_stop)[:, None],
+            np.ones((n_bins - bin_start - 2, 1)),
+        ],
+        axis=0,
+    )
 
     return mask
+
 
 def fft_lp_filter(spec: np.ndarray, bin_start: int, bin_stop: int) -> np.ndarray:
     g = 1.0
     for b in range(bin_start, bin_stop):
         g -= 1 / (bin_stop - bin_start)
         spec[:, b, :] = g * spec[:, b, :]
-        
+
     spec[:, bin_stop:, :] *= 0
 
     return spec
+
 
 def fft_hp_filter(spec: np.ndarray, bin_start: int, bin_stop: int) -> np.ndarray:
     g = 1.0
     for b in range(bin_start, bin_stop, -1):
         g -= 1 / (bin_start - bin_stop)
         spec[:, b, :] = g * spec[:, b, :]
-    
-    spec[:, 0:bin_stop+1, :] *= 0
+
+    spec[:, 0 : bin_stop + 1, :] *= 0
 
     return spec
+
 
 def spectrogram_to_wave_old(spec: np.ndarray, hop_length: int = 1024) -> np.ndarray:
     if spec.ndim == 2:
@@ -458,49 +544,83 @@ def spectrogram_to_wave_old(spec: np.ndarray, hop_length: int = 1024) -> np.ndar
         raise ValueError(f"Expected a 2-D or 3-D spectrogram, got {spec.ndim}-D.")
 
     return wave
-    
+
+
 def wave_to_spectrogram_old(wave: np.ndarray, hop_length: int, n_fft: int) -> np.ndarray:
     wave_left = np.asfortranarray(wave[0])
     wave_right = np.asfortranarray(wave[1])
 
     spec_left = librosa.stft(wave_left, n_fft=n_fft, hop_length=hop_length)
     spec_right = librosa.stft(wave_right, n_fft=n_fft, hop_length=hop_length)
-    
+
     spec = np.asfortranarray([spec_left, spec_right])
 
     return spec
 
+
 def mirroring(a: str, spec_m: np.ndarray, input_high_end: np.ndarray, mp: Any) -> np.ndarray | None:
     if 'mirroring' == a:
-        mirror = np.flip(np.abs(spec_m[:, mp.param['pre_filter_start']-10-input_high_end.shape[1]:mp.param['pre_filter_start']-10, :]), 1)
-        mirror = mirror * np.exp(1.j * np.angle(input_high_end))
-        
+        mirror = np.flip(
+            np.abs(
+                spec_m[
+                    :,
+                    mp.param['pre_filter_start'] - 10 - input_high_end.shape[1] : mp.param[
+                        'pre_filter_start'
+                    ]
+                    - 10,
+                    :,
+                ]
+            ),
+            1,
+        )
+        mirror = mirror * np.exp(1.0j * np.angle(input_high_end))
+
         return np.where(np.abs(input_high_end) <= np.abs(mirror), input_high_end, mirror)
-        
+
     if 'mirroring2' == a:
-        mirror = np.flip(np.abs(spec_m[:, mp.param['pre_filter_start']-10-input_high_end.shape[1]:mp.param['pre_filter_start']-10, :]), 1)
+        mirror = np.flip(
+            np.abs(
+                spec_m[
+                    :,
+                    mp.param['pre_filter_start'] - 10 - input_high_end.shape[1] : mp.param[
+                        'pre_filter_start'
+                    ]
+                    - 10,
+                    :,
+                ]
+            ),
+            1,
+        )
         mi = np.multiply(mirror, input_high_end * 1.7)
-        
+
         return np.where(np.abs(input_high_end) <= np.abs(mi), input_high_end, mi)
 
-def adjust_aggr(mask: np.ndarray, is_non_accom_stem: bool, aggressiveness: dict[str, Any]) -> np.ndarray:
+
+def adjust_aggr(
+    mask: np.ndarray, is_non_accom_stem: bool, aggressiveness: dict[str, Any]
+) -> np.ndarray:
     aggr = aggressiveness['value'] * 2
 
     if aggr != 0:
         if is_non_accom_stem:
             aggr = 1 - aggr
-    
+
         aggr = [aggr, aggr]
-    
+
         if aggressiveness['aggr_correction'] is not None:
             aggr[0] += aggressiveness['aggr_correction']['left']
             aggr[1] += aggressiveness['aggr_correction']['right']
 
         for ch in range(2):
-            mask[ch, :aggressiveness['split_bin']] = np.power(mask[ch, :aggressiveness['split_bin']], 1 + aggr[ch] / 3)
-            mask[ch, aggressiveness['split_bin']:] = np.power(mask[ch, aggressiveness['split_bin']:], 1 + aggr[ch])
+            mask[ch, : aggressiveness['split_bin']] = np.power(
+                mask[ch, : aggressiveness['split_bin']], 1 + aggr[ch] / 3
+            )
+            mask[ch, aggressiveness['split_bin'] :] = np.power(
+                mask[ch, aggressiveness['split_bin'] :], 1 + aggr[ch]
+            )
 
     return mask
+
 
 def stft(wave: np.ndarray, nfft: int, hl: int) -> np.ndarray:
     wave_left = np.asfortranarray(wave[0])
@@ -511,6 +631,7 @@ def stft(wave: np.ndarray, nfft: int, hl: int) -> np.ndarray:
 
     return spec
 
+
 def istft(spec: np.ndarray, hl: int) -> np.ndarray:
     spec_left = np.asfortranarray(spec[0])
     spec_right = np.asfortranarray(spec[1])
@@ -520,59 +641,68 @@ def istft(spec: np.ndarray, hl: int) -> np.ndarray:
 
     return wave
 
-def spec_effects(wave: np.ndarray, algorithm: str = 'Default', value: float | None = None) -> np.ndarray:
-    spec = [stft(wave[0],2048,1024), stft(wave[1],2048,1024)]
+
+def spec_effects(
+    wave: np.ndarray, algorithm: str = 'Default', value: float | None = None
+) -> np.ndarray:
+    spec = [stft(wave[0], 2048, 1024), stft(wave[1], 2048, 1024)]
     if algorithm == 'Min_Mag':
         v_spec_m = np.where(np.abs(spec[1]) <= np.abs(spec[0]), spec[1], spec[0])
-        wave = istft(v_spec_m,1024)
+        wave = istft(v_spec_m, 1024)
     elif algorithm == 'Max_Mag':
         v_spec_m = np.where(np.abs(spec[1]) >= np.abs(spec[0]), spec[1], spec[0])
-        wave = istft(v_spec_m,1024)
+        wave = istft(v_spec_m, 1024)
     elif algorithm == 'Default':
         assert value is not None
-        wave = (wave[1] * value) + (wave[0] * (1-value))
+        wave = (wave[1] * value) + (wave[0] * (1 - value))
     elif algorithm == 'Invert_p':
         X_mag = np.abs(spec[0])
-        y_mag = np.abs(spec[1])            
-        max_mag = np.where(X_mag >= y_mag, X_mag, y_mag)  
-        v_spec = spec[1] - max_mag * np.exp(1.j * np.angle(spec[0]))
-        wave = istft(v_spec,1024)
-            
-    return wave      
-
-def spectrogram_to_wave_no_mp(spec: np.ndarray, n_fft: int = 2048, hop_length: int = 1024) -> np.ndarray:
-    wave = librosa.istft(spec, n_fft=n_fft, hop_length=hop_length)
-    
-    if wave.ndim == 1:
-        wave = np.asfortranarray([wave,wave])
+        y_mag = np.abs(spec[1])
+        max_mag = np.where(X_mag >= y_mag, X_mag, y_mag)
+        v_spec = spec[1] - max_mag * np.exp(1.0j * np.angle(spec[0]))
+        wave = istft(v_spec, 1024)
 
     return wave
 
+
+def spectrogram_to_wave_no_mp(
+    spec: np.ndarray, n_fft: int = 2048, hop_length: int = 1024
+) -> np.ndarray:
+    wave = librosa.istft(spec, n_fft=n_fft, hop_length=hop_length)
+
+    if wave.ndim == 1:
+        wave = np.asfortranarray([wave, wave])
+
+    return wave
+
+
 def wave_to_spectrogram_no_mp(wave: np.ndarray) -> np.ndarray:
-    
+
     spec = librosa.stft(wave, n_fft=2048, hop_length=1024)
-    
+
     if spec.ndim == 1:
-        spec = np.asfortranarray([spec,spec])
+        spec = np.asfortranarray([spec, spec])
 
     return spec
 
+
 def invert_audio(specs: list[np.ndarray], invert_p: bool = True) -> np.ndarray:
-    
+
     ln = min([specs[0].shape[2], specs[1].shape[2]])
-    specs[0] = specs[0][:,:,:ln]
-    specs[1] = specs[1][:,:,:ln]
-        
+    specs[0] = specs[0][:, :, :ln]
+    specs[1] = specs[1][:, :, :ln]
+
     if invert_p:
         X_mag = np.abs(specs[0])
-        y_mag = np.abs(specs[1])            
-        max_mag = np.where(X_mag >= y_mag, X_mag, y_mag)  
-        v_spec = specs[1] - max_mag * np.exp(1.j * np.angle(specs[0]))
+        y_mag = np.abs(specs[1])
+        max_mag = np.where(X_mag >= y_mag, X_mag, y_mag)
+        v_spec = specs[1] - max_mag * np.exp(1.0j * np.angle(specs[0]))
     else:
         specs[1] = reduce_vocal_aggressively(specs[0], specs[1], 0.2)
         v_spec = specs[0] - specs[1]
 
     return v_spec
+
 
 def invert_stem(mixture: np.ndarray, stem: np.ndarray) -> np.ndarray:
     mixture = wave_to_spectrogram_no_mp(mixture)
@@ -580,6 +710,7 @@ def invert_stem(mixture: np.ndarray, stem: np.ndarray) -> np.ndarray:
     output = spectrogram_to_wave_no_mp(invert_audio([mixture, stem]))
 
     return -output.T
+
 
 def mix_complement(
     mix: np.ndarray,
@@ -592,21 +723,25 @@ def mix_complement(
         return invert_stem(mix, shaped)
     return -shaped.T + mix.T
 
+
 def ensemble_for_align(waves: Sequence[np.ndarray]) -> np.ndarray:
     from .ensemble_spectral import combine_spectra
-    
+
     specs = []
-    
+
     for wav in waves:
         spec = wave_to_spectrogram_no_mp(wav.T)
         specs.append(spec)
-        
+
     wav_aligned = spectrogram_to_wave_no_mp(combine_spectra(MIN_SPEC, specs)).T
-    wav_aligned = match_array_shapes(wav_aligned, waves[1], is_swap=True)    
-   
+    wav_aligned = match_array_shapes(wav_aligned, waves[1], is_swap=True)
+
     return wav_aligned
-    
-def _load_ensemble_waves(audio_input: Sequence[str | np.ndarray], is_array: bool = False) -> tuple[list[np.ndarray], int]:
+
+
+def _load_ensemble_waves(
+    audio_input: Sequence[str | np.ndarray], is_array: bool = False
+) -> tuple[list[np.ndarray], int]:
     """Load ensemble members as stereo ``(2, T)`` float arrays."""
     wavs_ = []
     samplerate = 44100
@@ -644,14 +779,17 @@ def combine_ensemble_waveforms(
 
     if not audio_input:
         raise ValueError("Ensembling requires at least one member")
-    member_weights = np.ones(len(audio_input)) if weights is None else np.asarray(weights, dtype=float)
+    member_weights = (
+        np.ones(len(audio_input)) if weights is None else np.asarray(weights, dtype=float)
+    )
     if member_weights.shape != (len(audio_input),) or not np.all(np.isfinite(member_weights)):
         raise ValueError("Provide one finite weight per ensemble member")
     if np.any(member_weights < 0) or not np.any(member_weights > 0):
         raise ValueError("Ensemble weights must be nonnegative with a positive total")
     active = member_weights > 0
     wavs_, samplerate = _load_ensemble_waves(
-        [item for item, keep in zip(audio_input, active, strict=True) if keep], is_array=is_array,
+        [item for item, keep in zip(audio_input, active, strict=True) if keep],
+        is_array=is_array,
     )
     wavs_ = [np.stack((wave, wave)) if wave.ndim == 1 else wave for wave in wavs_]
     member_weights = member_weights[active]
@@ -669,7 +807,9 @@ def combine_ensemble_waveforms(
         wavs_, diagnostics = align_ensemble_members(wavs_, samplerate, correct=align)
         starts = [item.valid_start_samples for item in diagnostics]
         active_indices = np.flatnonzero(active).tolist()
-        diagnostics = [replace(item, member_index=active_indices[item.member_index]) for item in diagnostics]
+        diagnostics = [
+            replace(item, member_index=active_indices[item.member_index]) for item in diagnostics
+        ]
         if on_alignment is not None:
             on_alignment(diagnostics)
     if on_progress is not None:
@@ -694,16 +834,19 @@ def combine_ensemble_waveforms(
                 spec = wave_to_spectrogram_no_mp(wave)
                 # Frames overlapping a missing tail contain artificial zeros.
                 if size < original_length:
-                    spec = spec[..., :max(0, (size - 1024) // 1024 + 1)]
+                    spec = spec[..., : max(0, (size - 1024) // 1024 + 1)]
             specs.append(spec)
             first_center = start + 1024 if start else 0
             valid_starts.append(min(spec.shape[-1], (first_center + 1023) // 1024))
         present = [i for i, spec in enumerate(specs) if spec.shape[-1] > 0]
         combined = combine_spectra(
-            algorithm, [specs[i] for i in present],
+            algorithm,
+            [specs[i] for i in present],
             weights=[float(member_weights[i]) for i in present],
             valid_starts=[valid_starts[i] for i in present],
-            smoothing=smoothing, soft_strength=soft_strength, hybrid_balance=hybrid_balance,
+            smoothing=smoothing,
+            soft_strength=soft_strength,
+            hybrid_balance=hybrid_balance,
         )
         output = librosa.istft(combined, n_fft=2048, hop_length=1024, length=original_length)
     # Keep the input timeline, including after optional offset correction.
@@ -747,8 +890,12 @@ def ensemble_inputs(
         is_wave=is_wave,
         is_array=is_array,
         on_progress=on_progress,
-        weights=weights, smoothing=smoothing, soft_strength=soft_strength,
-        hybrid_balance=hybrid_balance, align=align, on_alignment=on_alignment,
+        weights=weights,
+        smoothing=smoothing,
+        soft_strength=soft_strength,
+        hybrid_balance=hybrid_balance,
+        align=align,
+        on_alignment=on_alignment,
     )
     if on_phase is not None:
         on_phase("saving")
@@ -760,26 +907,31 @@ def ensemble_inputs(
     )
     _tick(1.0)
 
+
 def to_shape(x: np.ndarray, target_shape: Sequence[int]) -> np.ndarray:
     padding_list = []
     for x_dim, target_dim in zip(x.shape, target_shape, strict=False):
-        pad_value = (target_dim - x_dim)
-        pad_tuple = ((0, pad_value))
+        pad_value = target_dim - x_dim
+        pad_tuple = (0, pad_value)
         padding_list.append(pad_tuple)
-    
+
     return np.pad(x, tuple(padding_list), mode='constant')
+
 
 def to_shape_minimize(x: np.ndarray, target_shape: Sequence[int]) -> np.ndarray:
-    
+
     padding_list = []
     for x_dim, target_dim in zip(x.shape, target_shape, strict=False):
-        pad_value = (target_dim - x_dim)
-        pad_tuple = ((0, pad_value))
+        pad_value = target_dim - x_dim
+        pad_tuple = (0, pad_value)
         padding_list.append(pad_tuple)
-    
+
     return np.pad(x, tuple(padding_list), mode='constant')
 
-def detect_leading_silence(audio: np.ndarray, sr: int, silence_threshold: float = 0.007, frame_length: int = 1024) -> float:
+
+def detect_leading_silence(
+    audio: np.ndarray, sr: int, silence_threshold: float = 0.007, frame_length: int = 1024
+) -> float:
     """
     Detect silence at the beginning of an audio signal.
 
@@ -790,19 +942,25 @@ def detect_leading_silence(audio: np.ndarray, sr: int, silence_threshold: float 
 
     :return: float, duration of the leading silence in milliseconds
     """
-    
+
     if len(audio.shape) == 2:
         # If stereo, pick the channel with more energy to determine the silence
         channel = np.argmax(np.sum(np.abs(audio), axis=1))
         audio = audio[channel]
-    
+
     for i in range(0, len(audio), frame_length):
-        if np.max(np.abs(audio[i:i+frame_length])) > silence_threshold:
+        if np.max(np.abs(audio[i : i + frame_length])) > silence_threshold:
             return (i / sr) * 1000
 
     return (len(audio) / sr) * 1000
 
-def adjust_leading_silence(target_audio: np.ndarray, reference_audio: np.ndarray, silence_threshold: float = 0.01, frame_length: int = 1024) -> np.ndarray:
+
+def adjust_leading_silence(
+    target_audio: np.ndarray,
+    reference_audio: np.ndarray,
+    silence_threshold: float = 0.01,
+    frame_length: int = 1024,
+) -> np.ndarray:
     """
     Adjust the leading silence of the target_audio to match the leading silence of the reference_audio.
 
@@ -814,7 +972,7 @@ def adjust_leading_silence(target_audio: np.ndarray, reference_audio: np.ndarray
 
     :return: np.array, target_audio adjusted to have the same leading silence as reference_audio
     """
-    
+
     def find_silence_end(audio: np.ndarray) -> int:
         if len(audio.shape) == 2:
             # If stereo, pick the channel with more energy to determine the silence
@@ -824,7 +982,7 @@ def adjust_leading_silence(target_audio: np.ndarray, reference_audio: np.ndarray
             audio_mono = audio
 
         for i in range(0, len(audio_mono), frame_length):
-            if np.max(np.abs(audio_mono[i:i+frame_length])) > silence_threshold:
+            if np.max(np.abs(audio_mono[i : i + frame_length])) > silence_threshold:
                 return i
         return len(audio_mono)
 
@@ -854,36 +1012,43 @@ def adjust_leading_silence(target_audio: np.ndarray, reference_audio: np.ndarray
     else:  # No adjustment needed
         return target_audio
 
-def match_array_shapes(array_1: np.ndarray, array_2: np.ndarray, is_swap: bool = False) -> np.ndarray:
-    
+
+def match_array_shapes(
+    array_1: np.ndarray, array_2: np.ndarray, is_swap: bool = False
+) -> np.ndarray:
+
     if is_swap:
         array_1, array_2 = array_1.T, array_2.T
-    
-    #print("before", array_1.shape, array_2.shape)
+
+    # print("before", array_1.shape, array_2.shape)
     if array_1.shape[1] > array_2.shape[1]:
-        array_1 = array_1[:,:array_2.shape[1]] 
+        array_1 = array_1[:, : array_2.shape[1]]
     elif array_1.shape[1] < array_2.shape[1]:
         padding = array_2.shape[1] - array_1.shape[1]
-        array_1 = np.pad(array_1, ((0,0), (0,padding)), 'constant', constant_values=0)
-    
-    #print("after", array_1.shape, array_2.shape)
-    
+        array_1 = np.pad(array_1, ((0, 0), (0, padding)), 'constant', constant_values=0)
+
+    # print("after", array_1.shape, array_2.shape)
+
     if is_swap:
         array_1, array_2 = array_1.T, array_2.T
-        
+
     return array_1
 
+
 def match_mono_array_shapes(array_1: np.ndarray, array_2: np.ndarray) -> np.ndarray:
-    
+
     if len(array_1) > len(array_2):
-        array_1 = array_1[:len(array_2)]
+        array_1 = array_1[: len(array_2)]
     elif len(array_1) < len(array_2):
         padding = len(array_2) - len(array_1)
         array_1 = np.pad(array_1, (0, padding), 'constant', constant_values=0)
-        
+
     return array_1
 
-def change_pitch_semitones(y: np.ndarray, sr: float, semitone_shift: float) -> tuple[np.ndarray, float]:
+
+def change_pitch_semitones(
+    y: np.ndarray, sr: float, semitone_shift: float
+) -> tuple[np.ndarray, float]:
     """Resample ``y`` by a semitone factor, returning the audio and its new rate.
 
     ``sr`` is a float because the rate this returns is itself fractional
@@ -893,10 +1058,18 @@ def change_pitch_semitones(y: np.ndarray, sr: float, semitone_shift: float) -> t
     factor = 2 ** (semitone_shift / 12)  # Convert semitone shift to factor for resampling
     y_pitch_tuned = []
     for y_channel in y:
-        y_pitch_tuned.append(librosa.resample(y_channel, orig_sr=sr, target_sr=sr*factor, res_type=wav_resolution_float_resampling))
+        y_pitch_tuned.append(
+            librosa.resample(
+                y_channel,
+                orig_sr=sr,
+                target_sr=sr * factor,
+                res_type=wav_resolution_float_resampling,
+            )
+        )
     y_pitch_tuned = np.array(y_pitch_tuned)
     new_sr = sr * factor
     return y_pitch_tuned, new_sr
+
 
 def augment_audio(
     export_path: str,
@@ -916,7 +1089,7 @@ def augment_audio(
     wav, sr = librosa.load(audio_file, sr=44100, mono=False)
 
     if wav.ndim == 1:
-        wav = np.asfortranarray([wav,wav])
+        wav = np.asfortranarray([wav, wav])
 
     if on_phase is not None:
         on_phase("processing")
@@ -934,9 +1107,9 @@ def augment_audio(
             wav_2 = to_shape(wav_2, wav_1.shape)
         if wav_1.shape < wav_2.shape:
             wav_1 = to_shape(wav_1, wav_2.shape)
-            
+
         wav_mix = np.asfortranarray([wav_1, wav_2])
-    
+
     if on_phase is not None:
         on_phase("saving")
     sf.write(
@@ -947,48 +1120,53 @@ def augment_audio(
     )
     if save_format is not None:
         save_format(export_path)
-    
+
+
 def average_dual_sources(wav_1: np.ndarray, wav_2: np.ndarray, value: float) -> np.ndarray:
-    
+
     if wav_1.shape > wav_2.shape:
         wav_2 = to_shape(wav_2, wav_1.shape)
     if wav_1.shape < wav_2.shape:
         wav_1 = to_shape(wav_1, wav_2.shape)
 
-    wave = (wav_1 * value) + (wav_2 * (1-value))
+    wave = (wav_1 * value) + (wav_2 * (1 - value))
 
     return wave
-       
+
+
 def reshape_sources(wav_1: np.ndarray, wav_2: np.ndarray) -> np.ndarray:
-    
+
     if wav_1.shape > wav_2.shape:
         wav_2 = to_shape(wav_2, wav_1.shape)
     if wav_1.shape < wav_2.shape:
         ln = min([wav_1.shape[1], wav_2.shape[1]])
-        wav_2 = wav_2[:,:ln]
+        wav_2 = wav_2[:, :ln]
 
     ln = min([wav_1.shape[1], wav_2.shape[1]])
-    wav_1 = wav_1[:,:ln]
-    wav_2 = wav_2[:,:ln]
+    wav_1 = wav_1[:, :ln]
+    wav_2 = wav_2[:, :ln]
 
     return wav_2
-    
+
+
 def reshape_sources_ref(wav_1_shape: tuple[int, ...], wav_2: np.ndarray) -> np.ndarray:
-    
+
     if wav_1_shape > wav_2.shape:
         wav_2 = to_shape(wav_2, wav_1_shape)
 
     return wav_2
-    
+
+
 def combine_arrarys(audio_sources: Sequence[np.ndarray], is_swap: bool = False) -> np.ndarray:
     source = np.zeros_like(max(audio_sources, key=np.size))
-    
+
     for v in audio_sources:
         v = match_array_shapes(v, source, is_swap=is_swap)
         source += v
-        
+
     return source
-    
+
+
 def combine_audio(
     paths: list[str],
     audio_file_base: str | None = None,
@@ -1019,15 +1197,19 @@ def combine_audio(
     if save_format is not None:
         save_format(save_path)
     _tick(1.0)
-    
-def reduce_mix_bv(inst_source: np.ndarray, voc_source: np.ndarray, reduction_rate: float = 0.9) -> np.ndarray:
+
+
+def reduce_mix_bv(
+    inst_source: np.ndarray, voc_source: np.ndarray, reduction_rate: float = 0.9
+) -> np.ndarray:
     # Reduce the volume
     inst_source = inst_source * (1 - reduction_rate)
 
     mix_reduced = combine_arrarys([inst_source, voc_source], is_swap=True)
 
     return mix_reduced
-    
+
+
 def organize_inputs(inputs: Sequence[str]) -> dict[str, str | None]:
     input_list: dict[str, str | None] = {
         "target": None,
@@ -1035,7 +1217,7 @@ def organize_inputs(inputs: Sequence[str]) -> dict[str, str | None]:
         "reverb": None,
         "inst": None,
     }
-    
+
     for i in inputs:
         if i.endswith(" (Vocals).wav") or i.endswith("_(Vocals).wav"):
             input_list["reference"] = i
@@ -1045,42 +1227,46 @@ def organize_inputs(inputs: Sequence[str]) -> dict[str, str | None]:
             input_list["reverb"] = i
         elif i.endswith(" (Instrumental).wav") or i.endswith("_(Instrumental).wav"):
             input_list["inst"] = i
-            
+
     return input_list
-      
+
+
 def check_if_phase_inverted(wav1: np.ndarray, wav2: np.ndarray, is_mono: bool = False) -> bool:
     # Load the audio files
     if not is_mono:
         wav1 = np.mean(wav1, axis=0)
         wav2 = np.mean(wav2, axis=0)
-    
+
     # Compute the correlation
     correlation = np.corrcoef(wav1[:1000], wav2[:1000])
-    
-    return correlation[0,1] < 0
-         
-def align_audio(file1: str, 
-                file2: str, 
-                file2_aligned: str, 
-                file_subtracted: str, 
-                wav_type_set: str, 
-                is_save_aligned: bool, 
-                command_Text: CommandTextFn, 
-                save_format: SaveFormatFn, 
-                align_window: list[float], 
-                align_intro_val: list[int],
-                db_analysis: tuple[float, Sequence[float]],
-                set_progress_bar: SetProgressBarFn,
-                phase_option: str,
-                phase_shifts: int,
-                is_match_silence: bool,
-                is_spec_match: bool,
-                on_phase: AudioPhaseFn | None = None) -> None:
-    
+
+    return correlation[0, 1] < 0
+
+
+def align_audio(
+    file1: str,
+    file2: str,
+    file2_aligned: str,
+    file_subtracted: str,
+    wav_type_set: str,
+    is_save_aligned: bool,
+    command_Text: CommandTextFn,
+    save_format: SaveFormatFn,
+    align_window: list[float],
+    align_intro_val: list[int],
+    db_analysis: tuple[float, Sequence[float]],
+    set_progress_bar: SetProgressBarFn,
+    phase_option: str,
+    phase_shifts: int,
+    is_match_silence: bool,
+    is_spec_match: bool,
+    on_phase: AudioPhaseFn | None = None,
+) -> None:
+
     global progress_value
     progress_value = 0
     is_mono = False
-    
+
     def get_diff(a: np.ndarray, b: np.ndarray) -> int:
         corr = np.correlate(a, b, "full")
         diff = corr.argmax() - (b.shape[0] - 1)
@@ -1091,15 +1277,15 @@ def align_audio(file1: str,
         global progress_value
         progress_value += 1
 
-        if (0.90/length*progress_value) >= 0.9:
+        if (0.90 / length * progress_value) >= 0.9:
             length = progress_value + 1
 
-        set_progress_bar(0.1, (0.9/length*progress_value))
-    
+        set_progress_bar(0.1, (0.9 / length * progress_value))
+
     # read tracks
     if on_phase is not None:
         on_phase("reading")
-    
+
     if file1.endswith(".mp3") and is_macos:
         length1 = rerun_mp3(file1)
         wav1, sr1 = librosa.load(file1, duration=length1, sr=44100, mono=False)
@@ -1116,12 +1302,12 @@ def align_audio(file1: str,
         on_phase("processing")
 
     if wav1.ndim == 1 and wav2.ndim == 1:
-         is_mono = True
+        is_mono = True
     elif wav1.ndim == 1:
-        wav1 = np.asfortranarray([wav1,wav1])
+        wav1 = np.asfortranarray([wav1, wav1])
     elif wav2.ndim == 1:
-        wav2 = np.asfortranarray([wav2,wav2])
-    
+        wav2 = np.asfortranarray([wav2, wav2])
+
     # Check if phase is inverted
     if phase_option == AUTO_PHASE:
         if check_if_phase_inverted(wav1, wav2, is_mono=is_mono):
@@ -1130,40 +1316,40 @@ def align_audio(file1: str,
         wav2 = +wav2
     elif phase_option == NEGATIVE_PHASE:
         wav2 = -wav2
-    
+
     if is_match_silence:
         wav2 = adjust_leading_silence(wav2, wav1)
-    
+
     wav1_length = int(librosa.get_duration(y=wav1, sr=44100))
     wav2_length = int(librosa.get_duration(y=wav2, sr=44100))
-    
+
     if not is_mono:
         wav1 = wav1.transpose()
         wav2 = wav2.transpose()
 
     wav2_org = wav2.copy()
-    
+
     command_Text("Processing files... \n")
     seconds_length = min(wav1_length, wav2_length)
-    
+
     wav2_aligned_sources = []
-    
+
     for sec_len in align_intro_val:
         # pick a position at 1 second in and get diff
         sec_seg = 1 if sec_len == 1 else int(seconds_length // sec_len)
-        index = sr1*sec_seg  # 1 second in, assuming sr1 = sr2 = 44100
+        index = sr1 * sec_seg  # 1 second in, assuming sr1 = sr2 = 44100
 
         if is_mono:
             samp1, samp2 = wav1[index : index + sr1], wav2[index : index + sr1]
             diff = get_diff(samp1, samp2)
-            #print(f"Estimated difference: {diff}\n")
+            # print(f"Estimated difference: {diff}\n")
         else:
-            index = sr1*sec_seg  # 1 second in, assuming sr1 = sr2 = 44100
+            index = sr1 * sec_seg  # 1 second in, assuming sr1 = sr2 = 44100
             samp1, samp2 = wav1[index : index + sr1, 0], wav2[index : index + sr1, 0]
             samp1_r, samp2_r = wav1[index : index + sr1, 1], wav2[index : index + sr1, 1]
             diff, _diff_r = get_diff(samp1, samp2), get_diff(samp1_r, samp2_r)
-            #print(f"Estimated difference Left Channel: {diff}\nEstimated difference Right Channel: {diff_r}\n")
-        
+            # print(f"Estimated difference Left Channel: {diff}\nEstimated difference Right Channel: {diff_r}\n")
+
         # make aligned track 2
         if diff > 0:
             zeros_to_append = np.zeros(diff) if is_mono else np.zeros((diff, 2))
@@ -1172,64 +1358,81 @@ def align_audio(file1: str,
             wav2_aligned = wav2_org[-diff:]
         else:
             wav2_aligned = wav2_org
-            #command_Text(f"Audio files already aligned.\n")
-            
+            # command_Text(f"Audio files already aligned.\n")
+
         if not any(np.array_equal(wav2_aligned, source) for source in wav2_aligned_sources):
             wav2_aligned_sources.append(wav2_aligned)
 
-    #print("Unique Sources: ", len(wav2_aligned_sources))
-    
+    # print("Unique Sources: ", len(wav2_aligned_sources))
+
     unique_sources = len(wav2_aligned_sources)
-    
+
     sub_mapper_big_mapper = {}
 
     for s in wav2_aligned_sources:
-        wav2_aligned = match_mono_array_shapes(s, wav1) if is_mono else match_array_shapes(s, wav1, is_swap=True)
-        
+        wav2_aligned = (
+            match_mono_array_shapes(s, wav1)
+            if is_mono
+            else match_array_shapes(s, wav1, is_swap=True)
+        )
+
         if align_window:
-            wav_sub = time_correction(wav1, wav2_aligned, seconds_length, align_window=align_window, db_analysis=db_analysis, progress_bar=progress_bar, unique_sources=unique_sources, phase_shifts=phase_shifts)
-            wav_sub_size = np.abs(wav_sub).mean()  
-            sub_mapper_big_mapper = {**sub_mapper_big_mapper, **{wav_sub_size:wav_sub}}
+            wav_sub = time_correction(
+                wav1,
+                wav2_aligned,
+                seconds_length,
+                align_window=align_window,
+                db_analysis=db_analysis,
+                progress_bar=progress_bar,
+                unique_sources=unique_sources,
+                phase_shifts=phase_shifts,
+            )
+            wav_sub_size = np.abs(wav_sub).mean()
+            sub_mapper_big_mapper = {**sub_mapper_big_mapper, **{wav_sub_size: wav_sub}}
         else:
             wav2_aligned = wav2_aligned * np.power(10, db_analysis[0] / 20)
             db_range = db_analysis[1]
-            
+
             for db_adjustment in db_range:
                 # Adjust the dB of track2
                 s_adjusted = wav2_aligned * (10 ** (db_adjustment / 20))
                 wav_sub = wav1 - s_adjusted
-                wav_sub_size = np.abs(wav_sub).mean() 
-                sub_mapper_big_mapper = {**sub_mapper_big_mapper, **{wav_sub_size:wav_sub}}
-            
-        #print(sub_mapper_big_mapper.keys(), min(sub_mapper_big_mapper.keys()))
-    
+                wav_sub_size = np.abs(wav_sub).mean()
+                sub_mapper_big_mapper = {**sub_mapper_big_mapper, **{wav_sub_size: wav_sub}}
+
+        # print(sub_mapper_big_mapper.keys(), min(sub_mapper_big_mapper.keys()))
+
     sub_mapper_value_list = list(sub_mapper_big_mapper.values())
-    
+
     if is_spec_match and len(sub_mapper_value_list) >= 2:
-        #print("using spec ensemble with align")
+        # print("using spec ensemble with align")
         wav_sub = ensemble_for_align(list(sub_mapper_big_mapper.values()))
     else:
-        #print("using linear ensemble with align")
+        # print("using linear ensemble with align")
         wav_sub = ensemble_wav(list(sub_mapper_big_mapper.values()))
-         
-    #print(f"Mix Mean: {np.abs(wav1).mean()}\nInst Mean: {np.abs(wav2).mean()}")
-    #print('Final: ', np.abs(wav_sub).mean())
+
+    # print(f"Mix Mean: {np.abs(wav1).mean()}\nInst Mean: {np.abs(wav2).mean()}")
+    # print('Final: ', np.abs(wav_sub).mean())
     wav_sub = np.clip(wav_sub, -1, +1)
-    
+
     command_Text("Saving inverted track...\n")
 
     if is_save_aligned or is_spec_match:
-        wav1 = match_mono_array_shapes(wav1, wav_sub) if is_mono else match_array_shapes(wav1, wav_sub, is_swap=True)
+        wav1 = (
+            match_mono_array_shapes(wav1, wav_sub)
+            if is_mono
+            else match_array_shapes(wav1, wav_sub, is_swap=True)
+        )
         wav2_aligned = wav1 - wav_sub
 
         if is_spec_match:
             if wav1.ndim == 1 and wav2.ndim == 1:
                 wav2_aligned = np.asfortranarray([wav2_aligned, wav2_aligned]).T
                 wav1 = np.asfortranarray([wav1, wav1]).T
-            
+
             wav2_aligned = ensemble_for_align([wav2_aligned, wav1])
             wav_sub = wav1 - wav2_aligned
-        
+
         if is_save_aligned:
             if on_phase is not None:
                 on_phase("saving")
@@ -1241,9 +1444,13 @@ def align_audio(file1: str,
     sf.write(file_subtracted, wav_sub, int(sr1), subtype=wav_type_set)
     save_format(file_subtracted)
 
+
 def phase_shift_hilbert(signal: np.ndarray, degree: float) -> np.ndarray:
     analytic_signal = cast(np.ndarray, hilbert(signal))
-    return np.cos(np.radians(degree)) * np.real(analytic_signal) - np.sin(np.radians(degree)) * np.imag(analytic_signal)
+    return np.cos(np.radians(degree)) * np.real(analytic_signal) - np.sin(
+        np.radians(degree)
+    ) * np.imag(analytic_signal)
+
 
 def get_phase_shifted_tracks(track: np.ndarray, phase_shift: int) -> list[np.ndarray]:
     if phase_shift == 180:
@@ -1252,12 +1459,13 @@ def get_phase_shifted_tracks(track: np.ndarray, phase_shift: int) -> list[np.nda
     step = phase_shift
     end = 180 - (180 % step) if 180 % step == 0 else 181
     phase_range = range(step, end, step)
-    
+
     flipped_list = [track, -track]
     for i in phase_range:
         flipped_list.extend([phase_shift_hilbert(track, i), phase_shift_hilbert(track, -i)])
 
     return flipped_list
+
 
 def time_correction(
     mix: np.ndarray,
@@ -1279,13 +1487,13 @@ def time_correction(
         # Loop to adjust dB of track2
         track2 = track2 * np.power(10, db_analysis[0] / 20)
         db_range = db_analysis[1]
-        
+
         if phase_shifts in (190, NONE_P):
             track2_flipped = [track2]
         else:
             assert isinstance(phase_shifts, int)
             track2_flipped = get_phase_shifted_tracks(track2, phase_shifts)
-            
+
         for db_adjustment in db_range:
             for t in track2_flipped:
                 # Adjust the dB of track2
@@ -1302,38 +1510,42 @@ def time_correction(
                 shifted_tracks[mean_abs_value] = track2_shifted
 
         # Return the version of track2_shifted with the smallest mean absolute value
-                
+
         return shifted_tracks[min(shifted_tracks.keys())]
 
     # Make sure the audio files have the same shape
-    
-    assert mix.shape == instrumental.shape, f"Audio files must have the same shape - Mix: {mix.shape}, Inst: {instrumental.shape}"
-    
+
+    assert mix.shape == instrumental.shape, (
+        f"Audio files must have the same shape - Mix: {mix.shape}, Inst: {instrumental.shape}"
+    )
+
     seconds_length = seconds_length // 2
 
     sub_mapper = {}
-    
+
     progress_update_interval = 120
     total_iterations = 0
-    
+
     if len(align_window) > 2:
         progress_update_interval = 320
-    
+
     for secs in align_window:
         step = secs / 2
         window_size = int(sr * secs)
         step_size = int(sr * step)
-        
+
         if len(mix.shape) == 1:
-            total_mono = (len(range(0, len(mix) - window_size, step_size))//progress_update_interval)*unique_sources
+            total_mono = (
+                len(range(0, len(mix) - window_size, step_size)) // progress_update_interval
+            ) * unique_sources
             total_iterations += total_mono
         else:
-            total_stereo_ = len(range(0, len(mix[:, 0]) - window_size, step_size))*2
-            total_stereo = (total_stereo_//progress_update_interval) * unique_sources
+            total_stereo_ = len(range(0, len(mix[:, 0]) - window_size, step_size)) * 2
+            total_stereo = (total_stereo_ // progress_update_interval) * unique_sources
             total_iterations += total_stereo
-    
-    #print(total_iterations)
-    
+
+    # print(total_iterations)
+
     for secs in align_window:
         sub = np.zeros_like(mix)
         divider = np.zeros_like(mix)
@@ -1350,11 +1562,11 @@ def time_correction(
                 counter += 1
                 if counter % progress_update_interval == 0 and progress_bar is not None:
                     progress_bar(total_iterations)
-                window_mix = mix[i:i+window_size] * window
-                window_instrumental = instrumental[i:i+window_size] * window
+                window_mix = mix[i : i + window_size] * window
+                window_instrumental = instrumental[i : i + window_size] * window
                 window_instrumental_aligned = align_tracks(window_mix, window_instrumental)
-                sub[i:i+window_size] += window_mix - window_instrumental_aligned
-                divider[i:i+window_size] += window
+                sub[i : i + window_size] += window_mix - window_instrumental_aligned
+                divider[i : i + window_size] += window
         else:
             # The files are stereo
             counter = 0
@@ -1363,26 +1575,29 @@ def time_correction(
                     counter += 1
                     if counter % progress_update_interval == 0 and progress_bar is not None:
                         progress_bar(total_iterations)
-                    window_mix = mix[i:i+window_size, ch] * window
-                    window_instrumental = instrumental[i:i+window_size, ch] * window
+                    window_mix = mix[i : i + window_size, ch] * window
+                    window_instrumental = instrumental[i : i + window_size, ch] * window
                     window_instrumental_aligned = align_tracks(window_mix, window_instrumental)
-                    sub[i:i+window_size, ch] += window_mix - window_instrumental_aligned
-                    divider[i:i+window_size, ch] += window
+                    sub[i : i + window_size, ch] += window_mix - window_instrumental_aligned
+                    divider[i : i + window_size, ch] += window
 
         # Normalize the result by the overlap count
         sub = np.where(divider > 1e-6, sub / divider, sub)
         sub_size = np.abs(sub).mean()
         sub_mapper = {**sub_mapper, **{sub_size: sub}}
 
-    #print("SUB_LEN", len(list(sub_mapper.values())))
+    # print("SUB_LEN", len(list(sub_mapper.values())))
 
     sub = ensemble_wav(list(sub_mapper.values()), split_size=12)
-          
+
     return sub
+
 
 def ensemble_wav(waveforms: Sequence[np.ndarray], split_size: int = 240) -> np.ndarray:
     # Create a dictionary to hold the thirds of each waveform and their mean absolute values
-    waveform_thirds = {i: np.array_split(waveform, split_size) for i, waveform in enumerate(waveforms)}
+    waveform_thirds = {
+        i: np.array_split(waveform, split_size) for i, waveform in enumerate(waveforms)
+    }
 
     # Initialize the final waveform
     final_waveform = []
@@ -1403,6 +1618,7 @@ def ensemble_wav(waveforms: Sequence[np.ndarray], split_size: int = 240) -> np.n
 
     return final_waveform
 
+
 def ensemble_wav_min(waveforms: list[np.ndarray]) -> np.ndarray:
     if not waveforms:
         # Previously fell through to a NameError on ``wave``.
@@ -1414,46 +1630,49 @@ def ensemble_wav_min(waveforms: list[np.ndarray]) -> np.ndarray:
         waveforms[i] = waveforms[i][:ln]
 
         wave = np.where(np.abs(waveforms[i]) <= np.abs(wave), waveforms[i], wave)
-        
+
     return wave
+
 
 def align_audio_test(wav1: np.ndarray, wav2: np.ndarray, sr1: int = 44100) -> np.ndarray:
     def get_diff(a: np.ndarray, b: np.ndarray) -> int:
         corr = np.correlate(a, b, "full")
         diff = corr.argmax() - (b.shape[0] - 1)
         return diff
-  
+
     # read tracks
     wav1 = wav1.transpose()
     wav2 = wav2.transpose()
 
-    #print(f"Audio file shapes: {wav1.shape} / {wav2.shape}\n")
-    
+    # print(f"Audio file shapes: {wav1.shape} / {wav2.shape}\n")
+
     wav2_org = wav2.copy()
-    
+
     # pick a position at 1 second in and get diff
-    index = sr1#*seconds_length  # 1 second in, assuming sr1 = sr2 = 44100
-    samp1 = wav1[index : index + sr1, 0] # currently use left channel
+    index = sr1  # *seconds_length  # 1 second in, assuming sr1 = sr2 = 44100
+    samp1 = wav1[index : index + sr1, 0]  # currently use left channel
     samp2 = wav2[index : index + sr1, 0]
     diff = get_diff(samp1, samp2)
-    
-  # make aligned track 2
+
+    # make aligned track 2
     if diff > 0:
         wav2_aligned = np.append(np.zeros((diff, 1)), wav2_org, axis=0)
     elif diff < 0:
         wav2_aligned = wav2_org[-diff:]
     else:
         wav2_aligned = wav2_org
-        
+
     return wav2_aligned
+
 
 def load_audio(audio_file: str) -> np.ndarray:
     wav, _sr = librosa.load(audio_file, sr=44100, mono=False)
 
     if wav.ndim == 1:
-        wav = np.asfortranarray([wav,wav])
-        
+        wav = np.asfortranarray([wav, wav])
+
     return wav
+
 
 def rerun_mp3(audio_file: str) -> int:
     with audioread.audio_open(audio_file) as f:

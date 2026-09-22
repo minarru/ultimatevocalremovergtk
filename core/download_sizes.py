@@ -69,9 +69,7 @@ def _cache_path() -> str:
     if not current_access_policy().allow_cache_writes:
         from .remote_catalog_cache import inspect_cache_path
 
-        return inspect_cache_path(
-            "download_size_cache.json", paths.DOWNLOAD_SIZE_CACHE_FILE
-        )
+        return inspect_cache_path("download_size_cache.json", paths.DOWNLOAD_SIZE_CACHE_FILE)
     return paths.migrate_cache_file("download_size_cache.json", paths.DOWNLOAD_SIZE_CACHE_FILE)
 
 
@@ -197,9 +195,7 @@ def _cache_put(
     content_id: Optional[str] = None,
 ) -> None:
     payload = _read_cache()
-    _store_entry(
-        payload, url, size=size, etag=etag, now=time.time(), content_id=content_id
-    )
+    _store_entry(payload, url, size=size, etag=etag, now=time.time(), content_id=content_id)
     _write_cache(payload)
 
 
@@ -231,9 +227,7 @@ def fetch_remote_size(url: str) -> Optional[int]:
     return size
 
 
-def request_url_size(
-    url: str, callback: Callable[[str, Optional[int]], None]
-) -> None:
+def request_url_size(url: str, callback: Callable[[str, Optional[int]], None]) -> None:
     """Coalesce HEAD lookups for ``url``; invoke ``callback`` when known.
 
     Duplicate callers share one in-flight fetch. Cached hits invoke the
@@ -449,8 +443,7 @@ def prefetch_same_size_identity(urls: Iterable[str]) -> Dict[str, int]:
 
     debug(
         "download",
-        f"size_cache identity pass targets={len(targets)} "
-        f"fetched={fetched} failed={failed}",
+        f"size_cache identity pass targets={len(targets)} fetched={fetched} failed={failed}",
     )
     return {
         "total": len(targets),
@@ -477,8 +470,7 @@ def _head_remote_meta(
             request, context=_ssl_context(), timeout=_TIMEOUT_SECONDS
         ) as response:
             size = _parse_content_length(
-                response.getheader("X-Linked-Size")
-                or response.getheader("Content-Length")
+                response.getheader("X-Linked-Size") or response.getheader("Content-Length")
             )
             linked = response.getheader("X-Linked-Etag")
             raw_etag = response.getheader("ETag")

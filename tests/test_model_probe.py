@@ -34,20 +34,24 @@ class SafetensorsHeaderTests(unittest.TestCase):
         self.assertEqual(span, (8, 8 + len(blob) - 8))
 
     def test_lists_tensor_names_from_the_header(self) -> None:
-        blob = _safetensors_bytes({
-            "enc.weight": {"dtype": "F32", "shape": [4, 4], "data_offsets": [0, 64]},
-            "enc.bias": {"dtype": "F32", "shape": [4], "data_offsets": [64, 80]},
-        })
+        blob = _safetensors_bytes(
+            {
+                "enc.weight": {"dtype": "F32", "shape": [4, 4], "data_offsets": [0, 64]},
+                "enc.bias": {"dtype": "F32", "shape": [4], "data_offsets": [64, 80]},
+            }
+        )
         self.assertEqual(
             sorted(model_tool_support.parse_safetensors_header(blob)),
             ["enc.bias", "enc.weight"],
         )
 
     def test_ignores_the_metadata_pseudo_entry(self) -> None:
-        blob = _safetensors_bytes({
-            "__metadata__": {"format": "pt"},
-            "w": {"dtype": "F32", "shape": [1], "data_offsets": [0, 4]},
-        })
+        blob = _safetensors_bytes(
+            {
+                "__metadata__": {"format": "pt"},
+                "w": {"dtype": "F32", "shape": [1], "data_offsets": [0, 4]},
+            }
+        )
         self.assertEqual(model_tool_support.parse_safetensors_header(blob), ["w"])
 
     def test_rejects_a_header_that_is_not_json(self) -> None:
@@ -96,11 +100,13 @@ class TorchCheckpointKeyTests(unittest.TestCase):
     def test_descends_into_a_lightning_style_wrapper(self) -> None:
         import torch
 
-        path = self._save({
-            "epoch": 3,
-            "global_step": 120,
-            "state_dict": {"net.0.weight": torch.zeros(1), "net.0.bias": torch.zeros(1)},
-        })
+        path = self._save(
+            {
+                "epoch": 3,
+                "global_step": 120,
+                "state_dict": {"net.0.weight": torch.zeros(1), "net.0.bias": torch.zeros(1)},
+            }
+        )
         read, size = _file_reader(path)
         self.assertEqual(
             sorted(model_tool_support.torch_checkpoint_keys(read, size)),
@@ -182,12 +188,20 @@ class KeyDiffTests(unittest.TestCase):
 _REPO = os.path.dirname(os.path.dirname(__file__))
 #: A small committed SCNet config — no weights involved, builds in ~1s.
 _SCNET_CONFIG = os.path.join(
-    _REPO, "models", "MDX_Net_Models", "model_data", "mdx_c_configs",
+    _REPO,
+    "models",
+    "MDX_Net_Models",
+    "model_data",
+    "mdx_c_configs",
     "config_musdb18_scnet.yaml",
 )
 #: A committed MDX23C config, which takes the TFC_TDF_net path instead.
 _MDX23C_CONFIG = os.path.join(
-    _REPO, "models", "MDX_Net_Models", "model_data", "mdx_c_configs",
+    _REPO,
+    "models",
+    "MDX_Net_Models",
+    "model_data",
+    "mdx_c_configs",
     "model_2_stem_full_band.yaml",
 )
 
@@ -220,16 +234,27 @@ class BuildFromConfigTests(unittest.TestCase):
         self.assertEqual(built.dropped, [])
 
     @unittest.skipUnless(
-        os.path.isfile(os.path.join(
-            _REPO, "models", "MDX_Net_Models", "model_data", "mdx_c_configs",
-            "bs_inst_hyperace2_unwa_config.yaml")),
+        os.path.isfile(
+            os.path.join(
+                _REPO,
+                "models",
+                "MDX_Net_Models",
+                "model_data",
+                "mdx_c_configs",
+                "bs_inst_hyperace2_unwa_config.yaml",
+            )
+        ),
         "HyperACE config not installed",
     )
     def test_checkpoint_keys_steer_the_build(self) -> None:
         """Upstream HyperACE configs declare no flag, so the probe must build
         what the checkpoint implies — here v1 keys against a v2-flagged yaml."""
         config = os.path.join(
-            _REPO, "models", "MDX_Net_Models", "model_data", "mdx_c_configs",
+            _REPO,
+            "models",
+            "MDX_Net_Models",
+            "model_data",
+            "mdx_c_configs",
             "bs_inst_hyperace2_unwa_config.yaml",
         )
         built = model_probe.build_from_config(
@@ -277,9 +302,7 @@ class InstantiateRoutingTests(unittest.TestCase):
 def _vr_model_section(**overrides: Any) -> Any:
     from ml_collections import ConfigDict
 
-    base = dict(
-        is_vr5=True, is_vr6=False, model_params={"bins": 256}, nout=None, nout_lstm=None
-    )
+    base = dict(is_vr5=True, is_vr6=False, model_params={"bins": 256}, nout=None, nout_lstm=None)
     base.update(overrides)
     return ConfigDict(base)
 
@@ -346,9 +369,7 @@ class HtdemucsModelBuildTests(unittest.TestCase):
     def test_raises_without_training_instruments(self) -> None:
         from ml_collections import ConfigDict
 
-        config = ConfigDict(
-            {"model": "htdemucs", "htdemucs": {"channels": 8}, "training": {}}
-        )
+        config = ConfigDict({"model": "htdemucs", "htdemucs": {"channels": 8}, "training": {}})
         with self.assertRaises(ValueError):
             model_probe._build_htdemucs_model(config, config.htdemucs)
 
@@ -462,10 +483,13 @@ class DroppedConfigKeyTests(unittest.TestCase):
         from unittest import mock
 
         from engines.mdx_c import filter_init_kwargs
+
         with mock.patch("engines.mdx_c.log_event") as event:
             accepted = filter_init_kwargs(self._Net, {"z": 8, "dim": 4, "a": 1})
         self.assertEqual(accepted, {"dim": 4})
-        self.assertEqual(model_probe.dropped_config_keys(self._Net, {"z": 8, "dim": 4, "a": 1}), ["a", "z"])
+        self.assertEqual(
+            model_probe.dropped_config_keys(self._Net, {"z": 8, "dim": 4, "a": 1}), ["a", "z"]
+        )
         self.assertEqual(event.call_args.kwargs["dropped_keys"], ("a", "z"))
 
     def test_nothing_is_dropped_when_the_class_takes_kwargs(self) -> None:
@@ -475,9 +499,7 @@ class DroppedConfigKeyTests(unittest.TestCase):
         self.assertEqual(dropped, [])
 
     def test_a_fully_understood_config_drops_nothing(self) -> None:
-        self.assertEqual(
-            model_probe.dropped_config_keys(self._Net, {"dim": 4, "depth": 1}), []
-        )
+        self.assertEqual(model_probe.dropped_config_keys(self._Net, {"dim": 4, "depth": 1}), [])
 
 
 class ForwardProbeTests(unittest.TestCase):
@@ -517,9 +539,7 @@ class ForwardProbeTests(unittest.TestCase):
         with the usual 2-channel noise trips that assertion every time."""
         from ml.bs_roformer import DEFAULT_FREQS_PER_BANDS, BSRoformer
 
-        module = BSRoformer(
-            dim=8, depth=1, stereo=False, freqs_per_bands=DEFAULT_FREQS_PER_BANDS
-        )
+        module = BSRoformer(dim=8, depth=1, stereo=False, freqs_per_bands=DEFAULT_FREQS_PER_BANDS)
         module.eval()
         built = model_probe.BuiltModel(
             config_path="x.yaml", architecture="BSRoformer", module=module
@@ -589,9 +609,7 @@ class IterCatalogueTargetsTests(unittest.TestCase):
         targets = list(
             model_tool_support.iter_catalogue_targets(_CATALOGUE, unsupported_only=False)
         )
-        self.assertEqual(
-            sorted(t.entry_id for t in targets), ["mbr_syhft_4stem", "medley_thing"]
-        )
+        self.assertEqual(sorted(t.entry_id for t in targets), ["mbr_syhft_4stem", "medley_thing"])
 
 
 class DefaultMvseplessCatalogueWaitsTests(unittest.TestCase):
@@ -642,9 +660,7 @@ class DefaultMvseplessCatalogueWaitsTests(unittest.TestCase):
                 policy=AccessPolicy(allow_network=True, allow_metadata_writes=False),
             )
 
-        with patch(
-            "core.catalogue_coordinator.CatalogueCoordinator", side_effect=_coordinator
-        ):
+        with patch("core.catalogue_coordinator.CatalogueCoordinator", side_effect=_coordinator):
             loaded = model_tool_support._default_mvsepless_catalogue()
         self.assertEqual(loaded, payload)
 
@@ -678,9 +694,7 @@ class DefaultMvseplessCatalogueWaitsTests(unittest.TestCase):
                 policy=AccessPolicy(allow_network=False, allow_metadata_writes=False),
             )
 
-        with patch(
-            "core.catalogue_coordinator.CatalogueCoordinator", side_effect=_coordinator
-        ):
+        with patch("core.catalogue_coordinator.CatalogueCoordinator", side_effect=_coordinator):
             loaded = model_tool_support._default_mvsepless_catalogue(allow_network=False)
         self.assertEqual(loaded, payload)
         opener.assert_not_called()
@@ -759,10 +773,10 @@ class ReportTests(unittest.TestCase):
             entry_id="x",
             label="X",
             reason="not ported",
-            build=model_probe.BuiltModel("c.yaml", "MelBandRoformer", module=object(),
-                                         parameters=1_000_000, stems=["Vocals"]),
-            forward=model_probe.ForwardResult(ok=True, output_shape=(1, 1, 2, 4),
-                                              finite=True),
+            build=model_probe.BuiltModel(
+                "c.yaml", "MelBandRoformer", module=object(), parameters=1_000_000, stems=["Vocals"]
+            ),
+            forward=model_probe.ForwardResult(ok=True, output_shape=(1, 1, 2, 4), finite=True),
         )
         base.update(kw)
         return model_probe.ProbeResult(**base)
@@ -786,7 +800,9 @@ class ReportTests(unittest.TestCase):
     def test_dropped_config_keys_mean_the_build_is_not_really_the_model(self) -> None:
         result = self._result(
             build=model_probe.BuiltModel(
-                "c.yaml", "MelBandRoformer", module=object(),
+                "c.yaml",
+                "MelBandRoformer",
+                module=object(),
                 dropped=["skip_connection"],
             )
         )
@@ -796,7 +812,9 @@ class ReportTests(unittest.TestCase):
         text = model_probe.render_report(
             self._result(
                 build=model_probe.BuiltModel(
-                    "c.yaml", "MelBandRoformer", module=object(),
+                    "c.yaml",
+                    "MelBandRoformer",
+                    module=object(),
                     dropped=["skip_connection"],
                 )
             )
@@ -891,9 +909,7 @@ class HttpRangeReaderTests(unittest.TestCase):
         """A server may legitimately clamp the final range to the last byte."""
 
         def opener(request: Any) -> Any:
-            return self._FakeResponse(
-                b"a" * 20, {"Content-Range": "bytes 100-119/120"}, status=206
-            )
+            return self._FakeResponse(b"a" * 20, {"Content-Range": "bytes 100-119/120"}, status=206)
 
         read = model_tool_support.http_range_reader("https://example.invalid/f", opener=opener)
         self.assertEqual(read(100, 140), b"a" * 20)
@@ -921,8 +937,9 @@ class FetchConfigTests(unittest.TestCase):
             def __exit__(self, *args: object) -> None:
                 return None
 
-        with tempfile.TemporaryDirectory() as tmp, patch(
-            "core.mdx_config_fetch._urlopen", return_value=_Resp()
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch("core.mdx_config_fetch._urlopen", return_value=_Resp()),
         ):
             path = model_tool_support.fetch_config("https://example.invalid/config.yaml", tmp)
             with open(path, "rb") as handle:
@@ -933,8 +950,9 @@ class FetchConfigTests(unittest.TestCase):
         import tempfile
         from unittest.mock import patch
 
-        with tempfile.TemporaryDirectory() as tmp, patch(
-            "core.mdx_config_fetch._urlopen", side_effect=KeyboardInterrupt
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch("core.mdx_config_fetch._urlopen", side_effect=KeyboardInterrupt),
         ):
             with self.assertRaises(KeyboardInterrupt):
                 model_tool_support.fetch_config("https://example.invalid/config.yaml", tmp)
@@ -971,12 +989,8 @@ class FetchConfigIdentityTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             with patch("core.mdx_config_fetch._urlopen", opener):
-                a = model_tool_support.fetch_config(
-                    "https://a.invalid/one/config.yaml", tmp
-                )
-                b = model_tool_support.fetch_config(
-                    "https://b.invalid/two/config.yaml", tmp
-                )
+                a = model_tool_support.fetch_config("https://a.invalid/one/config.yaml", tmp)
+                b = model_tool_support.fetch_config("https://b.invalid/two/config.yaml", tmp)
             self.assertNotEqual(a, b)
             self.assertEqual(open(a, "rb").read(), b"first: 1\n")
             self.assertEqual(open(b, "rb").read(), b"second: 2\n")
@@ -1064,9 +1078,7 @@ class CliTests(unittest.TestCase):
             torch.save({"state_dict": {"not.a.real.key": torch.zeros(1)}}, ckpt)
             buf = _io.StringIO()
             with contextlib.redirect_stdout(buf):
-                code = model_probe.main(
-                    ["--config", _SCNET_CONFIG, "--checkpoint", ckpt]
-                )
+                code = model_probe.main(["--config", _SCNET_CONFIG, "--checkpoint", ckpt])
         self.assertNotEqual(code, 0)
         output = buf.getvalue()
         self.assertIn("key-mismatch", output)
@@ -1097,9 +1109,13 @@ class CliTests(unittest.TestCase):
         buf = _io.StringIO()
         with tempfile.TemporaryDirectory() as tmp:
             out = os.path.join(tmp, "sweep.json")
-            with patch(
-                "scripts.model_tool_support._default_mvsepless_catalogue", return_value=_CATALOGUE
-            ), patch("model_probe.fetch_config", return_value=_SCNET_CONFIG):
+            with (
+                patch(
+                    "scripts.model_tool_support._default_mvsepless_catalogue",
+                    return_value=_CATALOGUE,
+                ),
+                patch("model_probe.fetch_config", return_value=_SCNET_CONFIG),
+            ):
                 with contextlib.redirect_stdout(buf):
                     code = model_probe.main(["--sweep", "--json", out])
             with open(out, encoding="utf-8") as handle:
@@ -1121,10 +1137,13 @@ class CliTests(unittest.TestCase):
         err = _io.StringIO()
         with tempfile.TemporaryDirectory() as tmp:
             out = os.path.join(tmp, "sweep.json")
-            with patch(
-                "scripts.model_tool_support._default_mvsepless_catalogue",
-                return_value={},
-            ), contextlib.redirect_stderr(err):
+            with (
+                patch(
+                    "scripts.model_tool_support._default_mvsepless_catalogue",
+                    return_value={},
+                ),
+                contextlib.redirect_stderr(err),
+            ):
                 code = model_probe.main(["--sweep", "--json", out])
             self.assertFalse(
                 os.path.isfile(out),

@@ -128,8 +128,11 @@ class StemControls:
         same_layout = self._layout == state.mode
         self.state = state
         self.model_id = model_id
-        self._routes = (with_instrumental_mix(state.routes)
-                        if state.mode in ('subset', 'demucs') else tuple(state.routes))
+        self._routes = (
+            with_instrumental_mix(state.routes)
+            if state.mode in ('subset', 'demucs')
+            else tuple(state.routes)
+        )
         state.routes = self._routes
         self._native_alias_ambiguity = state.mode == 'subset' and any(
             routes_matching_stems(self._routes, [route.native.raw]) != (route,)
@@ -152,7 +155,8 @@ class StemControls:
                 # selection to a reviewed role without losing the user's pick.
                 mapped = [
                     self._exact_route(persisted_stem_focus(choice.route), self._routes)
-                    for choice in old.choices if choice.selected
+                    for choice in old.choices
+                    if choice.selected
                 ]
                 if not mapped or any(route is None for route in mapped):
                     self.require_review()
@@ -288,13 +292,19 @@ class StemControls:
             and not r.selected_by_default
             and isinstance(r.role, StemRoleId)
             and (r.derived_from or r.complement_of)
-            and (self._layout != 'demucs' or (
-                r.concept == 'mix.instrumental' and len(r.derived_from) >= 2
-                and set(r.derived_from) == {
-                    n.role for n in self._routes if n.native is not None
-                    and n.role != StemRoleId('vocal.vocals')
-                }
-            ))
+            and (
+                self._layout != 'demucs'
+                or (
+                    r.concept == 'mix.instrumental'
+                    and len(r.derived_from) >= 2
+                    and set(r.derived_from)
+                    == {
+                        n.role
+                        for n in self._routes
+                        if n.native is not None and n.role != StemRoleId('vocal.vocals')
+                    }
+                )
+            )
         )
 
     def _inventory(self) -> tuple[ControlMode, tuple[StemRoute, ...]]:
@@ -364,27 +374,41 @@ class StemControls:
         if mode in ('native_subset', 'derived'):
             native_routes = tuple(r for r in self._routes if r.native is not None)
             by_role = {r.concept: r for r in self._routes}
-            karaoke = all(role in by_role for role in (
-                'vocal.lead', 'vocal.backing', 'mix.instrumental',
-                'mix.instrumental_with_backing_vocals',
-            ))
+            karaoke = all(
+                role in by_role
+                for role in (
+                    'vocal.lead',
+                    'vocal.backing',
+                    'mix.instrumental',
+                    'mix.instrumental_with_backing_vocals',
+                )
+            )
             roles = (
-                (('vocal.lead', 'Lead Vocals'),
-                 ('mix.instrumental_with_backing_vocals', 'Instrumental + BGV'))
-                if karaoke else
-                (('vocal.vocals', 'Vocals'), ('mix.instrumental', 'Instrumental mix'))
+                (
+                    ('vocal.lead', 'Lead Vocals'),
+                    ('mix.instrumental_with_backing_vocals', 'Instrumental + BGV'),
+                )
+                if karaoke
+                else (('vocal.vocals', 'Vocals'), ('mix.instrumental', 'Instrumental mix'))
             )
             presets = (('all', 'All'),)
             for role, label in roles:
-                matches = [r for r in (*native_routes, *self._derived_routes()) if isinstance(r.role, StemRoleId) and r.role.value == role]
+                matches = [
+                    r
+                    for r in (*native_routes, *self._derived_routes())
+                    if isinstance(r.role, StemRoleId) and r.role.value == role
+                ]
                 if len(matches) == 1:
                     presets += ((output_id(matches[0]), label),)
             non_vocal = self._separate_selection('separate_non_vocal')
             if non_vocal and len(non_vocal) < len(native_routes):
-                selection_actions += (('separate_non_vocal', 'Select non-vocal stems (separate files)'),)
+                selection_actions += (
+                    ('separate_non_vocal', 'Select non-vocal stems (separate files)'),
+                )
             if karaoke:
-                selection_actions += (('separate_backing_instrumental',
-                                       'Save BGV and Instrumental separately'),)
+                selection_actions += (
+                    ('separate_backing_instrumental', 'Save BGV and Instrumental separately'),
+                )
         summary = ', '.join(stem_label(c.route) for c in choices if c.selected)
         if self.state.runtime_error:
             summary = self.state.runtime_error
@@ -423,7 +447,11 @@ class StemControls:
         )
 
     def _current(self, revision: int | None) -> bool:
-        return (revision is None or revision == self.revision) and self.state.has_model and not self.state.runtime_error
+        return (
+            (revision is None or revision == self.revision)
+            and self.state.has_model
+            and not self.state.runtime_error
+        )
 
     def _mirror_subset(self) -> None:
         if isinstance(self.view, SubsetView):
@@ -515,10 +543,14 @@ class StemControls:
     def _separate_selection(self, preset_id: str) -> frozenset[str]:
         natives = tuple(r for r in self._routes if r.native is not None)
         if preset_id == 'separate_backing_instrumental':
-            return frozenset(output_id(r) for r in natives
-                             if r.concept in ('vocal.backing', 'mix.instrumental'))
-        return frozenset(output_id(r) for r in natives
-                         if isinstance(r.role, StemRoleId) and not r.role.value.startswith('vocal.'))
+            return frozenset(
+                output_id(r) for r in natives if r.concept in ('vocal.backing', 'mix.instrumental')
+            )
+        return frozenset(
+            output_id(r)
+            for r in natives
+            if isinstance(r.role, StemRoleId) and not r.role.value.startswith('vocal.')
+        )
 
     def choose_preset(self, preset_id: str, *, revision: int | None = None) -> bool:
         snapshot = self.snapshot()

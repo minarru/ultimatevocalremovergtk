@@ -36,9 +36,7 @@ class InputDiscoveryResult:
 
 
 class InputDiscoveryService:
-    def discover(
-        self, values: Sequence[str], policy: InputDiscoveryPolicy
-    ) -> InputDiscoveryResult:
+    def discover(self, values: Sequence[str], policy: InputDiscoveryPolicy) -> InputDiscoveryResult:
         found: list[str] = []
         missing: list[str] = []
         unreadable: list[str] = []
@@ -93,8 +91,7 @@ class InputDiscoveryService:
                 found.extend(
                     candidate
                     for name in names
-                    if os.path.isfile(candidate := os.path.join(path, name))
-                    and accepted(candidate)
+                    if os.path.isfile(candidate := os.path.join(path, name)) and accepted(candidate)
                 )
 
         if policy.strict:
@@ -104,8 +101,7 @@ class InputDiscoveryService:
                 raise ValueError(f"input is not readable: {unreadable[0]}")
             if unsupported:
                 raise ValueError(
-                    f"unsupported input type: {unsupported[0]}; "
-                    "pass --accept-any-input to probe it"
+                    f"unsupported input type: {unsupported[0]}; pass --accept-any-input to probe it"
                 )
         normalized = [os.path.realpath(path) if policy.canonicalize else path for path in found]
         unique = list(dict.fromkeys(normalized))
@@ -116,20 +112,25 @@ class InputDiscoveryService:
         if policy.strict and not unique:
             raise ValueError("input discovery found no matching audio files")
         return InputDiscoveryResult(
-            tuple(unique), tuple(missing), tuple(unreadable), tuple(unsupported),
-            truncated, policy.large_batch_threshold,
+            tuple(unique),
+            tuple(missing),
+            tuple(unreadable),
+            tuple(unsupported),
+            truncated,
+            policy.large_batch_threshold,
         )
 
 
 def discover_inputs(
-    values: Sequence[str], *, recursive: bool = False,
-    includes: Sequence[str] = (), accept_any: bool = False,
+    values: Sequence[str],
+    *,
+    recursive: bool = False,
+    includes: Sequence[str] = (),
+    accept_any: bool = False,
 ) -> list[str]:
     result = InputDiscoveryService().discover(
         values,
-        InputDiscoveryPolicy(
-            recursive=recursive, includes=tuple(includes), accept_any=accept_any
-        ),
+        InputDiscoveryPolicy(recursive=recursive, includes=tuple(includes), accept_any=accept_any),
     )
     return list(result.paths)
 
@@ -142,14 +143,10 @@ def partition_input_paths(paths: Sequence[str]) -> tuple[list[str], list[str]]:
     return list(result.paths), list(result.missing) + list(result.unsupported)
 
 
-def prune_unreadable_paths(
-    unreadable: AbstractSet[str], current_paths: Sequence[str]
-) -> set[str]:
+def prune_unreadable_paths(unreadable: AbstractSet[str], current_paths: Sequence[str]) -> set[str]:
     current = {path for path in current_paths if path}
     return {path for path in unreadable if path in current}
 
 
-def remove_unreadable_from_paths(
-    paths: Sequence[str], unreadable: AbstractSet[str]
-) -> list[str]:
+def remove_unreadable_from_paths(paths: Sequence[str], unreadable: AbstractSet[str]) -> list[str]:
     return [path for path in paths if path and path not in unreadable]

@@ -130,7 +130,9 @@ class EnsemblingAtomTests(unittest.TestCase):
 
     def test_min_matches_pairwise(self) -> None:
         members = [self.a, self.b]
-        np.testing.assert_array_equal(combine_spectra(MIN_SPEC, members), _pairwise_mag_reduce(MIN_SPEC, members))
+        np.testing.assert_array_equal(
+            combine_spectra(MIN_SPEC, members), _pairwise_mag_reduce(MIN_SPEC, members)
+        )
 
     def test_median_middle_of_magnitude_ladder(self) -> None:
         phase = 0.4
@@ -153,6 +155,7 @@ class EnsemblingAtomTests(unittest.TestCase):
         self.assertTrue(np.isfinite(out2).all())
 
         # Agreement weights (softmax over members) sum to 1 per bin.
+
     def test_max_mag_avg_phase(self) -> None:
         # Same magnitudes, opposite phases → Mag matches Max; phase is not raw Max.
         mag = np.full((2, 3, 4), 2.0)

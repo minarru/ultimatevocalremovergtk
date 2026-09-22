@@ -190,12 +190,8 @@ class DualEventSubscriptionTests(unittest.TestCase):
         MainWindow._subscribe_model_events(window)
 
         repo = window.context.repo
-        repo.subscribe_models_changed.assert_called_once_with(
-            window._on_models_changed
-        )
-        repo.subscribe_model_presentation_changed.assert_called_once_with(
-            window._on_models_changed
-        )
+        repo.subscribe_models_changed.assert_called_once_with(window._on_models_changed)
+        repo.subscribe_model_presentation_changed.assert_called_once_with(window._on_models_changed)
 
     def test_closing_unsubscribes_that_callback_from_both(self) -> None:
         window = _window()
@@ -203,9 +199,7 @@ class DualEventSubscriptionTests(unittest.TestCase):
         MainWindow._unsubscribe_model_events(window)
 
         repo = window.context.repo
-        repo.unsubscribe_models_changed.assert_called_once_with(
-            window._on_models_changed
-        )
+        repo.unsubscribe_models_changed.assert_called_once_with(window._on_models_changed)
         repo.unsubscribe_model_presentation_changed.assert_called_once_with(
             window._on_models_changed
         )

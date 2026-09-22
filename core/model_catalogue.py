@@ -193,7 +193,9 @@ class ModelCatalogueService:
 
     def _snapshot_key(self) -> object:
         coordinator = getattr(self.manager, "_coordinator", None)
-        snapshot = getattr(coordinator, "latest_snapshot", None) if coordinator is not None else None
+        snapshot = (
+            getattr(coordinator, "latest_snapshot", None) if coordinator is not None else None
+        )
         revision = getattr(snapshot, "revision", None)
         digest = revision.digest() if revision is not None and hasattr(revision, "digest") else None
         return (
