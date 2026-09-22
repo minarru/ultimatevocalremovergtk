@@ -147,6 +147,16 @@ _SCORES_CACHE_TTL_SECONDS = 7 * 24 * 60 * 60
 #: Present in the score data as a speed measurement, not a separable stem.
 _NON_STEM_KEYS = frozenset({"seconds_per_minute_m3"})
 
+#: Score-data filenames whose checkpoint the catalogue ships under other names.
+#: Each target is the same file (identical SHA-256), so the scores carry over;
+#: a target that the score data keys directly keeps its own entry.
+_SCORE_FILENAME_ALIASES: Mapping[str, Tuple[str, ...]] = {
+    "mel_band_roformer_denoise_debleed_gabox.ckpt": (
+        "mbr_denoise_debleed_gabox.ckpt",
+        "mel_band_roformer_inst_denoise_debleed_gabox.ckpt",
+    ),
+}
+
 _BUNDLED_SCORES_FILE = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     "bundled",
@@ -276,6 +286,11 @@ def load_model_scores(
         for name, entry in (raw or {}).items()
         if isinstance(entry, dict)
     }
+    for source, targets in _SCORE_FILENAME_ALIASES.items():
+        scored = aggregated.get(source)
+        if scored is not None:
+            for target in targets:
+                aggregated.setdefault(target, scored)
     _cached_scores = aggregated
     _cached_loaded_at = now
     debug("download", f"model scores loaded entries={len(aggregated)}")

@@ -10404,12 +10404,12 @@
                 "complement_of": "mix.instrumental",
                 "native": null,
                 "production": "derived",
-                "role": "vocal.vocals"
+                "role": "mix.bleed"
               }
             ]
           }
         },
-        "intent": "instrumental",
+        "intent": "special_fx",
         "native_signature": [
           "Instrumental"
         ],
@@ -14740,12 +14740,12 @@
                 "complement_of": "mix.instrumental",
                 "native": null,
                 "production": "derived",
-                "role": "vocal.vocals"
+                "role": "mix.bleed"
               }
             ]
           }
         },
-        "intent": "instrumental",
+        "intent": "special_fx",
         "native_signature": [
           "Instrumental"
         ],

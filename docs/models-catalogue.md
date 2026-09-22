@@ -1,6 +1,6 @@
 # UVR Model Catalogue (TRvlvr + Politrees + extras + mvsepless)
 
-Generated: 2026-09-22 18:37 UTC by `scripts/generate_models_catalogue.py`.
+Generated: 2026-09-22 19:04 UTC by `scripts/generate_models_catalogue.py`.
 
 Regenerate after catalogue updates:
 
@@ -297,7 +297,7 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | MDX-Net | MelBand Roformer — DeNoise · Yuluoye | special_fx | Noise Removed (complement of Noise) | special_fx_target:dry | other | — |
 | MDX-Net | MelBand Roformer — DeNoiser Children 16 kHz · Phaedrus33 | special_fx | Speech (+ Noise complement) | single_target:speech | speech | — |
 | MDX-Net | MelBand Roformer — DeUX · Becruily | dual_voc_inst | Vocals or Instrumental — both are first-class 2-st… | two_stem | Vocals | — |
-| MDX-Net | MelBand Roformer — DeNoise DeBleed · GaboxR67 | instrumental | Instrumental / Vocals | instrumental_target | Instrumental | — |
+| MDX-Net | MelBand Roformer — DeNoise DeBleed · GaboxR67 | special_fx | Instrumental (+ Bleed complement) | instrumental_target | Instrumental | — |
 | MDX-Net | MelBand Roformer — Duet · Dry Paint Dealer Undr | specialty_stem | Singer 1 Vocals, Singer 2 Vocals | two_stem | singer_1 | — |
 | MDX-Net | MelBand Roformer — Explosions · jazzpear | specialty_stem | Explosions (+ Explosions Removed complement) | single_target:explosions | explosions | — |
 | MDX-Net | MelBand Roformer — Fighting · jazzpear | specialty_stem | Fighting (+ Fighting Removed complement) | single_target:fighting | fighting | — |
@@ -459,7 +459,7 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | Roformer | MelBand Roformer — Guitar · Becruily | specialty_stem | Guitar (+ Guitar Removed complement) | specialty_target:Guitar | Guitar | — |
 | Roformer | MelBand Roformer — Instrumental Bleedless v1 · Gabox | instrumental | Instrumental / Vocals | instrumental_target | Instrumental | — |
 | Roformer | MelBand Roformer — Instrumental Bleedless v2 · Gabox | instrumental | Instrumental / Vocals | instrumental_target | Instrumental | — |
-| Roformer | MelBand Roformer — Instrumental DeNoise-DeBleed · Gabox | instrumental | Instrumental / Vocals | instrumental_target | Instrumental | — |
+| Roformer | MelBand Roformer — Instrumental DeNoise-DeBleed · Gabox | special_fx | Instrumental (+ Bleed complement) | instrumental_target | Instrumental | — |
 | Roformer | MelBand Roformer — Instrumental Fullness v1 · Gabox | instrumental | Instrumental / Vocals | instrumental_target | Instrumental | — |
 | Roformer | MelBand Roformer — Instrumental Fullness v2 · Gabox | instrumental | Instrumental / Vocals | instrumental_target | Instrumental | — |
 | Roformer | MelBand Roformer — Instrumental Fullness v3 · Gabox | instrumental | Instrumental / Vocals | instrumental_target | Instrumental | — |
@@ -4157,13 +4157,13 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Weight:** `mbr_denoise_debleed_gabox.ckpt`
 - **Config:** `mbr_denoise_debleed_gabox_config.yaml`
 - **Architecture:** Mel-Band Roformer
-- **Name intent:** instrumental
+- **Name intent:** special_fx
 - **Backend focus:** instrumental_target
 - **Primary stem (backend):** `Instrumental`
 - **Instruments:** Instrumental, Vocals
 - **Target instrument:** `Instrumental`
-- **Best result:** Instrumental / Vocals
-- **Save stems UI:** UI: Instrumental / Vocals
+- **Best result:** Instrumental (+ Bleed complement)
+- **Save stems UI:** UI: Instrumental / Bleed
 - **Metadata:** bundled_yaml:mbr_denoise_debleed_gabox_config.yaml
 - **Note:** Name intent corrected from metadata (instrumental)
 
@@ -6621,13 +6621,13 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Weight:** `mel_band_roformer_inst_denoise_debleed_gabox.ckpt`
 - **Config:** `config_melband_roformer_inst_gabox.yaml`
 - **Architecture:** Mel-Band Roformer
-- **Name intent:** instrumental
+- **Name intent:** special_fx
 - **Backend focus:** instrumental_target
 - **Primary stem (backend):** `Instrumental`
 - **Instruments:** Instrumental, Vocals
 - **Target instrument:** `Instrumental`
-- **Best result:** Instrumental / Vocals
-- **Save stems UI:** UI: Instrumental / Vocals
+- **Best result:** Instrumental (+ Bleed complement)
+- **Save stems UI:** UI: Instrumental / Bleed
 - **Metadata:** bundled_yaml:config_melband_roformer_inst_gabox.yaml
 
 ### MelBand Roformer — Instrumental Fullness v1 · Gabox

@@ -192,10 +192,10 @@ class ReviewedDecisionLedgerTests(unittest.TestCase):
             {
                 "drum_bass_sep": 1,
                 "dual_voc_inst": 16,
-                "instrumental": 107,
+                "instrumental": 105,
                 "karaoke": 30,
                 "multi_stem": 72,
-                "special_fx": 29,
+                "special_fx": 31,
                 "specialty_stem": 111,
                 "vocals": 118,
             },

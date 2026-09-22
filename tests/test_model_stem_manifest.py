@@ -824,6 +824,20 @@ class ManifestValidationTests(unittest.TestCase):
                 "mix.bleed",
                 "mix.instrumental",
             ),
+            # Gabox's DeNoise-DeBleed cleans an already-separated instrumental;
+            # the removed complement is bleed and noise, not usable vocals.
+            "mdx:mbr_denoise_debleed_gabox": (
+                "Instrumental",
+                "mix.instrumental",
+                "mix.bleed",
+                "mix.instrumental",
+            ),
+            "mdx:mel_band_roformer_inst_denoise_debleed_gabox": (
+                "Instrumental",
+                "mix.instrumental",
+                "mix.bleed",
+                "mix.instrumental",
+            ),
         }
         for model_id, (target, native_role, derived_role, logical_primary) in expected.items():
             with self.subTest(model_id=model_id):

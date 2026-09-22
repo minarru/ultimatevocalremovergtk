@@ -365,6 +365,32 @@ class ModelScoreAggregationTests(_IsolatedScoreCache):
         scores = self._loaded()
         self.assertEqual(model_scores.sdr_for_files(["nope.ckpt"], scores=scores), {})
 
+    def test_republished_checkpoint_names_share_the_upstream_score(self) -> None:
+        upstream = "mel_band_roformer_denoise_debleed_gabox.ckpt"
+        raw = {upstream: {"track_scores": [{"scores": {"instrumental": {"SDR": 5.5}}}]}}
+        with unittest.mock.patch.object(model_scores, "_fetch_model_scores", return_value=raw):
+            scores = model_scores.load_model_scores(force=True)
+        for weight in (
+            "mbr_denoise_debleed_gabox.ckpt",
+            "mel_band_roformer_inst_denoise_debleed_gabox.ckpt",
+        ):
+            with self.subTest(weight=weight):
+                found = model_scores.sdr_for_files([weight], scores=scores)
+                self.assertAlmostEqual(found["instrumental"], 5.5)
+
+    def test_alias_never_overrides_a_direct_score(self) -> None:
+        raw = {
+            "mel_band_roformer_denoise_debleed_gabox.ckpt": {
+                "track_scores": [{"scores": {"instrumental": {"SDR": 5.5}}}]
+            },
+            "mbr_denoise_debleed_gabox.ckpt": {
+                "track_scores": [{"scores": {"instrumental": {"SDR": 9.0}}}]
+            },
+        }
+        with unittest.mock.patch.object(model_scores, "_fetch_model_scores", return_value=raw):
+            scores = model_scores.load_model_scores(force=True)
+        self.assertAlmostEqual(scores["mbr_denoise_debleed_gabox.ckpt"]["instrumental"], 9.0)
+
 
 class PrimarySdrTests(unittest.TestCase):
     def test_target_stem_wins(self) -> None:
