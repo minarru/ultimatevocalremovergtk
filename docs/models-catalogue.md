@@ -1,6 +1,6 @@
 # UVR Model Catalogue (TRvlvr + Politrees + extras + mvsepless)
 
-Generated: 2026-09-13 09:11 UTC by `scripts/generate_models_catalogue.py`.
+Generated: 2026-09-22 18:37 UTC by `scripts/generate_models_catalogue.py`.
 
 Regenerate after catalogue updates:
 
@@ -32,8 +32,8 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 - Source stale: none
 - Source failed: none
 - Source upstream live: True
-- Cache community: 10m old
-- Cache yaml: 10m old
+- Cache community: 9d old
+- Cache yaml: 9d old
 
 ## Summary
 
