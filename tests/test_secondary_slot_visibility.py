@@ -31,9 +31,21 @@ class SecondarySlotVisibilityTests(unittest.TestCase):
         cls._app.register()
 
     def _window(self):
+        import tempfile
+        from pathlib import Path
+        from unittest import mock
+
+        from core.settings import Settings
         from ui.window import MainWindow
 
-        window = MainWindow()
+        # Build from defaults, not the on-disk settings.json: a persisted stem
+        # focus the selected model can't satisfy leaves the stem controls in
+        # review, and re-reading settings deliberately keeps that review.
+        scratch = self.enterContext(tempfile.TemporaryDirectory())
+        settings = Settings.defaults()
+        settings.path = str(Path(scratch) / "settings.json")
+        with mock.patch("ui.context.Settings.load", return_value=settings):
+            window = MainWindow()
         self.addCleanup(window.set_application, None)
         return window
 
