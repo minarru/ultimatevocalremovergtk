@@ -45,6 +45,7 @@ class _FakeFrameClock:
     def __init__(self) -> None:
         self.connected: list[tuple[str, object, int]] = []
         self.disconnected: list[int] = []
+        self.requested_phases: list[Any] = []
         self._next_handler = 40
 
     def connect(self, signal: str, callback: object) -> int:
@@ -52,6 +53,9 @@ class _FakeFrameClock:
         handler_id = self._next_handler
         self.connected.append((signal, callback, handler_id))
         return handler_id
+
+    def request_phase(self, phase: Any) -> None:
+        self.requested_phases.append(phase)
 
     def disconnect(self, handler_id: int) -> None:
         self.disconnected.append(handler_id)
@@ -107,6 +111,9 @@ class FirstFrameWarmupTests(_GtkRequiredTestCase):
         self.assertTrue(scheduler.schedule(_FakeWidget(clock), callback))
         callback.assert_not_called()
         self.assertEqual([entry[0] for entry in clock.connected], ["after-paint"])
+        from gi.repository import Gdk
+
+        self.assertEqual(clock.requested_phases, [Gdk.FrameClockPhase.PAINT])
 
         clock.emit_after_paint()
         callback.assert_not_called()
@@ -130,6 +137,7 @@ class FirstFrameWarmupTests(_GtkRequiredTestCase):
         self.assertFalse(scheduler.schedule(widget, callback))
         callback.assert_called_once_with()
         self.assertEqual(len(clock.connected), 1)
+        self.assertEqual(len(clock.requested_phases), 1)
 
     def test_cancel_before_after_paint_disconnects_frame_handler(self) -> None:
         scheduler, clock, idle = self._scheduler()
@@ -188,11 +196,17 @@ class FirstFrameGtkIntegrationTests(_GtkRequiredTestCase):
         window.set_child(Gtk.Label(label="frame"))
         self.addCleanup(window.close)
         scheduler = FirstFrameScheduler()
+        self.addCleanup(scheduler.cancel)
         mapped: list[bool] = []
+        phases: list[str] = []
         warm: list[bool] = []
 
         def on_map(_window: Gtk.Window) -> None:
             mapped.append(True)
+            clock = window.get_frame_clock()
+            assert clock is not None
+            clock.connect("paint", lambda _clock: phases.append("paint"))
+            clock.connect("after-paint", lambda _clock: phases.append("after-paint"))
             self.assertTrue(scheduler.schedule(window, lambda: warm.append(True)))
 
         window.connect("map", on_map)
@@ -205,7 +219,56 @@ class FirstFrameGtkIntegrationTests(_GtkRequiredTestCase):
             time.sleep(0.005)
 
         self.assertEqual(mapped, [True])
-        self.assertEqual(warm, [True])
+        self.assertEqual(
+            warm,
+            [True],
+            f"mapped={window.get_mapped()} size={window.get_width()}x{window.get_height()} "
+            f"phases={phases} frame_handler={scheduler._after_paint_id} "
+            f"idle={scheduler._idle_id} idle_add={scheduler._idle_add!r}",
+        )
+
+    def test_quiescent_mapped_window_requests_a_new_paint_before_warmup(self) -> None:
+        from gi.repository import GLib, Gtk
+
+        from ui.startup import FirstFrameScheduler
+
+        window = Gtk.Window()
+        window.set_default_size(120, 80)
+        window.set_child(Gtk.Label(label="static"))
+        self.addCleanup(window.close)
+        scheduler = FirstFrameScheduler()
+        self.addCleanup(scheduler.cancel)
+        window.present()
+        clock = window.get_frame_clock()
+        assert clock is not None
+        phases: list[str] = []
+        clock.connect("paint", lambda _clock: phases.append("paint"))
+        clock.connect("after-paint", lambda _clock: phases.append("after-paint"))
+        context = GLib.MainContext.default()
+        # Model a caller arriving after a static window has stopped producing
+        # frames. Stable frame count is the precondition, not extra warmup time.
+        deadline = time.monotonic() + 3.0
+        last_counter = clock.get_frame_counter()
+        stable_since = time.monotonic()
+        while time.monotonic() < deadline:
+            while context.pending():
+                context.iteration(False)
+            counter = clock.get_frame_counter()
+            if counter != last_counter:
+                last_counter, stable_since = counter, time.monotonic()
+            if "paint" in phases and time.monotonic() - stable_since >= 0.1:
+                break
+            time.sleep(0.005)
+        self.assertIn("paint", phases)
+        self.assertGreaterEqual(time.monotonic() - stable_since, 0.1)
+        phases.clear()
+        self.assertTrue(scheduler.schedule(window, lambda: phases.append("warm")))
+        deadline = time.monotonic() + 3.0
+        while "warm" not in phases and time.monotonic() < deadline:
+            while context.pending():
+                context.iteration(False)
+            time.sleep(0.005)
+        self.assertEqual(phases, ["paint", "after-paint", "warm"])
 
 
 @unittest.skipUnless(_GTK_AVAILABLE, "GTK libraries unavailable")

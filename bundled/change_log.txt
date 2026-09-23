@@ -1,7 +1,7 @@
 Most Recent Changes (v1.3.0 — Linux GTK4 port):
 
 ~ Redesigned Separation, Ensemble, Preferences, and the processing log with clearer stem choices, responsive controls, explicit processing phases, and improved run recovery.
-~ Reduced startup work and deferred engine warmup until after the first frame.
+~ Reduced startup work and deferred engine warmup until after the first frame, including when the window is already idle.
 ~ Added ensemble blending controls, Chunk Min, and pair-consistent output with an optional complement derived from the original mix. Saved recipes retain these choices.
 ~ Added CLI reference scoring for saved model and ensemble outputs; see docs/scoring.md for preparation, evaluation, and comparison workflows.
 ~ Added purpose-based browsing in Download Center, improved download queue details, and updated reviewed model configurations and stem roles.

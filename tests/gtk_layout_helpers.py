@@ -6,7 +6,7 @@ import time
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from gi.repository import Gtk
+    from gi.repository import Adw, Gtk
 
 
 def resize_window(window: Gtk.Window, width: int, height: int) -> None:
@@ -46,3 +46,39 @@ def resize_window(window: Gtk.Window, width: int, height: int) -> None:
     raise AssertionError(
         f"Window content did not reach {width}px: got {window.get_width()}x{window.get_height()}"
     )
+
+
+def wait_for_dialog_open(dialog: Adw.Dialog) -> None:
+    """Wait for allocated content and the opening fade before interacting.
+
+    Mapping precedes the first frame. In libadwaita 1.5, closing a mapped
+    dialog while its opening animation is still at zero can leave its
+    closing animation unfinished, so the closed signal never reaches the
+    test. Wait for actual visible content, as a user interaction would.
+    """
+    from gi.repository import GLib
+
+    def ready() -> bool:
+        child = dialog.get_child()
+        if (
+            not dialog.get_mapped()
+            or child is None
+            or child.get_width() <= 0
+            or child.get_height() <= 0
+        ):
+            return False
+        # The fade belongs to a container above the public content. Inspect
+        # ordinary widget properties rather than private libadwaita types.
+        widget: Gtk.Widget | None = child
+        while widget is not None and widget != dialog:
+            if widget.get_opacity() < 1:
+                return False
+            widget = widget.get_parent()
+        return True
+
+    deadline = time.monotonic() + 5
+    while not ready():
+        if time.monotonic() >= deadline:
+            raise AssertionError("Dialog content did not finish its opening fade")
+        GLib.MainContext.default().iteration(False)
+        time.sleep(0.005)
