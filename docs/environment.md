@@ -270,9 +270,14 @@ Choose one display flow for a run; they are deliberately non-overlapping.
      -u DBUS_SYSTEM_BUS_ADDRESS -u XDG_RUNTIME_DIR -u XAUTHORITY \
      -u SESSION_MANAGER -u UVR_REQUIRE_PRIVATE_GTK \
      GDK_BACKEND=x11 GSK_RENDERER=cairo \
-     xvfb-run -a .venv/bin/python -m unittest discover -s tests -t . -v
+     xvfb-run -a -s "-screen 0 1920x1080x24" \
+       .venv/bin/python -m unittest discover -s tests -t . -v
    ```
 
+   Set the screen size explicitly: distribution defaults can be as small as
+   640×480 and constrain the wide-window layout tests. Tests requiring an exact
+   content width use `tests.gtk_layout_helpers.resize_window`, which accounts
+   for X11 client-side decoration extents without changing the asserted width.
    Xvfb is an X11 virtual display, not a Wayland dependency.
 3. **Host-realistic manual UI testing:** use the active host Wayland session
    with the repository venv or `./uvr`. Do not inject private-display

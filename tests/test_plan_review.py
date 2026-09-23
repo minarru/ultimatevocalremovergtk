@@ -18,6 +18,7 @@ from core.job_plan_types import (
     ValidationLevel,
 )
 from core.settings import Settings
+from tests.gtk_layout_helpers import resize_window
 
 
 def resolved_plan(*, ensemble: bool = False, conditional: bool = False):
@@ -236,7 +237,7 @@ class PlanReviewDialogTests(unittest.TestCase):
         )
         for width in (900, 390):
             with self.subTest(width=width):
-                self.parent.set_default_size(width, 800)
+                resize_window(self.parent, width, 800)
                 self.wait_for(lambda width=width: self.parent.get_width() == width)
                 dialog = ReviewPlanDialog(plan)
                 dialog.present(self.parent)

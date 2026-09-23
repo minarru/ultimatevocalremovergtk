@@ -9,6 +9,8 @@ from collections.abc import Callable
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+from tests.gtk_layout_helpers import resize_window
+
 
 @unittest.skipUnless(
     os.environ.get('WAYLAND_DISPLAY') or os.environ.get('DISPLAY'), 'GTK needs a private display'
@@ -170,8 +172,7 @@ class DownloadCenterDesignTests(unittest.TestCase):
         from gi.repository import GLib, Gtk
 
         center = self.center
-        center.window.set_default_size(670, 620)
-        center.window.present()
+        resize_window(center.window, 670, 620)
 
         def wait_for(predicate: Callable[[], bool]) -> None:
             deadline = time.monotonic() + 3
@@ -191,7 +192,7 @@ class DownloadCenterDesignTests(unittest.TestCase):
         after = footer.measure(Gtk.Orientation.VERTICAL, 634)
         self.assertEqual(before[0], after[0])
         self.assertEqual(before[1], after[1])
-        center.window.set_default_size(390, 620)
+        resize_window(center.window, 390, 620)
         wait_for(lambda: bar.get_orientation() == Gtk.Orientation.VERTICAL)
         self.assertTrue(center.compact_purpose.get_visible())
         self.assertFalse(center.switcher.get_visible())
@@ -235,8 +236,7 @@ class DownloadCenterDesignTests(unittest.TestCase):
         from gi.repository import GLib, Gtk
 
         center = self.center
-        center.window.set_default_size(390, 620)
-        center.window.present()
+        resize_window(center.window, 390, 620)
         deadline = time.monotonic() + 3
         while center.window.get_width() != 390 and time.monotonic() < deadline:
             GLib.MainContext.default().iteration(False)
@@ -275,8 +275,7 @@ class DownloadCenterDesignTests(unittest.TestCase):
         stash(action, '_uvr_size', '12 MB')
         center._render_row(self.key)
         base = action.get_subtitle()
-        center.window.set_default_size(860, 620)
-        center.window.present()
+        resize_window(center.window, 860, 620)
 
         def wait_for(predicate: Callable[[], bool]) -> None:
             deadline = time.monotonic() + 3
@@ -290,18 +289,18 @@ class DownloadCenterDesignTests(unittest.TestCase):
             patch.object(center, '_row_score', wraps=center._row_score) as scores,
             patch.object(action, 'set_subtitle', wraps=action.set_subtitle) as subtitles,
         ):
-            center.window.set_default_size(670, 620)
+            resize_window(center.window, 670, 620)
             wait_for(lambda: center.window.get_width() == 670)
             self.assertEqual(action.get_subtitle(), f'{base} · 12 MB')
             self.assertFalse(fetch(action, '_uvr_status_label').get_visible())
             self.assertEqual(subtitles.call_count, 1)
-            center.window.set_default_size(390, 620)
+            resize_window(center.window, 390, 620)
             wait_for(lambda: center.window.get_width() == 390)
             self.assertEqual(subtitles.call_count, 1)
-            center.window.set_default_size(670, 620)
+            resize_window(center.window, 670, 620)
             wait_for(lambda: center.window.get_width() == 670)
             self.assertEqual(subtitles.call_count, 1)
-            center.window.set_default_size(860, 620)
+            resize_window(center.window, 860, 620)
             wait_for(lambda: center.window.get_width() == 860)
             self.assertEqual(action.get_subtitle(), base)
             self.assertTrue(fetch(action, '_uvr_status_label').get_visible())
