@@ -1,6 +1,6 @@
 # UVR Model Catalogue (TRvlvr + Politrees + extras + mvsepless)
 
-Generated: 2026-09-22 21:01 UTC by `scripts/generate_models_catalogue.py`.
+Generated: 2026-09-23 18:32 UTC by `scripts/generate_models_catalogue.py`.
 
 Regenerate after catalogue updates:
 
@@ -32,8 +32,8 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 - Source stale: none
 - Source failed: none
 - Source upstream live: True
-- Cache community: 0m old
-- Cache yaml: 0m old
+- Cache community: 22h old
+- Cache yaml: 22h old
 
 ## Summary
 
@@ -47,8 +47,8 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 
 | Family | Model | Metadata | Primary/Target |
 | --- | --- | --- | --- |
-| Apollo | Apollo — EDM Restoration Big · Essid | bundled_yaml:apollo_edm_big_by_essid.yaml | — |
-| Apollo | Apollo — EDM Restoration · Essid | bundled_yaml:apollo_edm_by_essid.yaml | — |
+| Apollo | Apollo — EDM Restoration Big · Essid | catalogue_apollo_declaration | — |
+| Apollo | Apollo — EDM Restoration · Essid | catalogue_apollo_declaration | — |
 
 ## Quick reference (all models)
 
@@ -6475,7 +6475,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Name intent:** unknown
 - **Backend focus:** unknown
 - **Best result:** unknown
-- **Metadata:** bundled_yaml:apollo_edm_big_by_essid.yaml
+- **Metadata:** catalogue_apollo_declaration
 
 ### Apollo — EDM Restoration · Essid
 
@@ -6485,4 +6485,4 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Name intent:** unknown
 - **Backend focus:** unknown
 - **Best result:** unknown
-- **Metadata:** bundled_yaml:apollo_edm_by_essid.yaml
+- **Metadata:** catalogue_apollo_declaration

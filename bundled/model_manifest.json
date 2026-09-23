@@ -16,22 +16,22 @@
     "apollo:apollo_edm_big_by_essid": {
       "catalogue_evidence": {
         "catalogue_label": "Apollo Model: EDM Restoration Big by essid",
-        "metadata_source": "bundled_yaml:apollo_edm_big_by_essid.yaml",
+        "metadata_source": "catalogue_apollo_declaration",
         "primary_artifact": "apollo_edm_big_by_essid.ckpt",
         "source": "extras"
       },
       "lifecycle": "current",
-      "stem_waiver": "no native inventory: catalogue_id=apollo:apollo_edm_big_by_essid; source=extras; metadata_source=bundled_yaml:apollo_edm_big_by_essid.yaml; backend_primary=; backend_target="
+      "stem_waiver": "no native inventory: catalogue_id=apollo:apollo_edm_big_by_essid; source=extras; metadata_source=catalogue_apollo_declaration; backend_primary=; backend_target="
     },
     "apollo:apollo_edm_by_essid": {
       "catalogue_evidence": {
         "catalogue_label": "Apollo Model: EDM Restoration by essid",
-        "metadata_source": "bundled_yaml:apollo_edm_by_essid.yaml",
+        "metadata_source": "catalogue_apollo_declaration",
         "primary_artifact": "apollo_edm_by_essid.ckpt",
         "source": "extras"
       },
       "lifecycle": "current",
-      "stem_waiver": "no native inventory: catalogue_id=apollo:apollo_edm_by_essid; source=extras; metadata_source=bundled_yaml:apollo_edm_by_essid.yaml; backend_primary=; backend_target="
+      "stem_waiver": "no native inventory: catalogue_id=apollo:apollo_edm_by_essid; source=extras; metadata_source=catalogue_apollo_declaration; backend_primary=; backend_target="
     },
     "demucs:UVR_Demucs_Model_1": {
       "catalogue_evidence": {

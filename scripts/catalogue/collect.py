@@ -319,12 +319,6 @@ def _parse_catalogue_entry(
             ctx.unavailable_yaml_evidence.add(yaml_name)
         if yaml_source:
             meta.metadata_source = yaml_source
-    elif (
-        yaml_name
-        and family == "Apollo"
-        and os.path.isfile(os.path.join(locations._BUNDLED_MDX_YAML_DIR, yaml_name))
-    ):
-        meta.metadata_source = f"bundled_yaml:{yaml_name}"
 
     if weight:
         ref = ctx.community_by_file.get(weight.lower())
@@ -358,6 +352,11 @@ def _parse_catalogue_entry(
     _apply_entry_meta(meta, entry_meta)
     if family == "Demucs":
         _demucs_overlay(meta, registry, presentation)
+    elif family == "Apollo":
+        # Apollo restoration has no native separation inventory. Its exact
+        # catalogue declaration supports the reviewed waiver; installed
+        # execution sidecars are not publication evidence.
+        meta.metadata_source = "catalogue_apollo_declaration"
     _finalize_entry(meta)
     return [meta]
 

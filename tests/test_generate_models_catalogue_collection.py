@@ -903,5 +903,40 @@ class SnapshotIdentityRefreshTests(unittest.TestCase):
             )
 
 
+class ApolloCatalogueEvidenceTests(unittest.TestCase):
+    def test_provenance_does_not_depend_on_installed_mdx_sidecars(self) -> None:
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as directory:
+            for with_sidecar in (False, True):
+                with self.subTest(with_sidecar=with_sidecar):
+                    name = "apollo_edm_by_essid.yaml"
+                    if with_sidecar:
+                        Path(directory, name).write_text("unrelated installed state")
+                    with (
+                        mock.patch.object(catalogue_locations, "_BUNDLED_MDX_YAML_DIR", directory),
+                        mock.patch.object(
+                            catalogue_config_evidence,
+                            "load_yaml_evidence",
+                            side_effect=AssertionError("Apollo is not MDX training evidence"),
+                        ),
+                    ):
+                        entries = catalogue._parse_catalogue_entry(
+                            source="extras",
+                            family="Apollo",
+                            label="Apollo Model: EDM Restoration by essid",
+                            payload={
+                                "apollo_edm_by_essid.ckpt": "https://example.test/a.ckpt",
+                                name: "https://example.test/a.yaml",
+                            },
+                            ctx=catalogue_types.CatalogueContext(),
+                            policy=catalogue_cache.OFFLINE_FETCH_POLICY,
+                        )
+                    self.assertEqual(entries[0].metadata_source, "catalogue_apollo_declaration")
+                    self.assertEqual(entries[0].config_sha256, "")
+                    self.assertEqual(entries[0].instruments, [])
+
+
 if __name__ == "__main__":
     unittest.main()
