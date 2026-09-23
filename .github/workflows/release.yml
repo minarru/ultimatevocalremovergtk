@@ -99,7 +99,7 @@ jobs:
             -u DBUS_SYSTEM_BUS_ADDRESS -u XDG_RUNTIME_DIR -u XAUTHORITY \
             -u SESSION_MANAGER -u UVR_REQUIRE_PRIVATE_GTK \
             GDK_BACKEND=x11 GSK_RENDERER=cairo \
-            xvfb-run -a dbus-run-session -- bash -eu -c '
+            xvfb-run -a -s "-screen 0 1920x1080x24" dbus-run-session -- bash -eu -c '
               export DBUS_SYSTEM_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS"
               .venv/bin/python - <<"PYTHON"
           import gi
