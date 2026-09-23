@@ -30,7 +30,8 @@ class EnsembleReconciliationTests(unittest.TestCase):
         self.assertEqual(self.eligible(model), [])
 
     def test_inst_v2_identities_accept_both_reviewed_configs(self):
-        config_dir = Path("models/MDX_Net_Models/model_data/mdx_c_configs")
+        # Freeze the reviewed configs: installed model YAMLs are ignored user state.
+        config_dir = Path(__file__).parent / "fixtures" / "ensemble_reconciliation"
         for model_id in (KIM, "mdx:mbr_inst2_unwa"):
             for filename in ("config_melbandroformer_inst_v2.yaml", "mbr_inst2_unwa_config.yaml"):
                 with self.subTest(model_id=model_id, config=filename):
