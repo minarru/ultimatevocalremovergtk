@@ -10,6 +10,8 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, cast
 from unittest.mock import Mock, patch
 
+from tests.gtk_layout_helpers import wait_for_dialog_open
+
 if TYPE_CHECKING:
     from gi.repository import Gtk
 
@@ -81,6 +83,7 @@ class ViewInputsTests(unittest.TestCase):
         parent.present()
         view, _context, _changed = self.make_view(parent)
         view.present()
+        wait_for_dialog_open(view.dialog)
         self.assertIsInstance(view.dialog, Adw.Dialog)
         self.assertIs(parent.get_visible_dialog(), view.dialog)
         with patch("ui.inputs.audio_open_dialog") as chooser:
@@ -143,6 +146,7 @@ class ViewInputsTests(unittest.TestCase):
         view._rebuild_list()
         view._sync_actions()
         view.present()
+        wait_for_dialog_open(view.dialog)
         scroll = view._input_scroll.get_vadjustment()
 
         def wait_for(predicate: Callable[[], bool]) -> None:
@@ -231,6 +235,7 @@ class ViewInputsTests(unittest.TestCase):
         parent.present()
         view, _context, _changed = self.make_view(parent)
         view.present()
+        wait_for_dialog_open(view.dialog)
         view._verifying = True
         view.dialog.close()
         deadline = time.monotonic() + 3
@@ -251,6 +256,7 @@ class ViewInputsTests(unittest.TestCase):
         parent.present()
         view, _context, _changed = self.make_view(parent)
         view.present()
+        wait_for_dialog_open(view.dialog)
         body = view.dialog.get_child()
         self.assertIsNotNone(body)
         assert body is not None

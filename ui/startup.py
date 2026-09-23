@@ -51,6 +51,9 @@ class FirstFrameScheduler:
         self._callback = callback
         self._frame_clock = frame_clock
         self._after_paint_id = frame_clock.connect("after-paint", self._on_after_paint)
+        # Connecting a signal does not restart an idle clock. Request a paint
+        # so scheduling after the initial map frame cannot strand warmup.
+        frame_clock.request_phase(Gdk.FrameClockPhase.PAINT)
         return True
 
     def cancel(self) -> None:

@@ -18,7 +18,7 @@ from core.job_plan_types import (
     ValidationLevel,
 )
 from core.settings import Settings
-from tests.gtk_layout_helpers import resize_window
+from tests.gtk_layout_helpers import resize_window, wait_for_dialog_open
 
 
 def resolved_plan(*, ensemble: bool = False, conditional: bool = False):
@@ -185,7 +185,7 @@ class PlanReviewDialogTests(unittest.TestCase):
         self.controller._present_plan_confirmation(self.target, "fingerprint", self.plan)
         dialog = self.controller._plan_dialog
         assert isinstance(dialog, ReviewPlanDialog)
-        self.wait_for(dialog.get_mapped)
+        wait_for_dialog_open(dialog)
         self.addCleanup(dialog.force_close)
         self.assertEqual(dialog.model_row.get_subtitle(), "Model <A> & B")
         self.assertFalse(dialog.model_row.get_use_markup())
@@ -202,7 +202,7 @@ class PlanReviewDialogTests(unittest.TestCase):
             self.controller._present_plan_confirmation(self.target, "fingerprint", self.plan)
             dialog = self.controller._plan_dialog
             assert isinstance(dialog, ReviewPlanDialog)
-            self.wait_for(dialog.get_mapped)
+            wait_for_dialog_open(dialog)
             closed = Mock()
             dialog.connect("closed", closed)
             if stale:
@@ -241,6 +241,7 @@ class PlanReviewDialogTests(unittest.TestCase):
                 self.wait_for(lambda width=width: self.parent.get_width() == width)
                 dialog = ReviewPlanDialog(plan)
                 dialog.present(self.parent)
+                wait_for_dialog_open(dialog)
                 self.wait_for(dialog.start_button.get_mapped)
                 self.assertEqual(dialog.result.get_label(), "240 planned files")
                 for row in (dialog.members, dialog.inputs, dialog.stems, dialog.technical):
