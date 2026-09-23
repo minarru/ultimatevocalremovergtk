@@ -499,7 +499,13 @@ class _LinkedHeaderRedirect(urllib.request.HTTPRedirectHandler):
             self.linked_etag = headers.get("X-Linked-Etag")
         if self.linked_size is None:
             self.linked_size = headers.get("X-Linked-Size")
-        return super().redirect_request(req, fp, code, msg, headers, newurl)
+        redirected = super().redirect_request(req, fp, code, msg, headers, newurl)
+        # Python 3.12's redirect handler turns HEAD into GET. Keep metadata
+        # probes body-free on every hop, including redirects without linked
+        # headers, while retaining urllib's redirect validation and headers.
+        if redirected is not None and req.get_method() == "HEAD":
+            redirected.method = "HEAD"
+        return redirected
 
 
 def _head_remote_meta(
