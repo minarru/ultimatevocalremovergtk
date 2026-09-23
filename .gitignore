@@ -160,6 +160,7 @@ docs/superpowers/specs/
 !scripts/catalogue/config_evidence.py
 !scripts/catalogue/entry_rules.py
 !scripts/catalogue/evidence.py
+!scripts/catalogue/identities.py
 !scripts/catalogue/locations.py
 !scripts/catalogue/manifest_candidate.py
 !scripts/catalogue/stem_audit.py

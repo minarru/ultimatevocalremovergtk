@@ -15,7 +15,7 @@ import os
 import re
 import sys
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, List, Mapping, Optional, Tuple
 
@@ -31,6 +31,7 @@ from catalogue import (  # noqa: E402
     stem_audit,
 )
 from catalogue import confidence as catalogue_confidence  # noqa: E402
+from catalogue import identities as catalogue_identities  # noqa: E402
 from catalogue import manifest_candidate as catalogue_manifest_candidate  # noqa: E402
 from catalogue import types as catalogue_types  # noqa: E402
 from catalogue.cache import FetchPolicy  # noqa: E402
@@ -47,6 +48,12 @@ from catalogue.locations import (  # noqa: E402
     STEM_SEMANTICS_REFERENCE_TSV_PATH,
 )
 
+from core.checkpoint_identities import (  # noqa: E402
+    BUNDLED_IDENTITIES_FILE,
+    clear_checkpoint_identities_cache,
+    load_checkpoint_identities,
+    parse_checkpoint_identities,
+)
 from core.model_manifest import (  # noqa: E402
     BUNDLED_MODEL_MANIFEST_PATH,
     ModelManifestError,
@@ -57,6 +64,8 @@ from core.model_manifest.loader import _duplicate_aware_mapping  # noqa: E402
 # Kept as the generator's patchable publication target while callers migrate
 # from the former stem-only manifest name.
 BUNDLED_MANIFEST_PATH = BUNDLED_MODEL_MANIFEST_PATH
+# Patchable like the manifest: tests driving ``--refresh`` must redirect it.
+CHECKPOINT_IDENTITIES_PATH = BUNDLED_IDENTITIES_FILE
 
 
 def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
@@ -268,6 +277,7 @@ class PublicationBundle:
     stem_reference: str
     ir: dict[str, Any]
     manifest: dict[str, object]
+    checkpoint_identities: str | None = None
 
 
 def _previous_entry_count(path: str) -> Optional[int]:
@@ -631,6 +641,8 @@ def _publish_bundle(bundle: PublicationBundle, *, include_ir: bool) -> tuple[str
             (STEM_SEMANTICS_REFERENCE_TSV_PATH, "text", bundle.stem_reference),
         )
     )
+    if bundle.checkpoint_identities is not None:
+        operations.insert(0, (CHECKPOINT_IDENTITIES_PATH, "text", bundle.checkpoint_identities))
     snapshots: dict[str, bytes | None] = {}
     for path, _kind, _payload in operations:
         target = os.fspath(path)
@@ -672,7 +684,32 @@ def _publish_bundle(bundle: PublicationBundle, *, include_ir: bool) -> tuple[str
                 file=sys.stderr,
             )
         raise
+    if bundle.checkpoint_identities is not None:
+        clear_checkpoint_identities_cache()
     return tuple(os.fspath(path) for path, _kind, _payload in operations)
+
+
+def _pre_dedupe_checkpoint_urls(snapshot: Any) -> List[str]:
+    """Every source row's checkpoint URL, including rows dedupe will drop."""
+    from core.catalog_sources import _checkpoint_urls
+
+    return _checkpoint_urls(
+        getattr(snapshot, "pre_dedupe_vr", {}) or {},
+        getattr(snapshot, "pre_dedupe_mdx", {}) or {},
+        getattr(snapshot, "pre_dedupe_apollo", {}) or {},
+    )
+
+
+def _warn_missing_checkpoint_identities(snapshot: Any) -> None:
+    missing = catalogue_identities.missing_content_ids(
+        _pre_dedupe_checkpoint_urls(snapshot), load_checkpoint_identities()
+    )
+    if missing:
+        print(
+            f"{len(missing)} Hugging Face checkpoint(s) have no bundled identity, so "
+            "dedupe falls back to the local size cache for them; refresh with --refresh.",
+            file=sys.stderr,
+        )
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -695,20 +732,53 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 1
     _print_deprecated_reference_flags(args)
     ctx = collect._build_catalogue_context(policy=policy)
+    identity_text: str | None = None
+
+    def prepare_snapshot(snapshot: Any, payloads: Tuple[dict, dict, dict, dict]) -> Any:
+        nonlocal identity_text
+        from core.download_sizes import trusted_content_ids_from_cache
+
+        urls = _pre_dedupe_checkpoint_urls(snapshot)
+        identity_text, unresolved = catalogue_identities.prepare_identity_table(
+            urls, path=CHECKPOINT_IDENTITIES_PATH, allow_shrink=args.allow_degraded
+        )
+        identities = parse_checkpoint_identities(json.loads(identity_text))
+        content_ids = trusted_content_ids_from_cache(
+            urls, bundled_content_ids=identities.content_ids
+        )
+        for url in unresolved:
+            print(f"Checkpoint identity unresolved: {url}", file=sys.stderr)
+        return collect.snapshot_with_content_ids(snapshot, payloads, content_ids)
+
     reviewed_non_config_ids = frozenset(
         model_id
         for model_id, record in unified_registry.models.items()
         if not record.catalogue_evidence.config_yaml
     )
-    snapshot, entries = collect.collect_entries(
-        ctx,
-        policy=policy,
-        registry=unified_registry.stems,
-        contracts=unified_registry.runtime,
-        reviewed_non_config_ids=reviewed_non_config_ids,
-        presentation=unified_registry.presentation,
-        manifest_records=unified_registry.models,
-    )
+    try:
+        snapshot, entries = collect.collect_entries(
+            ctx,
+            policy=policy,
+            registry=unified_registry.stems,
+            contracts=unified_registry.runtime,
+            reviewed_non_config_ids=reviewed_non_config_ids,
+            presentation=unified_registry.presentation,
+            manifest_records=unified_registry.models,
+            prepare_snapshot=(
+                prepare_snapshot
+                if policy.refresh and policy.allow_network and policy.allow_cache_writes
+                else None
+            ),
+        )
+    except catalogue_identities.IdentityTableShrinkError as error:
+        print(
+            f"Refusing to write {CHECKPOINT_IDENTITIES_PATH}: {error}.\n"
+            "Pass --allow-degraded if those checkpoints really were removed.",
+            file=sys.stderr,
+        )
+        return 2
+    if identity_text is None:
+        _warn_missing_checkpoint_identities(snapshot)
     unsupported = _unsupported_count(getattr(snapshot, "unsupported", None))
     report = getattr(snapshot, "report", None)
     missing_evidence = _required_supplemental_evidence(ctx)
@@ -853,6 +923,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         manifest_audit=manifest_audit,
         presentation=candidate_presentation,
     )
+    bundle = replace(bundle, checkpoint_identities=identity_text)
     _validate_publication_bundle(bundle)
     candidate_diagnostic = _candidate_parity_diagnostic(audit, bundle.stem_reference)
     if candidate_diagnostic is not None:

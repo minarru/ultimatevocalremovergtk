@@ -890,8 +890,8 @@ class ManifestValidationTests(unittest.TestCase):
         current_models = current_ids.intersection(registry.models)
         current_waivers = current_ids.intersection(registry.waivers)
 
-        self.assertEqual(len(current_ids), 491)
-        self.assertEqual(len(current_models), 489)
+        self.assertEqual(len(current_ids), 410)
+        self.assertEqual(len(current_models), 408)
         self.assertEqual(
             current_waivers,
             {
@@ -907,6 +907,9 @@ class ManifestValidationTests(unittest.TestCase):
                 "mdx:mbr_guitar_becruily",
                 "mdx:mbr_inst_becruily",
                 "mdx:mel_band_roformer_voc_fullness_v4_gabox",
+                *(Path(__file__).with_name("fixtures") / "catalogue" / "retired_duplicate_ids.txt")
+                .read_text(encoding="utf-8")
+                .split(),
             },
         )
 

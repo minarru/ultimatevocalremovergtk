@@ -838,3 +838,70 @@ class FetchHelperTests(unittest.TestCase):
                 )
             )
             self.assertFalse(os.path.exists(runtime_dir))
+
+
+class SnapshotIdentityRefreshTests(unittest.TestCase):
+    def test_staged_identities_dedupe_one_acquisition_and_keep_installed_metadata(self) -> None:
+        from core.catalogue_coordinator import CatalogueCoordinator, CatalogueSnapshot
+
+        first = "https://huggingface.co/owner/repo/resolve/main/first.ckpt"
+        copy = "https://huggingface.co/owner/repo/resolve/main/copy.ckpt"
+        payload = {
+            "mdx_download_list": {"First": {"first.ckpt": first}, "Copy": {"copy.ckpt": copy}}
+        }
+        coordinator = CatalogueCoordinator(
+            sources={
+                source: fixtures._local(source, payload if source == SourceId.UPSTREAM else {})
+                for source in SourceId
+            }
+        )
+        self.addCleanup(coordinator.close)
+        acquisition = catalogue._snapshot_and_payloads(allow_network=False, coordinator=coordinator)
+        before = acquisition[0]
+        self.assertEqual(list(before.mdx), ["First", "Copy"])
+        sha = "a" * 64
+
+        def prepare(
+            snapshot: CatalogueSnapshot, payloads: tuple[dict, dict, dict, dict]
+        ) -> CatalogueSnapshot:
+            return catalogue.snapshot_with_content_ids(snapshot, payloads, {first: sha, copy: sha})
+
+        with (
+            mock.patch.object(
+                catalogue, "_snapshot_and_payloads", return_value=acquisition
+            ) as acquire,
+            mock.patch.object(catalogue, "_entries_from_snapshot", return_value=[]) as entries,
+        ):
+            snapshot, _ = catalogue.collect_entries(
+                catalogue_types.CatalogueContext(),
+                policy=catalogue_cache.FetchPolicy(refresh=True),
+                prepare_snapshot=prepare,
+            )
+        acquire.assert_called_once()
+        self.assertIs(entries.call_args.args[0], snapshot)
+        self.assertEqual(list(snapshot.mdx), ["First"])
+        self.assertEqual(list(snapshot.pre_dedupe_mdx), ["First", "Copy"])
+        self.assertIs(snapshot.meta_by_family, before.meta_by_family)
+        self.assertIs(snapshot.report, before.report)
+        self.assertNotEqual(snapshot.revision.identity, before.revision.identity)
+
+    def test_candidate_ids_preserve_live_cache_precedence_without_writing(self) -> None:
+        from core.download_sizes import trusted_content_ids_from_cache
+
+        url = "https://huggingface.co/owner/repo/resolve/main/model.ckpt"
+        candidate = {url: "a" * 64}
+        with mock.patch(
+            "core.download_sizes._read_cache", return_value={url: {"content_id": "b" * 64}}
+        ):
+            self.assertEqual(
+                trusted_content_ids_from_cache([url], bundled_content_ids=candidate),
+                {url: "b" * 64},
+            )
+        with mock.patch("core.download_sizes._read_cache", return_value={}):
+            self.assertEqual(
+                trusted_content_ids_from_cache([url], bundled_content_ids=candidate), candidate
+            )
+
+
+if __name__ == "__main__":
+    unittest.main()

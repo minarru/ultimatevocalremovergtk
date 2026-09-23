@@ -46,7 +46,6 @@ MDX-Net	BS Roformer	mvsepless		BS Roformer Bowed Strings by Gilliaaan	mdx:bs_bow
 MDX-Net	BS Roformer	mvsepless		BS Roformer DeEffect by Gilliaaan	mdx:bs_deeffect_gilliaaan	BandSplit Roformer — DeEffect · Gilliaaan	bs_deeffect_gilliaaan.ckpt			clean
 MDX-Net	BS Roformer	mvsepless		BS Roformer Deverb (sdr 22.50) by Anvuew	mdx:bs_dereverb_2250_anvuew	BandSplit Roformer — DeReverb (SDR 22.50) · Anvuew	bs_dereverb_2250_anvuew.ckpt			clean
 MDX-Net	BS Roformer	mvsepless		BS Roformer Deverb 256-8 by Anvuew	mdx:bs_deverb_256_8_anvuew	BandSplit Roformer — DeReverb 256-8 · Anvuew	bs_deverb_256_8_anvuew.ckpt			clean
-MDX-Net	BS Roformer	mvsepless		BS Roformer Deverb 384-10 by Anvuew	mdx:bs_deverb_384_10_anvuew	BandSplit Roformer — DeReverb 384-10 · Anvuew	bs_deverb_384_10_anvuew.ckpt			clean
 MDX-Net	BS Roformer	mvsepless		BS Roformer Deverb Roon by Anvuew	mdx:bs_deverb_room_anvuew	BandSplit Roformer — DeReverb Room · Anvuew	bs_deverb_room_anvuew.ckpt			clean
 MDX-Net	BS Roformer	mvsepless		BS Roformer Drums Duality by Gilliaaan	mdx:bs_drums_gilliaaan	BandSplit Roformer — Drums Duality · Gilliaaan	bs_drums_gilliaaan.ckpt			clean
 MDX-Net	BS Roformer	mvsepless		BS Roformer Drums Experimental by BeatLoo Labs	mdx:bs_drums_beatloo_labs	BandSplit Roformer — Drums Experimental · BeatLoo Labs	bs_drums_beatloo_labs.ckpt			clean
@@ -56,17 +55,11 @@ MDX-Net	BS Roformer	mvsepless		BS Roformer FNF (Friday Night Funkin) Voices v2 b
 MDX-Net	BS Roformer	mvsepless		BS Roformer FNF (Friday Night Funkin) Voices by MrDense67	mdx:bs_fnf_mrdense67	BandSplit Roformer — FNF (Friday Night Funkin) Voices · MrDense67	bs_fnf_mrdense67.ckpt			clean
 MDX-Net	BS Roformer	mvsepless		BS Guitar by Kimberley Xlance	mdx:bs_gtr_xlancer	BandSplit Roformer — Guitar · Kimberley Xlance	bs_gtr_xlancer.ckpt			clean
 MDX-Net	BS Roformer	mvsepless		BS Roformer Inst Beta by neoculture	mdx:bs_neo_inst_beta	BandSplit Roformer — Instrumental Beta · neoculture	bs_neo_inst_beta.ckpt			clean
-MDX-Net	BS Roformer	mvsepless		BS Roformer Instrumental EXP Value Residual by Unwa	mdx:bs_inst_exp_vlp_unwa	BandSplit Roformer — Instrumental EXP Value Residual · Unwa	bs_inst_exp_vlp_unwa.ckpt			clean
-MDX-Net	BS Roformer	mvsepless		BS Roformer Instrumental FNO by Unwa	mdx:bs_inst_fno_unwa	BandSplit Roformer — Instrumental FNO · Unwa	bs_inst_fno_unwa.ckpt			clean
-MDX-Net	BS Roformer	mvsepless		BS Roformer Instrumental HyperACE v2 (finetuned anvuew vocal model) by Unwa	mdx:bs_inst_hyperace2_unwa	BandSplit Roformer — Instrumental HyperACE v2 · Unwa	bs_inst_hyperace2_unwa.ckpt			clean
-MDX-Net	BS Roformer	mvsepless		BS Roformer Instrumental HyperACE (finetuned anvuew vocal model) by Unwa	mdx:bs_inst_hyperace_unwa	BandSplit Roformer — Instrumental HyperACE · Unwa	bs_inst_hyperace_unwa.ckpt			clean
 MDX-Net	BS Roformer	mvsepless		BS Roformer Instrumental Large v2 by Unwa	mdx:bs_inst_large2_unwa	BandSplit Roformer — Instrumental Large v2 · Unwa	bs_inst_large2_unwa.ckpt			clean
 MDX-Net	BS Roformer	mvsepless		BS Roformer Instrumental Resurrection by Gabox	mdx:bs_resurrection_inst_gabox	BandSplit Roformer — Instrumental Resurrection · Gabox	bs_resurrection_inst_gabox.ckpt			clean
-MDX-Net	BS Roformer	mvsepless		BS Roformer Instrumental Resurrection by Unwa	mdx:bs_resurrection_inst_unwa	BandSplit Roformer — Instrumental Resurrection · Unwa	bs_resurrection_inst_unwa.ckpt			clean
 MDX-Net	BS Roformer	mvsepless		BS Roformer Invert Clean v1 by Gilliaaan	mdx:bs_invert_clean1_gilliaaan	BandSplit Roformer — Invert Clean v1 · Gilliaaan	bs_invert_clean1_gilliaaan.ckpt			clean
 MDX-Net	BS Roformer	mvsepless		BS Roformer Karaoke Inverted by GaboxR67	mdx:bs_karaoke_inv_gabox	BandSplit Roformer — Karaoke Inverted · GaboxR67	bs_karaoke_inv_gabox.ckpt			clean
 MDX-Net	BS Roformer	mvsepless		BS Roformer Karaoke by Anvuew	mdx:bs_karaoke_anvuew	BandSplit Roformer — Karaoke · Anvuew	bs_karaoke_anvuew.ckpt			clean
-MDX-Net	BS Roformer	mvsepless		BS Roformer Karaoke by Becrily & Frazer	mdx:bs_karaoke_becruily	BandSplit Roformer — Karaoke · Becruily & Frazer	bs_karaoke_becruily.ckpt			clean
 MDX-Net	BS Roformer	mvsepless		BS Roformer Karaoke by GaboxR67	mdx:bs_karaoke_gabox	BandSplit Roformer — Karaoke · GaboxR67	bs_karaoke_gabox.ckpt			clean
 MDX-Net	BS Roformer	mvsepless		BS Roformer Karaoke by GiantAILAB	mdx:bs_karaoke_3stem_giantailab	BandSplit Roformer — Karaoke · GiantAILAB	bs_karaoke_3stem_giantailab.ckpt			clean
 MDX-Net	BS Roformer	mvsepless		BS Roformer Keys by Xlance	mdx:bs_keys_xlancer	BandSplit Roformer — Keys · Xlance	bs_keys_xlancer.ckpt			clean
@@ -78,7 +71,6 @@ MDX-Net	BS Roformer	mvsepless		BS Roformer Logic 6 stems by Chantrail	mdx:bs_log
 MDX-Net	BS Roformer	mvsepless		BS Roformer Mag (3719) by Anvuew	mdx:bs_mag_3179_anvuew	BandSplit Roformer — Mag (3179) · Anvuew	bs_mag_3179_anvuew.ckpt			clean
 MDX-Net	BS Roformer	mvsepless		BS Roformer Mag by Anvuew	mdx:bs_mag_anvuew	BandSplit Roformer — Mag · Anvuew	bs_mag_anvuew.ckpt			clean
 MDX-Net	BS Roformer	mvsepless		BS Roformer Male-Female (ep 146) by Sucial	mdx:bs_male_female_146_sucial	BandSplit Roformer — Male/Female (ep 146) · Sucial	bs_male_female_146_sucial.ckpt			clean
-MDX-Net	BS Roformer	mvsepless		BS Roformer Male-Female (ep 267) by Sucial	mdx:bs_male_female_267_sucial	BandSplit Roformer — Male/Female (ep 267) · Sucial	bs_male_female_267_sucial.ckpt			clean
 MDX-Net	BS Roformer	mvsepless		BS Roformer Mega 53 stems (only Accordion) by MVSep	mdx:bs_mega_53stem_accordion_mvsep	BandSplit Roformer — Mega Accordion Only (53 Stems) · MVSep	bs_mega_53stem_accordion_mvsep.ckpt			clean
 MDX-Net	BS Roformer	mvsepless		BS Roformer Mega 53 stems (only Acoustic-Guitar) by MVSep	mdx:bs_mega_53stem_acoustic-guitar_mvsep	BandSplit Roformer — Mega Acoustic Guitar Only (53 Stems) · MVSep	bs_mega_53stem_acoustic-guitar_mvsep.ckpt			clean
 MDX-Net	BS Roformer	mvsepless		BS Roformer Mega 53 stems (only Back-Vocal) by MVSep	mdx:bs_mega_53stem_back-vocal_mvsep	BandSplit Roformer — Mega Backing Vocals Only (53 Stems) · MVSep	bs_mega_53stem_back-vocal_mvsep.ckpt			clean
@@ -137,40 +129,25 @@ MDX-Net	BS Roformer	mvsepless		BS Roformer Mid-Side v1 by Gilliaaan	mdx:bs_mid_s
 MDX-Net	BS Roformer	mvsepless		BS Roformer Mid-Side v2 by Gilliaaan	mdx:bs_mid_side2_gilliaaan	BandSplit Roformer — Mid-Side v2 · Gilliaaan	bs_mid_side2_gilliaaan.ckpt			clean
 MDX-Net	BS Roformer	mvsepless		BS Roformer Orchestra v1 by Xlance	mdx:bs_orch_xlancer	BandSplit Roformer — Orchestra v1 · Xlance	bs_orch_xlancer.ckpt			clean
 MDX-Net	BS Roformer	mvsepless		BS Roformer Orchestra v2 by Xlance	mdx:bs_orch2_xlancer	BandSplit Roformer — Orchestra v2 · Xlance	bs_orch2_xlancer.ckpt			clean
-MDX-Net	BS Roformer	mvsepless		BS Roformer Other by ViperX	mdx:bs_other_viperx	BandSplit Roformer — Other · ViperX	bs_other_viperx.ckpt			clean
 MDX-Net	BS Roformer	mvsepless		BS Roformer Percussion v1 by Xlance	mdx:bs_perc_xlancer	BandSplit Roformer — Percussion v1 · Xlance	bs_perc_xlancer.ckpt			clean
 MDX-Net	BS Roformer	mvsepless		BS Roformer Percussion v2 by Xlance	mdx:bs_perc2_xlancer	BandSplit Roformer — Percussion v2 · Xlance	bs_perc2_xlancer.ckpt			clean
 MDX-Net	BS Roformer	mvsepless		BS Roformer Resurrection v2 (Quality Test) by Unwa	mdx:bs_resurrection2_quality_test_unwa	BandSplit Roformer — Resurrection v2 (Quality Test) · Unwa	bs_resurrection2_quality_test_unwa.ckpt			clean
 MDX-Net	BS Roformer	mvsepless		BS Siamese Roformer Vocals by Unwa	mdx:bs_siamese_vocals_unwa	BandSplit Roformer — Siamese Vocals · Unwa	bs_siamese_vocals_unwa.ckpt			clean
 MDX-Net	BS Roformer	mvsepless		BS Roformer SppechSep by AliceN	mdx:bs_speech_alicen	BandSplit Roformer — SpeechSep · AliceN	bs_speech_alicen.ckpt			clean
 MDX-Net	MDX23C	mvsepless		BS Roformer SW	mdx:bs_6stem	BandSplit Roformer — SW	bs_6stem.ckpt			clean
-MDX-Net	BS Roformer	mvsepless		BS Roformer SW Fixed by jarredou	mdx:bs_6stem_fixed	BandSplit Roformer — SW Fixed · Jarredou	bs_6stem_fixed.ckpt			clean
 MDX-Net	BS Roformer	mvsepless		BS Roformer Synth v1 by Xlance	mdx:bs_syn_xlancer	BandSplit Roformer — Synth v1 · Xlance	bs_syn_xlancer.ckpt			clean
 MDX-Net	BS Roformer	mvsepless		BS Roformer Synth v2 by Xlance	mdx:bs_syn2_xlancer	BandSplit Roformer — Synth v2 · Xlance	bs_syn2_xlancer.ckpt			clean
-MDX-Net	BS Roformer	mvsepless		BS Roformer Vocals (sdr 12.96) by ViperX	mdx:bs_vocals_1296_viperx	BandSplit Roformer — Vocals (SDR 12.96) · ViperX	bs_vocals_1296_viperx.ckpt			clean
-MDX-Net	BS Roformer	mvsepless		BS Roformer Vocals (sdr 12.97) by ViperX	mdx:bs_vocals_1297_viperx	BandSplit Roformer — Vocals (SDR 12.97) · ViperX	bs_vocals_1297_viperx.ckpt			clean
 MDX-Net	BS Roformer	mvsepless		BS Roformer Vocals FT v1 by Anvuew	mdx:bs_vocalsft1_anvuew	BandSplit Roformer — Vocals Fine-Tuned v1 · Anvuew	bs_vocalsft1_anvuew.ckpt			clean
-MDX-Net	BS Roformer	mvsepless		BS Roformer Vocals HyperACE v2 (finetuned anvuew vocal model) by Unwa	mdx:bs_voc_hyperace2_unwa	BandSplit Roformer — Vocals HyperACE v2 · Unwa	bs_voc_hyperace2_unwa.ckpt			clean
 MDX-Net	BS Roformer	mvsepless		BS Roformer Vocals Large v1 by Unwa	mdx:bs_vocals_large1_unwa	BandSplit Roformer — Vocals Large v1 · Unwa	bs_vocals_large1_unwa.ckpt			clean
-MDX-Net	BS Roformer	mvsepless		BS Roformer Vocals Resurrection by Unwa	mdx:bs_resurrection_unwa	BandSplit Roformer — Vocals Resurrection · Unwa	bs_resurrection_unwa.ckpt			clean
-MDX-Net	BS Roformer	mvsepless		BS Roformer Vocals Revive v1 by Unwa	mdx:bs_revive1_unwa	BandSplit Roformer — Vocals Revive v1 · Unwa	bs_revive1_unwa.ckpt			clean
-MDX-Net	BS Roformer	mvsepless		BS Roformer Vocals Revive v2 by Unwa	mdx:bs_revive2_unwa	BandSplit Roformer — Vocals Revive v2 · Unwa	bs_revive2_unwa.ckpt			clean
-MDX-Net	BS Roformer	mvsepless		BS Roformer Vocals Revive v3e by Unwa	mdx:bs_revive3e_unwa	BandSplit Roformer — Vocals Revive v3e · Unwa	bs_revive3e_unwa.ckpt			clean
 MDX-Net	BS Roformer	mvsepless		BS Roformer Vocals v1 by Aname	mdx:bs_vocals1_aname	BandSplit Roformer — Vocals v1 · Aname	bs_vocals1_aname.ckpt			clean
 MDX-Net	BS Roformer	mvsepless		BS Roformer Vocals v2 by Aname	mdx:bs_vocals2_aname	BandSplit Roformer — Vocals v2 · Aname	bs_vocals2_aname.ckpt			clean
 MDX-Net	BS Roformer	mvsepless		BS Roformer Vocals by Anvuew	mdx:bs_vocals_anvuew	BandSplit Roformer — Vocals · Anvuew	bs_vocals_anvuew.ckpt			clean
-MDX-Net	BS Roformer	mvsepless		BS Roformer Vocals by GaboxR67	mdx:bs_voctest_gabox	BandSplit Roformer — Vocals · GaboxR67	bs_voctest_gabox.ckpt			clean
 MDX-Net	BS Roformer	mvsepless		BS Roformer Vox by Xlance	mdx:bs_vox_xlancer	BandSplit Roformer — Vocals · Xlance	bs_vox_xlancer.ckpt			clean
 MDX-Net	MDX23C	mvsepless		MDX23C 4 Stems by KUIELAB	mdx:mdx23c_4stem_kuielab	MDX23C (4 Stems) · KUIELAB	mdx23c_4stem_kuielab.ckpt			clean
 MDX-Net	MDX23C	mvsepless		MDX23C 4 Stems by ZFTurbo	mdx:mdx23c_4stem_zfturbo	MDX23C (4 Stems) · ZFTurbo	mdx23c_4stem_zfturbo.ckpt			clean
-MDX-Net	MDX23C	mvsepless		MDX23C 8k FFT Inst-Voc HQ v1	mdx:mdx23c_instvoc_hq1	MDX23C — 8K FFT Instrumental/Vocals HQ v1	mdx23c_instvoc_hq1.ckpt			clean
-MDX-Net	MDX23C	mvsepless		MDX23C 8k FFT Inst-Voc HQ v2	mdx:mdx23c_instvoc_hq2	MDX23C — 8K FFT Instrumental/Vocals HQ v2	mdx23c_instvoc_hq2.ckpt			clean
 MDX-Net	MDX23C	mvsepless		MDX23C DrumSep 5 stems by Aufr33 & Jarredou	mdx:mdx23c_drumsep_5stem_aufr33_jarredou	MDX23C — DrumSep (5 Stems) · Aufr33 & Jarredou	mdx23c_drumsep_5stem_aufr33_jarredou.ckpt			clean
-MDX-Net	MDX23C	mvsepless		MDX23C DrumSep 6 stems by Aufr33 & Jarredou	mdx:mdx23c_drumsep_6stem_aufr33_jarredou	MDX23C — DrumSep (6 Stems) · Aufr33 & Jarredou	mdx23c_drumsep_6stem_aufr33_jarredou.ckpt			clean
-MDX-Net	MDX23C	mvsepless		MDX23C Inst-Voc HQ by ZFTurbo	mdx:mdx23c_instvoc_zfturbo	MDX23C — Instrumental/Vocals HQ · ZFTurbo	mdx23c_instvoc_zfturbo.ckpt			clean
 MDX-Net	MDX23C	mvsepless		MDX23C Mid-Side v1 by Gilliaaan	mdx:mdx23c_mid_side_gilliaaan	MDX23C — Mid-Side v1 · Gilliaaan	mdx23c_mid_side_gilliaaan.ckpt			clean
 MDX-Net	MDX23C	mvsepless		MDX23C Mid-Side v2e by Gilliaaan	mdx:mdx23c_mid_side2e_gilliaaan	MDX23C — Mid-Side v2e · Gilliaaan	mdx23c_mid_side2e_gilliaaan.ckpt			clean
-MDX-Net	MDX23C	mvsepless		MDX23C Mid-Side by WesleyR36	mdx:mdx23c_mid_side_wesleyr36	MDX23C — Mid-Side · WesleyR36	mdx23c_mid_side_wesleyr36.ckpt			clean
 MDX-Net	MDX23C	mvsepless		MDX23C Orchestra Experimental by Verosment	mdx:mdx23c_orch_verosment	MDX23C — Orchestra Experimental · Verosment	mdx23c_orch_verosment.ckpt			clean
 MDX-Net	MDX23C	mvsepless		MDX23C SFX Splitter by Jasper	mdx:mdx23c_sfxsplitter_jasper	MDX23C — SFX Splitter · Jasper	mdx23c_sfxsplitter_jasper.ckpt			clean
 MDX-Net	MDX23C	mvsepless		MDX23C SFX by Jasper	mdx:mdx23c_sfx_jasper	MDX23C — SFX · Jasper	mdx23c_sfx_jasper.ckpt			clean
@@ -181,14 +158,7 @@ MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer BGM by Jasper	mdx:mbr_bgm
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Big Beta v1 by Unwa	mdx:mbr_bigbeta1_unwa	MelBand Roformer — Big Beta v1 · Unwa	mbr_bigbeta1_unwa.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Big Beta v2 by Unwa	mdx:mbr_bigbeta2_unwa	MelBand Roformer — Big Beta v2 · Unwa	mbr_bigbeta2_unwa.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Big Beta v3 by Unwa	mdx:mbr_bigbeta3_unwa	MelBand Roformer — Big Beta v3 · Unwa	mbr_bigbeta3_unwa.ckpt			clean
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Big Beta v4 by Unwa	mdx:mbr_bigbeta4_unwa	MelBand Roformer — Big Beta v4 · Unwa	mbr_bigbeta4_unwa.ckpt			clean
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Big Beta v6 by Unwa	mdx:mbr_bigbeta6_unwa	MelBand Roformer — Big Beta v6 · Unwa	mbr_bigbeta6_unwa.ckpt			clean
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Big Beta v6x by Unwa	mdx:mbr_bigbeta6x_unwa	MelBand Roformer — Big Beta v6x · Unwa	mbr_bigbeta6x_unwa.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Big Beta v7 by Unwa	mdx:mbr_bigbeta7_unwa	MelBand Roformer — Big Beta v7 · Unwa	mbr_bigbeta7_unwa.ckpt			clean
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Big SYHFT v1 Fast by SYH99999	mdx:mbr_bigsyhft1fast	MelBand Roformer — Big SYHFT v1 Fast · SYH99999	mbr_bigsyhft1fast.ckpt			clean
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer DeBigReverb by Sucial	mdx:mbr_debigreverb_sucial	MelBand Roformer — DeBigReverb · Sucial	mbr_debigreverb_sucial.ckpt			clean
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer DeNoise Aggressive by Aufr33	mdx:mbr_denoise_aggr_aufr33	MelBand Roformer — DeNoise Aggressive · Aufr33	mbr_denoise_aggr_aufr33.ckpt			clean
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Denoise DeBleed by GaboxR67	mdx:mbr_denoise_debleed_gabox	MelBand Roformer — DeNoise DeBleed · GaboxR67	mbr_denoise_debleed_gabox.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer DeNoise by Yuluoye	mdx:mbr_denoise_yuluoye	MelBand Roformer — DeNoise · Yuluoye	mbr_denoise_yuluoye.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer DeNoiser Children 16k by Phaedrus33	mdx:mbr_denoise_children_phaedrus33	MelBand Roformer — DeNoiser Children 16 kHz · Phaedrus33	mbr_denoise_children_phaedrus33.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer DeUX by Becruily	mdx:mbr_deux_becruily	MelBand Roformer — DeUX · Becruily	mbr_deux_becruily.ckpt			clean
@@ -202,62 +172,28 @@ MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Guitar by chenCFD	mdx:mbr
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Hybrid Arch by Aname	mdx:mbr_hybrid_arch_aname	MelBand Roformer — Hybrid Arch · Aname	mbr_hybrid_arch_aname.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Instrumental by Essid (sdr 16.52)	mdx:mbr_inst_1652_essid	MelBand Roformer — Instrumental (SDR 16.52) · Essid	mbr_inst_1652_essid.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Instrumental by Essid (sdr 16.81)	mdx:mbr_inst_1681_essid	MelBand Roformer — Instrumental (SDR 16.81) · Essid	mbr_inst_1681_essid.ckpt			clean
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Instrumental Bv1 by GaboxR67	mdx:mbr_instbv1_gabox	MelBand Roformer — Instrumental Bv1 · GaboxR67	mbr_instbv1_gabox.ckpt			clean
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Instrumental Bv2 by GaboxR67	mdx:mbr_instbv2_gabox	MelBand Roformer — Instrumental Bv2 · GaboxR67	mbr_instbv2_gabox.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Instrumental Bv3 by GaboxR67	mdx:mbr_instbv3_gabox	MelBand Roformer — Instrumental Bv3 · GaboxR67	mbr_instbv3_gabox.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Instrumental Flowers v10 by GaboxR67	mdx:mbr_instflowersv10_gabox	MelBand Roformer — Instrumental Flowers v10 · GaboxR67	mbr_instflowersv10_gabox.ckpt			clean
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Instrumental Fv1 by GaboxR67	mdx:mbr_instfv1_gabox	MelBand Roformer — Instrumental Fv1 · GaboxR67	mbr_instfv1_gabox.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Instrumental Fv10 by GaboxR67	mdx:mbr_instfv10_gabox	MelBand Roformer — Instrumental Fv10 · GaboxR67	mbr_instfv10_gabox.ckpt			clean
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Instrumental Fv2 by GaboxR67	mdx:mbr_instfv2_gabox	MelBand Roformer — Instrumental Fv2 · GaboxR67	mbr_instfv2_gabox.ckpt			clean
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Instrumental Fv3 by GaboxR67	mdx:mbr_instfv3_gabox	MelBand Roformer — Instrumental Fv3 · GaboxR67	mbr_instfv3_gabox.ckpt			clean
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Instrumental Fv4 Noise by GaboxR67	mdx:mbr_instfv4n_gabox	MelBand Roformer — Instrumental Fv4 Noise · GaboxR67	mbr_instfv4n_gabox.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Instrumental Fv4 by GaboxR67	mdx:mbr_instfv4_gabox	MelBand Roformer — Instrumental Fv4 · GaboxR67	mbr_instfv4_gabox.ckpt			clean
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Instrumental Fv5 Noise by GaboxR67	mdx:mbr_instfv5n_gabox	MelBand Roformer — Instrumental Fv5 Noise · GaboxR67	mbr_instfv5n_gabox.ckpt			clean
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Instrumental Fv5 by GaboxR67	mdx:mbr_instfv5_gabox	MelBand Roformer — Instrumental Fv5 · GaboxR67	mbr_instfv5_gabox.ckpt			clean
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Instrumental Fv6 Noise by GaboxR67	mdx:mbr_instfv6n_gabox	MelBand Roformer — Instrumental Fv6 Noise · GaboxR67	mbr_instfv6n_gabox.ckpt			clean
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Instrumental Fv6 by GaboxR67	mdx:mbr_instfv6_gabox	MelBand Roformer — Instrumental Fv6 · GaboxR67	mbr_instfv6_gabox.ckpt			clean
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Instrumental Fv7 Noise by GaboxR67	mdx:mbr_instfv7n_gabox	MelBand Roformer — Instrumental Fv7 Noise · GaboxR67	mbr_instfv7n_gabox.ckpt			clean
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Instrumental Fv7 by GaboxR67	mdx:mbr_instfv7_gabox	MelBand Roformer — Instrumental Fv7 · GaboxR67	mbr_instfv7_gabox.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Instrumental Fv7+ by GaboxR67	mdx:mbr_instfv7+_gabox	MelBand Roformer — Instrumental Fv7+ · GaboxR67	mbr_instfv7+_gabox.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Instrumental Fv7z by GaboxR67	mdx:mbr_instfv7z_gabox	MelBand Roformer — Instrumental Fv7z · GaboxR67	mbr_instfv7z_gabox.ckpt			clean
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Instrumental Fv8 by GaboxR67	mdx:mbr_instfv8_gabox	MelBand Roformer — Instrumental Fv8 · GaboxR67	mbr_instfv8_gabox.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Instrumental Fv8b by GaboxR67	mdx:mbr_instfv8b_gabox	MelBand Roformer — Instrumental Fv8b · GaboxR67	mbr_instfv8b_gabox.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Instrumental Fv9 by GaboxR67 [mbr_instfv9_2_gabox]	mdx:mbr_instfv9_2_gabox	MelBand Roformer — Instrumental Fv9 · GaboxR67 [mbr_instfv9_2_gabox]	mbr_instfv9_2_gabox.ckpt	underscore, embedded-id	underscore: The underscore is part of the reviewed bracketed backend ID retained for collision safety. | embedded-id: The bracketed exact backend ID distinguishes a same-title catalogue collision.	reviewed
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Instrumental Fv9 by GaboxR67 [mbr_instfv9_gabox]	mdx:mbr_instfv9_gabox	MelBand Roformer — Instrumental Fv9 · GaboxR67 [mbr_instfv9_gabox]	mbr_instfv9_gabox.ckpt	underscore, embedded-id	underscore: The underscore is part of the reviewed bracketed backend ID retained for collision safety. | embedded-id: The bracketed exact backend ID distinguishes a same-title catalogue collision.	reviewed
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Instrumental FvX by GaboxR67	mdx:mbr_instfvx_gabox	MelBand Roformer — Instrumental FvX · GaboxR67	mbr_instfvx_gabox.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Inst Rifforge by Mesk	mdx:mbr_inst_rifforge_meskvlla33	MelBand Roformer — Instrumental Rifforge · Mesk	mbr_inst_rifforge_meskvlla33.ckpt			clean
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Instrumental v1 by Unwa	mdx:mbr_inst1_unwa	MelBand Roformer — Instrumental v1 · Unwa	mbr_inst1_unwa.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Instrumental v1+ by Unwa	mdx:mbr_inst1+_unwa	MelBand Roformer — Instrumental v1+ · Unwa	mbr_inst1+_unwa.ckpt			clean
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Instrumental v1e Plus by Unwa	mdx:mbr_inst1e+_unwa	MelBand Roformer — Instrumental v1e Plus · Unwa	mbr_inst1e+_unwa.ckpt			clean
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Instrumental v1e by Unwa	mdx:mbr_inst1e_unwa	MelBand Roformer — Instrumental v1e · Unwa	mbr_inst1e_unwa.ckpt			clean
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Instrumental v2 by Unwa	mdx:mbr_inst2_unwa	MelBand Roformer — Instrumental v2 · Unwa	mbr_inst2_unwa.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Inst VFX by neoculture	mdx:mbr_neo_inst_vfx	MelBand Roformer — Instrumental VFX · neoculture	mbr_neo_inst_vfx.ckpt			clean
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer InstVoc Duality v1 by Unwa	mdx:mbr_instvoc_duality1_unwa	MelBand Roformer — Instrumental/Vocals Duality v1 · Unwa	mbr_instvoc_duality1_unwa.ckpt			clean
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer InstVoc Duality v2 by Unwa	mdx:mbr_instvoc_duality2_unwa	MelBand Roformer — Instrumental/Vocals Duality v2 · Unwa	mbr_instvoc_duality2_unwa.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Invert Clean by Becruily	mdx:mbr_invert_clean_becruily	MelBand Roformer — Invert Clean · Becruily	mbr_invert_clean_becruily.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Karaoke 25-02-2025 by GaboxR67	mdx:mbr_karaoke25022025_gabox	MelBand Roformer — Karaoke 25-02-2025 · GaboxR67	mbr_karaoke25022025_gabox.ckpt			clean
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Karaoke 28-02-2025 by GaboxR67	mdx:mbr_karaoke28022025_gabox	MelBand Roformer — Karaoke 28-02-2025 · GaboxR67	mbr_karaoke28022025_gabox.ckpt			clean
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer BVE by Gonzaluigi	mdx:mbr_bve_gonzaluigi	MelBand Roformer — Karaoke BVE · Gonzaluigi	mbr_bve_gonzaluigi.ckpt			clean
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Karaoke Fusion Aggressive by Gonzaluigi [mbr_karaoke_fusion2_aggr_gonzaluigi]	mdx:mbr_karaoke_fusion2_aggr_gonzaluigi	MelBand Roformer — Karaoke Fusion Aggressive · Gonzaluigi [mbr_karaoke_fusion2_aggr_gonzaluigi]	mbr_karaoke_fusion2_aggr_gonzaluigi.ckpt	underscore, embedded-id	underscore: The underscore is part of the reviewed bracketed backend ID retained for collision safety. | embedded-id: The bracketed exact backend ID distinguishes a same-title catalogue collision.	reviewed
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Karaoke Fusion Aggressive by Gonzaluigi [mbr_karaoke_fusion_aggr_gonzaluigi]	mdx:mbr_karaoke_fusion_aggr_gonzaluigi	MelBand Roformer — Karaoke Fusion Aggressive · Gonzaluigi [mbr_karaoke_fusion_aggr_gonzaluigi]	mbr_karaoke_fusion_aggr_gonzaluigi.ckpt	underscore, embedded-id	underscore: The underscore is part of the reviewed bracketed backend ID retained for collision safety. | embedded-id: The bracketed exact backend ID distinguishes a same-title catalogue collision.	reviewed
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Karaoke Fusion Total by Gonzaluigi	mdx:mbr_karaoke_fusion_total_aggr_gonzaluigi	MelBand Roformer — Karaoke Fusion Total · Gonzaluigi	mbr_karaoke_fusion_total_aggr_gonzaluigi.ckpt			clean
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Karaoke Fusion by Gonzaluigi	mdx:mbr_karaoke_fusion_gonzaluigi	MelBand Roformer — Karaoke Fusion · Gonzaluigi	mbr_karaoke_fusion_gonzaluigi.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Karaoke Small by GaboxR67 & Aufr33	mdx:mbr_karaoke_small_gabox_aufr33	MelBand Roformer — Karaoke Small · GaboxR67 & Aufr33	mbr_karaoke_small_gabox_aufr33.ckpt			clean
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Karaoke v1 by GaboxR67	mdx:mbr_karaoke1_gabox	MelBand Roformer — Karaoke v1 · GaboxR67	mbr_karaoke1_gabox.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Karaoke v1 (finetune of Mid-Side/Center-Wide v3 model) by Gilliaaan	mdx:mbr_karaoke1_gilliaaan	MelBand Roformer — Karaoke v1 · Gilliaaan	mbr_karaoke1_gilliaaan.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Karaoke v2 by GaboxR67	mdx:mbr_karaoke2_gabox	MelBand Roformer — Karaoke v2 · GaboxR67	mbr_karaoke2_gabox.ckpt			clean
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Kim FT v1 by Aname	mdx:mbr_kimft1_aname	MelBand Roformer — Kim Fine-Tuned v1 · Aname	mbr_kimft1_aname.ckpt			clean
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Kim FT v1 by Unwa	mdx:mbr_kimft1_unwa	MelBand Roformer — Kim Fine-Tuned v1 · Unwa	mbr_kimft1_unwa.ckpt			clean
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Kim FT v2 Fullness by Aname	mdx:mbr_kimft2f_aname	MelBand Roformer — Kim Fine-Tuned v2 Fullness · Aname	mbr_kimft2f_aname.ckpt			clean
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Kim FT v2 by Aname	mdx:mbr_kimft2_aname	MelBand Roformer — Kim Fine-Tuned v2 · Aname	mbr_kimft2_aname.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Kim FT v3 preview by Unwa	mdx:mbr_kimft3_prev_unwa	MelBand Roformer — Kim Fine-Tuned v3 Preview · Unwa	mbr_kimft3_prev_unwa.ckpt			clean
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Kim FT v3 by Aname	mdx:mbr_kimft3_aname	MelBand Roformer — Kim Fine-Tuned v3 · Aname	mbr_kimft3_aname.ckpt			clean
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer 4 Stems Large by Aname	mdx:mbr_4stemlarge1_aname	MelBand Roformer — Large (4 Stems) · Aname	mbr_4stemlarge1_aname.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer 4 Stems v2 Large by Aname	mdx:mbr_4stemlarge2_aname	MelBand Roformer — Large v2 (4 Stems) · Aname	mbr_4stemlarge2_aname.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Lead Vocals DeReverb by GaboxR67	mdx:mbr_leadvoc_dereverb_gabox	MelBand Roformer — Lead Vocals DeReverb · GaboxR67	mbr_leadvoc_dereverb_gabox.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Lead-Rhythm Guitar by listra92	mdx:mbr_lead_rhythm_guitar_listra92	MelBand Roformer — Lead-Rhythm Guitar · listra92	mbr_lead_rhythm_guitar_listra92.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Merged Beta v1 by SYH99999	mdx:mbr_syhftbeta1	MelBand Roformer — Merged Beta v1 · SYH99999	mbr_syhftbeta1.ckpt			clean
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Metal Inst Preview by Mesk	mdx:mbr_inst_metal_prev_meskvlla33	MelBand Roformer — Metal Instrumental Preview · Mesk	mbr_inst_metal_prev_meskvlla33.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Mid-Side v3 by Gilliaaan	mdx:mbr_mid_side3_gilliaaan	MelBand Roformer — Mid-Side v3 · Gilliaaan	mbr_mid_side3_gilliaaan.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Mid-Side by Gilliaaan	mdx:mbr_mid_side_gilliaaan	MelBand Roformer — Mid-Side · Gilliaaan	mbr_mid_side_gilliaaan.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Musicless by Jasper	mdx:mbr_musicless_jasper	MelBand Roformer — Musicless · Jasper	mbr_musicless_jasper.ckpt			clean
@@ -265,32 +201,18 @@ MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Percussion Experimental b
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Scratch Large by Aname	mdx:mbr_scratch_aname	MelBand Roformer — Scratch Large · Aname	mbr_scratch_aname.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Small v1 by Unwa	mdx:mbr_small_unwa	MelBand Roformer — Small v1 · Unwa	mbr_small_unwa.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer SpeechSep by AliceN	mdx:mbr_speech_alicen	MelBand Roformer — SpeechSep · AliceN	mbr_speech_alicen.ckpt			clean
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Super Big DeReverb by Sucial	mdx:mbr_desuperbigreverb_sucial	MelBand Roformer — Super Big DeReverb · Sucial	mbr_desuperbigreverb_sucial.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer SYHFT B1 1 by SYH99999	mdx:mbr_syhftB1_1	MelBand Roformer — SYHFT B1 1 · SYH99999	mbr_syhftB1_1.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer SYHFT B1 2 by SYH99999	mdx:mbr_syhftB1_2	MelBand Roformer — SYHFT B1 2 · SYH99999	mbr_syhftB1_2.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer SYHFT B1 3 by SYH99999	mdx:mbr_syhftB1_3	MelBand Roformer — SYHFT B1 3 · SYH99999	mbr_syhftB1_3.ckpt			clean
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer SYHFT v1 by SYH99999	mdx:mbr_syhft1	MelBand Roformer — SYHFT v1 · SYH99999	mbr_syhft1.ckpt			clean
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer SYHFT v2 by SYH99999	mdx:mbr_syhft2	MelBand Roformer — SYHFT v2 · SYH99999	mbr_syhft2.ckpt			clean
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer SYHFT v2.5 by SYH99999	mdx:mbr_syhft2.5	MelBand Roformer — SYHFT v2.5 · SYH99999	mbr_syhft2.5.ckpt			clean
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer SYHFT v3 by SYH99999	mdx:mbr_syhft3	MelBand Roformer — SYHFT v3 · SYH99999	mbr_syhft3.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Toon by jazzpear	mdx:mbr_toon_jazzpear	MelBand Roformer — Toon · jazzpear	mbr_toon_jazzpear.ckpt			clean
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Vocals Big Beta v5e by Unwa	mdx:mbr_bigbeta5e_unwa	MelBand Roformer — Vocals Big Beta v5e · Unwa	mbr_bigbeta5e_unwa.ckpt			clean
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Vocals Fv1 by GaboxR67	mdx:mbr_vocalsfv1_gabox	MelBand Roformer — Vocals Fv1 · GaboxR67	mbr_vocalsfv1_gabox.ckpt			clean
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Vocals Fv2 by GaboxR67	mdx:mbr_vocalsfv2_gabox	MelBand Roformer — Vocals Fv2 · GaboxR67	mbr_vocalsfv2_gabox.ckpt			clean
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Vocals Fv3 by GaboxR67	mdx:mbr_vocalsfv3_gabox	MelBand Roformer — Vocals Fv3 · GaboxR67	mbr_vocalsfv3_gabox.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Vocals Fv4 by GaboxR67	mdx:mbr_vocalsfv4_gabox	MelBand Roformer — Vocals Fv4 · GaboxR67	mbr_vocalsfv4_gabox.ckpt			clean
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Vocals Fv5 by GaboxR67	mdx:mbr_vocalsfv5_gabox	MelBand Roformer — Vocals Fv5 · GaboxR67	mbr_vocalsfv5_gabox.ckpt			clean
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Vocals Fv6 by GaboxR67	mdx:mbr_vocalsfv6_gabox	MelBand Roformer — Vocals Fv6 · GaboxR67	mbr_vocalsfv6_gabox.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Vocals Fv7 Beta 1 by GaboxR67	mdx:mbr_vocalsfv7_beta1_gabox	MelBand Roformer — Vocals Fv7 Beta 1 · GaboxR67	mbr_vocalsfv7_beta1_gabox.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Vocals Fv7 Beta 2 by GaboxR67	mdx:mbr_vocalsfv7_beta2_gabox	MelBand Roformer — Vocals Fv7 Beta 2 · GaboxR67	mbr_vocalsfv7_beta2_gabox.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Vocals Fv7 Beta 3 by GaboxR67	mdx:mbr_vocalsfv7_beta3_gabox	MelBand Roformer — Vocals Fv7 Beta 3 · GaboxR67	mbr_vocalsfv7_beta3_gabox.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Vocals Fv7 Final by GaboxR67	mdx:mbr_vocalsfv7_gabox	MelBand Roformer — Vocals Fv7 Final · GaboxR67	mbr_vocalsfv7_gabox.ckpt			clean
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Vocals by ViperX	mdx:mbr_vocals_viperx	MelBand Roformer — Vocals · ViperX	mbr_vocals_viperx.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Vocals by ZFTurbo	mdx:mbr_vocals_zfturbo	MelBand Roformer — Vocals · ZFTurbo	mbr_vocals_zfturbo.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Xeno v3 by DrYound3r	mdx:mbr_xeno3	MelBand Roformer — Xeno v3 · DrYound3r	mbr_xeno3.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Xeno by DrYound3r (only weights)	mdx:mbr_xeno	MelBand Roformer — Xeno · DrYound3r	mbr_xeno.ckpt			clean
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer 4 Stems XL by Aname	mdx:mbr_4stemxl1_aname	MelBand Roformer — XL (4 Stems) · Aname	mbr_4stemxl1_aname.ckpt			clean
-MDX-Net	SCNet	mvsepless		SCNet 4 Stems by ZFTurbo	mdx:scnet_4stem_zfturbo	SCNet (4 Stems) · ZFTurbo	scnet_4stem_zfturbo.ckpt			clean
 MDX-Net	SCNet	mvsepless		SCNet Choirsep by Dry Paint Dealer Undr	mdx:scnet_choirsep_exp	SCNet — ChoirSep · Dry Paint Dealer Undr	scnet_choirsep_exp.ckpt			clean
 MDX-Net	SCNet	mvsepless		SCNet 4 Stems Huge v1 by Aname	mdx:scnet_huge_4stem_aname	SCNet — Huge v1 (4 Stems) · Aname	scnet_huge_4stem_aname.ckpt			clean
 MDX-Net	SCNet	mvsepless		SCNet Large Jazz model by Joris Vaneyghen	mdx:scnet_jazz_4stem_jorisvaneyghen	SCNet — Large Jazz model · Joris Vaneyghen	scnet_jazz_4stem_jorisvaneyghen.ckpt			clean
@@ -301,8 +223,6 @@ MDX-Net	SCNet	mvsepless		SCNet Mid-Side v2 by Gilliaaan	mdx:scnet_mid_side2_gill
 MDX-Net	SCNet	mvsepless		SCNet Mid-Side by Gilliaaan	mdx:scnet_mid_side_gilliaaan	SCNet — Mid-Side · Gilliaaan	scnet_mid_side_gilliaaan.ckpt			clean
 MDX-Net	SCNet	mvsepless		SCNet Surround by Jasper	mdx:scnet_surround_jasper	SCNet — Surround · Jasper	scnet_surround_jasper.ckpt			clean
 MDX-Net	SCNet Tran	mvsepless		SCNet Tran 4 Stems by ZFTurbo	mdx:scnet_tran_4stem_zftrubo	SCNet — Tran (4 Stems) · ZFTurbo	scnet_tran_4stem_zftrubo.ckpt			clean
-MDX-Net	SCNet	mvsepless		SCNet 4 Stems XL by StarryTong	mdx:scnet_xl_4stem_starrytong	SCNet — XL (4 Stems) · StarryTong	scnet_xl_4stem_starrytong.ckpt			clean
-MDX-Net	SCNet	mvsepless		SCNet 4 Stems XL by ZFTurbo	mdx:scnet_xl_4stem_zftrubo	SCNet — XL (4 Stems) · ZFTurbo	scnet_xl_4stem_zftrubo.ckpt			clean
 MDX-Net	SCNet	mvsepless		SCNet XL IHF 4 Stems by ZFTurbo	mdx:scnet_xl_ihf_4stem_zfturbo	SCNet — XL IHF (4 Stems) · ZFTurbo	scnet_xl_ihf_4stem_zfturbo.ckpt			clean
 MDX-Net	SCNet	mvsepless		SCNet XL Jazz model by Joris Vaneyghen	mdx:scnet_xl_jazz_4stem_jorisvaneyghen	SCNet — XL Jazz model · Joris Vaneyghen	scnet_xl_jazz_4stem_jorisvaneyghen.ckpt			clean
 MDX-Net ONNX	MDX-Net ONNX	TRvlvr+Politrees		MDX-Net Model: Kim Inst	mdx:Kim_Inst	MDX-Net — Kim Instrumental	Kim_Inst.onnx			clean
@@ -404,7 +324,6 @@ Roformer	Mel-Band Roformer	Politrees		Roformer Model: MelBand Roformer | Instrum
 Roformer	Mel-Band Roformer	Politrees		Roformer Model: MelBand Roformer | Instrumental Fullness v8 by Gabox	mdx:mel_band_roformer_inst_fullness_v8_gabox	MelBand Roformer — Instrumental Fullness v8 · Gabox	mel_band_roformer_inst_fullness_v8_gabox.ckpt			clean
 Roformer	Mel-Band Roformer	Politrees		Roformer Model: MelBand Roformer | Instrumental Fullness vX by Gabox	mdx:mel_band_roformer_inst_fullness_vX_gabox	MelBand Roformer — Instrumental Fullness vX · Gabox	mel_band_roformer_inst_fullness_vX_gabox.ckpt			clean
 Roformer	Mel-Band Roformer	Politrees		Roformer Model: MelBand Roformer | instrumental Metal preview by Mesk	mdx:melband_roformer_inst_metal_prev_by_mesk	MelBand Roformer — Instrumental Metal Preview · Mesk	melband_roformer_inst_metal_prev_by_mesk.ckpt			clean
-Roformer	Mel-Band Roformer	Politrees		Roformer Model: MelBand Roformer | Instrumental v1 by Gabox	mdx:mel_band_roformer_inst_v1_gabox	MelBand Roformer — Instrumental v1 · Gabox	mel_band_roformer_inst_v1_gabox.ckpt			clean
 Roformer	Mel-Band Roformer	Politrees		Roformer Model: MelBand Roformer | Instrumental v2 by Gabox	mdx:mel_band_roformer_inst_v2_gabox	MelBand Roformer — Instrumental v2 · Gabox	mel_band_roformer_inst_v2_gabox.ckpt			clean
 Roformer	Mel-Band Roformer	Politrees		Roformer Model: MelBand Roformer | Instrumental v3 by Gabox	mdx:mel_band_roformer_inst_v3_gabox	MelBand Roformer — Instrumental v3 · Gabox	mel_band_roformer_inst_v3_gabox.ckpt			clean
 Roformer	Mel-Band Roformer	Politrees		Roformer Model: MelBand Roformer | Instrumental by becruily	mdx:mel_band_roformer_instrumental_becruily	MelBand Roformer — Instrumental · Becruily	mel_band_roformer_instrumental_becruily.ckpt			clean

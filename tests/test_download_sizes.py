@@ -372,5 +372,53 @@ class RequestUrlSizeCoalesceTests(unittest.TestCase):
         self.assertEqual(seen, [123, 123])
 
 
+class HeadRemoteMetaRedirectTests(unittest.TestCase):
+    """A real loopback redirect shaped like a Hugging Face ``resolve/`` HEAD."""
+
+    def _serve(self, *, redirect_headers: dict[str, str]) -> str:
+        import threading
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_HEAD(self) -> None:
+                if self.path == "/resolve/model.ckpt":
+                    self.send_response(302)
+                    self.send_header("Location", "/cdn/model.ckpt")
+                    for name, value in redirect_headers.items():
+                        self.send_header(name, value)
+                else:
+                    self.send_response(200)
+                    self.send_header("Content-Length", "1234")
+                    self.send_header("ETag", '"cdn-object-etag"')
+                self.end_headers()
+
+            def log_message(self, format: str, *args: object) -> None:
+                pass
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(thread.join)
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        return f"http://127.0.0.1:{server.server_address[1]}/resolve/model.ckpt"
+
+    def test_linked_etag_on_the_redirect_becomes_the_content_id(self) -> None:
+        url = self._serve(
+            redirect_headers={"X-Linked-Etag": '"abc123sha"', "X-Linked-Size": "1234"}
+        )
+        size, validator, content_id = download_sizes._head_remote_meta(url)
+        self.assertEqual(size, 1234)
+        self.assertEqual(validator, "cdn-object-etag")
+        self.assertEqual(content_id, "abc123sha")
+
+    def test_plain_redirect_has_no_content_id(self) -> None:
+        url = self._serve(redirect_headers={})
+        size, validator, content_id = download_sizes._head_remote_meta(url)
+        self.assertEqual(size, 1234)
+        self.assertEqual(validator, "cdn-object-etag")
+        self.assertIsNone(content_id)
+
+
 if __name__ == "__main__":
     unittest.main()

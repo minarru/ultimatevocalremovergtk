@@ -5,7 +5,7 @@ import os
 import unicodedata
 import unittest
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 from unittest import mock
 
 # Load the script path before top-level catalogue imports (one module identity).
@@ -46,6 +46,7 @@ class UnifiedPublicationCliTests(unittest.TestCase):
         self.display = os.path.join(self.tmp, "model_display_reference.tsv")
         self.stem = os.path.join(self.tmp, "model_stem_semantics_reference.tsv")
         self.manifest = Path(self.tmp) / "model_manifest.json"
+        self.identities = Path(self.tmp) / "checkpoint_identities.json"
         self.ir = catalogue._ir_path_for(self.output)
         with open(self.manifest, "w", encoding="utf-8") as handle:
             json.dump(fixtures._generator_manifest_document(), handle, indent=2, sort_keys=True)
@@ -106,9 +107,22 @@ class UnifiedPublicationCliTests(unittest.TestCase):
         from catalogue import stem_audit
 
         def collect_once(
-            *_args: object, **_kwargs: object
+            *_args: object, **kwargs: Any
         ) -> tuple[object, list[catalogue_types.ModelEntry]]:
             self.collect_call_count += 1
+            prepare = kwargs.get("prepare_snapshot")
+            if prepare is not None:
+                from core.catalogue_coordinator import CatalogueCoordinator
+                from core.catalogue_types import SourceId
+
+                isolated = CatalogueCoordinator(
+                    sources={source_id: fixtures._local(source_id, {}) for source_id in SourceId}
+                )
+                try:
+                    snapshot = isolated.ensure(allow_network=False)
+                    return prepare(snapshot, ({}, {}, {}, {})), self.entries
+                finally:
+                    isolated.close()
             return _Snapshot(), self.entries
 
         audit_side_effect = self._audit if audit is None else audit
@@ -126,6 +140,7 @@ class UnifiedPublicationCliTests(unittest.TestCase):
             mock.patch.object(cli, "DISPLAY_REFERENCE_TSV_PATH", self.display),
             mock.patch.object(cli, "STEM_SEMANTICS_REFERENCE_TSV_PATH", self.stem),
             mock.patch.object(cli, "BUNDLED_MANIFEST_PATH", self.manifest),
+            mock.patch.object(cli, "CHECKPOINT_IDENTITIES_PATH", str(self.identities)),
             mock.patch.object(
                 catalogue,
                 "_build_catalogue_context",
@@ -477,6 +492,68 @@ class UnifiedPublicationCliTests(unittest.TestCase):
         for path in paths:
             with self.subTest(path=path), open(path, "rb") as handle:
                 self.assertEqual(handle.read(), before[path])
+
+    def _identity_candidate(self, sha: str) -> str:
+        return json.dumps(
+            {
+                "schema_version": 1,
+                "content_ids": {"https://huggingface.co/owner/repo/resolve/main/a.ckpt": sha},
+                "rehosts": {},
+                "withdrawn": {},
+            }
+        )
+
+    def test_refresh_keeps_identity_table_when_publication_is_degraded(self) -> None:
+        from catalogue import identities
+
+        before = self._identity_candidate("a" * 64)
+        self.identities.write_text(before)
+        incomplete = catalogue_types.CatalogueContext(
+            unavailable_supplemental_evidence=("missing fixture evidence",)
+        )
+        with mock.patch.object(
+            identities,
+            "prepare_identity_table",
+            return_value=(self._identity_candidate("b" * 64), []),
+        ):
+            self.assertEqual(self._run(["--refresh"], context=incomplete), 2)
+        self.assertEqual(self.identities.read_text(), before)
+        self.assertFalse(os.path.exists(self.output))
+
+    def test_refresh_publishes_identities_with_bundle_and_rolls_back_late_failure(self) -> None:
+        from catalogue import identities
+
+        from core.json_store import write_text_atomic
+
+        before = self._identity_candidate("a" * 64)
+        candidate = self._identity_candidate("b" * 64)
+        self.identities.write_text(before)
+        self.assertEqual(self._run([]), 0)
+        paths = (
+            self.identities,
+            self.manifest,
+            self.output,
+            self.ir,
+            self.intent,
+            self.display,
+            self.stem,
+        )
+        originals = {path: Path(path).read_bytes() for path in paths}
+
+        def fail_display(path: str, text: str) -> None:
+            if path == self.display:
+                self.assertEqual(self.identities.read_text(), candidate)
+                raise OSError("identity bundle late failure")
+            write_text_atomic(path, text)
+
+        with mock.patch.object(identities, "prepare_identity_table", return_value=(candidate, [])):
+            with mock.patch("core.json_store.write_text_atomic", side_effect=fail_display):
+                with self.assertRaisesRegex(OSError, "identity bundle late failure"):
+                    self._run(["--refresh"])
+            for path, original in originals.items():
+                self.assertEqual(Path(path).read_bytes(), original)
+            self.assertEqual(self._run(["--refresh"]), 0)
+        self.assertEqual(self.identities.read_text(), candidate)
 
     def test_unserializable_rendered_json_fails_before_the_first_replacement(self) -> None:
         self.assertEqual(self._run([]), 0)
@@ -861,8 +938,8 @@ class ReviewedRepositoryPublicationTests(unittest.TestCase):
             for model_id, record in current.items()
             if "stem_waiver" in record
         }
-        self.assertEqual(len(current), 491)
-        self.assertEqual(len(declarations), 489)
+        self.assertEqual(len(current), 410)
+        self.assertEqual(len(declarations), 408)
         self.assertEqual(
             set(waivers),
             {
@@ -872,7 +949,7 @@ class ReviewedRepositoryPublicationTests(unittest.TestCase):
         )
         self.assertEqual(
             sum(len(declaration["contexts"]) for declaration in declarations.values()),
-            522,
+            433,
         )
 
         stem_lines = (root / "docs/model_stem_semantics_reference.tsv").read_text().splitlines()
@@ -880,7 +957,7 @@ class ReviewedRepositoryPublicationTests(unittest.TestCase):
         stem_rows = [
             dict(zip(stem_headers, line.split("\t"), strict=True)) for line in stem_lines[1:]
         ]
-        self.assertEqual(len(stem_rows), 1_253)
+        self.assertEqual(len(stem_rows), 1_057)
         self.assertEqual(
             {row["model_id"] for row in stem_rows if row["review_status"] == "raw"},
             set(),
@@ -891,7 +968,7 @@ class ReviewedRepositoryPublicationTests(unittest.TestCase):
         display_rows = [
             dict(zip(display_headers, line.split("\t"), strict=True)) for line in display_lines[1:]
         ]
-        self.assertEqual(len(display_rows), 491)
+        self.assertEqual(len(display_rows), 410)
         self.assertEqual(
             {row["canonical_id"] for row in display_rows if row["review_status"] == "unreviewed"},
             set(),

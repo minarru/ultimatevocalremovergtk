@@ -52,7 +52,10 @@ _COMPLEMENT_ONLY_NAMES = frozenset({"drum-bass", "no bass", "no drums", "no othe
 # Reviewed 2026-08-27 unified snapshot, including exact config evidence served
 # from the bundled manifest when live/cache bytes are unavailable.
 # September mvsepless review adds the distinct native spelling "back-instrum".
-_PINNED_EVIDENCE_COUNTS = (156, 124, 92)
+# Content dedupe then retires mvsepless's mdx23c_mid_side_wesleyr36 rehost,
+# the only source of the lowercase "difference"/"similarity" spellings; the
+# kept Politrees copy spells them "Difference"/"Similarity".
+_PINNED_EVIDENCE_COUNTS = (154, 124, 92)
 
 
 _REVIEWED_VOCAL_SPLIT_IDS = frozenset(

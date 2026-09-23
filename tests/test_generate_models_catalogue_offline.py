@@ -553,7 +553,14 @@ class CoordinatorRefreshTests(unittest.TestCase):
         import tempfile
         from unittest import mock
 
-        seen: dict = {}
+        from core.catalogue_coordinator import CatalogueCoordinator
+
+        isolated = CatalogueCoordinator(
+            sources={source_id: fixtures._local(source_id, {}) for source_id in SourceId}
+        )
+        self.addCleanup(isolated.close)
+        snapshot = isolated.ensure(allow_network=False)
+        seen: dict = {"calls": 0}
 
         def spy(
             *,
@@ -562,20 +569,28 @@ class CoordinatorRefreshTests(unittest.TestCase):
             refresh: bool = False,
             policy: Any = None,
         ) -> Any:
+            seen["calls"] += 1
             seen["refresh"] = refresh
             seen["policy"] = policy
-            return mock.MagicMock(unsupported=None, report=None), ({}, {}, {}, {})
+            return snapshot, ({}, {}, {}, {})
 
         with tempfile.TemporaryDirectory() as tmp:
             out = os.path.join(tmp, "out.md")
             with (
                 mock.patch.object(cli, "OUTPUT_PATH", out),
                 mock.patch.object(
+                    cli, "CHECKPOINT_IDENTITIES_PATH", os.path.join(tmp, "identities.json")
+                ),
+                mock.patch.object(
                     catalogue,
                     "_build_catalogue_context",
                     lambda **k: catalogue_types.CatalogueContext(),
                 ),
                 mock.patch.object(catalogue, "_snapshot_and_payloads", spy),
+                mock.patch.object(catalogue, "_entries_from_snapshot", return_value=[]),
+                mock.patch.object(
+                    cli.catalogue_identities, "fetch_content_ids", return_value=({}, [])
+                ),
                 mock.patch.object(
                     cli,
                     "_publication_verdict",
@@ -586,6 +601,8 @@ class CoordinatorRefreshTests(unittest.TestCase):
                 cli.main(["--refresh"])
         self.assertTrue(seen.get("refresh"))
         self.assertTrue(seen["policy"].allow_cache_writes)
+
+        self.assertEqual(seen["calls"], 1)
 
 
 class OfflineYamlCacheTests(unittest.TestCase):

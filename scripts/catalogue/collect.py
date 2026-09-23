@@ -7,9 +7,9 @@ the one collection path."""
 from __future__ import annotations
 
 import os
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import datetime, timezone
-from typing import AbstractSet, Any, Dict, List, Mapping, Optional, Tuple
+from typing import AbstractSet, Any, Callable, Dict, List, Mapping, Optional, Tuple
 
 from catalogue import cache, config_evidence, locations
 
@@ -52,6 +52,9 @@ from catalogue.types import ReviewedResultProjection as ReviewedResultProjection
 from core.access_policy import AccessPolicy, access_policy
 from core.catalogue_coordinator import (
     CatalogueCoordinator,
+    CatalogueSnapshot,
+    _identity_digest,
+    _readonly_catalogue,
     flatten_upstream_lists,
     yaml_basename_from_ref,
 )
@@ -541,6 +544,46 @@ def _entries_from_snapshot(
     return all_entries
 
 
+def snapshot_with_content_ids(
+    snapshot: CatalogueSnapshot,
+    payloads: Tuple[dict, dict, dict, dict],
+    content_ids: Mapping[str, str],
+) -> CatalogueSnapshot:
+    """Reproject the acquired sources with staged identities, without fetching again."""
+    from core.catalog_dedupe import dedupe_download_catalogue
+    from core.mvsepless_catalog import convert_mvsepless_catalog, unsupported_mvsepless_downloads
+
+    catalogues = {
+        family: _readonly_catalogue(
+            dedupe_download_catalogue(
+                getattr(snapshot, f"pre_dedupe_{family}"),
+                demucs_bags=family == "demucs",
+                content_ids=content_ids,
+            )
+        )
+        for family in ("vr", "mdx", "demucs", "apollo")
+    }
+    raw = payloads[3]
+    converted = (
+        raw
+        if "unsupported" in raw or "mdx_download_list" in raw
+        else convert_mvsepless_catalog(raw)
+    )
+    existing = {label: model for rows in catalogues.values() for label, model in rows.items()}
+    unsupported = unsupported_mvsepless_downloads(
+        converted=converted, existing_labels=existing, allow_network=False
+    )
+    return replace(
+        snapshot,
+        revision=replace(snapshot.revision, identity=_identity_digest(content_ids)),
+        unsupported=_readonly_catalogue(unsupported),
+        vr=catalogues["vr"],
+        mdx=catalogues["mdx"],
+        demucs=catalogues["demucs"],
+        apollo=catalogues["apollo"],
+    )
+
+
 def collect_entries(
     ctx: CatalogueContext,
     *,
@@ -552,6 +595,7 @@ def collect_entries(
     reviewed_non_config_ids: Optional[AbstractSet[str]] = None,
     presentation: Optional[Mapping[str, Any]] = None,
     manifest_records: Optional[Mapping[str, UnifiedModelRecord]] = None,
+    prepare_snapshot: Optional[Callable[[Any, Tuple[dict, dict, dict, dict]], Any]] = None,
 ) -> Tuple[Any, List[ModelEntry]]:
     """Acquire a snapshot and turn it into entries. The one collection path.
 
@@ -574,6 +618,8 @@ def collect_entries(
         coordinator=coordinator,
         policy=policy,
     )
+    if prepare_snapshot is not None:
+        snapshot = prepare_snapshot(snapshot, payloads)
     entries = _entries_from_snapshot(
         snapshot,
         payloads,

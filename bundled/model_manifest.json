@@ -3520,7 +3520,7 @@
         "primary_artifact": "bs_6stem_fixed.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -3837,7 +3837,7 @@
         "primary_artifact": "bs_deverb_384_10_anvuew.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -4179,7 +4179,7 @@
         "source": "mvsepless"
       },
       "display_alias": "BandSplit Roformer \u2014 Instrumental EXP Value Residual \u00b7 Unwa",
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -4213,7 +4213,7 @@
         "primary_artifact": "bs_inst_fno_unwa.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -4247,7 +4247,7 @@
         "primary_artifact": "bs_inst_hyperace2_unwa.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -4281,7 +4281,7 @@
         "primary_artifact": "bs_inst_hyperace_unwa.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -4516,7 +4516,7 @@
         "source": "mvsepless"
       },
       "display_alias": "BandSplit Roformer \u2014 Karaoke \u00b7 Becruily & Frazer",
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -4994,7 +4994,7 @@
         "primary_artifact": "bs_male_female_267_sucial.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -7341,7 +7341,7 @@
         "primary_artifact": "bs_other_viperx.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -7785,7 +7785,7 @@
         "primary_artifact": "bs_resurrection_inst_unwa.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -7819,7 +7819,7 @@
         "primary_artifact": "bs_resurrection_unwa.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -7853,7 +7853,7 @@
         "primary_artifact": "bs_revive1_unwa.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -7887,7 +7887,7 @@
         "primary_artifact": "bs_revive2_unwa.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -7921,7 +7921,7 @@
         "primary_artifact": "bs_revive3e_unwa.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -8330,7 +8330,7 @@
         "primary_artifact": "bs_voc_hyperace2_unwa.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -8432,7 +8432,7 @@
         "primary_artifact": "bs_vocals_1296_viperx.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -8466,7 +8466,7 @@
         "primary_artifact": "bs_vocals_1297_viperx.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -8602,7 +8602,7 @@
         "primary_artifact": "bs_voctest_gabox.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -9730,7 +9730,7 @@
         "source": "mvsepless"
       },
       "display_alias": "MelBand Roformer \u2014 Large (4 Stems) \u00b7 Aname",
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -9818,7 +9818,7 @@
         "source": "mvsepless"
       },
       "display_alias": "MelBand Roformer \u2014 XL (4 Stems) \u00b7 Aname",
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -10031,7 +10031,7 @@
         "primary_artifact": "mbr_bigbeta4_unwa.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -10065,7 +10065,7 @@
         "primary_artifact": "mbr_bigbeta5e_unwa.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -10099,7 +10099,7 @@
         "primary_artifact": "mbr_bigbeta6_unwa.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -10133,7 +10133,7 @@
         "primary_artifact": "mbr_bigbeta6x_unwa.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -10201,7 +10201,7 @@
         "primary_artifact": "mbr_bigsyhft1fast.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -10236,7 +10236,7 @@
         "source": "mvsepless"
       },
       "display_alias": "MelBand Roformer \u2014 Karaoke BVE \u00b7 Gonzaluigi",
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -10287,7 +10287,7 @@
         "primary_artifact": "mbr_debigreverb_sucial.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -10321,7 +10321,7 @@
         "primary_artifact": "mbr_denoise_aggr_aufr33.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -10390,7 +10390,7 @@
         "primary_artifact": "mbr_denoise_debleed_gabox.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -10458,7 +10458,7 @@
         "primary_artifact": "mbr_desuperbigreverb_sucial.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -10834,7 +10834,7 @@
         "primary_artifact": "mbr_inst1_unwa.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -10868,7 +10868,7 @@
         "primary_artifact": "mbr_inst1e+_unwa.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -10902,7 +10902,7 @@
         "primary_artifact": "mbr_inst1e_unwa.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -10960,7 +10960,7 @@
           ]
         }
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "runtime_contract": {
         "artifact_evidence": [
           {
@@ -11130,7 +11130,7 @@
         "primary_artifact": "mbr_inst_metal_prev_meskvlla33.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -11198,7 +11198,7 @@
         "primary_artifact": "mbr_instbv1_gabox.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -11232,7 +11232,7 @@
         "primary_artifact": "mbr_instbv2_gabox.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -11368,7 +11368,7 @@
         "primary_artifact": "mbr_instfv1_gabox.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -11402,7 +11402,7 @@
         "primary_artifact": "mbr_instfv2_gabox.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -11436,7 +11436,7 @@
         "primary_artifact": "mbr_instfv3_gabox.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -11504,7 +11504,7 @@
         "primary_artifact": "mbr_instfv4n_gabox.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -11538,7 +11538,7 @@
         "primary_artifact": "mbr_instfv5_gabox.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -11572,7 +11572,7 @@
         "primary_artifact": "mbr_instfv5n_gabox.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -11606,7 +11606,7 @@
         "primary_artifact": "mbr_instfv6_gabox.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -11640,7 +11640,7 @@
         "primary_artifact": "mbr_instfv6n_gabox.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -11708,7 +11708,7 @@
         "primary_artifact": "mbr_instfv7_gabox.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -11742,7 +11742,7 @@
         "primary_artifact": "mbr_instfv7n_gabox.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -11810,7 +11810,7 @@
         "primary_artifact": "mbr_instfv8_gabox.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -11956,7 +11956,7 @@
         "primary_artifact": "mbr_instfvx_gabox.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -11990,7 +11990,7 @@
         "primary_artifact": "mbr_instvoc_duality1_unwa.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -12023,7 +12023,7 @@
         "primary_artifact": "mbr_instvoc_duality2_unwa.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -12104,7 +12104,7 @@
         "primary_artifact": "mbr_karaoke1_gabox.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -12268,7 +12268,7 @@
         "primary_artifact": "mbr_karaoke28022025_gabox.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -12376,7 +12376,7 @@
         "near-duplicate-author": "Gonzaluigi is a reviewed distinct attribution from Gonza.",
         "underscore": "The underscore is part of the reviewed bracketed backend ID retained for collision safety."
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -12433,7 +12433,7 @@
         "near-duplicate-author": "Gonzaluigi is a reviewed distinct attribution from Gonza.",
         "underscore": "The underscore is part of the reviewed bracketed backend ID retained for collision safety."
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -12484,7 +12484,7 @@
         "primary_artifact": "mbr_karaoke_fusion_gonzaluigi.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -12535,7 +12535,7 @@
         "primary_artifact": "mbr_karaoke_fusion_total_aggr_gonzaluigi.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -12637,7 +12637,7 @@
         "primary_artifact": "mbr_kimft1_aname.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -12671,7 +12671,7 @@
         "primary_artifact": "mbr_kimft1_unwa.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -12705,7 +12705,7 @@
         "primary_artifact": "mbr_kimft2_aname.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -12739,7 +12739,7 @@
         "primary_artifact": "mbr_kimft2f_aname.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -12773,7 +12773,7 @@
         "primary_artifact": "mbr_kimft3_aname.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -13226,7 +13226,7 @@
         "primary_artifact": "mbr_syhft1.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -13260,7 +13260,7 @@
         "primary_artifact": "mbr_syhft2.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -13294,7 +13294,7 @@
         "primary_artifact": "mbr_syhft2.5.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -13328,7 +13328,7 @@
         "primary_artifact": "mbr_syhft3.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -13532,7 +13532,7 @@
         "primary_artifact": "mbr_vocals_viperx.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -13600,7 +13600,7 @@
         "primary_artifact": "mbr_vocalsfv1_gabox.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -13634,7 +13634,7 @@
         "primary_artifact": "mbr_vocalsfv2_gabox.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -13668,7 +13668,7 @@
         "primary_artifact": "mbr_vocalsfv3_gabox.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -13736,7 +13736,7 @@
         "primary_artifact": "mbr_vocalsfv5_gabox.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -13770,7 +13770,7 @@
         "primary_artifact": "mbr_vocalsfv6_gabox.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -14203,7 +14203,7 @@
         "primary_artifact": "mdx23c_drumsep_6stem_aufr33_jarredou.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -14256,7 +14256,7 @@
         "primary_artifact": "mdx23c_instvoc_hq1.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -14289,7 +14289,7 @@
         "primary_artifact": "mdx23c_instvoc_hq2.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -14322,7 +14322,7 @@
         "primary_artifact": "mdx23c_instvoc_zfturbo.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -14422,7 +14422,7 @@
         "primary_artifact": "mdx23c_mid_side_wesleyr36.ckpt",
         "source": "mvsepless"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -15168,7 +15168,7 @@
         "primary_artifact": "mel_band_roformer_inst_v1_gabox.ckpt",
         "source": "Politrees"
       },
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -17722,7 +17722,7 @@
         "source": "mvsepless"
       },
       "display_alias": "SCNet (4 Stems) \u00b7 ZFTurbo",
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -18221,7 +18221,7 @@
         "source": "mvsepless"
       },
       "display_alias": "SCNet \u2014 XL (4 Stems) \u00b7 StarryTong",
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {
@@ -18265,7 +18265,7 @@
         "source": "mvsepless"
       },
       "display_alias": "SCNet \u2014 XL (4 Stems) \u00b7 ZFTurbo",
-      "lifecycle": "current",
+      "lifecycle": "retired",
       "stem_semantics": {
         "contexts": {
           "full_mix": {

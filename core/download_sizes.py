@@ -12,7 +12,7 @@ import urllib.error
 import urllib.request
 from collections import defaultdict
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
-from typing import Callable, Dict, Iterable, List, Optional, Tuple
+from typing import Callable, Dict, Iterable, List, Mapping, Optional, Tuple
 
 from . import paths
 from .access_policy import current_access_policy
@@ -334,12 +334,26 @@ def content_ids_from_cache(urls: Iterable[str]) -> Dict[str, str]:
 
     Ordinary/weak HTTP ETags and Last-Modified are validators only and never
     cross-URL-dedupe. Hugging Face ``X-Linked-Etag`` values are stored as
-    ``content_id`` and are the only ids returned here.
+    ``content_id`` and are the only cached ids returned here.
     """
     return trusted_content_ids_from_cache(urls)
 
 
-def trusted_content_ids_from_cache(urls: Iterable[str]) -> Dict[str, str]:
+def trusted_content_ids_from_cache(
+    urls: Iterable[str], *, bundled_content_ids: Optional[Mapping[str, str]] = None
+) -> Dict[str, str]:
+    """Bundled checkpoint SHA-256s, overridden by any live cached content id.
+
+    The bundled table makes dedupe reproducible before the cache warms; the
+    live id wins so a file replaced at the same URL is judged by its bytes.
+    """
+    from .checkpoint_identities import load_checkpoint_identities
+
+    bundled = (
+        load_checkpoint_identities().content_ids
+        if bundled_content_ids is None
+        else bundled_content_ids
+    )
     payload = _read_cache()
     out: Dict[str, str] = {}
     for url in urls:
@@ -349,11 +363,11 @@ def trusted_content_ids_from_cache(urls: Iterable[str]) -> Dict[str, str]:
         entry = payload.get(key)
         if not isinstance(entry, dict):
             entry = payload.get(url)
-        if not isinstance(entry, dict):
-            continue
-        content_id = entry.get("content_id")
+        content_id = entry.get("content_id") if isinstance(entry, dict) else None
         if isinstance(content_id, str) and content_id:
             out[key] = content_id
+        elif key in bundled:
+            out[key] = bundled[key]
     return out
 
 
@@ -372,6 +386,9 @@ def prefetch_same_size_identity(urls: Iterable[str]) -> Dict[str, int]:
         seen.add(url)
         unique.append(url)
 
+    from .checkpoint_identities import load_checkpoint_identities
+
+    bundled = load_checkpoint_identities().content_ids
     payload = _read_cache()
     now = time.time()
     by_size: Dict[int, List[str]] = defaultdict(list)
@@ -393,12 +410,20 @@ def prefetch_same_size_identity(urls: Iterable[str]) -> Dict[str, int]:
         fetched_at_by_url[url] = float(stamp) if isinstance(stamp, (int, float)) else 0.0
         by_size[size].append(url)
 
+    # A bundled identity still counts toward its size cohort, so a new rehost
+    # of a known checkpoint gets probed, but it never needs a HEAD itself.
+    candidates = [
+        url
+        for cohort in by_size.values()
+        if len(cohort) > 1
+        for url in cohort
+        if (normalize_checkpoint_url(url) or url) not in bundled
+    ]
     # Oldest first, not alphabetical: a URL whose host never returns an ETag
     # stays in the cohort forever, and ordering by URL would let the same
     # early-sorting few block the tail on every pass. A HEAD refreshes
     # fetched_at even when no etag comes back, so tried URLs rotate to the
     # back and the window advances by itself.
-    candidates = [url for cohort in by_size.values() if len(cohort) > 1 for url in cohort]
     candidates.sort(key=lambda url: (fetched_at_by_url.get(url, 0.0), url))
     capped = len(candidates) > _IDENTITY_HEAD_CAP
     targets = candidates[:_IDENTITY_HEAD_CAP] if capped else candidates
@@ -456,23 +481,49 @@ def prefetch_same_size_identity(urls: Iterable[str]) -> Dict[str, int]:
     }
 
 
+class _LinkedHeaderRedirect(urllib.request.HTTPRedirectHandler):
+    """Follow redirects while keeping the first hop's ``X-Linked-*`` headers.
+
+    Hugging Face answers a ``resolve/`` HEAD with a 302 that carries the LFS
+    SHA-256 (``X-Linked-Etag``) and size; the CDN response it redirects to
+    has neither, so reading only the final headers loses the content id.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.linked_etag: Optional[str] = None
+        self.linked_size: Optional[str] = None
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[override]
+        if self.linked_etag is None:
+            self.linked_etag = headers.get("X-Linked-Etag")
+        if self.linked_size is None:
+            self.linked_size = headers.get("X-Linked-Size")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
 def _head_remote_meta(
     url: str,
 ) -> Tuple[Optional[int], Optional[str], Optional[str]]:
     """Return ``(content_length, validator, content_id)`` from a HEAD request.
 
-    ``content_id`` is set only for Hugging Face ``X-Linked-Etag``. Ordinary
-    and weak ETags remain URL-scoped validators.
+    ``content_id`` is set only for Hugging Face ``X-Linked-Etag``, read from
+    the final response or, more usually, the redirect that led to it.
+    Ordinary and weak ETags remain URL-scoped validators.
     """
     request = urllib.request.Request(url, method="HEAD")
+    redirects = _LinkedHeaderRedirect()
+    opener = urllib.request.build_opener(
+        urllib.request.HTTPSHandler(context=_ssl_context()), redirects
+    )
     try:
-        with urllib.request.urlopen(
-            request, context=_ssl_context(), timeout=_TIMEOUT_SECONDS
-        ) as response:
+        with opener.open(request, timeout=_TIMEOUT_SECONDS) as response:
             size = _parse_content_length(
-                response.getheader("X-Linked-Size") or response.getheader("Content-Length")
+                response.getheader("X-Linked-Size")
+                or redirects.linked_size
+                or response.getheader("Content-Length")
             )
-            linked = response.getheader("X-Linked-Etag")
+            linked = response.getheader("X-Linked-Etag") or redirects.linked_etag
             raw_etag = response.getheader("ETag")
             validator = _parse_etag(raw_etag) or (str(raw_etag).strip() if raw_etag else None)
             content_id = _parse_etag(linked) if linked else None
