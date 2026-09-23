@@ -71,7 +71,7 @@ opencv-python==4.13.0.92
 packaging==26.2
 pandas==3.0.4
 patsy==1.0.2
-pillow==12.2.0
+pillow==12.3.0
 platformdirs==4.10.0
 pooch==1.9.0
 PoPE-pytorch==0.2.1
@@ -101,7 +101,7 @@ soxr==1.1.0
 statsmodels==0.14.6
 sympy==1.14.0
 threadpoolctl==3.6.0
-torch==2.12.1
+torch==2.13.0
 torch-einops-utils==0.1.15
 torchmetrics==1.9.0
 torchvision==0.27.1
