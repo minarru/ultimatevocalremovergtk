@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from contextlib import ExitStack
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -56,34 +57,44 @@ class RunFilePositionTests(unittest.TestCase):
                         console: list[str] = []
                         progress = Mock()
                         errors = Mock()
-                        with (
-                            patch("core.job_runner.import_separate_engines"),
-                            patch.object(runner, "_prepare_paths_for_run", return_value=[audio]),
-                            patch.object(runner, "_build_all_models"),
-                            patch.object(runner, "_set_run_protect_identities"),
-                            patch.object(runner, "_ensure_vram_for_job"),
-                            patch.object(
-                                runner, "_count_true_models", return_value=len(runner._run_models)
-                            ),
-                            patch.object(runner, "_build_separator"),
-                            patch("core.job_runner.run_hooks._SingleRunHooks", return_value=hooks),
-                            patch(
-                                "core.job_runner.run_hooks._EnsembleRunHooks", return_value=hooks
-                            ),
-                            patch(
-                                "core.job_runner.Ensembler",
-                                return_value=SimpleNamespace(ensemble_folder_name=tmp),
-                            ),
-                            patch(
-                                "core.run_loop._decoded_mix_for_process",
-                                return_value=np.zeros((2, 8), dtype=np.float32),
-                            ),
-                            patch("core.run_loop.display_name_for_model", return_value="model"),
-                            patch("core.run_loop.snapshot_worker_file"),
-                            patch("core.run_loop.run_separator", return_value={}),
-                            patch("core.run_loop._release_inference_resources"),
-                            patch("engines.gpu_cache.clear_gpu_cache"),
-                        ):
+                        with ExitStack() as stack:
+                            patches = (
+                                patch("core.job_runner.import_separate_engines"),
+                                patch.object(
+                                    runner, "_prepare_paths_for_run", return_value=[audio]
+                                ),
+                                patch.object(runner, "_build_all_models"),
+                                patch.object(runner, "_set_run_protect_identities"),
+                                patch.object(runner, "_ensure_vram_for_job"),
+                                patch.object(
+                                    runner,
+                                    "_count_true_models",
+                                    return_value=len(runner._run_models),
+                                ),
+                                patch.object(runner, "_build_separator"),
+                                patch(
+                                    "core.job_runner.run_hooks._SingleRunHooks", return_value=hooks
+                                ),
+                                patch(
+                                    "core.job_runner.run_hooks._EnsembleRunHooks",
+                                    return_value=hooks,
+                                ),
+                                patch(
+                                    "core.job_runner.Ensembler",
+                                    return_value=SimpleNamespace(ensemble_folder_name=tmp),
+                                ),
+                                patch(
+                                    "core.run_loop._decoded_mix_for_process",
+                                    return_value=np.zeros((2, 8), dtype=np.float32),
+                                ),
+                                patch("core.run_loop.display_name_for_model", return_value="model"),
+                                patch("core.run_loop.snapshot_worker_file"),
+                                patch("core.run_loop.run_separator", return_value={}),
+                                patch("core.run_loop._release_inference_resources"),
+                                patch("engines.gpu_cache.clear_gpu_cache"),
+                            )
+                            for patcher in patches:
+                                stack.enter_context(patcher)
                             model.process_method = "MDX-Net"
                             model.model_name = "model"
                             model.repo = None
