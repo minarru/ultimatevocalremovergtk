@@ -260,22 +260,27 @@ class RunTerminalUiTests(unittest.TestCase):
         self.complete_toast.assert_not_called()
 
     def test_forced_stop_cleanup_restores_controls_without_worker_callback(self) -> None:
+        from tests.test_run_lifecycle import Scheduler
+
         self._begin()
         self.target.worker_is_running.return_value = True
         lifecycle = self.controller.shutdown
+        # Timer IDs and their cancellation must share the fake scheduler.
+        # A bare timeout_add mock becomes integer 1 in GLib.source_remove,
+        # deleting the X11 display event source for every later GTK test.
+        lifecycle.scheduler = Scheduler()
         with mock.patch.object(lifecycle, "release") as release:
-            with mock.patch.object(lifecycle.scheduler, "timeout_add"):
-                self.controller._confirm_stop(self.target)
-                lifecycle.cleanup_attempts = 79
-                self.assertFalse(lifecycle.poll_inference_cleanup())
-                release.assert_called_once()
-                self.assertTrue(release.call_args.kwargs["force_if_alive"])
-                self.assertFalse(self.window.start_button.get_sensitive())
-                self.assertTrue(self.controller.is_running())
-                # A forced KThread exit can omit the normal stopped callback.
-                # The coordinator must recover only after cleanup and exit.
-                self.target.worker_is_running.return_value = False
-                release.call_args.kwargs["on_done"]()
+            self.controller._confirm_stop(self.target)
+            lifecycle.cleanup_attempts = 79
+            self.assertFalse(lifecycle.poll_inference_cleanup())
+            release.assert_called_once()
+            self.assertTrue(release.call_args.kwargs["force_if_alive"])
+            self.assertFalse(self.window.start_button.get_sensitive())
+            self.assertTrue(self.controller.is_running())
+            # A forced KThread exit can omit the normal stopped callback.
+            # The coordinator must recover only after cleanup and exit.
+            self.target.worker_is_running.return_value = False
+            release.call_args.kwargs["on_done"]()
         self.assertFalse(self.controller.is_running())
         self.assertIsNone(self.controller._running_target)
         self.assertIsNone(lifecycle.cleanup_target)
