@@ -1,4 +1,15 @@
-Most Recent Changes (v1.2.0 — Linux GTK4 port):
+Most Recent Changes (v1.3.0 — Linux GTK4 port):
+
+~ Redesigned Separation, Ensemble, Preferences, and the processing log with clearer stem choices, responsive controls, explicit processing phases, and improved run recovery.
+~ Reduced startup work and deferred engine warmup until after the first frame.
+~ Added ensemble blending controls, Chunk Min, and pair-consistent output with an optional complement derived from the original mix. Saved recipes retain these choices.
+~ Added CLI reference scoring for saved model and ensemble outputs; see docs/scoring.md for preparation, evaluation, and comparison workflows.
+~ Added purpose-based browsing in Download Center, improved download queue details, and updated reviewed model configurations and stem roles.
+~ Made cross-source catalogue deduplication reproducible with bundled checkpoint identities, preferring Politrees over duplicate mvsepless entries while preserving metadata for installed copies.
+~ Fixed ensemble preset notification loops, conflicting member handling, stem readiness and export routing, staged CLI output validation, and batch file positions.
+~ Hardened output promotion and configuration downloads, and expanded isolated GTK, catalogue, CLI, and type-checking coverage.
+
+Previous Release (v1.2.0 — Linux GTK4 port):
 
 ~ Added Opus export (.opus via libopus). Quality is a VBR target (64k–256k, default 192k) and ffmpeg resamples to 48 kHz.
 ~ Changed the default save format for new installs and missing settings to 16-bit FLAC. Existing settings.json values are left unchanged.
