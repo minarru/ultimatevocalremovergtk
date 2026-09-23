@@ -13,9 +13,7 @@ def _rec(model_id: str, basename: str, *, installed: bool = True, display: str =
         basename=basename,
         display=display or basename,
         backend_name=basename,
-        artifacts=ModelArtifacts(
-            f"{basename}.ckpt" if family == "mdx" else f"{basename}.pth"
-        ),
+        artifacts=ModelArtifacts(f"{basename}.ckpt" if family == "mdx" else f"{basename}.pth"),
         installed=installed,
     )
 
@@ -86,10 +84,13 @@ class CatalogueDuplicateTests(unittest.TestCase):
         from core.model_identity import ModelIdentityService
 
         svc = ModelIdentityService(self._Repo(installed, catalogue))
-        with patch(
-            "core.model_display.map_basenames_to_display",
-            side_effect=lambda names, *a, **k: list(names),
-        ), patch("core.apollo.list_apollo_models", return_value=[]):
+        with (
+            patch(
+                "core.model_display.map_basenames_to_display",
+                side_effect=lambda names, *a, **k: list(names),
+            ),
+            patch("core.apollo.list_apollo_models", return_value=[]),
+        ):
             return [r for r in svc.records() if r.family == "mdx"]
 
     def test_a_case_variant_catalogue_label_is_dropped(self) -> None:
@@ -102,9 +103,7 @@ class CatalogueDuplicateTests(unittest.TestCase):
 
     def test_a_genuinely_different_catalogue_model_is_kept(self) -> None:
         records = self._records(["mdx23c_d1581"], {"Some_Other": "Some Other"})
-        self.assertEqual(
-            sorted(r.id for r in records), ["mdx:Some_Other", "mdx:mdx23c_d1581"]
-        )
+        self.assertEqual(sorted(r.id for r in records), ["mdx:Some_Other", "mdx:mdx23c_d1581"])
 
     def test_an_exact_case_match_still_defers_to_installed(self) -> None:
         records = self._records(["mdx23c_d1581"], {"mdx23c_d1581": "Catalogue Name"})

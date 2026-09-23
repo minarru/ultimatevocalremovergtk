@@ -1,0 +1,32 @@
+using Gtk 4.0;
+using Adw 1;
+
+template $VocalSplitRow: Adw.ExpanderRow {
+  title: "Vocal splitter and deverb";
+
+  Adw.SwitchRow split_switch {
+    title: "Enable vocal split mode";
+  }
+
+  Adw.ComboRow splitter_row {
+    title: "Vocal splitter model";
+  }
+
+  Adw.ActionRow splitter_warning_row {
+    title: "Saved model unavailable";
+    visible: false;
+    subtitle-lines: 0;
+  }
+
+  Adw.SwitchRow save_inst_switch {
+    title: "Save split vocal instrumentals";
+  }
+
+  Adw.SwitchRow deverb_switch {
+    title: "Deverb vocals";
+  }
+
+  Adw.ComboRow deverb_row {
+    title: "Deverb vocal type";
+  }
+}

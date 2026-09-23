@@ -1,0 +1,8 @@
+{
+  "description": "Deterministic complex stereo spectra; accepted Max/Hybrid from frozen B, Min/Soft/Median/Max-average-phase from frozen A. Equal weights. No production code under test generated the expected values.",
+  "seed": 5013,
+  "source_sha256": {
+    "A/spec_utils.py": "dea663a4792b065bb6cec9649d0291d3d3e44aba0ab76f1f47e352cb3c48b19a",
+    "B/ensemble_spectral.py": "e77915c73ed89f9787dedd418881d811d9ac868abf7fac715dd5b8a5bfa3846d"
+  }
+}

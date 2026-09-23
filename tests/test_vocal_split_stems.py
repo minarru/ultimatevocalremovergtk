@@ -14,6 +14,7 @@ from bundled.constants import (
     BV_VOCAL_STEM,
     INST_STEM,
     LEAD_VOCAL_STEM,
+    MDX_ARCH_TYPE,
     VOCAL_STEM,
 )
 from core.model_stem_semantics import (
@@ -62,6 +63,7 @@ def _semantic_model(
     from types import SimpleNamespace
 
     return SimpleNamespace(
+        process_method=MDX_ARCH_TYPE,
         canonical_id=canonical_id,
         mdx_model_stems=native_stems,
         demucs_source_list=[],
@@ -931,7 +933,7 @@ class MdxcVocalSplitSourceTests(unittest.TestCase):
                 "engines.mdx_c_engine.prepare_mix", return_value=np.ones((2, 441), dtype=np.float32)
             ),
             patch(
-                "engines.mdx_c_engine.librosa.resample",
+                "engines.mdx_c_runtime.librosa.resample",
                 side_effect=lambda audio, *, orig_sr, target_sr, axis: np.ones(
                     (2, 480 if target_sr == 48000 else 441), dtype=np.float32
                 ),

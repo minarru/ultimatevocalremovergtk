@@ -22,6 +22,7 @@ from .discovery import (
 from .ensemble import add_ensemble_args, cmd_ensemble
 from .replay import add_run_args, cmd_run
 from .reporting import REPORT_CHOICES, ensure_job_id, fail
+from .score import add_score_parser
 from .separate import add_separate_args, cmd_separate
 from .update import add_update_parser
 from .validate import add_validation_level, cmd_validate
@@ -99,7 +100,9 @@ def build_parser() -> argparse.ArgumentParser:
     run.set_defaults(func=cmd_run)
 
     validate = sub.add_parser("validate", help="Validate a job without inference")
-    validate_sub = validate.add_subparsers(dest="validation_command", required=True, parser_class=UvrArgumentParser)
+    validate_sub = validate.add_subparsers(
+        dest="validation_command", required=True, parser_class=UvrArgumentParser
+    )
     validate_separate = validate_sub.add_parser("separate")
     add_separate_args(validate_separate)
     add_validation_level(validate_separate)
@@ -114,6 +117,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_bench_args(bench)
     bench.set_defaults(func=cmd_bench)
 
+    add_score_parser(sub)
     add_models_parser(sub)
     add_ensembles_parser(sub)
     add_devices_parser(sub)
@@ -150,13 +154,10 @@ def _configure_diagnostics(args: argparse.Namespace) -> None:
         level = None
     include_sensitive = (
         True
-        if getattr(args, "debug_sensitive", False)
-        or getattr(args, "global_debug_sensitive", False)
+        if getattr(args, "debug_sensitive", False) or getattr(args, "global_debug_sensitive", False)
         else None
     )
-    log_file = getattr(args, "log_file", None) or getattr(
-        args, "global_log_file", None
-    )
+    log_file = getattr(args, "log_file", None) or getattr(args, "global_log_file", None)
     configure_from_settings(
         Settings.load(),
         level=level,

@@ -51,6 +51,7 @@ class DemucsView(MethodView):
     title = "Demucs"
     secondary_prefix = "demucs"
     has_preproc = True
+    layout_name = "demucs_method"
     # Demucs has its own pair of stem-only keys on the main window.
     primary_only_key = "is_primary_stem_only_Demucs"
     secondary_only_key = "is_secondary_stem_only_Demucs"
@@ -62,10 +63,14 @@ class DemucsView(MethodView):
         return self.context.repo.demucs_name_select_MAPPER
 
     def build_options(self, group: typing.Any):
-        self.identity_banner = Adw.Banner(revealed=False)
-        group.add(self.identity_banner)
+        self.identity_banner = self._layout_object("identity_banner", Adw.Banner)
         self.add_option_scale(
-            group, "segment", "Segment", values=DEMUCS_SEGMENTS, hint=SEGMENT_HELP
+            group,
+            "segment",
+            None,
+            values=DEMUCS_SEGMENTS,
+            hint=SEGMENT_HELP,
+            row=self._layout_object("segment_row", Adw.ActionRow),
         )
 
     def _on_model_resolved(self, model: typing.Any) -> None:
@@ -120,21 +125,35 @@ class DemucsView(MethodView):
         super().save_options()
 
     def build_advanced(self, group: typing.Any):
-        self.add_advanced_scale(
+        self.add_option_scale(
+            group,
             "shifts",
-            "Shifts",
+            None,
             lower=min(DEMUCS_SHIFTS),
             upper=max(DEMUCS_SHIFTS),
             step=1,
             hint=SHIFTS_HELP,
+            row=self._layout_object("shifts_row", Adw.ActionRow),
         )
-        self.add_advanced_scale(
+        self.add_option_scale(
+            group,
             "overlap",
-            "Overlap",
+            None,
             values=[str(v) for v in DEMUCS_OVERLAP],
             hint=OVERLAP_HELP,
+            row=self._layout_object("overlap_row", Adw.ActionRow),
         )
-        self.add_advanced_switch("is_split_mode", "Split mode", hint=IS_SPLIT_MODE_HELP)
-        self.add_advanced_switch(
-            "is_demucs_combine_stems", "Combine stems", hint=IS_DEMUCS_COMBINE_STEMS_HELP
+        self.add_option_switch(
+            group,
+            "is_split_mode",
+            None,
+            hint=IS_SPLIT_MODE_HELP,
+            row=self._layout_object("is_split_mode_row", Adw.SwitchRow),
+        )
+        self.add_option_switch(
+            group,
+            "is_demucs_combine_stems",
+            None,
+            hint=IS_DEMUCS_COMBINE_STEMS_HELP,
+            row=self._layout_object("is_demucs_combine_stems_row", Adw.SwitchRow),
         )

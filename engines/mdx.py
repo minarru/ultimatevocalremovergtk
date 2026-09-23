@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import typing
-import warnings
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -55,10 +54,8 @@ def _is_batch_oom(exc: BaseException) -> bool:
 
 
 cpu = torch.device('cpu')
-warnings.filterwarnings("ignore")
 
-# Keep this import after warning suppression: the module emits import-time
-# warnings that the engine has historically filtered before model setup.
+# Preserve the existing engine/vendor import order during preload.
 from ml.tfc_tdf_v3 import STFT  # noqa: E402
 
 
@@ -77,6 +74,19 @@ class SeperateMDX(SeperateAttributes):
                 "separate", "seperate", engine="SeperateMDX", model=self.model_display_label
             ):
                 self.start_inference_console_write()
+                use_ort = (
+                    not self.is_mdx_ckpt
+                    and self.mdx_segment_size == self.dim_t
+                    and not self.is_other_gpu
+                )
+                if use_ort:
+                    from engines.amp_runtime import autocast_enabled
+
+                    if autocast_enabled(self.settings):
+                        self.write_to_console(
+                            "Note: FP16 autocast has no effect on this ONNX Runtime "
+                            "model; it only accelerates PyTorch-based models.\n"
+                        )
                 self.write_to_console(LOADING_MODEL)
 
                 from engines.model_weight_cache import (
@@ -99,21 +109,16 @@ class SeperateMDX(SeperateAttributes):
                             self.model_path, map_location=lambda storage, loc: storage
                         )["hyper_parameters"]
                         self.dim_c, self.hop = model_params['dim_c'], model_params['hop_length']
-                        separator = MdxnetSet.ConvTDFNet(**model_params)
+                        # Checkpoints retain the upstream "l" key for layer count.
                         self.model_run = (
-                            separator.load_from_checkpoint(self.model_path).to(self.device).eval()
+                            MdxnetSet.ConvTDFNet.load_from_checkpoint(
+                                self.model_path, num_layers=model_params["l"]
+                            )
+                            .to(self.device)
+                            .eval()
                         )
                         self._weight_cache_meta = {"dim_c": self.dim_c, "hop": self.hop}
                 else:
-                    use_ort = self.mdx_segment_size == self.dim_t and not self.is_other_gpu
-                    if use_ort:
-                        from engines.amp_runtime import autocast_enabled
-
-                        if autocast_enabled(self.settings):
-                            self.write_to_console(
-                                "Note: FP16 autocast has no effect on this ONNX Runtime "
-                                "model; it only accelerates PyTorch-based models.\n"
-                            )
                     key = weight_cache_key(
                         "mdx_ort" if use_ort else "mdx_convert",
                         self.model_path,
@@ -324,9 +329,7 @@ class SeperateMDX(SeperateAttributes):
                         if smaller is None:
                             raise
                         effective_batch = smaller
-                        self.write_to_console(
-                            mdx_oom_reduce_batch_message(effective_batch)
-                        )
+                        self.write_to_console(mdx_oom_reduce_batch_message(effective_batch))
                         continue
 
                     for _ in range(take):

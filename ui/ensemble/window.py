@@ -21,10 +21,24 @@ Every control binds to the same settings keys the Tk app uses
 ensembles are interchangeable with ``UVR.py``.
 """
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from ui.run_error_context import RunErrorContext
+
+if TYPE_CHECKING:
+    from core.audio_plan import ResolvedAudioJob
+    from core.job_callbacks import JobCallbacks
+    from core.job_plan import JobSpec, ResolvedJob
+    from core.settings import Settings
+
+    from .member_projection import MemberProjection
+
 import typing
 from typing import Dict, List, Optional
 
-from gi.repository import Adw, Gtk
+from gi.repository import Adw, GObject, Gtk
 
 from bundled.constants import (
     CHOOSE_ENSEMBLE_OPTION,
@@ -50,18 +64,21 @@ from core import (
     list_saved_ensembles,
 )
 from core.ensemble_algorithms import (
-    ENSEMBLE_PRESET_OPTIONS,
+    CUSTOM_PRESET,
+    PAIR_CONSISTENT_PRESET,
     algorithm_blurb,
     algorithm_row_titles,
     ensemble_options_summary,
+    ensemble_preset_options,
     format_ensemble_type,
     model_row_matches_query,
     models_selection_status,
     pair_for_preset,
     parse_ensemble_type,
-    preset_for_pair,
+    preset_for_state,
     wav_ensemble_subtitle,
 )
+from core.ensemble_pair_consistent import PairConsistentPlan
 from core.ensemble_presets import (
     classify_preset_members,
     curated_combo_label,
@@ -70,11 +87,12 @@ from core.ensemble_presets import (
     list_curated_ensembles,
     resolve_member_tags,
 )
+from core.job_plan_types import ModelDescriptor
+from core.job_route_observations import collect_ensemble_routes
 from core.model_stem_manifest import load_bundled_stem_semantics
 from core.model_stem_semantics import recommended_export_note, stem_display_overrides
 from core.run_estimate import (
     compose_stem_group_tooltip,
-    ensemble_export_summary,
     estimate_workload,
     format_workload_line,
 )
@@ -87,8 +105,9 @@ from core.stem_pairs import (
 from core.stems import StemRoute
 from core.types import ProcessMethod
 
-from ..dialogs.utils import present_modal_dialog, set_dialog_content
+from ..dialogs.utils import present_modal_dialog
 from ..help_text import (
+    DERIVE_COMPLEMENT_FROM_MIX_HELP,
     ENSEMBLE_DELETE_BUTTON_HINT,
     ENSEMBLE_MEMBER_MODEL_OPTIONS_HINT,
     ENSEMBLE_SAVE_BUTTON_HINT,
@@ -98,33 +117,38 @@ from ..help_text import (
 )
 from ..hints import set_icon_button_a11y, set_tooltip
 from ..markup import set_row_subtitle, set_row_title
+from ..protocols import FormatEdit, VocalSplitEdit
 from ..settings_bind import set_flat
 from ..shared_settings import (
     SAMPLE_MODE_TITLE,
-    apply_sample_mode_label,
+    SharedSettingsSession,
     apply_shared_file_options,
+    gpu_autocast_subtitle,
     gpu_dependent_enabled,
     sample_mode_subtitle,
+    shared_settings_bindings,
 )
-from ..spacing import inset_md
+from ..template import load_builder, object_from_builder
 from ..widget_state import fetch, stash
 from ..widgets.columns import build_columns_box, wrap_options_scroller
 from ..widgets.file_chooser import InputFilesRow, OutputFolderRow
 from ..widgets.format_row import OutputFormatRow
+from ..widgets.output_stems import OutputStemsSection
 from ..widgets.rows import (
+    configure_combo_row,
     get_combo_value,
     log_model_picker_items,
-    make_combo_row,
-    make_switch_row,
     set_combo_tag_values,
     set_combo_value,
     set_combo_values,
 )
 from ..widgets.stem_only import SaveStemsSection
 from ..widgets.vocal_split_row import VocalSplitRow
+from .stem_controls import EnsembleStemControls
 
 _PRIMARY_STEM_ONLY_KEY = "is_primary_stem_only"
 _SECONDARY_STEM_ONLY_KEY = "is_secondary_stem_only"
+LayoutObjectT = typing.TypeVar("LayoutObjectT", bound=GObject.Object)
 
 #: Blocking-reason strings surfaced as the shared Start button tooltip (and
 #: reused as the safety-net toasts in :meth:`EnsemblePage.start`).
@@ -184,8 +208,14 @@ class EnsemblePage:
         self.window = window
         self.context = context
         self.settings = context.settings
+        self._shared_session: SharedSettingsSession | None = None
         self._loading = False
         self._syncing_preset = False
+        self._custom_algorithms = False
+        self._lock_leftover_algo = False
+        self._pair_consistent_leftover_label: str | None = None
+        self._pair_consistent_stacked_label: str | None = None
+        self._describe_mix_residual = False
         self._model_checks: Dict[str, Gtk.CheckButton] = {}
         self._model_row_text: Dict[str, tuple[str, str]] = {}
         self._models_write_gated = False
@@ -194,6 +224,7 @@ class EnsemblePage:
         self._ensemble_member_warnings: tuple[str, ...] = ()
         self._pair_ids: set[str] = set()
         self._pair_repick_warning = ""
+        self._layout_builder = load_builder("ensemble-page")
 
         # Distribute the groups across the shared two-column layout. The member
         # model checklist now lives in a modal dialog opened from a compact
@@ -204,33 +235,33 @@ class EnsemblePage:
         ensemble_group = self._build_ensemble_group()
         stems_group = self._build_stems_group()
         output_group = self._build_output_group()
+        self._install_shared_session()
 
         self.columns_box, self._col_start, self._col_end = build_columns_box(
-            left_groups=(files_group, ensemble_group),
+            left_groups=(
+                files_group,
+                ensemble_group,
+                self._layout_object("combination_group", Adw.PreferencesGroup),
+            ),
             right_groups=(stems_group, output_group),
         )
 
-        # Proactive empty-state hint mirroring the Separation page: a full-width
-        # banner above the columns that surfaces the ensemble-configuration
-        # blocker (stem pair / member models) and auto-hides once the run is
-        # ready. Refreshed from ``_update_ensemble_banner`` on stem/model change.
-        self._ensemble_banner = Adw.Banner(revealed=False)
+        # Saved-configuration warnings carry details beyond Start readiness.
+        self._ensemble_banner = self._layout_object("ensemble_banner", Adw.Banner)
         self.options_page = wrap_options_scroller(self.columns_box)
-        page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        page.set_vexpand(True)
-        page.append(self._ensemble_banner)
+        page = self._layout_object("page", Gtk.Box)
         page.append(self.options_page)
         self.widget = page
 
     # -- Construction -----------------------------------------------------------
 
+    def _layout_object(self, name: str, kind: type[LayoutObjectT]) -> LayoutObjectT:
+        return object_from_builder(self._layout_builder, name, kind)
+
     def _build_files_group(self) -> Adw.PreferencesGroup:
-        group = Adw.PreferencesGroup(title="Files")
-        view_inputs_button = Gtk.Button(icon_name="view-list-symbolic", valign=Gtk.Align.CENTER)
-        view_inputs_button.add_css_class("flat")
+        group = self._layout_object("files_group", Adw.PreferencesGroup)
+        view_inputs_button = self._layout_object("view_inputs_button", Gtk.Button)
         set_icon_button_a11y(view_inputs_button, VIEW_INPUTS_BUTTON_HINT)
-        view_inputs_button.set_action_name("win.view_inputs")
-        group.set_header_suffix(view_inputs_button)
         self.input_row = InputFilesRow(
             self._on_inputs_changed,
             on_toast=self.window.toast,
@@ -244,200 +275,166 @@ class EnsemblePage:
         return group
 
     def _build_ensemble_group(self) -> Adw.PreferencesGroup:
-        group = Adw.PreferencesGroup(title="Ensemble options")
+        group = self._layout_object("ensemble_group", Adw.PreferencesGroup)
         self.ensemble_group = group
 
-        self.saved_row = make_combo_row("Saved ensemble", [CHOOSE_ENSEMBLE_OPTION])
+        self.saved_row = configure_combo_row(
+            self._layout_object("saved_row", Adw.ComboRow), [CHOOSE_ENSEMBLE_OPTION]
+        )
         set_tooltip(self.saved_row, ENSEMBLE_SAVED_PRESET_HINT)
         self.saved_row.connect("notify::selected", self._on_saved_selected)
-        save_button = Gtk.Button(icon_name="document-save-symbolic", valign=Gtk.Align.CENTER)
+        save_button = self._layout_object("save_button", Gtk.Button)
         set_icon_button_a11y(save_button, ENSEMBLE_SAVE_BUTTON_HINT)
-        save_button.add_css_class("flat")
         save_button.connect("clicked", self._on_save_clicked)
-        delete_button = Gtk.Button(icon_name="user-trash-symbolic", valign=Gtk.Align.CENTER)
+        delete_button = self._layout_object("delete_button", Gtk.Button)
         set_icon_button_a11y(delete_button, ENSEMBLE_DELETE_BUTTON_HINT)
-        delete_button.add_css_class("flat")
         delete_button.connect("clicked", self._on_delete_clicked)
-        self.saved_row.add_suffix(save_button)
-        self.saved_row.add_suffix(delete_button)
-        group.add(self.saved_row)
 
-        self.main_stem_row = make_combo_row("Main stem pair", [], icon_name="view-list-symbolic")
+        self.main_stem_row = configure_combo_row(
+            self._layout_object("main_stem_row", Adw.ComboRow), []
+        )
         set_combo_tag_values(self.main_stem_row, [("", "Choose Stem Pair")])
         set_tooltip(self.main_stem_row, ENSEMBLE_MAIN_STEM_HELP)
         self.main_stem_row.connect("notify::selected", self._on_main_stem_changed)
-        group.add(self.main_stem_row)
 
         # Checklist: models before algorithms.
         self._build_models_dialog()
-        self.models_trigger_row = Adw.ActionRow(
-            title="Member models",
-            subtitle=self._models_summary(),
-            activatable=True,
-        )
+        self.models_trigger_row = self._layout_object("models_trigger_row", Adw.ActionRow)
+        self.models_trigger_row.set_subtitle(self._models_summary())
         set_tooltip(self.models_trigger_row, ENSEMBLE_LISTBOX_HELP)
-        self.models_trigger_row.add_suffix(Gtk.Image(icon_name="go-next-symbolic"))
         self.models_trigger_row.connect("activated", self._open_models_dialog)
-        group.add(self.models_trigger_row)
-
-        self.member_options_row = Adw.ActionRow(
-            title="Member model options",
-            subtitle="Batch size, secondary models, and more",
-            activatable=True,
+        self._layout_object("edit_models_button", Gtk.Button).connect(
+            "clicked", self._open_models_dialog
         )
-        set_tooltip(self.member_options_row, ENSEMBLE_MEMBER_MODEL_OPTIONS_HINT)
-        self.member_options_row.add_suffix(Gtk.Image(icon_name="go-next-symbolic"))
-        self.member_options_row.connect("activated", self._open_member_model_options)
-        group.add(self.member_options_row)
 
-        self.preset_row = make_combo_row(
-            "Algorithm preset",
-            list(ENSEMBLE_PRESET_OPTIONS),
-            icon_name="emblem-favorite-symbolic",
+        self.member_options_row = self._layout_object("member_options_row", Adw.ActionRow)
+        set_tooltip(self.member_options_row, ENSEMBLE_MEMBER_MODEL_OPTIONS_HINT)
+        self.member_options_row.connect("activated", self._open_member_model_options)
+
+        self._layout_object("blend_options_row", Adw.ActionRow).connect(
+            "activated", self._open_blend_options
+        )
+
+        self.preset_row = configure_combo_row(
+            self._layout_object("preset_row", Adw.ComboRow),
+            list(ensemble_preset_options(include_pair_consistent=False)),
         )
         set_tooltip(
             self.preset_row,
             "Choose a preset algorithm pair, or Custom to set Primary and Secondary separately",
         )
         self.preset_row.connect("notify::selected", self._on_preset_changed)
-        group.add(self.preset_row)
 
-        self.primary_algo_row = make_combo_row(
-            "Primary algorithm",
+        self.derive_complement_row = self._layout_object("derive_complement_row", Adw.SwitchRow)
+        set_tooltip(self.derive_complement_row, DERIVE_COMPLEMENT_FROM_MIX_HELP)
+        self.derive_complement_row.connect("notify::active", self._on_derive_complement_changed)
+
+        self.primary_algo_row = configure_combo_row(
+            self._layout_object("primary_algo_row", Adw.ComboRow),
             list(ENSEMBLE_ALGORITHMS),
-            icon_name="media-playlist-shuffle-symbolic",
         )
         set_tooltip(self.primary_algo_row, ENSEMBLE_TYPE_HELP)
         self.primary_algo_row.connect("notify::selected", self._on_ensemble_type_changed)
-        group.add(self.primary_algo_row)
 
-        self.secondary_algo_row = make_combo_row(
-            "Secondary algorithm",
+        self.secondary_algo_row = configure_combo_row(
+            self._layout_object("secondary_algo_row", Adw.ComboRow),
             list(ENSEMBLE_ALGORITHMS),
-            icon_name="media-playlist-shuffle-symbolic",
         )
         set_tooltip(self.secondary_algo_row, ENSEMBLE_TYPE_HELP)
         self.secondary_algo_row.connect("notify::selected", self._on_ensemble_type_changed)
-        group.add(self.secondary_algo_row)
 
         return group
 
     def _build_models_dialog(self) -> None:
         """Build the modal member-model checklist (the inline boxed list lives
         here now, opened from the compact trigger row in "Ensemble options")."""
-        self.models_listbox = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
-        self.models_listbox.add_css_class("boxed-list")
+        builder = load_builder("ensemble-member-picker")
+        self.models_listbox = object_from_builder(builder, "models_listbox", Gtk.ListBox)
         set_tooltip(self.models_listbox, ENSEMBLE_LISTBOX_HELP)
         self.models_listbox.set_filter_func(self._models_row_visible)
         self.models_listbox.append(Adw.ActionRow(title="Choose a stem pair to list models"))
 
-        self.models_listbox.set_valign(Gtk.Align.START)
-        scroller = Gtk.ScrolledWindow()
-        scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        scroller.set_min_content_height(320)
-        scroller.set_vexpand(True)
-        scroller.set_child(self.models_listbox)
+        scroller = object_from_builder(builder, "scroller", Gtk.ScrolledWindow)
         set_tooltip(scroller, ENSEMBLE_LISTBOX_HELP)
 
-        description = Gtk.Label(
-            label="Select two or more models compatible with the chosen stem pair.",
-            wrap=True,
-            xalign=0.0,
-        )
-        description.add_css_class("dim-label")
+        self.models_status_label = object_from_builder(builder, "models_status_label", Gtk.Label)
+        self.models_status_label.set_label(models_selection_status(0))
 
-        self.models_status_label = Gtk.Label(
-            label=models_selection_status(0),
-            wrap=True,
-            xalign=0.0,
-        )
-        self.models_status_label.add_css_class("dim-label")
-
-        self.models_search = Gtk.SearchEntry()
-        self.models_search.set_placeholder_text("Search models")
-        self.models_search.set_hexpand(True)
+        self.models_search = object_from_builder(builder, "models_search", Gtk.SearchEntry)
         self.models_search.connect("search-changed", self._on_models_search_changed)
 
-        select_all_btn = Gtk.Button(label="Select all")
-        select_all_btn.add_css_class("flat")
+        select_all_btn = object_from_builder(builder, "select_all_button", Gtk.Button)
         select_all_btn.connect("clicked", self._on_models_select_all)
-        clear_btn = Gtk.Button(label="Clear")
-        clear_btn.add_css_class("flat")
+        clear_btn = object_from_builder(builder, "clear_button", Gtk.Button)
         clear_btn.connect("clicked", self._on_models_clear)
 
-        actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        actions.append(select_all_btn)
-        actions.append(clear_btn)
-        actions.set_halign(Gtk.Align.END)
-
-        toolbar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        toolbar.append(self.models_search)
-        toolbar.append(actions)
-
-        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
-        inset_md(content)
-        content.append(description)
-        content.append(self.models_status_label)
-        content.append(toolbar)
-        content.append(scroller)
-
-        self.models_dialog = Adw.Dialog()
-        self.models_dialog.set_title("Member models")
-        self.models_dialog.set_content_width(440)
-        self.models_dialog.set_content_height(560)
-        self.models_dialog.set_follows_content_size(True)
-        set_dialog_content(self.models_dialog, content)
+        self.models_dialog = object_from_builder(builder, "dialog", Adw.Dialog)
         self.models_dialog.connect("closed", self._on_models_dialog_closed)
 
+    def _open_blend_options(self, *_args: typing.Any) -> None:
+        from core.model_display import format_tag_title
+
+        from .blend_dialog import show_blend_dialog
+
+        members = []
+        for model_id in self._effective_selected_models():
+            routes = self._member_export_routes(self._resolve_ensemble_member_model(model_id))
+            if routes is not None:
+                members.append((model_id, format_tag_title(model_id, self.context.repo), routes))
+
+        def apply(values: dict[str, typing.Any]) -> None:
+            if not self._active:
+                return
+            for name, value in values.items():
+                setattr(self.settings.ensemble, name, value)
+            self._update_ensemble_options_summary()
+
+        show_blend_dialog(self.window, self.settings, members, apply)
+
     def _build_stems_group(self) -> Adw.PreferencesGroup:
-        group = Adw.PreferencesGroup(title="Save stems")
+        group = self._layout_object("stems_group", Adw.PreferencesGroup)
         self.save_stems = SaveStemsSection(
             settings=self.settings,
             on_changed=self._on_save_stems_changed,
         )
-        self.save_stems.attach_to(group)
+        self.output_stems = OutputStemsSection(self.save_stems, group)
+        self.ensemble_stem_controls = EnsembleStemControls(self.settings)
         set_tooltip(group, SAVE_STEM_ONLY_HELP)
-        # Revealed in _rebuild_stem_only_toggles once a stem pair is chosen.
-        group.set_visible(False)
+        # The output group remains available before member models are chosen.
         self.stems_group = group
         return group
 
     def _build_output_group(self) -> Adw.PreferencesGroup:
-        group = Adw.PreferencesGroup(title="Processing")
+        group = self._layout_object("processing_group", Adw.PreferencesGroup)
 
         self.format_row = OutputFormatRow(self._on_format_changed)
-        group.add(self.format_row)
+        self.stems_group.add(self.format_row)
 
-        self.gpu_row = make_switch_row("GPU conversion", icon_name="pci-card-symbolic")
+        self.gpu_row = self._layout_object("gpu_row", Adw.SwitchRow)
         set_tooltip(self.gpu_row, IS_GPU_CONVERSION_HELP)
         self.gpu_row.connect("notify::active", self._on_gpu_changed)
         group.add(self.gpu_row)
 
-        self.autocast_row = make_switch_row(
-            "FP16 autocast",
-            subtitle="Faster VR/MDX/Roformer on modern NVIDIA GPUs",
-            icon_name="emblem-system-symbolic",
-        )
+        self.autocast_row = self._layout_object("autocast_row", Adw.SwitchRow)
         set_tooltip(self.autocast_row, IS_AUTOCAST_HELP)
         self.autocast_row.connect("notify::active", self._on_autocast_changed)
         group.add(self.autocast_row)
 
         duration = self.settings.process.sample_mode_duration
-        self.sample_row = make_switch_row(
-            SAMPLE_MODE_TITLE,
-            sample_mode_subtitle(duration),
-            icon_name="preferences-system-time-symbolic",
-        )
+        self.sample_row = self._layout_object("sample_row", Adw.SwitchRow)
+        self.sample_row.set_title(SAMPLE_MODE_TITLE)
+        self.sample_row.set_subtitle(sample_mode_subtitle(duration))
         set_tooltip(self.sample_row, MODEL_SAMPLE_MODE_HELP)
         self.sample_row.connect("notify::active", self._on_sample_changed)
         group.add(self.sample_row)
 
         # Advanced toggles live in Processing (titled group) instead of a
         # title-less PreferencesGroup wrapping a lone expander.
-        expander = Adw.ExpanderRow(title="Advanced ensemble options")
+        expander = self._layout_object("advanced_row", Adw.ExpanderRow)
 
-        self.save_all_row = make_switch_row("Save all outputs")
+        self.save_all_row = self._layout_object("save_all_row", Adw.SwitchRow)
         set_tooltip(self.save_all_row, IS_SAVE_ALL_OUTPUTS_ENSEMBLE_HELP)
+        self.stems_group.add(self.save_all_row)
         self.save_all_row.connect(
             "notify::active",
             lambda *_a: self._set_bool(
@@ -446,9 +443,7 @@ class EnsemblePage:
                 refresh_stems=True,
             ),
         )
-        expander.add_row(self.save_all_row)
-
-        self.append_name_row = make_switch_row("Append ensemble name to output")
+        self.append_name_row = self._layout_object("append_name_row", Adw.SwitchRow)
         set_tooltip(self.append_name_row, IS_APPEND_ENSEMBLE_NAME_HELP)
         self.append_name_row.connect(
             "notify::active",
@@ -456,19 +451,13 @@ class EnsemblePage:
                 "is_append_ensemble_name", self.append_name_row.get_active()
             ),
         )
-        expander.add_row(self.append_name_row)
-
-        self.wav_ensemble_row = make_switch_row(
-            "Ensemble waveforms",
-            wav_ensemble_subtitle(uses_chunk_min=False),
-        )
+        self.wav_ensemble_row = self._layout_object("wav_ensemble_row", Adw.SwitchRow)
+        self.wav_ensemble_row.set_subtitle(wav_ensemble_subtitle(uses_chunk_min=False))
         set_tooltip(self.wav_ensemble_row, IS_WAV_ENSEMBLE_HELP)
         self.wav_ensemble_row.connect(
             "notify::active",
             lambda *_a: self._set_bool("is_wav_ensemble", self.wav_ensemble_row.get_active()),
         )
-        expander.add_row(self.wav_ensemble_row)
-
         group.add(expander)
 
         self.vocal_split_row = VocalSplitRow(
@@ -480,23 +469,23 @@ class EnsemblePage:
 
     # -- Settings load / persist ------------------------------------------------
 
-    def load(self) -> None:
+    def load(self, *, defer_models: bool = False) -> None:
         """Populate every control from settings (driven by the main window).
 
         Does *not* set ``chosen_process_method``; that flips to ``ENSEMBLE_MODE``
         only while this tab is active (see :meth:`on_activated`), so the saved
         separation method is preserved at startup.
         """
+        if defer_models:
+            # The hidden startup page has no model consumers yet. Keep stored
+            # members intact until activation can validate the actual list.
+            self._load_deferred = True
+            self._models_dirty = True
+            return
+        self._load_deferred = False
         self._loading = True
         try:
-            self.input_row.set_paths(self.settings.process.input_paths or [], notify=False)
-            self.output_row.set_path(self.settings.process.export_path or "", notify=False)
-            self.format_row.apply_from_settings(self.settings)
-            self.vocal_split_row.apply_from_settings(self.settings)
-            self.gpu_row.set_active(bool(self.settings.process.use_gpu))
-            self.autocast_row.set_active(bool(self.settings.process.autocast))
-            apply_sample_mode_label(self.sample_row, self.settings.process.sample_mode_duration)
-            self.sample_row.set_active(bool(self.settings.process.sample_mode))
+            self._sync_shared_from_settings()
 
             self._refresh_saved_list()
             self._refresh_pair_choices()
@@ -504,9 +493,11 @@ class EnsemblePage:
                 self.main_stem_row,
                 self.settings.ensemble.main_stem,
             )
+            self.derive_complement_row.set_active(
+                bool(self.settings.ensemble.derive_complement_from_mix)
+            )
             self._refresh_ensemble_type_values()
 
-            self._rebuild_stem_only_toggles()
             self.save_all_row.set_active(bool(self.settings.ensemble.save_all_outputs))
             self.append_name_row.set_active(bool(self.settings.ensemble.append_ensemble_name))
             self.wav_ensemble_row.set_active(bool(self.settings.ensemble.wav_ensemble))
@@ -514,24 +505,39 @@ class EnsemblePage:
             self._loading = False
         self._sync_gpu_dependent_rows()
 
-        self._rebuild_model_list(self.settings.ensemble.selected_models or [])
+        self._reconcile_member_list(self.settings.ensemble.selected_models or [])
 
-    def _sync_shared_from_settings(self) -> None:
-        """Re-read the keys shared across tabs (inputs / output / format / ...)."""
-        self._loading = True
-        try:
-            apply_shared_file_options(
-                self.settings,
+    def _install_shared_session(self) -> None:
+        self._shared_session = SharedSettingsSession(
+            self.settings,
+            shared_settings_bindings(
                 input_row=self.input_row,
                 output_row=self.output_row,
                 format_row=self.format_row,
                 gpu_row=self.gpu_row,
                 autocast_row=self.autocast_row,
                 sample_row=self.sample_row,
-            )
-            self.vocal_split_row.apply_from_settings(self.settings)
-        finally:
-            self._loading = False
+                vocal_row=self.vocal_split_row,
+            ),
+            can_commit=lambda: self.window.content_stack.get_visible_child_name() == "ensemble",
+        )
+
+    def _apply_shared_widgets(self) -> None:
+        apply_shared_file_options(
+            self.settings,
+            input_row=self.input_row,
+            output_row=self.output_row,
+            format_row=self.format_row,
+            gpu_row=self.gpu_row,
+            autocast_row=self.autocast_row,
+            sample_row=self.sample_row,
+        )
+        self.vocal_split_row.apply_from_settings(self.settings)
+
+    def _sync_shared_from_settings(self) -> None:
+        """Refresh displayed baselines without creating shared edits."""
+        assert self._shared_session is not None
+        self._shared_session.refresh(self._apply_shared_widgets)
         self._sync_gpu_dependent_rows()
 
     def _set_bool(self, key: str, value: bool, *, refresh_stems: bool = False) -> None:
@@ -542,37 +548,52 @@ class EnsemblePage:
             self._update_stems_group_metadata()
 
     def _on_inputs_changed(self) -> None:
-        paths = list(self.input_row.paths)
-        self.settings.process.input_paths = paths
-        self.context.prune_unreadable_input_paths(paths)
+        session = self._shared_session
+        if session is None or not session.editable:
+            return
+        session.commit(edited=(session.bindings.input_paths,))
+        self.context.prune_unreadable_input_paths(list(self.input_row.paths))
         self.window._refresh_start_readiness()
 
     def _on_output_changed(self) -> None:
-        self.settings.process.export_path = self.output_row.path
+        session = self._shared_session
+        if session is None or not session.editable:
+            return
+        session.commit(edited=(session.bindings.export_path,))
         self.window._refresh_start_readiness()
 
-    def _on_format_changed(self, *_args: typing.Any) -> None:
-        if not self._loading:
-            self.format_row.persist_to_settings(self.settings)
+    def _on_format_changed(self, event: FormatEdit) -> None:
+        session = self._shared_session
+        if session is None or not session.editable:
+            return
+        session.format_changed(event)
 
-    def _on_vocal_split_changed(self, *_args: typing.Any) -> None:
-        if not self._loading:
-            self.vocal_split_row.persist_to_settings(self.settings)
+    def _on_vocal_split_changed(self, event: VocalSplitEdit) -> None:
+        session = self._shared_session
+        if session is None or not session.editable:
+            return
+        session.vocal_changed(event)
 
     def _on_gpu_changed(self, *_args: typing.Any) -> None:
-        if not self._loading:
-            self.settings.process.use_gpu = self.gpu_row.get_active()
-            self._update_stems_group_metadata()
+        session = self._shared_session
+        if session is None or not session.editable:
+            return
+        session.commit(edited=(session.bindings.use_gpu,))
+        self._update_stems_group_metadata()
         self._sync_gpu_dependent_rows()
 
     def _on_autocast_changed(self, *_args: typing.Any) -> None:
-        if not self._loading:
-            self.settings.process.autocast = self.autocast_row.get_active()
+        session = self._shared_session
+        if session is None or not session.editable:
+            return
+        session.commit(edited=(session.bindings.autocast,))
 
     def _on_sample_changed(self, *_args: typing.Any) -> None:
-        if not self._loading:
-            self.settings.process.sample_mode = self.sample_row.get_active()
-            self._update_stems_group_metadata()
+        session = self._shared_session
+        if session is None or not session.editable:
+            return
+        session.commit(edited=(session.bindings.sample_mode,))
+        self._update_stems_group_metadata()
 
     def _ensemble_pair(self) -> str:
         return normalize_stem_pair_id(self.settings.ensemble.main_stem)
@@ -629,14 +650,10 @@ class EnsemblePage:
             )
         return tuple(routes)
 
-    def _resolve_ensemble_semantics_model(self):
-        """Best-effort model resolve for export-semantics hints (first member)."""
+    def _resolve_ensemble_member_model(self, tag: str):
+        """Dry-resolve one member tag without prompting for checkpoint hashes."""
         from core.model_display import parse_model_tag
 
-        tags = self._selected_model_tags()
-        if not tags:
-            return None
-        tag = tags[0]
         process_method, model_name = parse_model_tag(tag)
         if not process_method:
             return None
@@ -644,16 +661,159 @@ class EnsemblePage:
 
         prefix = str(tag).partition(":")[0].casefold()
         reference = tag if prefix in FAMILIES else model_name
-        return self.window.context.repo.resolve_model_dry(self.settings, process_method, reference)
+        context = getattr(self, "context", None) or getattr(
+            getattr(self, "window", None), "context", None
+        )
+        repo = getattr(context, "repo", None)
+        if repo is None:
+            return None
+        return repo.resolve_model_dry(self.settings, process_method, reference)
+
+    def _resolve_ensemble_semantics_model(self):
+        """Best-effort model resolve for export-semantics hints (first member)."""
+        tags = self._selected_model_tags()
+        if not tags:
+            return None
+        return self._resolve_ensemble_member_model(tags[0])
+
+    @staticmethod
+    def _member_export_routes(model: typing.Any) -> tuple[StemRoute, ...] | None:
+        """Run export routes for a dry-resolved member, or None if it can't run.
+
+        ``run_export_routes`` raises on a stem-semantics runtime error (a
+        conflicting installed config); from a GTK callback that would escape
+        uncaught, so treat such a member as unresolved instead.
+        """
+        from core.stems import run_export_routes
+
+        if model is None or getattr(getattr(model, "stem_semantics", None), "runtime_error", ""):
+            return None
+        return tuple(run_export_routes(model))
+
+    def _dry_resolved_member_routes(self):
+        """Export routes for selected members, or None if any tag is unresolved."""
+        tags = self._effective_selected_models()
+        if not tags:
+            return None
+        routes = []
+        for tag in tags:
+            member = self._member_export_routes(self._resolve_ensemble_member_model(tag))
+            if member is None:
+                return None
+            routes.append(member)
+        return tuple(routes)
+
+    def _role_display(self, role: object) -> str | None:
+        from core.stem_roles import StemRoleId
+
+        if not isinstance(role, StemRoleId):
+            return None
+        registry = load_bundled_stem_semantics()
+        definition = registry.roles.get(role)
+        return None if definition is None else definition.display
+
+    def _pair_consistent_plan(self) -> PairConsistentPlan | None:
+        """Mix-residual plan for the current pair and members, or None."""
+        if self._ensemble_is_multi_or_four():
+            return None
+        member_routes = self._dry_resolved_member_routes()
+        if member_routes is None:
+            return None
+        definition = stem_pair_definition(self._ensemble_pair())
+        if definition is None or len(definition.roles) != 2:
+            return None
+        from core.ensemble_pair_consistent import resolve_pair_consistent_plan
+
+        return resolve_pair_consistent_plan(definition.roles, member_routes)
+
+    def _sync_pair_consistent_controls(self, plan: PairConsistentPlan | None) -> None:
+        """Show the mix-residual switch only when a plan exists."""
+        derive_row = getattr(self, "derive_complement_row", None)
+        if derive_row is not None:
+            derive_row.set_visible(plan is not None)
+        preset_row = getattr(self, "preset_row", None)
+        if preset_row is None or self._ensemble_is_multi_or_four():
+            return
+        was_syncing = self._syncing_preset
+        self._syncing_preset = True
+        try:
+            options = ensemble_preset_options(include_pair_consistent=plan is not None)
+            model = preset_row.get_model()
+            # Replacing the model during notify::selected queues another
+            # notification after _syncing_preset is cleared. Keep unchanged
+            # choices in place so selecting a preset cannot retrigger itself.
+            if not isinstance(model, Gtk.StringList) or tuple(
+                model.get_string(index) for index in range(model.get_n_items())
+            ) != tuple(options):
+                set_combo_values(preset_row, options)
+            primary, secondary = parse_ensemble_type(self.settings.ensemble.type)
+            set_combo_value(
+                preset_row,
+                CUSTOM_PRESET
+                if getattr(self, "_custom_algorithms", False)
+                else preset_for_state(
+                    primary,
+                    secondary,
+                    derive_complement_from_mix=bool(
+                        self.settings.ensemble.derive_complement_from_mix
+                    )
+                    and plan is not None,
+                ),
+            )
+        finally:
+            self._syncing_preset = was_syncing
+
+    def _apply_algorithm_row_presentation(self) -> None:
+        primary_row = getattr(self, "primary_algo_row", None)
+        secondary_row = getattr(self, "secondary_algo_row", None)
+        if primary_row is None or secondary_row is None:
+            return
+        multi = self._ensemble_is_multi_or_four()
+        primary_stem, secondary_stem = self._ensemble_stem_pair()
+        plan = None if multi else self._pair_consistent_plan()
+        self._sync_pair_consistent_controls(plan)
+        derive = (
+            bool(self.settings.ensemble.derive_complement_from_mix)
+            and not multi
+            and plan is not None
+        )
+        leftover_label: str | None = None
+        stacked_label: str | None = None
+        lock_leftover = False
+        describe_mix = False
+        if derive and plan is not None:
+            stacked_label = self._role_display(plan.stacked_role)
+            leftover_label = self._role_display(plan.leftover_role)
+            primary_title, secondary_title = algorithm_row_titles(
+                stacked_label,
+                leftover_label,
+                multi_stem=False,
+                derive_complement_from_mix=True,
+                leftover_label=leftover_label,
+            )
+            lock_leftover = True
+            describe_mix = True
+        else:
+            primary_title, secondary_title = algorithm_row_titles(
+                primary_stem, secondary_stem, multi_stem=multi
+            )
+        self._lock_leftover_algo = lock_leftover
+        self._pair_consistent_leftover_label = leftover_label
+        self._pair_consistent_stacked_label = stacked_label
+        self._describe_mix_residual = describe_mix
+        set_row_title(primary_row, primary_title)
+        set_row_title(secondary_row, secondary_title)
+        self._update_algorithm_visibility()
 
     def _rebuild_stem_only_toggles(self) -> None:
         primary_stem, secondary_stem = self._ensemble_stem_pair()
         has_pair = bool(primary_stem and secondary_stem)
         is_multi = self._ensemble_is_multi_or_four()
-        # Dual-stem: full Save stems toggles. 4-stem / multi-stem: summary-only.
-        # Choose stem pair: hide the group.
-        self.stems_group.set_visible(has_pair or is_multi)
+        # Pair controls retain their focus encoding; larger ensembles select final roles.
+        self.stems_group.set_visible(True)
         if has_pair:
+            self.save_stems.set_model_context(self._ensemble_pair())
+            self.output_stems.controls = self.save_stems.enable_direct_controls()
             model = self._resolve_ensemble_semantics_model()
             self.save_stems.configure_exclusive(
                 primary_stem=primary_stem,
@@ -672,9 +832,33 @@ class EnsemblePage:
             self.save_stems.sync_from_settings()
         else:
             self.save_stems.configure_hidden(has_model=False)
+            self.output_stems.controls = self.ensemble_stem_controls
+            member_routes = self._dry_resolved_member_routes() if is_multi else None
+            descriptors = (
+                tuple(
+                    ModelDescriptor(
+                        id=tag,
+                        family=tag.partition(":")[0],
+                        basename="",
+                        display="",
+                        routes=tuple(routes),
+                    )
+                    for tag, routes in zip(
+                        self._effective_selected_models(), member_routes or (), strict=True
+                    )
+                )
+                if member_routes is not None
+                else ()
+            )
+            routes, _union = (
+                collect_ensemble_routes(self.settings, descriptors) if is_multi else ((), ())
+            )
+            self.ensemble_stem_controls.configure(
+                routes, ready=member_routes is not None and len(descriptors) >= 2
+            )
         self._update_stems_group_metadata()
 
-    def _update_stems_group_metadata(self) -> None:
+    def _update_stems_group_metadata(self, *, refresh_workload: bool = True) -> None:
         if not self.stems_group.get_visible():
             self.stems_group.set_description("")
             return
@@ -682,24 +866,25 @@ class EnsemblePage:
         is_multi = self._ensemble_is_multi_or_four()
         has_run = bool(primary_stem) or is_multi
         repo = self.window.context.repo
-        if primary_stem:
-            line1 = self.save_stems.export_summary()
-            export_hint = self.save_stems.active_hint()
-        else:
-            line1 = ensemble_export_summary(self.settings, repo=repo)
-            export_hint = SAVE_STEM_ONLY_HELP
-        workload = estimate_workload(
-            self.settings,
-            method_key=ENSEMBLE_MODE,
-            save_stems=self.save_stems,
-            repo=repo,
-            has_model=has_run,
+        export_hint = self.save_stems.active_hint() if primary_stem else SAVE_STEM_ONLY_HELP
+        workload = (
+            estimate_workload(
+                self.settings,
+                method_key=ENSEMBLE_MODE,
+                save_stems=self.save_stems,
+                repo=repo,
+                has_model=has_run,
+            )
+            if refresh_workload
+            else None
         )
-        line2 = format_workload_line(workload)
-        if line1 and line2:
-            self.stems_group.set_description(f"{line1}\n{line2}")
-        else:
-            self.stems_group.set_description(line2 or line1)
+        line2 = format_workload_line(workload, include_output_count=False)
+        self.output_stems.refresh(model_name=self._ensemble_pair_label(), workload=line2)
+        if self._ensemble_is_multi_or_four():
+            self.output_stems.row.set_tooltip_text(
+                "Choose final combined stems to save. Member models still produce their full outputs."
+            )
+        self.stems_group.set_description("")
         set_tooltip(
             self.stems_group,
             compose_stem_group_tooltip(
@@ -712,8 +897,15 @@ class EnsemblePage:
     def _on_save_stems_changed(self) -> None:
         if self._loading:
             return
-        self.save_stems.persist_to_settings()
-        self._update_stems_group_metadata()
+        if not getattr(self, "_active", False):
+            return
+        if self._ensemble_is_multi_or_four():
+            self.ensemble_stem_controls.persist_to_settings()
+        else:
+            self.settings.ensemble.stems_selected = []
+            self.save_stems.persist_to_settings()
+        self._update_stems_group_metadata(refresh_workload=False)
+        self._update_ensemble_banner()
 
     # -- Saved ensembles --------------------------------------------------------
 
@@ -739,6 +931,7 @@ class EnsemblePage:
 
         try:
             preset = EnsembleService(self.context.repo).apply(self.settings, name)
+            self._custom_algorithms = False
         except ValueError:
             self._toast(f"Could not load ensemble '{name}'.")
             return
@@ -748,8 +941,7 @@ class EnsemblePage:
             self._refresh_ensemble_type_values()
         finally:
             self._loading = False
-        self._rebuild_stem_only_toggles()
-        self._rebuild_model_list(list(preset.members))
+        self._reconcile_member_list(list(preset.members))
         self._persist_selected_models()
         self._ensemble_validation_warnings = preset.validation_warnings
         self._update_ensemble_banner()
@@ -768,11 +960,10 @@ class EnsemblePage:
             self._refresh_ensemble_type_values()
         finally:
             self._loading = False
-        self._rebuild_stem_only_toggles()
         selected = list(data.get("selected_models") or [])
         if curated_id is not None:
             selected = resolve_member_tags(selected, self.context.repo)
-        self._rebuild_model_list(selected)
+        self._reconcile_member_list(selected)
         self._persist_selected_models()
         if curated_id is not None:
             description = (data.get("description") or "").strip()
@@ -784,10 +975,8 @@ class EnsemblePage:
         _installed, missing = classify_preset_members(tags, self.context.repo)
         if not missing:
             return
-        from ..download import _get_manager, _get_queue
-
-        manager = _get_manager(self.context)
-        queue = _get_queue(self.context, manager)
+        manager = self.context.download_manager
+        queue = self.context.download_queue
         entries, unresolved = download_entries_for_missing(missing, manager, self.context.repo)
         if not entries and not unresolved:
             return
@@ -869,8 +1058,11 @@ class EnsemblePage:
         entry.grab_focus()
 
     def _do_save_ensemble(self, name: str, selected: List[str]) -> None:
+        if not self._ensemble_is_multi_or_four():
+            self._persist_pair_stem_selection()
         try:
             canonical_name = canonical_saved_ensemble_name(name)
+            from core.ensemble_blend import saved_blend_options
             from core.ensemble_service import EnsembleService
 
             EnsembleService(self.context.repo).create(
@@ -880,7 +1072,15 @@ class EnsemblePage:
                 algorithm=self.settings.ensemble.type or MAX_MIN,
                 wav_ensemble=self.settings.ensemble.wav_ensemble,
                 save_all_outputs=self.settings.ensemble.save_all_outputs,
+                derive_complement_from_mix=self.settings.ensemble.derive_complement_from_mix,
                 replace=True,
+                blend_options=saved_blend_options(self.settings),
+                stems_selected=self.settings.ensemble.stems_selected
+                if self._ensemble_is_multi_or_four()
+                else (),
+                stem_focus=""
+                if self._ensemble_is_multi_or_four()
+                else self.settings.process.stem_focus,
             )
         except (OSError, ValueError) as exc:
             self._toast(f"Couldn't save ensemble: {exc}")
@@ -929,7 +1129,7 @@ class EnsemblePage:
         stored = normalize_stem_pair_id(stored_raw)
         try:
             choices = installed_ensemble_pair_choices(self.context.repo, self.settings)
-        except Exception as exc:  # noqa: BLE001 - visible fail-closed state
+        except Exception as exc:  # visible fail-closed state
             from ..errorlog import log_error
 
             log_error("Ensemble", exc, context="listing stem pairs")
@@ -953,16 +1153,15 @@ class EnsemblePage:
                 set_combo_value(self.main_stem_row, stored)
         finally:
             self._loading = was_loading
+        self._pair_choices_stems = str(self.settings.mdx.stems)
+        self._pairs_dirty = False
         self._update_ensemble_banner()
 
     def _refresh_ensemble_type_values(self) -> None:
         multi = self._ensemble_is_multi_or_four()
         current = self.settings.ensemble.type or MAX_MIN
         primary, secondary = parse_ensemble_type(current)
-        primary_stem, secondary_stem = self._ensemble_stem_pair()
-        primary_title, secondary_title = algorithm_row_titles(
-            primary_stem, secondary_stem, multi_stem=multi
-        )
+        derive = bool(self.settings.ensemble.derive_complement_from_mix)
 
         was_loading = self._loading
         self._loading = True
@@ -972,27 +1171,32 @@ class EnsemblePage:
             set_combo_values(self.secondary_algo_row, list(ENSEMBLE_ALGORITHMS))
             set_combo_value(self.primary_algo_row, primary)
             set_combo_value(self.secondary_algo_row, secondary)
-            set_row_title(self.primary_algo_row, primary_title)
-            set_row_title(self.secondary_algo_row, secondary_title)
             set_row_subtitle(self.primary_algo_row, algorithm_blurb(primary))
             set_row_subtitle(self.secondary_algo_row, algorithm_blurb(secondary))
 
+            derive_row = getattr(self, "derive_complement_row", None)
             if multi:
-                self.preset_row.set_visible(False)
+                self.preset_row.set_visible(True)
+                set_combo_values(self.preset_row, [CUSTOM_PRESET, *ENSEMBLE_ALGORITHMS])
+                set_combo_value(
+                    self.preset_row, CUSTOM_PRESET if self._custom_algorithms else primary
+                )
                 self.secondary_algo_row.set_visible(False)
                 if current != primary:
                     self.settings.ensemble.type = primary
             else:
                 self.preset_row.set_visible(True)
                 self.secondary_algo_row.set_visible(True)
+                if derive_row is not None:
+                    derive_row.set_active(derive)
                 paired = format_ensemble_type(primary, secondary)
                 if current != paired:
                     self.settings.ensemble.type = paired
-                set_combo_value(self.preset_row, preset_for_pair(primary, secondary))
         finally:
             self._syncing_preset = False
             self._loading = was_loading
 
+        self._apply_algorithm_row_presentation()
         self._update_algo_sensitivity()
         self._update_wav_ensemble_subtitle()
         self._update_ensemble_options_summary()
@@ -1001,6 +1205,8 @@ class EnsemblePage:
         if self._loading:
             return
         self._set_ensemble_pair(get_combo_value(self.main_stem_row))
+        self.settings.ensemble.stems_selected = []
+        self._custom_algorithms = False
         self._pair_repick_warning = ""
         self.settings.ensemble.chosen_ensemble = CHOOSE_ENSEMBLE_OPTION
         self._ensemble_validation_warnings = ()
@@ -1009,8 +1215,7 @@ class EnsemblePage:
         # Rebuild the model list for the new stem pair first: stem-only
         # toggles resolve export-semantics hints from _selected_model_tags(),
         # which otherwise still reflects the previous stem pair's checklist.
-        self._rebuild_model_list(self._model_members_for_rebuild())
-        self._rebuild_stem_only_toggles()
+        self._reconcile_member_list(self._model_members_for_rebuild())
         self._update_ensemble_options_summary()
 
     def _on_preset_changed(self, *_args: typing.Any) -> None:
@@ -1018,11 +1223,29 @@ class EnsemblePage:
             return
         preset = get_combo_value(self.preset_row)
         pair = pair_for_preset(preset)
-        if pair is None:
+        self._custom_algorithms = preset == CUSTOM_PRESET
+        if self._ensemble_is_multi_or_four():
+            if preset in ENSEMBLE_ALGORITHMS:
+                self.settings.ensemble.type = preset
+                self._syncing_preset = True
+                try:
+                    set_combo_value(self.primary_algo_row, preset)
+                finally:
+                    self._syncing_preset = False
+            self._update_algorithm_visibility()
+            self._update_ensemble_options_summary()
             return
+        if pair is None:
+            self._update_algorithm_visibility()
+            return
+        derive = preset == PAIR_CONSISTENT_PRESET
         primary, secondary = pair
         self._syncing_preset = True
         try:
+            self._set_bool("is_derive_complement_from_mix", derive)
+            derive_row = getattr(self, "derive_complement_row", None)
+            if derive_row is not None:
+                derive_row.set_active(derive)
             set_combo_value(self.primary_algo_row, primary)
             set_combo_value(self.secondary_algo_row, secondary)
             set_row_subtitle(self.primary_algo_row, algorithm_blurb(primary))
@@ -1030,8 +1253,19 @@ class EnsemblePage:
             self.settings.ensemble.type = format_ensemble_type(primary, secondary)
         finally:
             self._syncing_preset = False
+        self._apply_algorithm_row_presentation()
+        self._update_algo_sensitivity()
         self._update_wav_ensemble_subtitle()
         self._update_ensemble_options_summary()
+
+    def _on_derive_complement_changed(self, *_args: typing.Any) -> None:
+        if self._loading or self._syncing_preset:
+            return
+        self._set_bool(
+            "is_derive_complement_from_mix",
+            self.derive_complement_row.get_active(),
+        )
+        self._refresh_ensemble_type_values()
 
     def _on_ensemble_type_changed(self, *_args: typing.Any) -> None:
         if self._loading or self._syncing_preset:
@@ -1046,26 +1280,49 @@ class EnsemblePage:
             self.settings.ensemble.type = format_ensemble_type(primary, secondary)
             self._syncing_preset = True
             try:
-                set_combo_value(self.preset_row, preset_for_pair(primary, secondary))
+                set_combo_value(
+                    self.preset_row,
+                    CUSTOM_PRESET
+                    if getattr(self, "_custom_algorithms", False)
+                    else preset_for_state(
+                        primary,
+                        secondary,
+                        derive_complement_from_mix=bool(
+                            self.settings.ensemble.derive_complement_from_mix
+                        )
+                        and self._pair_consistent_plan() is not None,
+                    ),
+                )
             finally:
                 self._syncing_preset = False
         self._update_wav_ensemble_subtitle()
         self._update_ensemble_options_summary()
 
+    def _update_algorithm_visibility(self) -> None:
+        custom = get_combo_value(self.preset_row) == CUSTOM_PRESET
+        self.primary_algo_row.set_visible(custom)
+        self.secondary_algo_row.set_visible(custom and not self._ensemble_is_multi_or_four())
+
     def _update_algo_sensitivity(self) -> None:
         enabled = self._stem_pair_chosen()
+        lock_leftover = bool(getattr(self, "_lock_leftover_algo", False))
         for row in (
             getattr(self, "preset_row", None),
             getattr(self, "primary_algo_row", None),
-            getattr(self, "secondary_algo_row", None),
+            getattr(self, "derive_complement_row", None),
         ):
             if row is None:
                 continue
             row.set_sensitive(enabled)
+        secondary = getattr(self, "secondary_algo_row", None)
+        if secondary is not None:
+            secondary.set_sensitive(enabled and not lock_leftover)
 
     def _sync_gpu_dependent_rows(self) -> None:
         """Dim GPU-only options while GPU conversion is off."""
-        self.autocast_row.set_sensitive(gpu_dependent_enabled(self.gpu_row.get_active()))
+        gpu_enabled = self.gpu_row.get_active()
+        self.autocast_row.set_sensitive(gpu_dependent_enabled(gpu_enabled))
+        self.autocast_row.set_subtitle(gpu_autocast_subtitle(gpu_enabled))
 
     def _update_wav_ensemble_subtitle(self) -> None:
         row = getattr(self, "wav_ensemble_row", None)
@@ -1079,85 +1336,92 @@ class EnsemblePage:
         set_row_subtitle(row, wav_ensemble_subtitle(uses_chunk_min=uses_chunk))
 
     def _update_ensemble_options_summary(self) -> None:
-        group = getattr(self, "ensemble_group", None)
+        group = (
+            self._layout_object("combination_group", Adw.PreferencesGroup)
+            if hasattr(self, "_layout_builder")
+            else getattr(self, "ensemble_group", None)
+        )
         if group is None:
             return
         pair = self._ensemble_pair()
         multi = is_stem_mode(pair)
-        primary_stem, secondary_stem = self._ensemble_stem_pair()
+        pair_primary, pair_secondary = self._ensemble_stem_pair()
+        stacked = getattr(self, "_pair_consistent_stacked_label", None)
+        leftover = getattr(self, "_pair_consistent_leftover_label", None)
+        lock_leftover = bool(getattr(self, "_lock_leftover_algo", False))
+        describe_mix = bool(
+            getattr(self, "_describe_mix_residual", False) or lock_leftover or leftover
+        )
         primary, secondary = parse_ensemble_type(self.settings.ensemble.type or MAX_MIN)
         group.set_description(
             ensemble_options_summary(
                 stem_chosen=self._stem_pair_chosen(),
                 main_stem=self._ensemble_pair_label(),
-                primary_stem=primary_stem,
-                secondary_stem=secondary_stem,
+                primary_stem=stacked if describe_mix and stacked else pair_primary,
+                secondary_stem=pair_secondary,
                 primary_algo=primary,
                 secondary_algo=secondary,
                 model_count=len(self._effective_selected_models()),
                 multi_stem=multi,
+                derive_complement_from_mix=describe_mix,
+                leftover_label=leftover,
             )
         )
 
     # -- Model multi-select list ------------------------------------------------
 
-    def _rebuild_model_list(self, preselected: List[typing.Any]) -> None:
-        from core.model_identity import (
-            ARCH_BY_FAMILY,
-            ModelIdentityService,
-            parse_stored_model_id,
-        )
+    def _acquire_member_projection(self, preselected: List[typing.Any]) -> MemberProjection:
+        from core.model_identity import ModelIdentityService
 
-        preserve_presented_gate = bool(
+        from .member_projection import project_members
+
+        preserve_gate = bool(
             getattr(self, "_models_write_gated", False)
             and preselected == getattr(self, "_models_gated_values", None)
         )
-        prior_gated_ids = set(
-            getattr(self, "_models_gated_ids", ()) if preserve_presented_gate else ()
-        )
-        identity_error: Exception | None = None
+        prior_ids = getattr(self, "_models_gated_ids", ()) if preserve_gate else ()
+        pair = self._ensemble_pair()
+        stored_pair = getattr(getattr(self.settings, "ensemble", None), "main_stem", "")
+        records = ()
+        eligible_ids = None
+        error = None
         try:
-            all_records = tuple(ModelIdentityService(self.context.repo).records())
-        except Exception as exc:  # noqa: BLE001 - surfaced below for a chosen pair
-            all_records = ()
-            identity_error = exc
-        installed_ids = {record.id for record in all_records if record.installed}
-        preselected_ids = {value for value in preselected if isinstance(value, str)}
+            records = tuple(ModelIdentityService(self.context.repo).records())
+            if pair:
+                pair_id = normalize_stem_pair_id(stored_pair)
+                eligible_ids = set(self.context.repo.ensemble_model_list(self.settings, pair_id))
+        except Exception as exc:
+            error = exc
+            if pair:
+                from ..errorlog import log_error
 
-        def member_warning(
-            index: int,
-            value: typing.Any,
-            eligible_ids: set[str] | None = None,
-        ) -> str | None:
-            path = f"ensemble.selected_models[{index}]"
-            if not isinstance(value, str):
-                return f"{path}: expected a canonical model ID; excluding {value!r}"
-            try:
-                model_id = parse_stored_model_id(value).value
-            except ValueError:
-                return f"{path}: expected a canonical model ID; excluding {value!r}"
-            if model_id not in installed_ids:
-                return f"{path}: model {value!r} is not installed; excluding it"
-            if eligible_ids is not None and model_id not in eligible_ids:
-                return (
-                    f"{path}: model {value!r} is not eligible for "
-                    f"{self.settings.ensemble.main_stem!r}; excluding it"
-                )
-            return None
+                log_error("Ensemble", exc, context="listing models")
+        projection = project_members(
+            records,
+            preselected,
+            pair_id=stored_pair,
+            pair_chosen=bool(pair),
+            eligible_ids=eligible_ids,
+            prior_gated_ids=prior_ids,
+            load_error=error is not None,
+        )
+        if projection.replace_gate:
+            log_model_picker_items(
+                f"Ensemble members ({pair})",
+                ((record.id, record.display) for record in projection.records),
+            )
+        return projection
 
-        def collect_member_warnings(
-            eligible_ids: set[str] | None = None,
-        ) -> tuple[str, ...]:
-            warnings: list[str] = []
-            for index, value in enumerate(preselected):
-                warning = member_warning(index, value, eligible_ids)
-                if warning is not None:
-                    warnings.append(warning)
-            return tuple(warnings)
+    def _render_member_projection(
+        self, projection: MemberProjection, preselected: List[typing.Any]
+    ) -> None:
+        from core.model_identity import ARCH_BY_FAMILY
 
-        member_warnings = collect_member_warnings()
-        self._ensemble_member_warnings = member_warnings
-        self._models_write_gated = bool(member_warnings)
+        self._ensemble_member_warnings = projection.warnings
+        self._models_write_gated = projection.write_gated
+        if projection.replace_gate:
+            self._models_gated_values = list(preselected) if projection.write_gated else None
+            self._models_gated_ids = projection.gated_ids
         child = self.models_listbox.get_first_child()
         while child is not None:
             nxt = child.get_next_sibling()
@@ -1165,81 +1429,13 @@ class EnsemblePage:
             child = nxt
         self._model_checks = {}
         self._model_row_text = {}
-
-        pair = self._ensemble_pair()
-        if not pair:
-            self.models_listbox.append(Adw.ActionRow(title="Choose a stem pair to list models"))
-            self._update_models_dialog_status()
-            self._update_models_summary()
-            return
-
-        try:
-            if identity_error is not None:
-                raise identity_error
-            pair_id = normalize_stem_pair_id(
-                getattr(getattr(self.settings, "ensemble", None), "main_stem", "")
-            )
-            eligible_ids = set(self.context.repo.ensemble_model_list(self.settings, pair_id))
-            member_warnings = collect_member_warnings(eligible_ids)
-            gated_ids = {
-                value
-                for index, value in enumerate(preselected)
-                if isinstance(value, str) and member_warning(index, value, eligible_ids) is not None
-            }
-            if preserve_presented_gate:
-                gated_ids.update(prior_gated_ids)
-                newly_available = sorted(
-                    prior_gated_ids
-                    - {
-                        value
-                        for index, value in enumerate(preselected)
-                        if isinstance(value, str)
-                        and member_warning(index, value, eligible_ids) is not None
-                    }
-                )
-                member_warnings = (
-                    *member_warnings,
-                    *(
-                        f"ensemble member {value!r} is now available; pick it to select it"
-                        for value in newly_available
-                    ),
-                )
-            self._ensemble_member_warnings = member_warnings
-            self._models_write_gated = bool(member_warnings) or bool(gated_ids)
-            self._models_gated_values = list(preselected) if self._models_write_gated else None
-            self._models_gated_ids = tuple(sorted(gated_ids))
-            records = sorted(
-                (
-                    record
-                    for record in all_records
-                    if record.installed and record.id in eligible_ids
-                ),
-                key=lambda record: (record.display.casefold(), record.id),
-            )
-        except Exception as exc:  # noqa: BLE001 - surfaced to the user
-            from ..errorlog import log_error
-
-            log_error("Ensemble", exc, context="listing models")
-            row = Adw.ActionRow()
-            set_row_title(row, "Could not list models")
-            set_row_subtitle(row, "See Error Log for details")
+        if projection.placeholder:
+            row = Adw.ActionRow(title=projection.placeholder)
+            if projection.placeholder == "Could not list models":
+                set_row_subtitle(row, "See Error Log for details")
             self.models_listbox.append(row)
-            self._update_models_dialog_status()
-            self._update_models_summary()
             return
-
-        log_model_picker_items(
-            f"Ensemble members ({pair})",
-            ((record.id, record.display) for record in records),
-        )
-
-        if not records:
-            self.models_listbox.append(Adw.ActionRow(title="No compatible models found"))
-            self._update_models_dialog_status()
-            self._update_models_summary()
-            return
-
-        for record in records:
+        for record in projection.records:
             tag = record.id
             title = record.display
             subtitle = ARCH_BY_FAMILY[record.family]
@@ -1247,7 +1443,7 @@ class EnsemblePage:
             set_row_title(row, title)
             row.set_subtitle(subtitle)
             check = Gtk.CheckButton(valign=Gtk.Align.CENTER)
-            check.set_active(tag in preselected_ids and tag not in gated_ids)
+            check.set_active(tag in projection.selected_ids)
             check.connect("toggled", self._on_model_toggled)
             row.add_prefix(check)
             row.set_activatable_widget(check)
@@ -1256,23 +1452,60 @@ class EnsemblePage:
             self._model_checks[tag] = check
             self._model_row_text[tag] = (title, subtitle)
 
-        # A preset saved before a model became ineligible for this stem pair
-        # does not render that member. The persist boundary below drops it so
-        # a later install cannot silently reactivate it.
-        dropped = preselected_ids - {record.id for record in records}
-        if dropped:
-            from core.debug_log import debug
-
-            debug(
-                "settings",
-                f"ensemble preset members not eligible for {self.settings.ensemble.main_stem!r}, "
-                f"skipping {sorted(dropped)}",
-            )
-
         self.models_listbox.invalidate_filter()
-        self._persist_selected_models()
+
+    def _reconcile_member_list(self, preselected: List[typing.Any]) -> None:
+        """Refresh presentation and retain the existing successful-list write boundary."""
+        projection = self._acquire_member_projection(preselected)
+        self._render_member_projection(projection, preselected)
+        if projection.reconcile_after_render:
+            dropped = {value for value in preselected if isinstance(value, str)} - {
+                record.id for record in projection.records
+            }
+            if dropped:
+                from core.debug_log import debug
+
+                debug(
+                    "settings",
+                    f"ensemble preset members not eligible for {self.settings.ensemble.main_stem!r}, skipping {sorted(dropped)}",
+                )
+            self._persist_selected_models()
+        self._models_dirty = False
+        self._member_list_state = (
+            self._current_member_list_state()
+            if projection.placeholder != "Could not list models"
+            and preselected
+            == list(getattr(getattr(self.settings, "ensemble", None), "selected_models", []) or [])
+            else None
+        )
+        self._rebuild_stem_only_toggles()
         self._update_models_dialog_status()
         self._update_models_summary()
+
+    def _current_member_list_state(self) -> tuple:
+        return (
+            getattr(getattr(self.settings, "ensemble", None), "main_stem", ""),
+            str(getattr(getattr(self.settings, "mdx", None), "stems", "")),
+            list(getattr(getattr(self.settings, "ensemble", None), "selected_models", []) or []),
+        )
+
+    def _ensure_member_list(self) -> None:
+        if getattr(self, "_load_deferred", False):
+            self.load()
+            return
+        if hasattr(self, "main_stem_row") and (
+            getattr(self, "_pairs_dirty", False)
+            or (
+                getattr(self, "_pair_choices_stems", str(self.settings.mdx.stems))
+                != str(self.settings.mdx.stems)
+            )
+        ):
+            self._refresh_pair_choices()
+        if getattr(self, "_models_dirty", True) or (
+            getattr(self, "_member_list_state", None) != self._current_member_list_state()
+        ):
+            self._reconcile_member_list(self._model_members_for_rebuild())
+            self._models_dirty = False
 
     def _selected_model_tags(self) -> List[str]:
         return [tag for tag, check in self._model_checks.items() if check.get_active()]
@@ -1325,7 +1558,14 @@ class EnsemblePage:
     def _update_models_summary(self) -> None:
         row = getattr(self, "models_trigger_row", None)
         if row is not None:
-            row.set_subtitle(self._models_summary())
+            tags = self._effective_selected_models()
+            labels = [self._model_row_text.get(tag, (tag, ""))[0] for tag in tags[:3]]
+            row.set_subtitle(
+                "\n".join(labels) + (f"\n+{len(tags) - 3} more models" if len(tags) > 3 else "")
+                if labels
+                else self._models_summary()
+            )
+        self._apply_algorithm_row_presentation()
         self._update_member_models_sensitivity()
         self._update_ensemble_options_summary()
         self._update_ensemble_banner()
@@ -1373,17 +1613,25 @@ class EnsemblePage:
         self.models_listbox.invalidate_filter()
         self._update_models_dialog_status()
 
+    def _set_visible_models_active(self, active: bool) -> None:
+        changed = False
+        self._batching_models = True
+        try:
+            for tag in self._visible_model_tags():
+                check = self._model_checks.get(tag)
+                if check is not None and check.get_active() != active:
+                    check.set_active(active)
+                    changed = True
+        finally:
+            self._batching_models = False
+        if changed:
+            self._on_model_toggled(None)
+
     def _on_models_select_all(self, *_args: typing.Any) -> None:
-        for tag in self._visible_model_tags():
-            check = self._model_checks.get(tag)
-            if check is not None and not check.get_active():
-                check.set_active(True)
+        self._set_visible_models_active(True)
 
     def _on_models_clear(self, *_args: typing.Any) -> None:
-        for tag in self._visible_model_tags():
-            check = self._model_checks.get(tag)
-            if check is not None and check.get_active():
-                check.set_active(False)
+        self._set_visible_models_active(False)
 
     def _open_models_dialog(self, *_args: typing.Any) -> None:
         if not self._stem_pair_chosen():
@@ -1391,7 +1639,7 @@ class EnsemblePage:
         search = getattr(self, "models_search", None)
         if search is not None:
             search.set_text("")
-        self._rebuild_model_list(self._model_members_for_rebuild())
+        self._ensure_member_list()
         present_modal_dialog(self.models_dialog, self.window)
 
     def _open_member_model_options(self, *_args: typing.Any) -> None:
@@ -1412,7 +1660,9 @@ class EnsemblePage:
         models = len(self._selected_model_tags())
         debug("ui", f"ensemble models selected count={models} stem={stem}")
 
-    def _on_model_toggled(self, _check: Gtk.CheckButton) -> None:
+    def _on_model_toggled(self, _check: Gtk.CheckButton | None) -> None:
+        if getattr(self, "_batching_models", False):
+            return
         # Changing the member set detaches the run from any saved ensemble.
         self.settings.ensemble.chosen_ensemble = CHOOSE_ENSEMBLE_OPTION
         if not self._loading:
@@ -1423,6 +1673,7 @@ class EnsemblePage:
         self._ensemble_validation_warnings = ()
         self._ensemble_member_warnings = ()
         self._persist_selected_models()
+        self._member_list_state = self._current_member_list_state()
         self._update_models_dialog_status()
         self._update_models_summary()
         self._rebuild_stem_only_toggles()
@@ -1432,49 +1683,40 @@ class EnsemblePage:
     def refresh_models(self) -> None:
         """The installed model set changed.
 
-        The splitter row is refreshed now -- it is cheap and it has no
-        activation hook of its own. The member checklist rebuilds immediately
-        only when its dialog is mapped: rebuilding resolves
-        ``ensemble_model_list`` (which hashes checkpoints), so a page nobody is
-        looking at is just marked dirty and ``on_activated`` consumes the flag.
+        The splitter row receives its own invalidation. Pair choices and the
+        member checklist rebuild while the page or dialog is visible; hidden
+        pages keep dirty flags until activation. Eligibility may hash models.
         Either way the member write gate preserves stored members that are no
         longer eligible instead of silently pruning a saved preset.
         """
         self.vocal_split_row.refresh_models()
-        if hasattr(self, "main_stem_row") and hasattr(self, "context"):
-            self._refresh_pair_choices()
-        # getattr: a refresh can arrive before the page finishes building.
+        self._pairs_dirty = True
+        self._models_dirty = True
         dialog = getattr(self, "models_dialog", None)
-        if dialog is not None and dialog.get_mapped():
-            # The user is looking at the list right now; a dirty flag consumed
-            # at the next activation would leave stale labels on screen.
-            self._models_dirty = False
-            self._rebuild_model_list(self._model_members_for_rebuild())
-        else:
-            self._models_dirty = True
+        if getattr(self, "_active", False) or (dialog is not None and dialog.get_mapped()):
+            self._ensure_member_list()
 
     def on_activated(self) -> None:
         """Make the ensemble method active and refresh from shared settings.
 
         ``chosen_process_method`` flips to ``ENSEMBLE_MODE`` here (and is restored
-        by the main window on leaving this tab), so the member-model list - which
-        depends on the method for the multi-stem ensemble - is rebuilt with the
-        correct method in effect.
+        by the main window on leaving this tab). The member checklist is
+        prepared on first activation, then reused until its inputs change.
         """
+        self._active = True
         self.settings.process.method = ProcessMethod.ENSEMBLE
         self._sync_shared_from_settings()
-        self._models_dirty = False
-        self._rebuild_model_list(self._model_members_for_rebuild())
+        self._ensure_member_list()
 
     def on_deactivated(self) -> None:
         # Method restoration is owned by the main window's tab handler.
-        pass
+        self._active = False
 
     def _config_blocked_reason(self) -> Optional[str]:
         """Ensemble-configuration blocker (stem pair / member models), if any.
 
         Excludes input/output readiness (those rows carry their own affordances);
-        this is what the empty-state banner surfaces.
+        The shared log panel presents this reason beside Start.
         """
         splitter = getattr(self, "vocal_split_row", None)
         splitter_reason = splitter.blocked_reason() if splitter is not None else None
@@ -1484,6 +1726,13 @@ class EnsemblePage:
             return _REASON_STEM_PAIR
         if len(self._effective_selected_models()) <= 1:
             return _REASON_TWO_MODELS
+        controls = getattr(self, "output_stems", None)
+        if controls is not None and controls.controls is not None:
+            snapshot = controls.controls.snapshot()
+            if snapshot.review_required:
+                return "Review unavailable output stems"
+            if self._ensemble_is_multi_or_four() and not snapshot.main_count:
+                return "No output stems have two contributing models"
         return None
 
     def start_blocked_reason(self) -> Optional[str]:
@@ -1498,14 +1747,31 @@ class EnsemblePage:
             return output_reason
         return self._config_blocked_reason()
 
+    def _persist_pair_stem_selection(self) -> None:
+        # Commit this page's visible choice even if another tab changed shared focus.
+        controls = self.save_stems.controls
+        if (
+            controls is not None
+            and controls.value is not None
+            and not controls.snapshot().review_required
+        ):
+            controls.adopt_view(controls.value)
+        self.settings.ensemble.stems_selected = []
+        self.save_stems.persist_to_settings()
+
     def _flush_run_settings(self) -> None:
         """Persist widget state plan/start reads (mirrors separation preflight flush)."""
         self.settings.process.method = ProcessMethod.ENSEMBLE
         self._persist_selected_models()
-        self.vocal_split_row.persist_to_settings(self.settings)
-        self.save_stems.persist_to_settings()
+        assert self._shared_session is not None
+        self._shared_session.commit()
+        if self._ensemble_is_multi_or_four():
+            self.settings.process.stem_focus = ""
+            self.ensemble_stem_controls.persist_to_settings()
+        else:
+            self._persist_pair_stem_selection()
 
-    def build_job_spec(self) -> typing.Any:
+    def build_job_spec(self) -> JobSpec:
         import copy
 
         from core.job_plan import JobSpec
@@ -1520,7 +1786,7 @@ class EnsemblePage:
         )
 
     def _update_ensemble_banner(self) -> None:
-        """Reveal the empty-state banner while the ensemble config is incomplete."""
+        """Show saved-configuration warnings and refresh shared Start readiness."""
         banner = getattr(self, "_ensemble_banner", None)
         if banner is None:
             return
@@ -1538,14 +1804,16 @@ class EnsemblePage:
             if pair_warning
             else "Saved ensemble warning: " + " ".join(warnings)
             if warnings
-            else self._config_blocked_reason()
+            else None
         )
         if reason:
             banner.set_title(reason)
         banner.set_revealed(reason is not None)
         self.window._refresh_start_readiness()
 
-    def start(self, callbacks: typing.Any, plan: typing.Any = None) -> None:
+    def start(
+        self, callbacks: JobCallbacks, plan: ResolvedJob | ResolvedAudioJob | None = None
+    ) -> None:
         # Readiness is validated by ``MainWindow._on_start`` before dispatch.
         from core.job_plan import ResolvedJob
 
@@ -1579,8 +1847,25 @@ class EnsemblePage:
                     plan.model_dependencies if isinstance(plan, ResolvedJob) else None
                 ),
             )
-        except Exception as exc:  # noqa: BLE001 - surfaced to the user
+        except Exception as exc:  # surfaced to the user
             self.window.fail_to_start(f"Unable to start ensemble: {exc}", exc)
+
+    run_label = 'Ensemble'
+
+    def worker_is_running(self) -> bool:
+        return self.context.runner.is_running()
+
+    def snapshot_error_context(self) -> RunErrorContext:
+        from core.error_context import build_ensemble_context
+
+        return RunErrorContext.from_fields(
+            build_ensemble_context(
+                self.settings, list(self.input_row.paths), repo=self.context.repo
+            )
+        )
+
+    def bind_run_settings(self, settings: Settings) -> None:
+        pass  # The shared separation runner is bound by the host.
 
     def stop(self) -> None:
         self.context.runner.stop()

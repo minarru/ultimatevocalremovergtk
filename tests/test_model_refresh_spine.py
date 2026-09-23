@@ -21,11 +21,12 @@ def _window() -> Any:
     window.context = mock.MagicMock()
     window._run_controller = None
     window._deferred_model_refresh = None
-    window._update_sep_banner = mock.MagicMock()
+    window._refresh_start_readiness = mock.MagicMock()
     window._views = [mock.MagicMock(name=f"view{i}") for i in range(3)]
     window._ensemble_page = mock.MagicMock(name="ensemble")
     window._audio_tools_page = mock.MagicMock(name="audio_tools")
     window.vocal_split_row = mock.MagicMock(name="vocal_split_row")
+    window._model_picker = mock.MagicMock(name="model_picker")
     for view in window._views:
         view.list_models.return_value = []
     return window
@@ -42,6 +43,7 @@ class ConsumerRegistryTests(unittest.TestCase):
         window._ensemble_page.refresh_models.assert_called_once_with()
         window._audio_tools_page.refresh_models.assert_called_once_with()
         window.vocal_split_row.refresh_models.assert_called_once_with()
+        window._model_picker.refresh_models.assert_called_once_with()
 
     def test_repaint_does_not_reinvalidate_the_repository(self) -> None:
         """A repository notification must not schedule itself forever."""
@@ -188,12 +190,8 @@ class DualEventSubscriptionTests(unittest.TestCase):
         MainWindow._subscribe_model_events(window)
 
         repo = window.context.repo
-        repo.subscribe_models_changed.assert_called_once_with(
-            window._on_models_changed
-        )
-        repo.subscribe_model_presentation_changed.assert_called_once_with(
-            window._on_models_changed
-        )
+        repo.subscribe_models_changed.assert_called_once_with(window._on_models_changed)
+        repo.subscribe_model_presentation_changed.assert_called_once_with(window._on_models_changed)
 
     def test_closing_unsubscribes_that_callback_from_both(self) -> None:
         window = _window()
@@ -201,9 +199,7 @@ class DualEventSubscriptionTests(unittest.TestCase):
         MainWindow._unsubscribe_model_events(window)
 
         repo = window.context.repo
-        repo.unsubscribe_models_changed.assert_called_once_with(
-            window._on_models_changed
-        )
+        repo.unsubscribe_models_changed.assert_called_once_with(window._on_models_changed)
         repo.unsubscribe_model_presentation_changed.assert_called_once_with(
             window._on_models_changed
         )

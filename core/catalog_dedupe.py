@@ -181,12 +181,18 @@ def dedupe_download_catalogue(
 
     * primary checkpoint basename (VR / MDX-family; not used for Demucs bags)
     * normalized primary checkpoint URL (VR / MDX-family)
-    * content identity (etag) when ``content_ids`` maps the primary URL
+    * content identity (SHA-256) when ``content_ids`` maps the primary URL
     * normalized selectable label
     * for Demucs bags only: identical full file→URL map
 
     Insertion order is merge priority: earlier catalogues win.
+    :mod:`core.checkpoint_identities` adds reviewed rows: withdrawn rows are
+    dropped before they claim any key, and a rehost collides on the upstream
+    checkpoint name it copies.
     """
+    from .checkpoint_identities import load_checkpoint_identities
+
+    identities = load_checkpoint_identities()
     kept: Dict[str, Any] = {}
     seen_ckpts: set[str] = set()
     seen_urls: set[str] = set()
@@ -210,6 +216,8 @@ def dedupe_download_catalogue(
             preferred_url_labels[url] = matching[0]
 
     for label, model in catalogue.items():
+        if primary_checkpoint_url(model) in identities.withdrawn:
+            continue
         url = primary_checkpoint_url(model) if not demucs_bags else None
         preferred = preferred_url_labels.get(url or "")
         if preferred is not None and label != preferred:
@@ -224,12 +232,12 @@ def dedupe_download_catalogue(
             if signature is not None and signature in seen_bags:
                 continue
         else:
-            ckpt = primary_checkpoint_name(model)
+            url = primary_checkpoint_url(model)
+            ckpt = identities.rehosts.get(url or "") or primary_checkpoint_name(model)
             if ckpt:
                 key = ckpt.casefold()
                 if key in seen_ckpts:
                     continue
-            url = primary_checkpoint_url(model)
             if url and url in seen_urls:
                 continue
             content_id = _lookup_content_id(url, ids)

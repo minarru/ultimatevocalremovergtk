@@ -21,12 +21,8 @@ class DemucsBagMemberTests(unittest.TestCase):
         self.assertIn("75fc33f5", sigs)
 
     def test_bag_member_weight_is_detected(self):
-        self.assertTrue(
-            is_demucs_bag_member_weight("75fc33f5-1941ce65", {"75fc33f5"})
-        )
-        self.assertFalse(
-            is_demucs_bag_member_weight("demucs-e07c671f", {"75fc33f5"})
-        )
+        self.assertTrue(is_demucs_bag_member_weight("75fc33f5-1941ce65", {"75fc33f5"}))
+        self.assertFalse(is_demucs_bag_member_weight("demucs-e07c671f", {"75fc33f5"}))
 
     def test_bag_owner_basename_for_member_th(self):
         owner = demucs_bag_owner_basename("75fc33f5-1941ce65")

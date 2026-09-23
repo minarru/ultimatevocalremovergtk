@@ -56,9 +56,7 @@ class ProgressWeightingTests(unittest.TestCase):
                 with open(os.path.join(tmp, name), "wb") as handle:
                     handle.write(b"already here")
 
-            pending_bytes = sum(
-                size for name, size in sizes.items() if name not in preexisting
-            )
+            pending_bytes = sum(size for name, size in sizes.items() if name not in preexisting)
             pending_count = len(sizes) - len(preexisting)
             estimate = (
                 (pending_bytes, pending_count, pending_count)
@@ -66,10 +64,11 @@ class ProgressWeightingTests(unittest.TestCase):
                 else (None, pending_count, 0)
             )
 
-            with mock.patch.object(
-                downloads_mod, "_urlopen", side_effect=lambda url: _FakeResponse(bodies[url])
-            ), mock.patch.object(
-                downloads_mod, "estimate_jobs_size", return_value=estimate
+            with (
+                mock.patch.object(
+                    downloads_mod, "_urlopen", side_effect=lambda url: _FakeResponse(bodies[url])
+                ),
+                mock.patch.object(downloads_mod, "estimate_jobs_size", return_value=estimate),
             ):
                 DownloadManager().download(
                     jobs, on_progress=seen.append, on_info=lambda _text: None
@@ -126,9 +125,7 @@ class ProgressWeightingTests(unittest.TestCase):
         self.assertGreater(before_final, 0.99)
 
     def test_unknown_sizes_split_two_pending_files_evenly(self) -> None:
-        seen = self._run(
-            {"a.ckpt": _CHUNK * 4, "b.ckpt": _CHUNK * 4}, known_sizes=False
-        )
+        seen = self._run({"a.ckpt": _CHUNK * 4, "b.ckpt": _CHUNK * 4}, known_sizes=False)
         self.assertAlmostEqual(seen[3], 0.5, delta=0.02)
 
 

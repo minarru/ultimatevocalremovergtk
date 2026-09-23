@@ -7,7 +7,6 @@ continues through 0.80–0.89 so the bar never rewinds and never crosses the
 
 from __future__ import annotations
 
-
 INFER_START = 0.10
 HOP_END = 0.80
 EXTRA_END = 0.89

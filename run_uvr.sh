@@ -30,6 +30,32 @@ clear_venv_health_stamp() {
     rm -f "${VENV_HEALTH_STAMP}" || true
 }
 
+resource_bundle_needs_rebuild() {
+    local bundle="${HERE}/ui/data/uvr.gresource"
+    [[ -f "${bundle}" ]] || return 0
+    [[ "${HERE}/resources/compile_resources.sh" -nt "${bundle}" ]] && return 0
+    [[ "${HERE}/resources/style.css" -nt "${bundle}" ]] && return 0
+    [[ "${HERE}/packaging/org.uvr.UltimateVocalRemover.png" -nt "${bundle}" ]] && return 0
+
+    local source
+    while IFS= read -r -d '' source; do
+        [[ "${source}" -nt "${bundle}" ]] && return 0
+    done < <(
+        find "${HERE}/resources/icons" "${HERE}/resources/ui" \
+            -type f \( -name '*.blp' -o -name '*.svg' -o -name '*.png' -o -name 'index.theme' \) \
+            -print0
+    )
+    return 1
+}
+
+ensure_resource_bundle() {
+    if ! resource_bundle_needs_rebuild; then
+        return 0
+    fi
+    echo "Application resources are missing or stale; rebuilding ..." >&2
+    "${HERE}/resources/compile_resources.sh"
+}
+
 # Return 0 when a full GTK/Adw import probe should run.
 gtk_probe_needed() {
     if [[ "${UVR_FORCE_VENV_CHECK:-0}" == "1" ]]; then
@@ -155,6 +181,7 @@ ensure_venv() {
 # install_packages.sh (--update).
 install_desktop_entry || true
 ensure_venv
+ensure_resource_bundle
 
 if [[ -n "${G_MESSAGES_DEBUG:-}" ]]; then
     # Expand UVR shorthands (e.g. uvr -> uvr-ui uvr-worker …) before Python loads GLib.

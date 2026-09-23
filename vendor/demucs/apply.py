@@ -8,6 +8,7 @@ Code to apply a model to a mix. It will handle chunking with overlaps and
 inteprolation between chunks, as well as the "shift trick".
 """
 from concurrent.futures import ThreadPoolExecutor
+from threading import Lock
 import random
 import typing as tp
 from multiprocessing import Process,Queue,Pipe
@@ -19,11 +20,9 @@ import tqdm
 
 from .demucs import Demucs
 from .hdemucs import HDemucs
-from .utils import center_trim, DummyPoolExecutor
+from .utils import center_trim, DummyPoolExecutor, progress_slice
 
 Model = tp.Union[Demucs, HDemucs]
-
-progress_bar_num = 0
 
 class BagOfModels(nn.Module):
     def __init__(self, models: tp.List[Model],
@@ -150,10 +149,6 @@ def apply_model(model,
             be on `device`, while the entire tracks will be stored on `mix.device`.
     """
     
-    global fut_length
-    global bag_num
-    global prog_bar
-    
     if device is None:
         device = mix.device
     else:
@@ -183,15 +178,10 @@ def apply_model(model,
 
         estimates = 0
         totals = [0] * len(model.sources)
-        bag_num = len(model.models)
-        fut_length = 0
-        prog_bar = 0
-        current_model = 0 #(bag_num + 1)
-        for sub_model, weight in zip(model.models, model.weights):
+        for model_i, (sub_model, weight) in enumerate(zip(model.models, model.weights)):
             original_model_device = next(iter(sub_model.parameters())).device
             sub_model.to(device)
-            fut_length += fut_length
-            current_model += 1
+            kwargs['set_progress_bar'] = progress_slice(set_progress_bar, model_i, len(model.models))
             out = apply_model(sub_model, mix, **kwargs)
             sub_model.to(original_model_device)
             for k, inst_weight in enumerate(weight):
@@ -218,8 +208,7 @@ def apply_model(model,
         for shift_i in range(shifts):
             offset = random.randint(0, max_shift)
             shifted = TensorChunk(padded_mix, offset, length + max_shift - offset)
-            if set_progress_bar:
-                set_progress_bar(0.1, (0.8 / shifts * (shift_i + 1)))
+            kwargs['set_progress_bar'] = progress_slice(set_progress_bar, shift_i, shifts)
             shifted_out = apply_model(model, shifted, **kwargs)
             out += shifted_out[..., max_shift - offset:]
         out /= shifts
@@ -231,6 +220,18 @@ def apply_model(model,
         segment = int(model.samplerate * model.segment)
         stride = int((1 - overlap) * segment)
         offsets = range(0, length, stride)
+        completed = 0
+        progress_lock = Lock()
+
+        def report_segment_progress(step, iterations=0):
+            # Worker callbacks also carry pause/stop checkpoints. Keep them, but
+            # report only aggregate work completed by the collecting thread.
+            with progress_lock:
+                if set_progress_bar:
+                    set_progress_bar(0.1, 0.8 * completed / len(offsets))
+
+        kwargs['set_progress_bar'] = report_segment_progress if set_progress_bar else None
+        report_segment_progress(0.1)
         scale = float(format(stride / model.samplerate, ".2f"))
         # We start from a triangle shaped weight, with maximal weight in the middle
         # of the segment. Then we normalize and take to the power `transition_power`.
@@ -249,15 +250,15 @@ def apply_model(model,
             offset += segment
         if progress:
             futures = tqdm.tqdm(futures, unit_scale=scale, ncols=120, unit='seconds')
-        for future, offset in futures:
-            if set_progress_bar:
-                fut_length = (len(futures) * bag_num * static_shifts)
-                prog_bar += 1
-                set_progress_bar(0.1, (0.8/fut_length*prog_bar))
+        for chunk_i, (future, offset) in enumerate(futures):
             chunk_out = future.result()
             chunk_length = chunk_out.shape[-1]
             out[..., offset:offset + segment] += (weight[:chunk_length] * chunk_out).to(mix.device)
             sum_weight[offset:offset + segment] += weight[:chunk_length].to(mix.device)
+            with progress_lock:
+                completed = chunk_i + 1
+                if set_progress_bar:
+                    set_progress_bar(0.1, 0.8 * completed / len(offsets))
         assert sum_weight.min() > 0
         out /= sum_weight
         return out

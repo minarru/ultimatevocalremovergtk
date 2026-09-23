@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   viewBox="0 0 16 16"
+   preserveAspectRatio="xMidYMid meet"
+   width="16"
+   height="16"
+   version="1.1"
+   id="svg1"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <!-- GNOME Icon Development Kit: icons/mixer-sliders.svg; static outline export, 2026-09-10. CC0-1.0. -->
+  <title
+     id="title1">mixer-sliders</title>
+  <defs
+     id="defs1"
+     fill="#2e3436"
+     stroke="none"
+     class="foreground foreground-fill foreground-fill" />
+  <path
+     style="baseline-shift:baseline;display:inline;overflow:visible;vector-effect:none;fill:#2e3436;stroke-linecap:round;stroke-linejoin:round;enable-background:accumulate;stop-color:#000000;stop-opacity:1;opacity:1"
+     d="M 11,0 A 1,1 0 0 0 10,1 V 2 H 1 A 1,1 0 0 0 0,3 1,1 0 0 0 1,4 h 9 v 1 a 1,1 0 0 0 1,1 1,1 0 0 0 1,-1 V 4 h 3 A 1,1 0 0 0 16,3 1,1 0 0 0 15,2 H 12 V 1 A 1,1 0 0 0 11,0 Z M 5,5 A 1,1 0 0 0 4,6 V 7 H 1 A 1,1 0 0 0 0,8 1,1 0 0 0 1,9 h 3 v 1 a 1,1 0 0 0 1,1 1,1 0 0 0 1,-1 V 9 h 9 A 1,1 0 0 0 16,8 1,1 0 0 0 15,7 H 6 V 6 A 1,1 0 0 0 5,5 Z m 4,5 a 1,1 0 0 0 -1,1 v 1 H 1 a 1,1 0 0 0 -1,1 1,1 0 0 0 1,1 h 7 v 1 a 1,1 0 0 0 1,1 1,1 0 0 0 1,-1 v -1 h 5 a 1,1 0 0 0 1,-1 1,1 0 0 0 -1,-1 H 10 V 11 A 1,1 0 0 0 9,10 Z"
+     id="mixer" />
+  <metadata
+     id="metadata1">
+    <rdf:RDF>
+      <Work>
+        <license
+           rdf:resource="https://creativecommons.org/publicdomain/zero/1.0/" />
+        <dc:subject>
+          <rdf:Bag>
+            <rdf:li>mixer volume sliders preferences-other control panel preferences vertical</rdf:li>
+          </rdf:Bag>
+        </dc:subject>
+        <dc:creator>
+          <Agent>
+            <dc:title>Jakub Steiner</dc:title>
+          </Agent>
+        </dc:creator>
+      </Work>
+    </rdf:RDF>
+  </metadata>
+</svg>

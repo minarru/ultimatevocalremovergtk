@@ -1,0 +1,157 @@
+using Gtk 4.0;
+using Adw 1;
+
+Gtk.Box page {
+  orientation: vertical;
+  vexpand: true;
+
+  Adw.Banner ensemble_banner {
+    revealed: false;
+  }
+}
+
+Adw.PreferencesGroup files_group {
+  title: "Files";
+
+  [header-suffix]
+  Gtk.Button view_inputs_button {
+    icon-name: "view-list-symbolic";
+    valign: center;
+    action-name: "win.view_inputs";
+    styles ["flat"]
+  }
+}
+
+Adw.PreferencesGroup ensemble_group {
+  title: "Ensemble";
+
+  Adw.ComboRow saved_row {
+    title: "Configuration";
+
+    [suffix]
+    Gtk.Button save_button {
+      icon-name: "uvr-bookmark-outline-symbolic";
+      valign: center;
+      styles ["flat"]
+    }
+
+    [suffix]
+    Gtk.Button delete_button {
+      icon-name: "user-trash-symbolic";
+      valign: center;
+      styles ["flat"]
+    }
+  }
+
+  Adw.ComboRow main_stem_row {
+    title: "Output mode";
+
+    [prefix]
+    Gtk.Image {
+      icon-name: "view-list-symbolic";
+    }
+  }
+
+  Adw.ActionRow models_trigger_row {
+    title: "Member models";
+    activatable: true;
+    subtitle-lines: 0;
+    [suffix] Gtk.Button edit_models_button { label: "Edit models"; valign: center; }
+
+    [suffix]
+    Gtk.Image {
+      icon-name: "go-next-symbolic";
+    }
+  }
+
+}
+
+Adw.PreferencesGroup combination_group {
+  title: "Combination";
+
+  Adw.ComboRow preset_row {
+    title: "Algorithm preset";
+  }
+
+  Adw.SwitchRow derive_complement_row {
+    title: "Derive complement from mix";
+    visible: false;
+  }
+
+  Adw.ComboRow primary_algo_row {
+    title: "Primary algorithm";
+  }
+
+  Adw.ComboRow secondary_algo_row {
+    title: "Secondary algorithm";
+  }
+  Adw.ActionRow blend_options_row {
+    title: "Blend options";
+    subtitle: "Model weights, smoothing, and alignment";
+    activatable: true;
+    [suffix]
+    Gtk.Image { icon-name: "go-next-symbolic"; }
+  }
+}
+
+Adw.PreferencesGroup stems_group {
+  title: "Output";
+}
+
+Adw.PreferencesGroup processing_group {
+  title: "Processing";
+}
+
+Adw.SwitchRow gpu_row {
+  title: "GPU conversion";
+
+  [prefix]
+  Gtk.Image {
+    icon-name: "uvr-pci-card-symbolic";
+  }
+}
+
+Adw.SwitchRow autocast_row {
+  title: "FP16 autocast";
+  subtitle: "Faster VR/MDX/Roformer on modern NVIDIA GPUs";
+}
+
+Adw.SwitchRow sample_row {
+  title: "Sample mode";
+
+  [prefix]
+  Gtk.Image {
+    icon-name: "uvr-stopwatch-symbolic";
+  }
+}
+
+Adw.ExpanderRow advanced_row {
+  title: "Advanced settings";
+
+  Adw.ActionRow member_options_row {
+    title: "Member model options";
+    subtitle: "Batch size, secondary models, and more";
+    activatable: true;
+
+    [suffix]
+    Gtk.Image {
+      icon-name: "go-next-symbolic";
+    }
+  }
+
+
+
+
+  Adw.SwitchRow append_name_row {
+    title: "Append ensemble name to output";
+  }
+
+  Adw.SwitchRow wav_ensemble_row {
+    title: "Ensemble waveforms";
+  }
+}
+
+Adw.SwitchRow save_all_row {
+  title: "Keep individual model outputs";
+  subtitle: "Save each model’s files alongside the final ensemble.";
+}

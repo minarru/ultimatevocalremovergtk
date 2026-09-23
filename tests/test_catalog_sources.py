@@ -323,7 +323,10 @@ class ExactEvidencePrecedenceTests(unittest.TestCase):
     def test_unified_non_config_records_drive_runtime_download_and_generator_signatures(
         self,
     ) -> None:
-        from scripts.catalogue.collect import reviewed_stem_signature
+        import sys
+
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+        from catalogue.evidence import reviewed_stem_signature
 
         fixtures = (
             (
@@ -552,7 +555,7 @@ class CatalogueIntentOverlayTests(unittest.TestCase):
         )
         self.assertIn("runtime_contract=model_manifest.json", meta.stem_semantics.evidence)
 
-    def test_runtime_contract_warning_fails_live_projection_raw(self) -> None:
+    def test_runtime_contract_warning_retains_reviewed_presentation(self) -> None:
         from core.mdx_runtime_contract import ReconciledMdxRuntimeSignature
 
         label = "Exact artifact with unavailable runtime contract"
@@ -579,8 +582,8 @@ class CatalogueIntentOverlayTests(unittest.TestCase):
             merged = catalog_sources.merged_catalogues(vr={}, mdx={}, demucs={})
 
         projection = merged.meta[label].stem_semantics
-        self.assertEqual(projection.status, "raw")
-        self.assertEqual(projection.routes[0].native, "Installed key")
+        self.assertEqual(projection.status, "reviewed")
+        self.assertEqual([route.native for route in projection.routes], ["Instrumental", "Vocals"])
         self.assertEqual(
             projection.warning,
             "runtime-contract-unavailable error=test",
@@ -590,7 +593,7 @@ class CatalogueIntentOverlayTests(unittest.TestCase):
             "runtime-contract-unavailable error=test",
         )
 
-    def test_all_28_promoted_ids_use_bundled_exact_evidence_before_live_cache(self) -> None:
+    def test_all_promoted_ids_use_bundled_exact_evidence_before_live_cache(self) -> None:
         from core.catalogue_stem_cache import StemCacheHit
         from core.mdx_runtime_contract import load_bundled_mdx_runtime_contracts
 
@@ -599,7 +602,7 @@ class CatalogueIntentOverlayTests(unittest.TestCase):
             for model_id, contract in load_bundled_mdx_runtime_contracts().contracts.items()
             if model_id != "mdx:UVR_MDXNET_KARA_2"
         }
-        self.assertEqual(len(contracts), 28)
+        self.assertEqual(len(contracts), 29)
         catalogue = {}
         metadata = {}
         model_id_by_label = {}
@@ -647,7 +650,7 @@ class CatalogueIntentOverlayTests(unittest.TestCase):
                 )
                 for status in ("reviewed", "raw")
             },
-            {"reviewed": 28, "raw": 0},
+            {"reviewed": 29, "raw": 0},
         )
 
         catalog_sources.invalidate_catalogue_merge()
@@ -684,7 +687,7 @@ class CatalogueIntentOverlayTests(unittest.TestCase):
                 )
                 for status in ("reviewed", "raw")
             },
-            {"reviewed": 28, "raw": 0},
+            {"reviewed": 29, "raw": 0},
         )
 
 

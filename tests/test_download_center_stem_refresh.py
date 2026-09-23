@@ -67,7 +67,7 @@ def setUpModule() -> None:
 
 class ApplyCatalogueStemCacheTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.manager = DownloadManager.__new__(DownloadManager)
+        self.manager = DownloadManager()
         self.manager.catalogue_meta = {}
 
     def test_patches_empty_stems_from_cache(self) -> None:
@@ -267,7 +267,7 @@ class ApplyCatalogueStemCacheTests(unittest.TestCase):
         self.assertEqual(patched.catalogue_evidence_warning, "request failed")
         self.assertNotIn("mismatch", patched.stem_semantics.warning)
 
-    def test_strict_runtime_contract_digest_mismatch_remains_raw(self) -> None:
+    def test_config_digest_drift_retains_reviewed_presentation(self) -> None:
         meta = EntryMeta(
             label="Reviewed",
             display="Reviewed",
@@ -291,7 +291,7 @@ class ApplyCatalogueStemCacheTests(unittest.TestCase):
         self.assertEqual(updated, {meta.label})
         patched = self.manager.catalogue_meta[meta.label]
         self.assertEqual(patched.catalogue_evidence_status, CatalogueEvidenceState.READY)
-        self.assertEqual(patched.stem_semantics.status, "raw")
+        self.assertEqual(patched.stem_semantics.status, "reviewed")
         self.assertIn("runtime-contract-mismatch", patched.catalogue_evidence_warning)
 
 
@@ -562,7 +562,7 @@ class CatalogueEvidenceSchedulingTests(unittest.TestCase):
         self.assertEqual(
             dataclasses.asdict(manager.catalogue_evidence_summary()),
             {
-                "reviewed": 483,
+                "reviewed": 408,
                 "raw": 0,
                 "waived": 2,
                 "pending": 0,
@@ -570,7 +570,7 @@ class CatalogueEvidenceSchedulingTests(unittest.TestCase):
                 "stale": 0,
             },
         )
-        self.assertEqual(sum(len(entries) for entries in public.values()), 485)
+        self.assertEqual(sum(len(entries) for entries in public.values()), 410)
 
         public_due_label = next(
             label
@@ -715,9 +715,9 @@ class CatalogueEvidenceSchedulingTests(unittest.TestCase):
             manager.catalogue_meta_by_family["mdx"][meta.label].catalogue_evidence_status,
             CatalogueEvidenceState.UNAVAILABLE,
         )
-        self.assertEqual(manager._catalogue_evidence_pending, set())
-        self.assertEqual(manager._catalogue_evidence_force_pending, set())
-        self.assertEqual(manager._catalogue_evidence_callbacks, [])
+        self.assertEqual(manager._evidence.pending, set())
+        self.assertEqual(manager._evidence.force_pending, set())
+        self.assertEqual(manager._evidence.callbacks, [])
         self.assertEqual(completions, [])
 
     def test_force_revalidation_without_network_does_not_publish_pending_or_keep_callback(
@@ -741,9 +741,9 @@ class CatalogueEvidenceSchedulingTests(unittest.TestCase):
             manager.catalogue_meta_by_family["mdx"][meta.label].catalogue_evidence_status,
             CatalogueEvidenceState.UNAVAILABLE,
         )
-        self.assertEqual(manager._catalogue_evidence_pending, set())
-        self.assertEqual(manager._catalogue_evidence_force_pending, set())
-        self.assertEqual(manager._catalogue_evidence_callbacks, [])
+        self.assertEqual(manager._evidence.pending, set())
+        self.assertEqual(manager._evidence.force_pending, set())
+        self.assertEqual(manager._evidence.callbacks, [])
         self.assertEqual(completions, [])
 
     def test_force_revalidation_after_shutdown_does_not_publish_pending(self) -> None:
@@ -764,8 +764,8 @@ class CatalogueEvidenceSchedulingTests(unittest.TestCase):
             manager.catalogue_meta_by_family["mdx"][meta.label].catalogue_evidence_status,
             CatalogueEvidenceState.UNAVAILABLE,
         )
-        self.assertEqual(manager._catalogue_evidence_pending, set())
-        self.assertEqual(manager._catalogue_evidence_force_pending, set())
+        self.assertEqual(manager._evidence.pending, set())
+        self.assertEqual(manager._evidence.force_pending, set())
 
     def test_prestarted_worker_cannot_finish_before_force_state_is_published(self) -> None:
         import core.catalogue_stem_cache as csc
@@ -829,9 +829,9 @@ class CatalogueEvidenceSchedulingTests(unittest.TestCase):
             manager.catalogue_meta[meta.label].catalogue_evidence_status,
             CatalogueEvidenceState.READY,
         )
-        self.assertEqual(manager._catalogue_evidence_pending, set())
-        self.assertEqual(manager._catalogue_evidence_force_pending, set())
-        self.assertEqual(manager._catalogue_evidence_callbacks, [])
+        self.assertEqual(manager._evidence.pending, set())
+        self.assertEqual(manager._evidence.force_pending, set())
+        self.assertEqual(manager._evidence.callbacks, [])
         self.assertFalse(csc.is_pending(_YAML_URL))
 
     def test_cache_subscriber_exception_is_logged(self) -> None:
@@ -866,7 +866,7 @@ class CatalogueEvidenceSchedulingTests(unittest.TestCase):
         with (
             mock.patch.object(csc, "enqueue_missing", side_effect=_accept_reserved_urls),
             mock.patch.object(csc, "ensure_worker_started"),
-            mock.patch("core.downloads.log_event") as event,
+            mock.patch("core.catalogue_evidence.log_event") as event,
             access_policy(
                 allow_network=True,
                 allow_metadata_writes=False,
@@ -884,10 +884,10 @@ class CatalogueEvidenceSchedulingTests(unittest.TestCase):
             with (
                 mock.patch.object(csc, "pending_urls", return_value=frozenset()),
                 mock.patch.object(
-                    manager, "apply_catalogue_stem_cache", return_value={pending.label}
+                    manager._evidence, "apply_catalogue_stem_cache", return_value={pending.label}
                 ),
             ):
-                manager._on_catalogue_evidence_cache_update()
+                manager._evidence._on_catalogue_evidence_cache_update()
 
         self.assertEqual(len(completions), 1)
         summary = typing.cast(Any, completions[0])
@@ -923,7 +923,7 @@ class CatalogueEvidenceSchedulingTests(unittest.TestCase):
         manager.catalogue_meta = {meta.label: meta}
         manager.catalogue_meta_by_family = {"mdx": {meta.label: meta}}
         manager.mdx_download_list = {meta.label: meta.files}
-        manager._catalogue_evidence_url_entries = {_YAML_URL: [("mdx", meta.label)]}
+        manager._evidence.url_entries = {_YAML_URL: [("mdx", meta.label)]}
         failure = StemCacheHit(
             stems=(),
             target_instrument=None,
@@ -937,9 +937,9 @@ class CatalogueEvidenceSchedulingTests(unittest.TestCase):
                 "core.catalogue_identity.catalogue_model_id",
                 return_value="mdx:m",
             ),
-            mock.patch("core.downloads.log_event") as event,
+            mock.patch("core.catalogue_evidence.log_event") as event,
         ):
-            manager._log_catalogue_evidence_failures((_YAML_URL,))
+            manager._evidence._log_catalogue_evidence_failures((_YAML_URL,))
 
         event.assert_called_once_with(
             "download",
@@ -970,7 +970,19 @@ class StemSubtitleDebounceTests(unittest.TestCase):
             catalogue_evidence_status=CatalogueEvidenceState.UNAVAILABLE,
         )
         win = typing.cast(Any, object.__new__(DownloadCenterWindow))
+        win.window = mock.MagicMock()
+        win.window.get_visible.return_value = True
+        from ui.catalogue_browser import CatalogueBrowserState
+
+        win.browser = CatalogueBrowserState()
+        from ui.lifetime import UiLifetime
+
+        win._lifetime = UiLifetime()
+        win._listening = False
+        win._sort_mode = "name"
+        win._arch_filter = "all"
         win.manager = SimpleNamespace(
+            latest_snapshot=None,
             catalogue_meta={shared: vr},
             catalogue_meta_by_family={"mdx": {shared: mdx}, "vr": {shared: vr}},
         )
@@ -979,7 +991,7 @@ class StemSubtitleDebounceTests(unittest.TestCase):
         self.assertIs(win._catalogue_row_metadata(VR_ARCH_TYPE, shared), vr)
 
     def test_reviewed_subtitle_uses_exact_route_labels_and_reviewed_purpose(self) -> None:
-        from ui.download_center import catalogue_semantics_subtitle
+        from ui.catalogue_browser import catalogue_semantics_subtitle
 
         semantics = resolve_model_stem_semantics(
             "mdx:UVR_MDXNET_KARA_2",
@@ -1037,7 +1049,7 @@ class StemSubtitleDebounceTests(unittest.TestCase):
         self,
     ) -> None:
         from core.model_stem_semantics import INTENT_DUAL_VOC_INST, INTENT_SPECIALTY_STEM
-        from ui.download_center import catalogue_semantics_subtitle
+        from ui.catalogue_browser import catalogue_semantics_subtitle
 
         semantics = resolve_model_stem_semantics(
             "mdx:UVR_MDXNET_KARA_2",
@@ -1046,8 +1058,8 @@ class StemSubtitleDebounceTests(unittest.TestCase):
         )
         projection = stem_semantics_projection(semantics)
         for intent, purpose in (
-            (INTENT_DUAL_VOC_INST, "Vocals"),
-            (INTENT_SPECIALTY_STEM, "Specialty"),
+            (INTENT_DUAL_VOC_INST, "Vocals & instrumental"),
+            (INTENT_SPECIALTY_STEM, "Stems"),
         ):
             for state in (CatalogueEvidenceState.READY, CatalogueEvidenceState.STALE):
                 with self.subTest(intent=intent, state=state):
@@ -1065,7 +1077,7 @@ class StemSubtitleDebounceTests(unittest.TestCase):
                     self.assertTrue(catalogue_semantics_subtitle(meta).startswith(f"{purpose} · "))
 
     def test_reviewed_stale_subtitle_keeps_curated_routes_and_warning_detail(self) -> None:
-        from ui.download_center import (
+        from ui.catalogue_browser import (
             catalogue_evidence_detail,
             catalogue_semantics_subtitle,
         )
@@ -1097,7 +1109,7 @@ class StemSubtitleDebounceTests(unittest.TestCase):
         )
 
     def test_pending_without_evidence_has_loading_subtitle(self) -> None:
-        from ui.download_center import catalogue_semantics_subtitle
+        from ui.catalogue_browser import catalogue_semantics_subtitle
 
         meta = EntryMeta(
             label="Pending",
@@ -1110,7 +1122,7 @@ class StemSubtitleDebounceTests(unittest.TestCase):
         self.assertEqual(catalogue_semantics_subtitle(meta), "Loading output details…")
 
     def test_failed_without_evidence_has_unavailable_subtitle(self) -> None:
-        from ui.download_center import catalogue_semantics_subtitle
+        from ui.catalogue_browser import catalogue_semantics_subtitle
 
         meta = EntryMeta(
             label="Failed",
@@ -1123,7 +1135,7 @@ class StemSubtitleDebounceTests(unittest.TestCase):
         self.assertEqual(catalogue_semantics_subtitle(meta), "Output details unavailable")
 
     def test_apollo_waiver_is_restoration_not_raw(self) -> None:
-        from ui.download_center import catalogue_semantics_subtitle
+        from ui.catalogue_browser import catalogue_semantics_subtitle
 
         meta = EntryMeta(
             label="Apollo",
@@ -1139,7 +1151,7 @@ class StemSubtitleDebounceTests(unittest.TestCase):
         )
 
     def test_observed_mismatch_renders_raw_observed_native_names(self) -> None:
-        from ui.download_center import catalogue_semantics_subtitle
+        from ui.catalogue_browser import catalogue_semantics_subtitle
 
         meta = EntryMeta(
             label="Mismatch",
@@ -1157,7 +1169,7 @@ class StemSubtitleDebounceTests(unittest.TestCase):
         )
 
     def test_genuine_unknown_renders_raw_without_inventing_names(self) -> None:
-        from ui.download_center import catalogue_semantics_subtitle
+        from ui.catalogue_browser import catalogue_semantics_subtitle
 
         meta = EntryMeta(
             label="Unknown",
@@ -1170,7 +1182,7 @@ class StemSubtitleDebounceTests(unittest.TestCase):
         self.assertEqual(catalogue_semantics_subtitle(meta), "Raw outputs")
 
     def test_raw_subtitle_is_explicit_and_preserves_native_names(self) -> None:
-        from ui.download_center import catalogue_semantics_subtitle
+        from ui.catalogue_browser import catalogue_semantics_subtitle
 
         meta = EntryMeta(
             label="Private",
@@ -1189,8 +1201,22 @@ class StemSubtitleDebounceTests(unittest.TestCase):
         from ui.download_center import DownloadCenterWindow
 
         win = typing.cast(Any, object.__new__(DownloadCenterWindow))
+        win.window = mock.MagicMock()
+        win.window.get_visible.return_value = True
+        from ui.catalogue_browser import CatalogueBrowserState
+
+        win.browser = CatalogueBrowserState()
+        from ui.lifetime import UiLifetime
+
+        win._lifetime = UiLifetime()
+        win._listening = False
+        win._sort_mode = "name"
+        win._arch_filter = "all"
         win.manager = mock.MagicMock()
+        win.manager.latest_snapshot = None
         win._stem_refresh_armed = False
+        win._invalidate_all_filters = mock.MagicMock()
+        win._invalidate_all_sorts = mock.MagicMock()
         win._row_checks = {}
         win._row_actions = {}
         return win
@@ -1215,8 +1241,13 @@ class StemSubtitleDebounceTests(unittest.TestCase):
     def test_flush_clears_arm_and_updates_subtitles(self) -> None:
         win = self._bare_window()
         win._stem_refresh_armed = True
-        action = mock.MagicMock()
+        action = mock.MagicMock(spec=["get_subtitle", "set_tooltip_text"])
         win._row_actions[(MDX_ARCH_TYPE, "M")] = action
+        from ui.catalogue_browser import BrowserRow
+
+        win.browser.rows[(MDX_ARCH_TYPE, "M")] = BrowserRow(
+            (MDX_ARCH_TYPE, "M"), "M", MDX_ARCH_TYPE
+        )
         win.manager.apply_catalogue_stem_cache.return_value = {"M"}
         win.manager.catalogue_meta = {
             "M": EntryMeta(
@@ -1228,13 +1259,7 @@ class StemSubtitleDebounceTests(unittest.TestCase):
             )
         }
 
-        with (
-            mock.patch("ui.download_center.stash"),
-            mock.patch(
-                "ui.download_center.fetch", side_effect=lambda _row, key, default=None: default
-            ),
-            mock.patch("ui.download_center.set_row_subtitle") as set_subtitle,
-        ):
+        with mock.patch("ui.download_center.set_row_subtitle") as set_subtitle:
             result = win._flush_stem_subtitles()
 
         self.assertFalse(result)
@@ -1254,6 +1279,11 @@ class StemSubtitleDebounceTests(unittest.TestCase):
         stash(action, "_uvr_sdr_stem", None)
         stash(action, "_uvr_unsupported", False)
         win._row_actions[(MDX_ARCH_TYPE, "M")] = action
+        from ui.catalogue_browser import BrowserRow
+
+        win.browser.rows[(MDX_ARCH_TYPE, "M")] = BrowserRow(
+            (MDX_ARCH_TYPE, "M"), "M", MDX_ARCH_TYPE
+        )
         win.manager.apply_catalogue_stem_cache.return_value = {"M"}
         win.manager.catalogue_meta = {
             "M": EntryMeta(
@@ -1271,7 +1301,7 @@ class StemSubtitleDebounceTests(unittest.TestCase):
         subtitle = set_subtitle.call_args[0][1]
         self.assertIn("Vocals, other", subtitle)
         self.assertIn("12 MB", subtitle)
-        self.assertEqual(fetch(action, "_uvr_stems_text"), "Raw outputs · Vocals, other")
+        self.assertEqual(fetch(action, "_uvr_stems_text"), "Raw outputs: Vocals, other")
 
     def test_schedule_hops_to_main_via_idle_on_main(self) -> None:
         win = self._bare_window()
@@ -1316,12 +1346,24 @@ class DownloadCenterGtkEvidenceTransitionTests(unittest.TestCase):
             catalogue_evidence_status=CatalogueEvidenceState.PENDING,
         )
         manager = SimpleNamespace(
+            latest_snapshot=None,
             catalogue_meta={meta.label: meta},
             catalogue_meta_by_family={"mdx": {meta.label: meta}},
             mdx_download_list={meta.label: meta.files},
             apply_catalogue_stem_cache=mock.MagicMock(return_value={meta.label}),
         )
         win = typing.cast(Any, object.__new__(DownloadCenterWindow))
+        win.window = mock.MagicMock()
+        win.window.get_visible.return_value = True
+        from ui.catalogue_browser import CatalogueBrowserState
+
+        win.browser = CatalogueBrowserState()
+        from ui.lifetime import UiLifetime
+
+        win._lifetime = UiLifetime()
+        win._listening = False
+        win._sort_mode = "name"
+        win._arch_filter = "all"
         win.manager = manager
         win._row_checks = {}
         win._row_actions = {}
@@ -1329,6 +1371,7 @@ class DownloadCenterGtkEvidenceTransitionTests(unittest.TestCase):
         win._list_boxes = {MDX_ARCH_TYPE: Gtk.ListBox()}
         win._stem_refresh_armed = True
         win._update_download_button = mock.MagicMock()
+        win._update_catalogue_page_state = mock.MagicMock()
         win._lookup_row_size = mock.MagicMock()
         win._rebuild_catalogue = mock.MagicMock()
         with mock.patch.object(
@@ -1414,8 +1457,20 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
         from ui.download_center import DownloadCenterWindow
 
         win = object.__new__(DownloadCenterWindow)
+        win.window = mock.MagicMock()
+        win.window.get_visible.return_value = True
+        from ui.catalogue_browser import CatalogueBrowserState
+
+        win.browser = CatalogueBrowserState()
+        from ui.lifetime import UiLifetime
+
+        win._lifetime = UiLifetime()
+        win._listening = False
+        win._sort_mode = "name"
+        win._arch_filter = "all"
         win._stem_refresh_armed = False
         win.manager = mock.MagicMock()
+        win.manager.latest_snapshot = None
 
         with (
             mock.patch("core.catalogue_stem_cache.subscribe") as subscribe,
@@ -1430,6 +1485,17 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
         from ui.download_center import DownloadCenterWindow
 
         win = object.__new__(DownloadCenterWindow)
+        win.window = mock.MagicMock()
+        win.window.get_visible.return_value = True
+        from ui.catalogue_browser import CatalogueBrowserState
+
+        win.browser = CatalogueBrowserState()
+        from ui.lifetime import UiLifetime
+
+        win._lifetime = UiLifetime()
+        win._listening = False
+        win._sort_mode = "name"
+        win._arch_filter = "all"
         win._refreshing = True
         win.refresh_button = mock.MagicMock()
         win._refresh_spinner = mock.MagicMock()
@@ -1439,11 +1505,13 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
         win._update_tab_counts = mock.MagicMock()
         win._update_status_from_catalogue = mock.MagicMock()
         win._update_download_button = mock.MagicMock()
+        win._update_catalogue_page_state = mock.MagicMock()
         win._ensure_background_listeners = mock.MagicMock()
         win._schedule_stem_yaml_fetches = mock.MagicMock()
         win.manager = mock.MagicMock()
-        win._pinned_snapshot = None
-        win._pending_source_delta = False
+        win.manager.latest_snapshot = None
+        win.browser.snapshot = None
+        win.browser.pending_source = False
 
         DownloadCenterWindow._refresh_done(win, True, {MDX_ARCH_TYPE: ["M"]}, {})
 
@@ -1459,8 +1527,20 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
         from ui.download_center import DownloadCenterWindow
 
         win = object.__new__(DownloadCenterWindow)
+        win.window = mock.MagicMock()
+        win.window.get_visible.return_value = True
+        from ui.catalogue_browser import CatalogueBrowserState
+
+        win.browser = CatalogueBrowserState()
+        from ui.lifetime import UiLifetime
+
+        win._lifetime = UiLifetime()
+        win._listening = False
+        win._sort_mode = "name"
+        win._arch_filter = "all"
         win._stem_fetch_armed = False
         win.manager = mock.MagicMock()
+        win.manager.latest_snapshot = None
 
         with mock.patch("gi.repository.GLib.timeout_add") as timeout_add:
             for _ in range(5):
@@ -1479,39 +1559,66 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
             DownloadCenterWindow._schedule_stem_yaml_fetches(win)
         self.assertEqual(timeout_add2.call_count, 1)
 
-    def test_visible_labels_scoped_to_active_tab(self) -> None:
-        """ "Visible" must mean the tab on screen, not every tab's filter result."""
-        from ui.download_center import PURPOSE_ALL, DownloadCenterWindow
+    def test_visible_labels_scoped_to_active_purpose(self) -> None:
+        """Visible means the purpose page on screen, not every catalogue row."""
+        from core.model_scores import ARCH_FILTER_ALL, PURPOSE_VOCALS
+        from ui.download_center import DownloadCenterWindow
 
         win = object.__new__(DownloadCenterWindow)
-        win._available = {
-            MDX_ARCH_TYPE: ["MDX Model"],
-            "VR Arc": ["VR Model"],
-        }
-        win._search_entries = {}
-        win._purpose = PURPOSE_ALL
-        win.stack = mock.MagicMock()
-        win.stack.get_visible_child_name.return_value = MDX_ARCH_TYPE
+        win.window = mock.MagicMock()
+        win.window.get_visible.return_value = True
+        from ui.catalogue_browser import CatalogueBrowserState
 
-        self.assertEqual(win._visible_catalogue_labels(), ["MDX Model"])
+        win.browser = CatalogueBrowserState()
+        from ui.lifetime import UiLifetime
+
+        win._lifetime = UiLifetime()
+        win._listening = False
+        win._sort_mode = "name"
+        win._arch_filter = "all"
+        win.browser.available = {
+            MDX_ARCH_TYPE: ["Lead Vocal Model", "Karaoke Model"],
+        }
+        win.browser.unsupported = {}
+        win._search_entries = {}
+        win._purpose = PURPOSE_VOCALS
+        win._arch_filter = ARCH_FILTER_ALL
+        win.stack = mock.MagicMock()
+        win.stack.get_visible_child_name.return_value = PURPOSE_VOCALS
+
+        self.assertEqual(win._visible_catalogue_labels(), ["Lead Vocal Model"])
 
     def test_visible_entries_keep_family_with_canonical_selection(self) -> None:
-        from ui.download_center import PURPOSE_ALL, DownloadCenterWindow
+        from core.model_scores import PURPOSE_ALL
+        from ui.download_center import DownloadCenterWindow
 
         win = object.__new__(DownloadCenterWindow)
-        win._available = {
+        win.window = mock.MagicMock()
+        win.window.get_visible.return_value = True
+        from ui.catalogue_browser import CatalogueBrowserState
+
+        win.browser = CatalogueBrowserState()
+        from ui.lifetime import UiLifetime
+
+        win._lifetime = UiLifetime()
+        win._listening = False
+        win._sort_mode = "name"
+        win._arch_filter = "all"
+        win.browser.available = {
             MDX_ARCH_TYPE: ["Shared Model"],
             VR_ARCH_TYPE: ["Shared Model"],
         }
+        win.browser.unsupported = {}
         win._search_entries = {}
         win._purpose = PURPOSE_ALL
+        win._arch_filter = MDX_ARCH_TYPE
         win.stack = mock.MagicMock()
-        win.stack.get_visible_child_name.return_value = MDX_ARCH_TYPE
+        win.stack.get_visible_child_name.return_value = PURPOSE_ALL
 
         self.assertEqual(win._visible_catalogue_entries(), [("mdx", "Shared Model")])
 
     def test_priority_flush_filters_colliding_label_with_active_family_intent(self) -> None:
-        from core.model_scores import PURPOSE_VOCALS
+        from core.model_scores import ARCH_FILTER_ALL, PURPOSE_VOCALS
         from core.model_stem_semantics import INTENT_DUAL_VOC_INST, INTENT_SPECIALTY_STEM
         from ui.download_center import DownloadCenterWindow
 
@@ -1530,21 +1637,35 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
             intent=INTENT_SPECIALTY_STEM,
         )
         win = typing.cast(Any, object.__new__(DownloadCenterWindow))
+        win.window = mock.MagicMock()
+        win.window.get_visible.return_value = True
+        from ui.catalogue_browser import CatalogueBrowserState
+
+        win.browser = CatalogueBrowserState()
+        from ui.lifetime import UiLifetime
+
+        win._lifetime = UiLifetime()
+        win._listening = False
+        win._sort_mode = "name"
+        win._arch_filter = "all"
         win.manager = mock.MagicMock()
+        win.manager.latest_snapshot = None
         win.manager.catalogue_meta = {shared: vr}
         win.manager.catalogue_meta_by_family = {
             "mdx": {shared: mdx},
             "vr": {shared: vr},
         }
-        win._available = {
+        win.browser.available = {
             MDX_ARCH_TYPE: [shared],
             VR_ARCH_TYPE: [shared],
         }
+        win.browser.unsupported = {}
         win._search_entries = {}
         win._purpose = PURPOSE_VOCALS
+        win._arch_filter = ARCH_FILTER_ALL
         win._stem_fetch_armed = True
         win.stack = mock.MagicMock()
-        win.stack.get_visible_child_name.return_value = MDX_ARCH_TYPE
+        win.stack.get_visible_child_name.return_value = PURPOSE_VOCALS
 
         DownloadCenterWindow._flush_stem_yaml_fetches(win)
 
@@ -1557,7 +1678,7 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
         )
 
     def test_row_filter_uses_family_intent_for_colliding_label(self) -> None:
-        from core.model_scores import PURPOSE_VOCALS
+        from core.model_scores import ARCH_FILTER_ALL, PURPOSE_VOCALS
         from core.model_stem_semantics import INTENT_DUAL_VOC_INST, INTENT_SPECIALTY_STEM
         from ui.download_center import DownloadCenterWindow
 
@@ -1574,13 +1695,28 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
             intent=INTENT_SPECIALTY_STEM,
         )
         win = typing.cast(Any, object.__new__(DownloadCenterWindow))
+        win.window = mock.MagicMock()
+        win.window.get_visible.return_value = True
+        from ui.catalogue_browser import CatalogueBrowserState
+
+        win.browser = CatalogueBrowserState()
+        from ui.lifetime import UiLifetime
+
+        win._lifetime = UiLifetime()
+        win._listening = False
+        win._sort_mode = "name"
+        win._arch_filter = "all"
         win.manager = SimpleNamespace(
+            latest_snapshot=None,
             catalogue_meta={shared: vr},
             catalogue_meta_by_family={"mdx": {shared: mdx}, "vr": {shared: vr}},
         )
         win._purpose = PURPOSE_VOCALS
         win._hide_unsupported = False
+        win._arch_filter = ARCH_FILTER_ALL
         win._search_entries = {}
+        win.browser.rows[(MDX_ARCH_TYPE, shared)] = win._project_browser_row(MDX_ARCH_TYPE, shared)
+        win.browser.rows[(VR_ARCH_TYPE, shared)] = win._project_browser_row(VR_ARCH_TYPE, shared)
         action = object()
 
         def row_value(_action: object, key: str, default: object) -> object:
@@ -1598,12 +1734,26 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
             self.assertFalse(win._row_matches_filter(mock.MagicMock(), VR_ARCH_TYPE))
 
     def test_visible_labels_fall_back_when_no_active_tab(self) -> None:
-        from ui.download_center import PURPOSE_ALL, DownloadCenterWindow
+        from core.model_scores import ARCH_FILTER_ALL, PURPOSE_ALL
+        from ui.download_center import DownloadCenterWindow
 
         win = object.__new__(DownloadCenterWindow)
-        win._available = {MDX_ARCH_TYPE: ["MDX Model"], "VR Arc": ["VR Model"]}
+        win.window = mock.MagicMock()
+        win.window.get_visible.return_value = True
+        from ui.catalogue_browser import CatalogueBrowserState
+
+        win.browser = CatalogueBrowserState()
+        from ui.lifetime import UiLifetime
+
+        win._lifetime = UiLifetime()
+        win._listening = False
+        win._sort_mode = "name"
+        win._arch_filter = "all"
+        win.browser.available = {MDX_ARCH_TYPE: ["MDX Model"], "VR Arc": ["VR Model"]}
+        win.browser.unsupported = {}
         win._search_entries = {}
         win._purpose = PURPOSE_ALL
+        win._arch_filter = ARCH_FILTER_ALL
         win.stack = mock.MagicMock()
         win.stack.get_visible_child_name.return_value = None
 
@@ -1611,7 +1761,7 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
 
     def test_pending_urls_refetch_fresh_legacy_success_without_digest(self) -> None:
         import core.catalogue_stem_cache as csc
-        from ui.download_center import DownloadCenterWindow
+        from core.downloads import DownloadManager
 
         meta = EntryMeta(
             label="Legacy",
@@ -1620,8 +1770,9 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
             files={"m.ckpt": "https://example.test/m.ckpt", "m.yaml": _YAML_URL},
             stems=["Vocals", "other"],
         )
-        win = object.__new__(DownloadCenterWindow)
-        typing.cast(Any, win).manager = SimpleNamespace(catalogue_meta={meta.label: meta})
+        manager = DownloadManager()
+        manager.catalogue_meta = {meta.label: meta}
+        manager.catalogue_meta_by_family = {"mdx": {meta.label: meta}}
 
         with tempfile.TemporaryDirectory() as tmp:
             cache_path = os.path.join(tmp, "catalogue_stem_cache.json")
@@ -1632,7 +1783,12 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
                 csc.clear_catalogue_stem_cache()
                 try:
                     _write_legacy_success_cache(cache_path, _YAML_URL)
-                    pending = DownloadCenterWindow._pending_stem_yaml_urls(win)
+                    with (
+                        mock.patch.object(csc, "enqueue_missing") as enqueue,
+                        mock.patch.object(csc, "ensure_worker_started"),
+                    ):
+                        manager.queue_catalogue_evidence((("mdx", meta.label),), priority=True)
+                        pending = list(enqueue.call_args.args[0])
                 finally:
                     csc.clear_catalogue_stem_cache()
 
@@ -1650,7 +1806,8 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
         import tempfile
 
         import core.catalogue_stem_cache as csc
-        from ui.download_center import PURPOSE_ALL, DownloadCenterWindow
+        from core.model_scores import PURPOSE_ALL
+        from ui.download_center import DownloadCenterWindow
 
         def meta_for(
             label: str,
@@ -1714,15 +1871,30 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
                 return self._text
 
         win = object.__new__(DownloadCenterWindow)
+        win.window = mock.MagicMock()
+        win.window.get_visible.return_value = True
+        from ui.catalogue_browser import CatalogueBrowserState
+
+        win.browser = CatalogueBrowserState()
+        from ui.lifetime import UiLifetime
+
+        win._lifetime = UiLifetime()
+        win._listening = False
+        win._sort_mode = "name"
+        win._arch_filter = "all"
         win.manager = mock.MagicMock()
+        win.manager.latest_snapshot = None
         win.manager.catalogue_meta = catalogue_meta
-        win._available = {MDX_ARCH_TYPE: list(catalogue_meta)}
+        win.browser.available = {MDX_ARCH_TYPE: list(catalogue_meta)}
+        win.browser.unsupported = {}
         # Stands in for a Gtk.SearchEntry, which needs a display to construct;
         # _visible_catalogue_labels only ever calls get_text() on it.
         win._search_entries = typing.cast("dict[str, Any]", {MDX_ARCH_TYPE: _Entry("kim")})
+        win._search_entry = win._search_entries[MDX_ARCH_TYPE]
         win._purpose = PURPOSE_ALL
+        win._arch_filter = MDX_ARCH_TYPE
         win.stack = mock.MagicMock()
-        win.stack.get_visible_child_name.return_value = MDX_ARCH_TYPE
+        win.stack.get_visible_child_name.return_value = PURPOSE_ALL
 
         with tempfile.TemporaryDirectory() as tmp:
             cache_path = os.path.join(tmp, "catalogue_stem_cache.json")

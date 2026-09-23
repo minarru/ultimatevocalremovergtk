@@ -6,11 +6,13 @@ libadwaita rows: build a combo backed by a ``Gtk.StringList`` and read/write the
 selected value as the plain string the :class:`~core.settings.Settings`
 expects (mirroring how Tk stores every option as a string).
 """
-import typing
 
+import typing
 from typing import Iterable, List, Optional, Sequence
 
 from gi.repository import Adw, Gdk, Gtk, Pango
+
+from ..template import load_builder, object_from_builder
 from ..widget_state import drop, fetch, has, stash
 
 _ICON_LOOKUP_FLAGS = Gtk.IconLookupFlags.FORCE_SYMBOLIC
@@ -33,9 +35,7 @@ def log_model_picker_items(
         if not separator or family not in _MODEL_ID_FAMILIES or not basename:
             continue
         label = str(display)
-        projected.append(
-            (model_id, basename, label, label.casefold() == basename.casefold())
-        )
+        projected.append((model_id, basename, label, label.casefold() == basename.casefold()))
 
     if not projected:
         return
@@ -131,6 +131,11 @@ def make_combo_row(
         row.set_subtitle(subtitle)
     if icon_name:
         add_row_icon(row, icon_name)
+    return configure_combo_row(row, values)
+
+
+def configure_combo_row(row: Adw.ComboRow, values: Iterable) -> Adw.ComboRow:
+    """Install the mutable model on a declaratively constructed combo row."""
     set_combo_values(row, values)
     return row
 
@@ -203,7 +208,7 @@ def set_combo_tag_values(row: Adw.ComboRow, items: Iterable) -> None:
             labels.append(text)
     log_model_picker_items(
         str(row.get_title() or "Model picker"),
-        zip(ids, labels),
+        zip(ids, labels, strict=True),
     )
     stash(row, "_uvr_combo_ids", ids)
     model = Gtk.StringList()
@@ -275,8 +280,9 @@ def make_switch_row(
     return row
 
 
-_SCALE_WIDTH = 120
-_VALUE_LABEL_WIDTH = 64
+def configure_switch_row(row: Adw.SwitchRow) -> Adw.SwitchRow:
+    """Return a declarative switch row for the shared binding helpers."""
+    return row
 
 
 def _snap_to_step(value: float, lower: float, step: float) -> float:
@@ -303,40 +309,12 @@ def _update_scale_value(row: Adw.ActionRow) -> None:
         label.set_label(str(int(round(scale.get_value()))))
 
 
-def _make_scale_row(
-    title: str,
-    *,
-    subtitle: Optional[str] = None,
-    icon_name: Optional[str] = None,
+def _initialize_scale_row(
+    row: Adw.ActionRow,
+    scale: Gtk.Scale,
+    value_label: Gtk.Label,
 ) -> Adw.ActionRow:
-    row = Adw.ActionRow(title=title)
-    if subtitle:
-        row.set_subtitle(subtitle)
-    if icon_name:
-        add_row_icon(row, icon_name)
-
-    suffix = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-    suffix.set_halign(Gtk.Align.FILL)
-    suffix.set_hexpand(True)
-    # Minimum footprint (slider min + value label); the slider flexes to fill
-    # any extra width on wide layouts and yields it back to the title when narrow.
-    suffix.set_size_request(_SCALE_WIDTH + _VALUE_LABEL_WIDTH, -1)
-    suffix.add_css_class("uvr-scale-suffix")
-
-    value_label = Gtk.Label(xalign=1.0)
-    value_label.set_width_chars(7)
-    value_label.set_max_width_chars(10)
-    value_label.set_ellipsize(Pango.EllipsizeMode.END)
-    value_label.add_css_class("dim-label")
-    suffix.append(value_label)
-
-    scale = Gtk.Scale(orientation=Gtk.Orientation.HORIZONTAL)
-    scale.set_draw_value(False)
-    scale.set_hexpand(True)
-    scale.set_halign(Gtk.Align.FILL)
-    scale.set_size_request(_SCALE_WIDTH, -1)
-    suffix.append(scale)
-    row.add_suffix(suffix)
+    """Attach scale state and snapping behavior to an existing row shell."""
     stash(row, "_uvr_scale", scale)
     stash(row, "_uvr_value_label", value_label)
     stash(row, "_uvr_values", None)
@@ -359,6 +337,36 @@ def _make_scale_row(
 
     scale.connect("value-changed", on_changed)
     return row
+
+
+def configure_scale_row(row: Adw.ActionRow) -> Adw.ActionRow:
+    """Add the reusable declarative slider suffix to a method-owned row."""
+    builder = load_builder("scale_row")
+    source_row = object_from_builder(builder, "scale_row", Adw.ActionRow)
+    suffix = object_from_builder(builder, "scale_suffix", Gtk.Box)
+    scale = object_from_builder(builder, "scale", Gtk.Scale)
+    value_label = object_from_builder(builder, "value_label", Gtk.Label)
+    source_row.remove(suffix)
+    row.add_suffix(suffix)
+    return _initialize_scale_row(row, scale, value_label)
+
+
+def _make_scale_row(
+    title: str,
+    *,
+    subtitle: Optional[str] = None,
+    icon_name: Optional[str] = None,
+) -> Adw.ActionRow:
+    builder = load_builder("scale_row")
+    row = object_from_builder(builder, "scale_row", Adw.ActionRow)
+    scale = object_from_builder(builder, "scale", Gtk.Scale)
+    value_label = object_from_builder(builder, "value_label", Gtk.Label)
+    row.set_title(title)
+    if subtitle:
+        row.set_subtitle(subtitle)
+    if icon_name:
+        add_row_icon(row, icon_name)
+    return _initialize_scale_row(row, scale, value_label)
 
 
 def _configure_adjustment(
@@ -399,6 +407,23 @@ def make_discrete_scale_row(
     return row
 
 
+def configure_discrete_scale_row(row: Adw.ActionRow, values: Sequence) -> Adw.ActionRow:
+    """Configure a method-owned row as a discrete scale control."""
+    choices = [str(value) for value in values]
+    configure_scale_row(row)
+    stash(row, "_uvr_values", choices)
+    adjustment = Gtk.Adjustment(
+        lower=0,
+        upper=max(0, len(choices) - 1),
+        step_increment=1,
+        page_increment=1,
+    )
+    fetch(row, "_uvr_scale").set_adjustment(adjustment)
+    fetch(row, "_uvr_scale").set_digits(0)
+    _update_scale_value(row)
+    return row
+
+
 def make_numeric_scale_row(
     title: str,
     lower: float,
@@ -424,11 +449,34 @@ def make_numeric_scale_row(
     return row
 
 
+def configure_numeric_scale_row(
+    row: Adw.ActionRow,
+    lower: float,
+    upper: float,
+    *,
+    step: float = 1,
+    digits: int = 0,
+) -> Adw.ActionRow:
+    """Configure a method-owned row as a numeric scale control."""
+    configure_scale_row(row)
+    stash(row, "_uvr_digits", digits)
+    adjustment = Gtk.Adjustment(
+        lower=lower,
+        upper=upper,
+        step_increment=step,
+        page_increment=max(step, (upper - lower) / 10 if upper > lower else step),
+    )
+    fetch(row, "_uvr_scale").set_adjustment(adjustment)
+    fetch(row, "_uvr_scale").set_digits(digits)
+    _update_scale_value(row)
+    return row
+
+
 def set_scale_default_mark(
     row: Adw.ActionRow,
     default: typing.Any,
     *,
-    position: typing.Any=Gtk.PositionType.BOTTOM,
+    position: typing.Any = Gtk.PositionType.BOTTOM,
     label: Optional[str] = None,
 ) -> None:
     """Place a tick mark at the scale's default value (index or numeric)."""
@@ -488,7 +536,9 @@ def reconfigure_numeric_scale(
     """Replace the numeric range on a scale row."""
     stash(row, "_uvr_values", None)
     stash(row, "_uvr_digits", digits)
-    _configure_adjustment(fetch(row, "_uvr_scale").get_adjustment(), lower=lower, upper=upper, step=step)
+    _configure_adjustment(
+        fetch(row, "_uvr_scale").get_adjustment(), lower=lower, upper=upper, step=step
+    )
     fetch(row, "_uvr_scale").set_digits(digits)
     _update_scale_value(row)
     refresh_scale_default_mark(row)

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable
 from typing import Any
 
 from .access import apply_settings_overrides
@@ -50,8 +50,9 @@ def resolve_settings_layers(
         pairs = list(overrides)
         apply_settings_overrides(base, pairs)
         provenance.update({path: source for path, _value in pairs})
+        if any(path in {"process.stem_focus", "demucs.stems"} for path, _ in pairs):
+            provenance["demucs.stems_selected"] = source
     for path in apply_environment_overrides(base):
         provenance[path] = "environment"
     validate_processing_settings(base)
     return base, provenance
-

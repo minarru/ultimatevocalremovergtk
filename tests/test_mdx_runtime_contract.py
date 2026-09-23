@@ -29,6 +29,12 @@ CLASSIC_DIGEST = "1d64a6d2c30f709b8c9b4ce1366d96ee"
 HASH_RECORD_SOURCE = "models/MDX_Net_Models/model_data/model_data.json"
 ContractExpectation = tuple[str, tuple[str, ...], str, tuple[str, ...]]
 EXPECTED_CONTRACTS: dict[str, ContractExpectation] = {
+    "mdx:mbr_inst2_unwa": (
+        "mdx_c_target",
+        ("other",),
+        "other",
+        ("mbr_inst2_unwa_config.yaml", "config_melbandroformer_inst_v2.yaml"),
+    ),
     "mdx:Kim_Inst": ("classic_onnx", ("Instrumental", "Vocals"), "Instrumental", ()),
     CLASSIC_ID: ("classic_onnx", ("Instrumental", "Vocals"), "Instrumental", ()),
     "mdx:Kim_Vocal_1": ("classic_onnx", ("Vocals", "Instrumental"), "Vocals", ()),
@@ -163,6 +169,7 @@ EXPECTED_CONTRACTS: dict[str, ContractExpectation] = {
 PROMOTION_IDS = frozenset(EXPECTED_CONTRACTS).difference({CLASSIC_ID})
 
 EXPECTED_ARTIFACT_DIGESTS = {
+    "mdx:mbr_inst2_unwa": "951f8ef420a941a395a9919f5d55cce9",
     "mdx:Kim_Inst": "b6bccda408a436db8500083ef3491e8b",
     CLASSIC_ID: CLASSIC_DIGEST,
     "mdx:Kim_Vocal_1": "73492b58195c3b52d34590d5474452f6",
@@ -195,6 +202,12 @@ EXPECTED_ARTIFACT_DIGESTS = {
 }
 
 EXPECTED_CONFIG_EVIDENCE = {
+    "mbr_inst2_unwa_config.yaml": (
+        "959d88e8bef9cbe6736a0f02d19346c045e4ef3b435c38e67bd7ea5e2eed3b0f",
+        ("other", "vocals"),
+        "other",
+        "https://huggingface.co/noblebarkrr/mvsepless_resources/resolve/main/mel_band_roformer/mbr_inst2_unwa_config.yaml?download=true",
+    ),
     "model_2_stem_full_band_8k.yaml": (
         "451765e869b78dcb9ca9188a74da31f581b7254ff0e8b532aa76b974148de947",
         ("Vocals", "Instrumental"),
@@ -731,7 +744,7 @@ class BundledMdxRuntimeContractTests(_ContractTestCase):
                 backend: sum(c.backend == backend for c in registry.contracts.values())
                 for backend in ("classic_onnx", "mdx_c_multi", "mdx_c_target")
             },
-            {"classic_onnx": 19, "mdx_c_multi": 4, "mdx_c_target": 6},
+            {"classic_onnx": 19, "mdx_c_multi": 4, "mdx_c_target": 7},
         )
         self.assertEqual(
             {
@@ -966,7 +979,7 @@ class BundledMdxRuntimeContractTests(_ContractTestCase):
         self.assertEqual(reconciled.warning, first.warning)
 
     def test_generator_boundary_marks_unusable_contract_evidence_unavailable(self) -> None:
-        from catalogue import collect
+        from catalogue import cache, collect
 
         with tempfile.TemporaryDirectory() as directory:
             paths = (
@@ -980,8 +993,8 @@ class BundledMdxRuntimeContractTests(_ContractTestCase):
                     self.subTest(path=path),
                     mock.patch.object(collect, "BUNDLED_MDX_RUNTIME_CONTRACT_PATH", path),
                     mock.patch.object(
-                        collect,
-                        "_fetch_cached_bytes",
+                        cache,
+                        "fetch_cached_bytes",
                         return_value=(
                             b"Model Filename  Architecture  Output Stems  Friendly Name\n",
                             "cache",

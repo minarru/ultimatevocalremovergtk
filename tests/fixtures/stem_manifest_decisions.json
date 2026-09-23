@@ -6902,7 +6902,7 @@
       }
     },
     "mdx:mbr_denoise_debleed_gabox": {
-      "intent": "instrumental",
+      "intent": "special_fx",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -6915,7 +6915,7 @@
             },
             {
               "native": null,
-              "role": "vocal.vocals",
+              "role": "mix.bleed",
               "production": "derived",
               "complement_of": "mix.instrumental",
               "selected_by_default": true
@@ -9741,7 +9741,7 @@
       }
     },
     "mdx:mel_band_roformer_inst_denoise_debleed_gabox": {
-      "intent": "instrumental",
+      "intent": "special_fx",
       "contexts": {
         "full_mix": {
           "logical_primary": "mix.instrumental",
@@ -9754,7 +9754,7 @@
             },
             {
               "native": null,
-              "role": "vocal.vocals",
+              "role": "mix.bleed",
               "production": "derived",
               "complement_of": "mix.instrumental",
               "selected_by_default": true

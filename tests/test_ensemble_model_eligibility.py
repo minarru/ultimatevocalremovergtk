@@ -6,6 +6,7 @@ import typing
 import unittest
 import unittest.mock
 
+from core.mdx_runtime_contract import load_bundled_mdx_runtime_contracts
 from core.model_repository import ModelRepository
 
 
@@ -26,6 +27,13 @@ class _FakeModel:
         self.primary_stem_native = backend_primary
         self.primary_stem = backend_primary
         self.target_instrument = backend_target
+        contract = load_bundled_mdx_runtime_contracts().contracts.get(canonical_id)
+        # Reviewed checkpoint evidence is part of runtime eligibility too.
+        self.model_hash = (
+            contract.artifact_evidence[0].uvr_md5
+            if contract is not None and contract.artifact_evidence
+            else ""
+        )
 
 
 def _eligible(models: typing.Sequence[typing.Any], pair_id: str) -> list[str]:

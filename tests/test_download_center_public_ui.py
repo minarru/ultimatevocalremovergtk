@@ -5,7 +5,23 @@ from __future__ import annotations
 import os
 import unittest
 from types import SimpleNamespace
+from typing import Any
 from unittest import mock
+
+
+def _purpose_page_titles(stack: Any) -> list[str]:
+    """Titles in PURPOSE_PAGE_OPTIONS order, for Adw.ViewStack or Gtk.Stack."""
+    from core.model_scores import PURPOSE_PAGE_OPTIONS
+
+    titles: list[str] = []
+    for value, _label in PURPOSE_PAGE_OPTIONS:
+        child = stack.get_child_by_name(value)
+        if child is None:
+            titles.append("")
+            continue
+        page = stack.get_page(child)
+        titles.append(page.get_title() or "")
+    return titles
 
 
 @unittest.skipUnless(
@@ -24,10 +40,9 @@ class DownloadCenterPublicUiTests(unittest.TestCase):
         from ui.download_center import DownloadCenterWindow
 
         context = SimpleNamespace(settings=Settings.defaults())
-        center = DownloadCenterWindow(
-            None, context, DownloadManager(), mock.MagicMock()
-        )
-        self.addCleanup(center.window.destroy)
+        center = DownloadCenterWindow(None, context, DownloadManager(), mock.MagicMock())
+        self.addCleanup(center.dispose)
+        self.addCleanup(center.window.set_visible, False)
 
         icon_names: list[str] = []
         stack: list[Gtk.Widget] = [center.window]
@@ -45,6 +60,157 @@ class DownloadCenterPublicUiTests(unittest.TestCase):
         self.assertIn("open-menu-symbolic", icon_names)
         self.assertNotIn("dialog-password-symbolic", icon_names)
 
+    def test_header_switcher_uses_purpose_pages(self) -> None:
+        import gi
 
-if __name__ == "__main__":
-    unittest.main()
+        gi.require_version("Gtk", "4.0")
+        gi.require_version("Adw", "1")
+        from gi.repository import Adw, Gtk
+
+        from core.downloads import DownloadManager
+        from core.model_scores import PURPOSE_PAGE_OPTIONS, PURPOSE_VOCALS
+        from core.settings import Settings
+        from ui.download_center import DownloadCenterWindow
+
+        context = SimpleNamespace(settings=Settings.defaults())
+        center = DownloadCenterWindow(None, context, DownloadManager(), mock.MagicMock())
+        self.addCleanup(center.dispose)
+        self.addCleanup(center.window.set_visible, False)
+
+        self.assertEqual(center.stack.get_visible_child_name(), PURPOSE_VOCALS)
+        # libadwaita 1.7+ uses InlineViewSwitcher + ViewStack; CI's Ubuntu
+        # gir1.2-adw-1 does not, so Download Center falls back to Gtk.Stack.
+        self.assertIsInstance(center.stack, (Adw.ViewStack, Gtk.Stack))
+        self.assertEqual(
+            _purpose_page_titles(center.stack),
+            [label for _value, label in PURPOSE_PAGE_OPTIONS],
+        )
+        self.assertEqual(set(center._purpose_buttons), {value for value, _ in PURPOSE_PAGE_OPTIONS})
+        self.assertIsInstance(center.switcher, Gtk.Box)
+
+    def test_header_switcher_falls_back_without_inline_view_switcher(self) -> None:
+        import gi
+
+        gi.require_version("Gtk", "4.0")
+        gi.require_version("Adw", "1")
+        from gi.repository import Gtk
+
+        from core.downloads import DownloadManager
+        from core.model_scores import PURPOSE_PAGE_OPTIONS, PURPOSE_VOCALS
+        from core.settings import Settings
+        from ui.download_center import DownloadCenterWindow
+
+        real_hasattr = hasattr
+
+        def _hasattr(obj: object, name: str) -> bool:
+            if name == "InlineViewSwitcher":
+                return False
+            return real_hasattr(obj, name)
+
+        context = SimpleNamespace(settings=Settings.defaults())
+        with mock.patch("ui.download_center.hasattr", _hasattr):
+            center = DownloadCenterWindow(None, context, DownloadManager(), mock.MagicMock())
+        self.addCleanup(center.dispose)
+        self.addCleanup(center.window.set_visible, False)
+
+        self.assertIsInstance(center.stack, Gtk.Stack)
+        self.assertIsInstance(center.switcher, Gtk.Box)
+        self.assertEqual(center.stack.get_visible_child_name(), PURPOSE_VOCALS)
+        self.assertEqual(
+            _purpose_page_titles(center.stack),
+            [label for _value, label in PURPOSE_PAGE_OPTIONS],
+        )
+
+    def test_network_filter_options_are_arch_value_then_label(self) -> None:
+        from bundled.constants import MDX_ARCH_TYPE
+        from core.model_scores import (
+            ARCH_FILTER_ALL,
+            NETWORK_MEL_BAND,
+        )
+        from ui.download_center import _ARCH_FILTER_OPTIONS
+
+        mapping = dict(_ARCH_FILTER_OPTIONS)
+        self.assertEqual(mapping[ARCH_FILTER_ALL], "All architectures")
+        self.assertEqual(mapping["vr"], "VR")
+        self.assertNotIn(MDX_ARCH_TYPE, mapping)
+        self.assertEqual(mapping[NETWORK_MEL_BAND], "Mel-Band Roformer")
+
+    def test_select_catalogue_opens_restore_and_apollo_network(self) -> None:
+        from bundled.constants import APOLLO_ARCH_TYPE
+        from core.downloads import DownloadManager
+        from core.model_scores import PURPOSE_RESTORE
+        from core.settings import Settings
+        from ui.download_center import DownloadCenterWindow
+
+        context = SimpleNamespace(settings=Settings.defaults())
+        center = DownloadCenterWindow(None, context, DownloadManager(), mock.MagicMock())
+        self.addCleanup(center.dispose)
+        self.addCleanup(center.window.set_visible, False)
+
+        center.select_catalogue(purpose=PURPOSE_RESTORE, arch=APOLLO_ARCH_TYPE)
+
+        self.assertEqual(center.stack.get_visible_child_name(), PURPOSE_RESTORE)
+        self.assertEqual(center._purpose, PURPOSE_RESTORE)
+        self.assertEqual(center._arch_filter, "apollo")
+        self.assertEqual(center.arch_row.get_selected(), 10)
+
+    def test_select_catalogue_vr_uses_vr_arch_type_not_display_label(self) -> None:
+        from bundled.constants import VR_ARCH_TYPE
+        from core.downloads import DownloadManager
+        from core.model_scores import PURPOSE_VOCALS
+        from core.settings import Settings
+        from ui.download_center import DownloadCenterWindow
+
+        context = SimpleNamespace(settings=Settings.defaults())
+        center = DownloadCenterWindow(None, context, DownloadManager(), mock.MagicMock())
+        self.addCleanup(center.dispose)
+        self.addCleanup(center.window.set_visible, False)
+
+        center.select_catalogue(purpose=PURPOSE_VOCALS, arch=VR_ARCH_TYPE)
+
+        self.assertEqual(center.stack.get_visible_child_name(), PURPOSE_VOCALS)
+        self.assertEqual(center._arch_filter, "vr")
+        self.assertEqual(center.arch_row.get_selected(), 1)
+
+
+class DownloadCenterOpenTests(unittest.TestCase):
+    def test_open_applies_hint_to_existing_window(self) -> None:
+        from bundled.constants import DEMUCS_ARCH_TYPE
+        from core.model_scores import PURPOSE_STEMS
+        from ui.download import open_download_center
+
+        existing = mock.MagicMock()
+        context = SimpleNamespace()
+        from ui.download import DownloadQueueUiBinding
+
+        binding = DownloadQueueUiBinding.__new__(DownloadQueueUiBinding)
+        binding.center = existing
+        parent = SimpleNamespace(_download_ui=binding)
+        with mock.patch("ui.download.start_download_size_cache_warmup"):
+            open_download_center(
+                parent,
+                context,
+                purpose=PURPOSE_STEMS,
+                arch=DEMUCS_ARCH_TYPE,
+            )
+
+        existing.present.assert_called_once()
+        existing.select_catalogue.assert_called_once_with(
+            purpose=PURPOSE_STEMS, arch=DEMUCS_ARCH_TYPE
+        )
+
+    def test_open_without_hint_does_not_reset_existing_window(self) -> None:
+        from ui.download import open_download_center
+
+        existing = mock.MagicMock()
+        context = SimpleNamespace()
+        from ui.download import DownloadQueueUiBinding
+
+        binding = DownloadQueueUiBinding.__new__(DownloadQueueUiBinding)
+        binding.center = existing
+        parent = SimpleNamespace(_download_ui=binding)
+        with mock.patch("ui.download.start_download_size_cache_warmup"):
+            open_download_center(parent, context)
+
+        existing.present.assert_called_once()
+        existing.select_catalogue.assert_not_called()

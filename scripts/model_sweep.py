@@ -62,8 +62,8 @@ class Installed:
 
 def collect_installed(repo: Any, settings: Any) -> Installed:
     """Read the model tree. Impure; ``discover_jobs`` stays testable without it."""
-    from core.apollo import list_apollo_models
     from bundled.constants import INST_STEM, VOCAL_STEM
+    from core.apollo import list_apollo_models
 
     return Installed(
         mdx=list(repo.list_mdx_models()),
@@ -180,7 +180,9 @@ def _composite_jobs(installed: Installed) -> List[SweepJob]:
             )
         )
     else:
-        jobs.append(_skip("composite:ensemble", "needs two ensemble-capable models", composite=True))
+        jobs.append(
+            _skip("composite:ensemble", "needs two ensemble-capable models", composite=True)
+        )
 
     # 3. Primary + secondary chain.
     # repo.model_list returns family-prefixed tags ("mdx:Name", "vr:Name").
@@ -205,9 +207,7 @@ def _composite_jobs(installed: Installed) -> List[SweepJob]:
         )
     else:
         missing = "a VR model" if not installed.vr else "an MDX ensemble tag"
-        jobs.append(
-            _skip("composite:secondary-chain", f"needs {missing}", composite=True)
-        )
+        jobs.append(_skip("composite:secondary-chain", f"needs {missing}", composite=True))
 
     # 4. Vocal splitter chain.
     if installed.mdx and installed.karaoke_tags:
@@ -227,7 +227,9 @@ def _composite_jobs(installed: Installed) -> List[SweepJob]:
             )
         )
     else:
-        jobs.append(_skip("composite:vocal-splitter", "needs an MDX and a karaoke model", composite=True))
+        jobs.append(
+            _skip("composite:vocal-splitter", "needs an MDX and a karaoke model", composite=True)
+        )
 
     return jobs
 
@@ -256,9 +258,7 @@ def _error_detail(text: Optional[str]) -> str:
     return "\n".join(kept)
 
 
-def classify(
-    *, exit_code: Optional[int], result: Optional[dict], timed_out: bool
-) -> tuple:
+def classify(*, exit_code: Optional[int], result: Optional[dict], timed_out: bool) -> tuple:
     """Turn a child's exit code and result payload into a verdict + detail."""
     from core.oom_markers import is_oom_message
 
@@ -323,8 +323,7 @@ def apply_timeouts(
         chosen = composite_timeout if job.composite else timeout
         wanted = job.timeout if chosen is None else chosen
         resolved.append(
-            job if wanted == job.timeout
-            else SweepJob(**{**job.__dict__, "timeout": wanted})
+            job if wanted == job.timeout else SweepJob(**{**job.__dict__, "timeout": wanted})
         )
     return resolved
 
@@ -399,13 +398,13 @@ def run_metadata(args: Any, *, methods: Optional[Sequence[str]] = None) -> Dict[
         "cpu_retry": bool(getattr(args, "cpu_retry", True)),
         # The resolved set, not the raw flag: a default sweep runs every group
         # and would otherwise report [], which reads as "nothing selected".
-        "methods": sorted(methods if methods is not None else (getattr(args, "method", None) or [])),
+        "methods": sorted(
+            methods if methods is not None else (getattr(args, "method", None) or [])
+        ),
         "only": getattr(args, "only", None) or "",
         "skip": getattr(args, "skip", None) or "",
         "timeout_s": float(getattr(args, "timeout", None) or DEFAULT_TIMEOUT),
-        "composite_timeout_s": float(
-            getattr(args, "composite_timeout", None) or ENSEMBLE_TIMEOUT
-        ),
+        "composite_timeout_s": float(getattr(args, "composite_timeout", None) or ENSEMBLE_TIMEOUT),
         "strict": bool(getattr(args, "strict", False)),
         "settings": "stock" if getattr(args, "stock_settings", False) else "copied",
     }
@@ -459,9 +458,7 @@ def make_input_clip(path: str, *, seconds: float = 3.0, rate: int = 44100) -> st
     return path
 
 
-def prepare_scratch(
-    root: str, *, models_dir: str, settings_src: Optional[str]
-) -> tuple:
+def prepare_scratch(root: str, *, models_dir: str, settings_src: Optional[str]) -> tuple:
     """Build an isolated UVR data dir: symlinked models, copied settings.
 
     Model resolution comes back empty without the ``models`` symlink, and the
@@ -544,11 +541,12 @@ def run_child(spec_path: str) -> int:
 
         from core import ModelRepository, Settings
         from core.blocking_runner import run_blocking
+        from core.job_callbacks import JobCallbacks
         from core.job_plan import JobResolver, JobSpec, ValidationLevel
         from core.job_runner import JobRunner
         from core.model_identity import ModelIdentityService
-        from core.settings.job_resolution import SettingsLayer, SettingsResolver
         from core.settings.flat_map import FLAT_TO_PATH
+        from core.settings.job_resolution import SettingsLayer, SettingsResolver
 
         kind = spec["kind"]
         profile = Settings.load(spec["settings_path"])
@@ -573,13 +571,11 @@ def run_child(spec_path: str) -> int:
 
         repo = ModelRepository()
         if kind == KIND_SINGLE:
-            record = ModelIdentityService(repo).resolve(
-                f"{spec['method']}:{spec['model']}"
-            )
+            record = ModelIdentityService(repo).resolve(f"{spec['method']}:{spec['model']}")
             from core.types import ProcessMethod
 
             settings.process.method = ProcessMethod(record.method)
-            setattr(getattr(settings, record.family), "model", record.id)
+            getattr(settings, record.family).model = record.id
         elif kind == KIND_ENSEMBLE:
             from core.types import ProcessMethod
 
@@ -591,28 +587,33 @@ def run_child(spec_path: str) -> int:
         else:
             command = "ensemble" if kind == KIND_ENSEMBLE else "separate"
             plan = JobResolver(repo).resolve(
-                JobSpec(
-                    command, settings, (spec["input_path"],), export_dir, provenance
-                ),
+                JobSpec(command, settings, (spec["input_path"],), export_dir, provenance),
                 ValidationLevel.MODEL,
             )
             errors = [item.message for item in plan.diagnostics if item.severity == "error"]
             if errors:
-                result["unrecognized"] = any("configuration" in item.code for item in plan.diagnostics)
+                result["unrecognized"] = any(
+                    "configuration" in item.code for item in plan.diagnostics
+                )
                 raise ValueError(errors[0])
             os.makedirs(export_dir, exist_ok=True)
             runner = JobRunner(plan.settings)
-            start_runner = lambda callbacks: runner.start(
-                [item.path for item in plan.inputs],
-                callbacks,
-                planned=plan.inputs,
-                planned_output_root=plan.output,
-            )
+
+            def start_runner(callbacks: JobCallbacks) -> None:
+                runner.start(
+                    [item.path for item in plan.inputs],
+                    callbacks,
+                    planned=plan.inputs,
+                    planned_output_root=plan.output,
+                )
+
             def write_console(text: str) -> None:
                 sys.stdout.write(text)
 
             outcome = run_blocking(
-                runner, start_runner, timeout=timeout,
+                runner,
+                start_runner,
+                timeout=timeout,
                 on_console=write_console,
             )
 
@@ -620,7 +621,7 @@ def run_child(spec_path: str) -> int:
         if outcome.error is not None:
             result["error_type"] = type(outcome.error).__name__
             result["message"] = str(outcome.error)
-    except BaseException as exc:  # noqa: BLE001 - the point is to report anything
+    except BaseException as exc:  # the point is to report anything
         result["error_type"] = type(exc).__name__
         result["message"] = f"{exc}\n{traceback.format_exc()}"
 
@@ -630,9 +631,7 @@ def run_child(spec_path: str) -> int:
     # ``ok`` must mean exactly what the exit code means: no error, not
     # stopped, and at least one output actually written.
     result["ok"] = (
-        result["error_type"] is None
-        and not result["stopped"]
-        and bool(result["outputs"])
+        result["error_type"] is None and not result["stopped"] and bool(result["outputs"])
     )
     _write_result(job_dir, result)
     return 0 if result["ok"] else 1
@@ -671,16 +670,19 @@ def _read_result(result_path: str) -> Optional[Dict[str, Any]]:
 
 def _run_tool(settings: Any, input_path: str, timeout: float, *, repo: Any):
     """Run the Apollo restore tool, mirroring the UI's model resolution."""
-    from core.audio_plan import AudioJobResolver, AudioJobSpec
     from core.apollo import ApolloModelData
+    from core.audio_plan import AudioJobResolver, AudioJobSpec
     from core.audio_tools import AudioToolRunner
     from core.blocking_runner import run_blocking
     from core.job_plan import ValidationLevel
 
     plan = AudioJobResolver(repo).resolve(
         AudioJobSpec(
-            APOLLO_RESTORE, settings, settings.process.export_path,
-            (input_path,), provenance={"profile": "profile"},
+            APOLLO_RESTORE,
+            settings,
+            settings.process.export_path,
+            (input_path,),
+            provenance={"profile": "profile"},
         ),
         ValidationLevel.MODEL,
     )
@@ -698,16 +700,18 @@ def _run_tool(settings: Any, input_path: str, timeout: float, *, repo: Any):
     if not model_data.is_model_status:
         raise RuntimeError(f"Apollo model not valid: {settings.audio_tools.apollo_model}")
 
-    runner = AudioToolRunner(
-        plan.settings, apollo_backend_name=plan.model.backend_name
-    )
+    runner = AudioToolRunner(plan.settings, apollo_backend_name=plan.model.backend_name)
+
     def write_console(text: str) -> None:
         sys.stdout.write(text)
 
     return run_blocking(
         runner,
         lambda callbacks: runner.start(
-            APOLLO_RESTORE, [input_path], [], callbacks,
+            APOLLO_RESTORE,
+            [input_path],
+            [],
+            callbacks,
             apollo_params={
                 "extracted_params": model_data.extracted_params,
                 "config": model_data.config,
@@ -728,7 +732,6 @@ def spawn_child(*, spec: Dict[str, Any], job_dir: str, env: Dict[str, str], time
     bare ``proc.kill()`` only signals the direct child, leaving those
     grandchildren to run on as orphans holding memory and file handles.
     """
-    import json
     import signal
     import subprocess
 
@@ -826,7 +829,6 @@ def sweep(
     run_meta: Optional[Dict[str, Any]] = None,
 ) -> int:
     """Run every job serially. One child alive at a time."""
-    import json
     import shutil
 
     rows: List[Dict[str, Any]] = []
@@ -845,9 +847,7 @@ def sweep(
             cpu_retry=cpu_retry,
         )
         print(render_row(job.id, verdict, elapsed, detail), flush=True)
-        rows.append(
-            {"id": job.id, "verdict": verdict, "detail": detail, "elapsed_s": elapsed}
-        )
+        rows.append({"id": job.id, "verdict": verdict, "detail": detail, "elapsed_s": elapsed})
         verdicts.append(verdict)
         if not keep_outputs:
             shutil.rmtree(job_dir, ignore_errors=True)
@@ -972,9 +972,7 @@ def build_parser():
     parser.add_argument(
         "--cpu",
         action="store_true",
-        help=(
-            "Force CPU for every job, even if the copied settings.json has GPU on."
-        ),
+        help=("Force CPU for every job, even if the copied settings.json has GPU on."),
     )
     parser.add_argument(
         "--no-cpu-retry",
@@ -1076,8 +1074,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     ensure_sweep_interpreter(allow_reexec=argv is None)
 
     from core import ModelRepository
-    from core.settings import Settings
     from core import paths as core_paths
+    from core.settings import Settings
 
     repo = ModelRepository()
     repo.reload_mappers()
@@ -1087,9 +1085,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     methods = set(args.method) if args.method else {"mdx", "vr", "demucs", "apollo", "composite"}
     skip = frozenset(s for s in (args.skip or "").split(",") if s)
     jobs = discover_jobs(installed, methods=methods, only=args.only, skip=skip)
-    jobs = apply_timeouts(
-        jobs, timeout=args.timeout, composite_timeout=args.composite_timeout
-    )
+    jobs = apply_timeouts(jobs, timeout=args.timeout, composite_timeout=args.composite_timeout)
     meta = run_metadata(args, methods=sorted(methods))
 
     if args.manifest:

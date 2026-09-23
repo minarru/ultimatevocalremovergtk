@@ -231,6 +231,9 @@ class MDXExportRoutingTests(unittest.TestCase):
         self.assertEqual(routing["export_stems"], ["vocals"])
 
     def test_runtime_contract_keeps_installed_casing_as_the_export_key(self) -> None:
+        from core.mdx_runtime_contract import load_bundled_mdx_runtime_contracts
+
+        contract = load_bundled_mdx_runtime_contracts().contracts["mdx:MDX23C-8KFFT-InstVoc_HQ"]
         model = SimpleNamespace(
             canonical_id="mdx:MDX23C-8KFFT-InstVoc_HQ",
             stem_semantics=None,
@@ -238,6 +241,8 @@ class MDXExportRoutingTests(unittest.TestCase):
             mdx_model_stems=["vocals", "INSTRUMENTAL"],
             demucs_source_list=[],
             mdx_config_yaml="MODEL_2_STEM_FULL_BAND_8K.YAML",
+            model_hash=contract.artifact_evidence[0].uvr_md5,
+            mdx_hash_record_source=contract.artifact_evidence[0].hash_record_source,
             primary_stem_native="vocals",
             primary_stem="vocals",
             secondary_stem="INSTRUMENTAL",

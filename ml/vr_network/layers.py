@@ -3,8 +3,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 import torch
-from torch import Tensor, nn
 import torch.nn.functional as F
+from torch import Tensor, nn
 
 from ml import spec_utils
 
@@ -13,7 +13,6 @@ PadDilation = int | tuple[int, int]
 
 
 class Conv2DBNActiv(nn.Module):
-
     def __init__(
         self,
         nin: int,
@@ -27,21 +26,23 @@ class Conv2DBNActiv(nn.Module):
         super(Conv2DBNActiv, self).__init__()
         self.conv = nn.Sequential(
             nn.Conv2d(
-                nin, nout,
+                nin,
+                nout,
                 kernel_size=ksize,
                 stride=stride,
                 padding=pad,
                 dilation=dilation,
-                bias=False),
+                bias=False,
+            ),
             nn.BatchNorm2d(nout),
-            activ()
+            activ(),
         )
 
     def __call__(self, x: Tensor) -> Tensor:
         return self.conv(x)
 
-class SeperableConv2DBNActiv(nn.Module):
 
+class SeperableConv2DBNActiv(nn.Module):
     def __init__(
         self,
         nin: int,
@@ -55,19 +56,18 @@ class SeperableConv2DBNActiv(nn.Module):
         super(SeperableConv2DBNActiv, self).__init__()
         self.conv = nn.Sequential(
             nn.Conv2d(
-                nin, nin,
+                nin,
+                nin,
                 kernel_size=ksize,
                 stride=stride,
                 padding=pad,
                 dilation=dilation,
                 groups=nin,
-                bias=False),
-            nn.Conv2d(
-                nin, nout,
-                kernel_size=1,
-                bias=False),
+                bias=False,
+            ),
+            nn.Conv2d(nin, nout, kernel_size=1, bias=False),
             nn.BatchNorm2d(nout),
-            activ()
+            activ(),
         )
 
     def __call__(self, x: Tensor) -> Tensor:
@@ -75,7 +75,6 @@ class SeperableConv2DBNActiv(nn.Module):
 
 
 class Encoder(nn.Module):
-
     def __init__(
         self,
         nin: int,
@@ -97,7 +96,6 @@ class Encoder(nn.Module):
 
 
 class Decoder(nn.Module):
-
     def __init__(
         self,
         nin: int,
@@ -126,7 +124,6 @@ class Decoder(nn.Module):
 
 
 class ASPPModule(nn.Module):
-
     def __init__(
         self,
         nn_architecture: int,
@@ -137,25 +134,20 @@ class ASPPModule(nn.Module):
     ) -> None:
         super(ASPPModule, self).__init__()
         self.conv1 = nn.Sequential(
-            nn.AdaptiveAvgPool2d((1, None)),
-            Conv2DBNActiv(nin, nin, 1, 1, 0, activ=activ)
+            nn.AdaptiveAvgPool2d((1, None)), Conv2DBNActiv(nin, nin, 1, 1, 0, activ=activ)
         )
-        
+
         self.nn_architecture = nn_architecture
         self.six_layer = [129605]
         self.seven_layer = [537238, 537227, 33966]
-        
-        extra_conv = SeperableConv2DBNActiv(
-            nin, nin, 3, 1, dilations[2], dilations[2], activ=activ)
-        
+
+        extra_conv = SeperableConv2DBNActiv(nin, nin, 3, 1, dilations[2], dilations[2], activ=activ)
+
         self.conv2 = Conv2DBNActiv(nin, nin, 1, 1, 0, activ=activ)
-        self.conv3 = SeperableConv2DBNActiv(
-            nin, nin, 3, 1, dilations[0], dilations[0], activ=activ)
-        self.conv4 = SeperableConv2DBNActiv(
-            nin, nin, 3, 1, dilations[1], dilations[1], activ=activ)
-        self.conv5 = SeperableConv2DBNActiv(
-            nin, nin, 3, 1, dilations[2], dilations[2], activ=activ)
-        
+        self.conv3 = SeperableConv2DBNActiv(nin, nin, 3, 1, dilations[0], dilations[0], activ=activ)
+        self.conv4 = SeperableConv2DBNActiv(nin, nin, 3, 1, dilations[1], dilations[1], activ=activ)
+        self.conv5 = SeperableConv2DBNActiv(nin, nin, 3, 1, dilations[2], dilations[2], activ=activ)
+
         if self.nn_architecture in self.six_layer:
             self.conv6 = extra_conv
             nin_x = 6
@@ -165,10 +157,9 @@ class ASPPModule(nn.Module):
             nin_x = 7
         else:
             nin_x = 5
-            
+
         self.bottleneck = nn.Sequential(
-            Conv2DBNActiv(nin * nin_x, nout, 1, 1, 0, activ=activ),
-            nn.Dropout2d(0.1)
+            Conv2DBNActiv(nin * nin_x, nout, 1, 1, 0, activ=activ), nn.Dropout2d(0.1)
         )
 
     def forward(self, x: Tensor) -> Tensor:
@@ -178,7 +169,7 @@ class ASPPModule(nn.Module):
         feat3 = self.conv3(x)
         feat4 = self.conv4(x)
         feat5 = self.conv5(x)
-        
+
         if self.nn_architecture in self.six_layer:
             feat6 = self.conv6(x)
             out = torch.cat((feat1, feat2, feat3, feat4, feat5, feat6), dim=1)
@@ -188,6 +179,6 @@ class ASPPModule(nn.Module):
             out = torch.cat((feat1, feat2, feat3, feat4, feat5, feat6, feat7), dim=1)
         else:
             out = torch.cat((feat1, feat2, feat3, feat4, feat5), dim=1)
-            
+
         bottle = self.bottleneck(out)
         return bottle

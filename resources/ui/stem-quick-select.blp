@@ -1,0 +1,31 @@
+using Gtk 4.0;
+using Adw 1;
+
+Adw.BreakpointBin holder {
+  overflow: visible;
+  width-request: 180;
+  height-request: 28;
+}
+
+Gtk.ToggleButton selected {
+  overflow: visible;
+  styles ["stem-toggle"]
+  child: Gtk.Overlay {
+    overflow: visible;
+    child: Gtk.Label label {
+      wrap: true;
+      max-width-chars: 24;
+      styles ["stem-toggle-label"]
+    };
+    [overlay] Gtk.Image badge {
+      icon-name: "object-select-symbolic";
+      pixel-size: 12;
+      accessible-role: presentation;
+      can-target: false;
+      halign: end;
+      valign: start;
+      opacity: 0;
+      styles ["stem-check-badge"]
+    }
+  };
+}

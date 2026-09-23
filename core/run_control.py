@@ -1,7 +1,7 @@
 """Cooperative pause / stop helpers for background workers."""
-import typing
 
 import time
+import typing
 
 from .debug_log import debug, verbose
 
@@ -28,6 +28,7 @@ def check_stopped(runner: typing.Any) -> None:
 
 def pausable_callback(runner: typing.Any, callback: typing.Any):
     """Wrap a worker callback so pause/stop are honored during long inference steps."""
+
     def wrapper(*args: typing.Any, **kwargs: typing.Any):
         check_stopped(runner)
         return callback(*args, **kwargs)

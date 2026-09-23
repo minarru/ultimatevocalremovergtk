@@ -174,9 +174,7 @@ class ModelPresentationChangedSubscriberTests(unittest.TestCase):
     def test_full_invalidation_does_not_emit_the_presentation_event(self) -> None:
         events: list[str] = []
         self.repo.subscribe_models_changed(lambda: events.append("models"))
-        self.repo.subscribe_model_presentation_changed(
-            lambda: events.append("presentation")
-        )
+        self.repo.subscribe_model_presentation_changed(lambda: events.append("presentation"))
 
         self.repo.invalidate_models()
 
@@ -185,9 +183,7 @@ class ModelPresentationChangedSubscriberTests(unittest.TestCase):
     def test_presentation_invalidation_does_not_emit_the_inventory_event(self) -> None:
         events: list[str] = []
         self.repo.subscribe_models_changed(lambda: events.append("models"))
-        self.repo.subscribe_model_presentation_changed(
-            lambda: events.append("presentation")
-        )
+        self.repo.subscribe_model_presentation_changed(lambda: events.append("presentation"))
 
         self.repo.invalidate_model_presentation()
 
@@ -330,9 +326,7 @@ class CatalogueDeltaBridgeTests(unittest.TestCase):
         self.repo = ModelRepository(catalogue=self.coordinator)
         self.events: list[str] = []
         self.repo.subscribe_models_changed(lambda: self.events.append("models"))
-        self.repo.subscribe_model_presentation_changed(
-            lambda: self.events.append("presentation")
-        )
+        self.repo.subscribe_model_presentation_changed(lambda: self.events.append("presentation"))
 
     def test_construction_subscribes_exactly_once(self) -> None:
         self.assertEqual(len(self.coordinator.delta_subscribers), 1)

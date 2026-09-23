@@ -85,8 +85,8 @@ def archive_legacy_local_overlay(mapper_path: str) -> bool:
 
     A hard-link followed by unlink gives the sibling-file rename semantics we
     need while retaining ``O_EXCL``-like protection against an archive created
-    concurrently. If the archive already exists, both files remain untouched
-    and the ignored source is reported to the caller through a warning.
+    concurrently. If the archive already exists, an empty recreated overlay
+    can be removed; any non-empty or unreadable source is preserved and warned.
     """
     source = local_overlay_path(mapper_path)
     with locked_json_path(source):
@@ -100,6 +100,8 @@ def _archive_legacy_local_overlay_locked(source: str, mapper_path: str) -> bool:
     try:
         os.link(source, archive)
     except FileExistsError:
+        if _remove_empty_legacy_overlay(source):
+            return True
         warnings.warn(
             f"legacy model name mapper archive already exists; "
             f"leaving ignored source untouched: {source}",
@@ -140,6 +142,23 @@ def _archive_legacy_local_overlay_locked(source: str, mapper_path: str) -> bool:
     return True
 
 
+def _remove_empty_legacy_overlay(source: str) -> bool:
+    """Remove a recreated empty migration marker, never unreadable data."""
+    try:
+        with open(source, "r", encoding="utf-8") as handle:
+            source_stat = os.fstat(handle.fileno())
+            if json.load(handle) != {}:
+                return False
+        # Match the regular archival guard: another process may replace the
+        # path while it is being read. Never unlink that replacement.
+        if not os.path.samestat(source_stat, os.stat(source, follow_symlinks=False)):
+            return False
+        os.unlink(source)
+    except (OSError, ValueError):
+        return False
+    return True
+
+
 def add_local_name(mapper_path: str, key: str, display_name: str) -> bool:
     """Record a fork-local display name. Never touches the upstream mirror."""
     overlay_path = local_overlay_path(mapper_path)
@@ -162,7 +181,8 @@ def migrate_local_only_keys(mapper_path: str, remote: Mapping[str, object]) -> b
     deletion into the overlay and reinstate exactly the bug the overlay exists
     to fix. The overlay file is therefore its own migration marker: it is
     written unconditionally here — empty when there was nothing to rescue — and
-    its existence means the mirror is authoritative from now on.
+    its existence (or that of its legacy archive) means the mirror is
+    authoritative from now on.
     """
     overlay_path = local_overlay_path(mapper_path)
     with locked_json_path(overlay_path):
@@ -183,7 +203,7 @@ def plan_local_overlay_migration(
     An empty mapping is significant: writing it creates the migration marker.
     """
     overlay_path = local_overlay_path(mapper_path)
-    if os.path.exists(overlay_path):
+    if os.path.exists(overlay_path) or os.path.exists(legacy_overlay_archive_path(mapper_path)):
         return None
     mirror = _load_object(mapper_path)
     return {key: value for key, value in mirror.items() if key not in remote}

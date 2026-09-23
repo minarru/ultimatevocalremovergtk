@@ -57,15 +57,29 @@ class CatalogueActionRowResolveTests(unittest.TestCase):
 
         raw = "Roformer Model: Mel-Band Roformer | Inst v2 by Unwa"
         win = object.__new__(DownloadCenterWindow)
+        from ui.catalogue_browser import CatalogueBrowserState
+
+        win.browser = CatalogueBrowserState()
+        from ui.lifetime import UiLifetime
+
+        win._lifetime = UiLifetime()
+        win._listening = False
+        win._sort_mode = "name"
+        win._arch_filter = "all"
         win._hide_unsupported = False
         win._purpose = PURPOSE_ALL
-        cast(Any, win).manager = SimpleNamespace(catalogue_meta={})
+        cast(Any, win).manager = SimpleNamespace(
+            latest_snapshot=None, catalogue_meta_by_family={}, catalogue_meta={}
+        )
         search = Gtk.SearchEntry()
         search.set_text("MelBand")
         win._search_entries = {"mdx": search}
         row = Adw.ActionRow()
         stash(row, "_uvr_model_name", raw)
 
+        from tests.browser_ui_helpers import seed_browser_row
+
+        seed_browser_row(win, row, "mdx")
         self.assertTrue(win._row_matches_filter(row, "mdx"))
 
     def test_live_filter_matches_an_unsupported_reason(self) -> None:
@@ -77,9 +91,20 @@ class CatalogueActionRowResolveTests(unittest.TestCase):
         from ui.download_center import DownloadCenterWindow
 
         win = object.__new__(DownloadCenterWindow)
+        from ui.catalogue_browser import CatalogueBrowserState
+
+        win.browser = CatalogueBrowserState()
+        from ui.lifetime import UiLifetime
+
+        win._lifetime = UiLifetime()
+        win._listening = False
+        win._sort_mode = "name"
+        win._arch_filter = "all"
         win._hide_unsupported = False
         win._purpose = PURPOSE_ALL
-        cast(Any, win).manager = SimpleNamespace(catalogue_meta={})
+        cast(Any, win).manager = SimpleNamespace(
+            latest_snapshot=None, catalogue_meta_by_family={}, catalogue_meta={}
+        )
         search = Gtk.SearchEntry()
         search.set_text("newer build")
         win._search_entries = {"mdx": search}
@@ -88,6 +113,9 @@ class CatalogueActionRowResolveTests(unittest.TestCase):
         stash(row, "_uvr_unsupported", True)
         stash(row, "_uvr_unsupported_reason", "needs a newer build")
 
+        from tests.browser_ui_helpers import seed_browser_row
+
+        seed_browser_row(win, row, "mdx")
         self.assertTrue(win._row_matches_filter(row, "mdx"))
 
     def test_download_row_uses_the_exact_id_aware_display(self) -> None:
@@ -102,7 +130,17 @@ class CatalogueActionRowResolveTests(unittest.TestCase):
         selection = "VR Arch Single Model v5: 1_HP-UVR"
         raw = {"1_HP-UVR.pth": "https://example.invalid/1_HP-UVR.pth"}
         win = cast(Any, object.__new__(DownloadCenterWindow))
+        from ui.catalogue_browser import CatalogueBrowserState
+
+        win.browser = CatalogueBrowserState()
+        from ui.lifetime import UiLifetime
+
+        win._lifetime = UiLifetime()
+        win._listening = False
+        win._sort_mode = "name"
+        win._arch_filter = "all"
         win.manager = SimpleNamespace(
+            latest_snapshot=None,
             catalogue_meta={
                 selection: EntryMeta(
                     label=selection,
@@ -143,9 +181,19 @@ class CatalogueActionRowResolveTests(unittest.TestCase):
         selection = "VR Arch Single Model v5: 1_HP-UVR"
         raw = {"1_HP-UVR.pth": "https://example.invalid/1_HP-UVR.pth"}
         win = cast(Any, object.__new__(DownloadCenterWindow))
+        from ui.catalogue_browser import CatalogueBrowserState
+
+        win.browser = CatalogueBrowserState()
+        from ui.lifetime import UiLifetime
+
+        win._lifetime = UiLifetime()
+        win._listening = False
+        win._sort_mode = "name"
+        win._arch_filter = "all"
         win._hide_unsupported = False
         win._purpose = PURPOSE_ALL
         win.manager = SimpleNamespace(
+            latest_snapshot=None,
             catalogue_meta={
                 selection: EntryMeta(
                     label=selection,
@@ -154,7 +202,7 @@ class CatalogueActionRowResolveTests(unittest.TestCase):
                     files=raw,
                     checkpoint="1_HP-UVR.pth",
                 )
-            }
+            },
         )
         search = Gtk.SearchEntry()
         search.set_text("HP 1")
@@ -163,7 +211,246 @@ class CatalogueActionRowResolveTests(unittest.TestCase):
         stash(row, "_uvr_model_name", selection)
         stash(row, "_uvr_display_name", "HP 1")
 
+        from tests.browser_ui_helpers import seed_browser_row
+
+        seed_browser_row(win, row, VR_ARCH_TYPE)
         self.assertTrue(win._row_matches_filter(row, VR_ARCH_TYPE))
+
+    def test_dual_model_matches_vocals_and_instrumental_pages(self) -> None:
+        from types import SimpleNamespace
+
+        from gi.repository import Adw
+
+        from bundled.constants import MDX_ARCH_TYPE
+        from core.catalog_sources import EntryMeta
+        from core.model_scores import (
+            ARCH_FILTER_ALL,
+            PURPOSE_INSTRUMENTAL,
+            PURPOSE_KARAOKE,
+            PURPOSE_VOCALS,
+        )
+        from core.model_stem_semantics import INTENT_DUAL_VOC_INST
+        from ui.download_center import DownloadCenterWindow
+
+        label = "MelBand Roformer | InstVoc HQ"
+        win = cast(Any, object.__new__(DownloadCenterWindow))
+        from ui.catalogue_browser import CatalogueBrowserState
+
+        win.browser = CatalogueBrowserState()
+        from ui.lifetime import UiLifetime
+
+        win._lifetime = UiLifetime()
+        win._listening = False
+        win._sort_mode = "name"
+        win._arch_filter = "all"
+        win._hide_unsupported = False
+        win._arch_filter = ARCH_FILTER_ALL
+        win.manager = SimpleNamespace(
+            latest_snapshot=None,
+            catalogue_meta={
+                label: EntryMeta(
+                    label=label,
+                    display=label,
+                    arch=MDX_ARCH_TYPE,
+                    intent=INTENT_DUAL_VOC_INST,
+                )
+            },
+            catalogue_meta_by_family={
+                "mdx": {
+                    label: EntryMeta(
+                        label=label,
+                        display=label,
+                        arch=MDX_ARCH_TYPE,
+                        intent=INTENT_DUAL_VOC_INST,
+                    )
+                }
+            },
+        )
+        win._search_entries = {}
+        row = Adw.ActionRow()
+        stash(row, "_uvr_model_name", label)
+        stash(row, "_uvr_arch", MDX_ARCH_TYPE)
+
+        win._purpose = PURPOSE_VOCALS
+        from tests.browser_ui_helpers import seed_browser_row
+
+        seed_browser_row(win, row, MDX_ARCH_TYPE)
+        self.assertTrue(win._row_matches_filter(row, MDX_ARCH_TYPE))
+        win._purpose = PURPOSE_INSTRUMENTAL
+        from tests.browser_ui_helpers import seed_browser_row
+
+        seed_browser_row(win, row, MDX_ARCH_TYPE)
+        self.assertTrue(win._row_matches_filter(row, MDX_ARCH_TYPE))
+        win._purpose = PURPOSE_KARAOKE
+        from tests.browser_ui_helpers import seed_browser_row
+
+        seed_browser_row(win, row, MDX_ARCH_TYPE)
+        self.assertFalse(win._row_matches_filter(row, MDX_ARCH_TYPE))
+
+    def test_cinematic_and_cleanup_use_fx_and_removal_pages(self) -> None:
+        from types import SimpleNamespace
+
+        from gi.repository import Adw
+
+        from bundled.constants import MDX_ARCH_TYPE
+        from core.catalog_sources import EntryMeta
+        from core.catalogue_types import StemSemanticProjection
+        from core.model_scores import (
+            ARCH_FILTER_ALL,
+            PURPOSE_FX,
+            PURPOSE_REMOVAL,
+            PURPOSE_STEMS,
+        )
+        from core.model_stem_semantics import INTENT_SPECIAL_FX, INTENT_SPECIALTY_STEM
+        from ui.download_center import DownloadCenterWindow
+
+        crowd = "MelBand Roformer | Crowd by Aufr33"
+        echo = "De-Echo Normal"
+        stems = "SCnet: 4-stem model"
+        crowd_meta = EntryMeta(
+            label=crowd,
+            display=crowd,
+            arch=MDX_ARCH_TYPE,
+            intent=INTENT_SPECIALTY_STEM,
+            stem_semantics=StemSemanticProjection(
+                backend_primary_stem=None,
+                backend_target_stem=None,
+                logical_primary_role="cinematic.crowd",
+                logical_secondary_role=None,
+                status="reviewed",
+                context="full_mix",
+                routes=(),
+            ),
+        )
+        echo_meta = EntryMeta(
+            label=echo,
+            display=echo,
+            arch=MDX_ARCH_TYPE,
+            intent=INTENT_SPECIAL_FX,
+        )
+        win = cast(Any, object.__new__(DownloadCenterWindow))
+        from ui.catalogue_browser import CatalogueBrowserState
+
+        win.browser = CatalogueBrowserState()
+        from ui.lifetime import UiLifetime
+
+        win._lifetime = UiLifetime()
+        win._listening = False
+        win._sort_mode = "name"
+        win._arch_filter = "all"
+        win._hide_unsupported = False
+        win._arch_filter = ARCH_FILTER_ALL
+        win.manager = SimpleNamespace(
+            latest_snapshot=None,
+            catalogue_meta={crowd: crowd_meta, echo: echo_meta},
+            catalogue_meta_by_family={"mdx": {crowd: crowd_meta, echo: echo_meta}},
+        )
+        win._search_entries = {}
+
+        def _row(name: str) -> Adw.ActionRow:
+            row = Adw.ActionRow()
+            stash(row, "_uvr_model_name", name)
+            stash(row, "_uvr_arch", MDX_ARCH_TYPE)
+            return row
+
+        crowd_row = _row(crowd)
+        echo_row = _row(echo)
+        stem_row = _row(stems)
+
+        win._purpose = PURPOSE_FX
+        from tests.browser_ui_helpers import seed_browser_row
+
+        seed_browser_row(win, crowd_row, MDX_ARCH_TYPE)
+        self.assertTrue(win._row_matches_filter(crowd_row, MDX_ARCH_TYPE))
+        from tests.browser_ui_helpers import seed_browser_row
+
+        seed_browser_row(win, echo_row, MDX_ARCH_TYPE)
+        self.assertFalse(win._row_matches_filter(echo_row, MDX_ARCH_TYPE))
+        from tests.browser_ui_helpers import seed_browser_row
+
+        seed_browser_row(win, stem_row, MDX_ARCH_TYPE)
+        self.assertFalse(win._row_matches_filter(stem_row, MDX_ARCH_TYPE))
+        win._purpose = PURPOSE_REMOVAL
+        from tests.browser_ui_helpers import seed_browser_row
+
+        seed_browser_row(win, crowd_row, MDX_ARCH_TYPE)
+        self.assertFalse(win._row_matches_filter(crowd_row, MDX_ARCH_TYPE))
+        from tests.browser_ui_helpers import seed_browser_row
+
+        seed_browser_row(win, echo_row, MDX_ARCH_TYPE)
+        self.assertTrue(win._row_matches_filter(echo_row, MDX_ARCH_TYPE))
+        from tests.browser_ui_helpers import seed_browser_row
+
+        seed_browser_row(win, stem_row, MDX_ARCH_TYPE)
+        self.assertFalse(win._row_matches_filter(stem_row, MDX_ARCH_TYPE))
+        win._purpose = PURPOSE_STEMS
+        from tests.browser_ui_helpers import seed_browser_row
+
+        seed_browser_row(win, crowd_row, MDX_ARCH_TYPE)
+        self.assertFalse(win._row_matches_filter(crowd_row, MDX_ARCH_TYPE))
+        from tests.browser_ui_helpers import seed_browser_row
+
+        seed_browser_row(win, echo_row, MDX_ARCH_TYPE)
+        self.assertFalse(win._row_matches_filter(echo_row, MDX_ARCH_TYPE))
+        from tests.browser_ui_helpers import seed_browser_row
+
+        seed_browser_row(win, stem_row, MDX_ARCH_TYPE)
+        self.assertTrue(win._row_matches_filter(stem_row, MDX_ARCH_TYPE))
+
+    def test_mel_band_network_filter_excludes_classic_mdx(self) -> None:
+        from types import SimpleNamespace
+
+        from gi.repository import Adw
+
+        from bundled.constants import MDX_ARCH_TYPE
+        from core.model_scores import NETWORK_CLASSIC_MDX, NETWORK_MEL_BAND, PURPOSE_ALL
+        from ui.download_center import DownloadCenterWindow
+
+        win = cast(Any, object.__new__(DownloadCenterWindow))
+        from ui.catalogue_browser import CatalogueBrowserState
+
+        win.browser = CatalogueBrowserState()
+        from ui.lifetime import UiLifetime
+
+        win._lifetime = UiLifetime()
+        win._listening = False
+        win._sort_mode = "name"
+        win._arch_filter = "all"
+        win._hide_unsupported = False
+        win._purpose = PURPOSE_ALL
+        win.manager = SimpleNamespace(
+            latest_snapshot=None, catalogue_meta_by_family={}, catalogue_meta={}
+        )
+        win._search_entries = {}
+
+        mel = Adw.ActionRow()
+        stash(mel, "_uvr_model_name", "MelBand Roformer | Inst v1")
+        stash(mel, "_uvr_arch", MDX_ARCH_TYPE)
+        stash(mel, "_uvr_network", NETWORK_MEL_BAND)
+        classic = Adw.ActionRow()
+        stash(classic, "_uvr_model_name", "MDX-Net Model: Kim Vocal 2")
+        stash(classic, "_uvr_arch", MDX_ARCH_TYPE)
+        stash(classic, "_uvr_network", NETWORK_CLASSIC_MDX)
+
+        win._arch_filter = NETWORK_MEL_BAND
+        from tests.browser_ui_helpers import seed_browser_row
+
+        seed_browser_row(win, mel, MDX_ARCH_TYPE)
+        self.assertTrue(win._row_matches_filter(mel, MDX_ARCH_TYPE))
+        from tests.browser_ui_helpers import seed_browser_row
+
+        seed_browser_row(win, classic, MDX_ARCH_TYPE)
+        self.assertFalse(win._row_matches_filter(classic, MDX_ARCH_TYPE))
+
+        win._arch_filter = MDX_ARCH_TYPE
+        from tests.browser_ui_helpers import seed_browser_row
+
+        seed_browser_row(win, mel, MDX_ARCH_TYPE)
+        self.assertTrue(win._row_matches_filter(mel, MDX_ARCH_TYPE))
+        from tests.browser_ui_helpers import seed_browser_row
+
+        seed_browser_row(win, classic, MDX_ARCH_TYPE)
+        self.assertTrue(win._row_matches_filter(classic, MDX_ARCH_TYPE))
 
 
 class CanonicalSearchTests(unittest.TestCase):

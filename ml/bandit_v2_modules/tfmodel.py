@@ -39,13 +39,11 @@ class ResidualRNN(nn.Module):
             bidirectional=bidirectional,
         )
 
-        self.fc = nn.Linear(
-            in_features=rnn_dim * (2 if bidirectional else 1), out_features=emb_dim
-        )
+        self.fc = nn.Linear(in_features=rnn_dim * (2 if bidirectional else 1), out_features=emb_dim)
 
         self.use_batch_trick = use_batch_trick
         if not self.use_batch_trick:
-            warnings.warn("NOT USING BATCH TRICK IS EXTREMELY SLOW!!")
+            warnings.warn("NOT USING BATCH TRICK IS EXTREMELY SLOW!!", stacklevel=2)
 
     def forward(self, z: torch.Tensor) -> torch.Tensor:
         z0 = torch.clone(z)

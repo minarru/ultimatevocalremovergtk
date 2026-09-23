@@ -75,9 +75,7 @@ class ExpanderSummaryTests(unittest.TestCase):
 
         window = self._window()
         view = window._views_by_stack["demucs"]
-        entry = next(
-            item for item in view._model_combos if item["key"] == "demucs_pre_proc_model"
-        )
+        entry = next(item for item in view._model_combos if item["key"] == "demucs_pre_proc_model")
 
         self.assertEqual(entry["row"].get_tooltip_text(), PRE_PROC_MODEL_HELP)
         self.assertNotEqual(entry["row"].get_tooltip_text(), SECONDARY_MODEL_HELP)
@@ -159,9 +157,7 @@ class ExpanderSummaryTests(unittest.TestCase):
             if not ctx.iteration(False):
                 break
 
-        entry = next(
-            e for e in view._model_combos if e["key"] == "mdx_voc_inst_secondary_model"
-        )
+        entry = next(e for e in view._model_combos if e["key"] == "mdx_voc_inst_secondary_model")
         self.assertTrue(entry["ready"])
         # Seed a known option so the test doesn't depend on installed models.
         set_combo_tag_values(
@@ -185,9 +181,7 @@ class ExpanderSummaryTests(unittest.TestCase):
         view = window._views_by_stack["mdx"]
         window.settings.set("mdx_net_model", CHOOSE_MODEL)
         window.settings.set("mdx_is_secondary_model_activate", True)
-        window.settings.set(
-            "mdx_voc_inst_secondary_model", "mdx:14_SP-UVR-4B-44100-2"
-        )
+        window.settings.set("mdx_voc_inst_secondary_model", "mdx:14_SP-UVR-4B-44100-2")
         window.settings.set("mdx_voc_inst_secondary_model_scale", 0.9)
         view.load()
         self.assertIn("(0.90)", view.secondary_expander.get_subtitle())
@@ -213,16 +207,12 @@ class ExpanderSummaryTests(unittest.TestCase):
         window.settings.set("demucs_pre_proc_model", "demucs:hdemucs_mmi")
         window.settings.set("is_demucs_pre_proc_model_inst_mix", False)
         view.load()
-        self.assertNotIn(
-            "saves instrumental mixture", view.preproc_expander.get_subtitle()
-        )
+        self.assertNotIn("saves instrumental mixture", view.preproc_expander.get_subtitle())
 
         switch_row = view._switch_rows["is_demucs_pre_proc_model_inst_mix"]
         switch_row.set_active(True)  # real switch signal
 
-        self.assertIn(
-            "saves instrumental mixture", view.preproc_expander.get_subtitle()
-        )
+        self.assertIn("saves instrumental mixture", view.preproc_expander.get_subtitle())
 
 
 if __name__ == "__main__":

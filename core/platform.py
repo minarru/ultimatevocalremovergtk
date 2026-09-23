@@ -61,9 +61,7 @@ def registry_data_dir(base_path: str, data_dir: str) -> str:
     """
     if os.environ.get("UVR_DATA_DIR"):
         return data_dir
-    if os.path.normcase(os.path.abspath(data_dir)) == os.path.normcase(
-        os.path.abspath(base_path)
-    ):
+    if os.path.normcase(os.path.abspath(data_dir)) == os.path.normcase(os.path.abspath(base_path)):
         return os.path.join(base_path, ".uvr-runtime")
     return data_dir
 

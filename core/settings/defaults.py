@@ -139,6 +139,7 @@ def default_demucs() -> dict:
         "bass_secondary_model_scale": 0.5,
         "drums_secondary_model_scale": 0.5,
         "stems": ALL_STEMS,
+        "stems_selected": [],
         "pre_proc_model": NO_MODEL,
         "is_pre_proc_model_activate": False,
         "is_pre_proc_model_inst_mix": False,
@@ -150,11 +151,18 @@ def default_ensemble() -> dict:
         "main_stem": "",
         "type": MAX_MIN,
         "selected_models": [],
+        "stems_selected": [],
         "chosen_ensemble": CHOOSE_ENSEMBLE_OPTION,
         "save_all_outputs": True,
         "append_ensemble_name": False,
         "wav_ensemble": False,
         "cleanup_temps": True,
+        "derive_complement_from_mix": False,
+        "member_weights": {},
+        "smoothing": 0.0,
+        "soft_strength": 1.0,
+        "hybrid_balance": 0.5,
+        "alignment_correction": False,
     }
 
 
@@ -190,6 +198,7 @@ def default_ui() -> dict:
         "notify_download_complete": True,
         "notify_download_failed": True,
         "confirm_processing_plan": True,
+        "auto_expand_log": False,
     }
 
 

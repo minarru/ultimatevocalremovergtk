@@ -35,9 +35,7 @@ def probe_audio(path: str) -> AudioProbeResult:
         with contextlib.closing(wave.open(path, "r")) as handle:
             rate = handle.getframerate()
             duration = handle.getnframes() / float(rate) if rate else 0.0
-            return AudioProbeResult(
-                True, duration, "WAV", handle.getnchannels(), rate
-            )
+            return AudioProbeResult(True, duration, "WAV", handle.getnchannels(), rate)
     except Exception:
         pass
     try:
@@ -78,4 +76,3 @@ def audio_duration_seconds(path: str) -> float | None:
         return float(librosa.get_duration(path=path))
     except Exception:
         return None
-

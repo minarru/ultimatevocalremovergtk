@@ -770,7 +770,7 @@ class ManifestValidationTests(unittest.TestCase):
                 continue
             declarations.append((model_id, declaration, target_match.group(1)))
 
-        self.assertEqual(len(declarations), 304)
+        self.assertEqual(len(declarations), 308)
         self.assertNotIn(
             "mdx:MDX23C-De-Reverb-aufr33-jarredou",
             {model_id for model_id, _declaration, _target in declarations},
@@ -819,6 +819,20 @@ class ManifestValidationTests(unittest.TestCase):
                 "effect.reverb.removed",
             ),
             "mdx:mel_band_roformer_bleed_suppressor_v1": (
+                "Instrumental",
+                "mix.instrumental",
+                "mix.bleed",
+                "mix.instrumental",
+            ),
+            # Gabox's DeNoise-DeBleed cleans an already-separated instrumental;
+            # the removed complement is bleed and noise, not usable vocals.
+            "mdx:mbr_denoise_debleed_gabox": (
+                "Instrumental",
+                "mix.instrumental",
+                "mix.bleed",
+                "mix.instrumental",
+            ),
+            "mdx:mel_band_roformer_inst_denoise_debleed_gabox": (
                 "Instrumental",
                 "mix.instrumental",
                 "mix.bleed",
@@ -876,8 +890,8 @@ class ManifestValidationTests(unittest.TestCase):
         current_models = current_ids.intersection(registry.models)
         current_waivers = current_ids.intersection(registry.waivers)
 
-        self.assertEqual(len(current_ids), 485)
-        self.assertEqual(len(current_models), 483)
+        self.assertEqual(len(current_ids), 410)
+        self.assertEqual(len(current_models), 408)
         self.assertEqual(
             current_waivers,
             {
@@ -889,7 +903,14 @@ class ManifestValidationTests(unittest.TestCase):
         self.assertFalse(current_models & current_waivers)
         self.assertEqual(
             set(registry.models).difference(current_ids),
-            {"mdx:mbr_guitar_becruily", "mdx:mbr_inst_becruily"},
+            {
+                "mdx:mbr_guitar_becruily",
+                "mdx:mbr_inst_becruily",
+                "mdx:mel_band_roformer_voc_fullness_v4_gabox",
+                *(Path(__file__).with_name("fixtures") / "catalogue" / "retired_duplicate_ids.txt")
+                .read_text(encoding="utf-8")
+                .split(),
+            },
         )
 
     def test_accepts_all_supported_canonical_model_families(self) -> None:
@@ -935,7 +956,7 @@ class ManifestValidationTests(unittest.TestCase):
     def test_bundled_manifest_loads_core_roles_pairs_and_reviewed_catalogue(self) -> None:
         registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)
 
-        self.assertEqual(len(registry.models), 485)
+        self.assertEqual(len(registry.models), 492)
         self.assertEqual(len(registry.waivers), 2)
         self.assertIn(StemRoleId("vocal.vocals"), registry.roles)
         self.assertEqual(

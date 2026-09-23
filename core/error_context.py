@@ -1,10 +1,10 @@
 """Run context captured for separation / ensemble / audio-tool error logs."""
 
 from __future__ import annotations
-import typing
 
 import os
 import threading
+import typing
 from typing import Any, Dict, List, Optional, Sequence
 
 from bundled.constants import (
@@ -182,7 +182,7 @@ def probe_audio_file(path: str) -> Dict[str, Any]:
         duration = librosa.get_duration(path=path)
         info.update(valid=True, duration_sec=float(duration))
         return info
-    except Exception as exc:  # noqa: BLE001 - surfaced in the error log
+    except Exception as exc:  # surfaced in the error log
         info["error"] = f"{type(exc).__name__}: {exc}"
         return info
 
@@ -206,9 +206,8 @@ def non_default_setting_lines(settings: Settings) -> List[str]:
 
 
 def model_summary_lines(model: typing.Any) -> List[str]:
-    label = (
-        str(getattr(model, "model_display_label", "") or "")
-        or display_name_for_model(model.process_method, model.model_name, model.repo)
+    label = str(getattr(model, "model_display_label", "") or "") or display_name_for_model(
+        model.process_method, model.model_name, model.repo
     )
     lines = [
         f"model={label or model.model_name}",
@@ -261,7 +260,9 @@ def _audio_lines(info: Dict[str, Any]) -> List[str]:
         if info.get("channels") is not None:
             lines.append(f"channels={info['channels']}")
         if info.get("duration_sec") is not None:
-            lines.append(f"duration={_format_duration(info['duration_sec'])} ({info['duration_sec']:.2f}s)")
+            lines.append(
+                f"duration={_format_duration(info['duration_sec'])} ({info['duration_sec']:.2f}s)"
+            )
         if info.get("frames") is not None:
             lines.append(f"frames={info['frames']}")
         if info.get("format"):
@@ -326,11 +327,7 @@ def build_separation_context(
 ) -> Dict[str, Any]:
     model_setting = _MODEL_SETTING_BY_METHOD.get(method_key)
     model_path = FLAT_TO_PATH.get(model_setting) if model_setting else None
-    model_name = (
-        getattr(getattr(settings, model_path[0]), model_path[1])
-        if model_path
-        else None
-    )
+    model_name = getattr(getattr(settings, model_path[0]), model_path[1]) if model_path else None
     models: List[str] = []
     if model_name and model_name not in (CHOOSE_MODEL, "", None):
         try:
@@ -384,7 +381,7 @@ def build_audio_tools_context(
     }
 
 
-def snapshot_worker_file(path: str, model: typing.Any=None) -> None:
+def snapshot_worker_file(path: str, model: typing.Any = None) -> None:
     """Update context with the file/model currently being processed."""
     fields: Dict[str, Any] = {
         "audio": probe_audio_file(path),

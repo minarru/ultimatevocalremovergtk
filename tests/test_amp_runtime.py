@@ -52,26 +52,30 @@ class AmpRuntimeTests(unittest.TestCase):
         with mock.patch("engines.amp_runtime.torch.cuda.is_available", return_value=False):
             self.assertFalse(recommend_autocast())
 
-        with mock.patch("engines.amp_runtime.torch.cuda.is_available", return_value=True), mock.patch(
-            "engines.amp_runtime.torch.cuda.device_count", return_value=1
-        ), mock.patch(
-            "engines.amp_runtime.torch.cuda.get_device_capability", return_value=(7, 5)
+        with (
+            mock.patch("engines.amp_runtime.torch.cuda.is_available", return_value=True),
+            mock.patch("engines.amp_runtime.torch.cuda.device_count", return_value=1),
+            mock.patch("engines.amp_runtime.torch.cuda.get_device_capability", return_value=(7, 5)),
         ):
             self.assertFalse(recommend_autocast())
 
-        with mock.patch("engines.amp_runtime.torch.cuda.is_available", return_value=True), mock.patch(
-            "engines.amp_runtime.torch.cuda.device_count", return_value=1
-        ), mock.patch(
-            "engines.amp_runtime.torch.cuda.get_device_capability", return_value=(8, 0)
-        ) as get_cap:
+        with (
+            mock.patch("engines.amp_runtime.torch.cuda.is_available", return_value=True),
+            mock.patch("engines.amp_runtime.torch.cuda.device_count", return_value=1),
+            mock.patch(
+                "engines.amp_runtime.torch.cuda.get_device_capability", return_value=(8, 0)
+            ) as get_cap,
+        ):
             self.assertTrue(recommend_autocast())
             get_cap.assert_called_with(0)
 
-        with mock.patch("engines.amp_runtime.torch.cuda.is_available", return_value=True), mock.patch(
-            "engines.amp_runtime.torch.cuda.device_count", return_value=2
-        ), mock.patch(
-            "engines.amp_runtime.torch.cuda.get_device_capability", return_value=(8, 9)
-        ) as get_cap:
+        with (
+            mock.patch("engines.amp_runtime.torch.cuda.is_available", return_value=True),
+            mock.patch("engines.amp_runtime.torch.cuda.device_count", return_value=2),
+            mock.patch(
+                "engines.amp_runtime.torch.cuda.get_device_capability", return_value=(8, 9)
+            ) as get_cap,
+        ):
             self.assertTrue(recommend_autocast("CUDA:1"))
             get_cap.assert_called_with(1)
 
@@ -167,10 +171,10 @@ class AmpRuntimeTests(unittest.TestCase):
         torch.backends.cudnn.benchmark = False
         torch.backends.cuda.matmul.allow_tf32 = False
         torch.backends.cudnn.allow_tf32 = False
-        with mock.patch("engines.amp_runtime.torch.cuda.is_available", return_value=True), mock.patch(
-            "engines.amp_runtime.torch.cuda.device_count", return_value=1
-        ), mock.patch(
-            "engines.amp_runtime.torch.cuda.get_device_capability", return_value=(8, 0)
+        with (
+            mock.patch("engines.amp_runtime.torch.cuda.is_available", return_value=True),
+            mock.patch("engines.amp_runtime.torch.cuda.device_count", return_value=1),
+            mock.patch("engines.amp_runtime.torch.cuda.get_device_capability", return_value=(8, 0)),
         ):
             configure_cuda_inference()
         self.assertTrue(torch.backends.cudnn.benchmark)
@@ -183,10 +187,10 @@ class AmpRuntimeTests(unittest.TestCase):
         torch.backends.cudnn.benchmark = False
         torch.backends.cuda.matmul.allow_tf32 = False
         torch.backends.cudnn.allow_tf32 = False
-        with mock.patch("engines.amp_runtime.torch.cuda.is_available", return_value=True), mock.patch(
-            "engines.amp_runtime.torch.cuda.device_count", return_value=1
-        ), mock.patch(
-            "engines.amp_runtime.torch.cuda.get_device_capability", return_value=(7, 5)
+        with (
+            mock.patch("engines.amp_runtime.torch.cuda.is_available", return_value=True),
+            mock.patch("engines.amp_runtime.torch.cuda.device_count", return_value=1),
+            mock.patch("engines.amp_runtime.torch.cuda.get_device_capability", return_value=(7, 5)),
         ):
             configure_cuda_inference()
         self.assertTrue(torch.backends.cudnn.benchmark)

@@ -111,15 +111,18 @@ class StftDevicePolicyTests(unittest.TestCase):
 
 
 class EnsembleArrayInputTests(unittest.TestCase):
-    def test_average_audio_is_array(self) -> None:
-        from ml.spec_utils import average_audio
+    def test_array_average_keeps_longer_member_tail(self) -> None:
+        from ml.spec_utils import AVERAGE, combine_ensemble_waveforms
 
         a = np.ones((2, 100), dtype=np.float32)
         b = np.full((2, 80), 3.0, dtype=np.float32)
-        out = np.asarray(average_audio([a, b], is_array=True))
+        out, _rate = combine_ensemble_waveforms(
+            [a, b], AVERAGE, is_array=True, alignment_diagnostics=False
+        )
         self.assertEqual(out.shape, (2, 100))
-        # Longer stem unchanged; shorter padded then averaged.
+        # Average only present samples; the longer stem retains its tail.
         self.assertTrue(np.allclose(out[:, :80], 2.0))
+        self.assertTrue(np.allclose(out[:, 80:], 1.0))
 
     def test_ensemble_inputs_writes_array_average(self) -> None:
         from ml.spec_utils import AVERAGE, ensemble_inputs

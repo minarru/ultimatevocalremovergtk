@@ -118,9 +118,7 @@ class DevDocsPrepareTests(unittest.TestCase):
             staged_application = repo.git("show", ":application.txt").stdout
             merge_head = repo.git("rev-parse", "--verify", "MERGE_HEAD", check=False)
             staged_names = repo.git("diff", "--cached", "--name-status").stdout
-            dev_report = repo.git(
-                "show", "dev:.superpowers/sdd/example/task-report.md"
-            ).stdout
+            dev_report = repo.git("show", "dev:.superpowers/sdd/example/task-report.md").stdout
 
         self.assertEqual(tracked_docs, "")
         self.assertEqual(dev_report, "# Task report\n")

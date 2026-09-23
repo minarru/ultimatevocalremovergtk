@@ -128,3 +128,5 @@ class ModelStemSemantics:
     evidence: str
     warning: str = ""
     logical_secondary_role: StemRoleId | StemLiteral | None = None
+    runtime_error: str = ""
+    reconciled_native_stems: tuple[str, ...] = ()

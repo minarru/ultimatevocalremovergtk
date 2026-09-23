@@ -143,6 +143,7 @@ def migrate_cache_file(filename: str, dest_path: str) -> str:
                 continue
     return dest_path
 
+
 # Legacy paths from the Tk / early GTK layout (``gui_data/saved_*``).
 _LEGACY_SETTINGS_DIRS = (
     os.path.join(BASE_PATH, "gui_data", "saved_settings"),
@@ -254,7 +255,9 @@ def ensure_data_dir() -> None:
     )
 
     # Seed the bundled MDX-C config YAMLs.
-    bundled_mdx_c = os.path.join(BUNDLED_MODELS_DIR, "MDX_Net_Models", "model_data", "mdx_c_configs")
+    bundled_mdx_c = os.path.join(
+        BUNDLED_MODELS_DIR, "MDX_Net_Models", "model_data", "mdx_c_configs"
+    )
     if os.path.isdir(bundled_mdx_c):
         for name in os.listdir(bundled_mdx_c):
             _seed_bundled_file(

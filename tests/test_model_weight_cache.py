@@ -232,13 +232,14 @@ class WeightCacheTests(unittest.TestCase):
         keep.cpu.reset_mock()
         drop.cpu.reset_mock()
         gib = 1024**3
-        with mock.patch(
-            "engines.model_weight_cache.cuda_mem_info",
-            side_effect=[(1 * gib, 16 * gib), (4 * gib, 16 * gib)],
-        ), mock.patch("engines.model_weight_cache._flush_cuda_allocator"):
-            action = ensure_weight_cache_vram_headroom(
-                "cuda:0", protect_identities={keep_id}
-            )
+        with (
+            mock.patch(
+                "engines.model_weight_cache.cuda_mem_info",
+                side_effect=[(1 * gib, 16 * gib), (4 * gib, 16 * gib)],
+            ),
+            mock.patch("engines.model_weight_cache._flush_cuda_allocator"),
+        ):
+            action = ensure_weight_cache_vram_headroom("cuda:0", protect_identities={keep_id})
         self.assertEqual(action, "parked_other")
         keep.cpu.assert_not_called()
         drop.cpu.assert_called()
@@ -252,13 +253,14 @@ class WeightCacheTests(unittest.TestCase):
         cache.put(("mdx", keep_id, "cuda:0", ()), module=mock.MagicMock(name="keep"))
         cache.put(("mdx", drop_id, "cuda:0", ()), module=mock.MagicMock(name="drop"))
         gib = 1024**3
-        with mock.patch(
-            "engines.model_weight_cache.cuda_mem_info",
-            side_effect=[(1 * gib, 16 * gib), (1 * gib, 16 * gib), (4 * gib, 16 * gib)],
-        ), mock.patch("engines.model_weight_cache._flush_cuda_allocator"):
-            action = ensure_weight_cache_vram_headroom(
-                "cuda:0", protect_identities={keep_id}
-            )
+        with (
+            mock.patch(
+                "engines.model_weight_cache.cuda_mem_info",
+                side_effect=[(1 * gib, 16 * gib), (1 * gib, 16 * gib), (4 * gib, 16 * gib)],
+            ),
+            mock.patch("engines.model_weight_cache._flush_cuda_allocator"),
+        ):
+            action = ensure_weight_cache_vram_headroom("cuda:0", protect_identities={keep_id})
         self.assertEqual(action, "cleared_other")
         self.assertIsNotNone(cache.get(("mdx", keep_id, "cuda:0", ())))
         self.assertIsNone(cache.get(("mdx", drop_id, "cuda:0", ())))
@@ -269,13 +271,14 @@ class WeightCacheTests(unittest.TestCase):
         cache.put(("mdx", keep_id, "cuda:0", ()), module=mock.MagicMock())
         gib = 1024**3
         low = (1 * gib, 16 * gib)
-        with mock.patch(
-            "engines.model_weight_cache.cuda_mem_info",
-            side_effect=[low, low, low, low, low],
-        ), mock.patch("engines.model_weight_cache._flush_cuda_allocator"):
-            action = ensure_weight_cache_vram_headroom(
-                "cuda:0", protect_identities={keep_id}
-            )
+        with (
+            mock.patch(
+                "engines.model_weight_cache.cuda_mem_info",
+                side_effect=[low, low, low, low, low],
+            ),
+            mock.patch("engines.model_weight_cache._flush_cuda_allocator"),
+        ):
+            action = ensure_weight_cache_vram_headroom("cuda:0", protect_identities={keep_id})
         self.assertEqual(action, "cleared_all")
         self.assertIsNone(cache.get(("mdx", keep_id, "cuda:0", ())))
 
@@ -285,10 +288,13 @@ class WeightCacheTests(unittest.TestCase):
         module = mock.MagicMock()
         cache.put(key, module=module)
         gib = 1024**3
-        with mock.patch(
-            "engines.model_weight_cache.cuda_mem_info",
-            side_effect=[(1 * gib, 16 * gib), (4 * gib, 16 * gib)],
-        ), mock.patch("engines.model_weight_cache._flush_cuda_allocator"):
+        with (
+            mock.patch(
+                "engines.model_weight_cache.cuda_mem_info",
+                side_effect=[(1 * gib, 16 * gib), (4 * gib, 16 * gib)],
+            ),
+            mock.patch("engines.model_weight_cache._flush_cuda_allocator"),
+        ):
             action = ensure_weight_cache_vram_headroom("cuda:0")
         self.assertEqual(action, "parked_all")
         module.cpu.assert_called()

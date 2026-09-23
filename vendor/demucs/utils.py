@@ -228,6 +228,22 @@ def tensor_chunk(tensor_or_chunk):
         return TensorChunk(tensor_or_chunk)
 
 
+def progress_slice(callback, index, count):
+    """Map a child's inference interval into its share of the parent's work.
+
+    Demucs callbacks use step + iterations in [0.1, 0.9]. Forwarding an
+    unscaled recursive callback would mark every chunk/shift as a whole pass.
+    """
+    if callback is None:
+        return None
+
+    def report(step, iterations=0):
+        fraction = (step - 0.1 + iterations) / 0.8
+        callback(0.1, 0.8 * (index + fraction) / count)
+
+    return report
+
+
 def apply_model_v1(model, mix, shifts=None, split=False, progress=False, set_progress_bar=None):
     """
     Apply model to a given mixture.
@@ -245,7 +261,6 @@ def apply_model_v1(model, mix, shifts=None, split=False, progress=False, set_pro
 
     channels, length = mix.size()
     device = mix.device
-    progress_value = 0
     
     if split:
         out = th.zeros(4, channels, length, device=device)
@@ -254,14 +269,11 @@ def apply_model_v1(model, mix, shifts=None, split=False, progress=False, set_pro
         scale = 10
         if progress:
             offsets = tqdm.tqdm(offsets, unit_scale=scale, ncols=120, unit='seconds')
-        for offset in offsets:
+        for chunk_i, offset in enumerate(offsets):
             chunk = mix[..., offset:offset + shift]
-            if set_progress_bar:
-                progress_value += 1
-                set_progress_bar(0.1, (0.8/len(offsets)*progress_value))
-                chunk_out = apply_model_v1(model, chunk, shifts=shifts, set_progress_bar=set_progress_bar)
-            else:
-                chunk_out = apply_model_v1(model, chunk, shifts=shifts)
+            chunk_out = apply_model_v1(
+                model, chunk, shifts=shifts,
+                set_progress_bar=progress_slice(set_progress_bar, chunk_i, len(offsets)))
             out[..., offset:offset + shift] = chunk_out
             offset += shift
         return out
@@ -273,11 +285,9 @@ def apply_model_v1(model, mix, shifts=None, split=False, progress=False, set_pro
         out = 0
         for shift_i, offset in enumerate(offsets[:shifts]):
             shifted = mix[..., offset:offset + length + max_shift]
-            if set_progress_bar:
-                set_progress_bar(0.1, (0.8 / max(1, shifts) * (shift_i + 1)))
-                shifted_out = apply_model_v1(model, shifted, set_progress_bar=set_progress_bar)
-            else:
-                shifted_out = apply_model_v1(model, shifted)
+            shifted_out = apply_model_v1(
+                model, shifted,
+                set_progress_bar=progress_slice(set_progress_bar, shift_i, len(offsets[:shifts])))
             out += shifted_out[..., max_shift - offset:max_shift - offset + length]
         out /= shifts
         return out
@@ -312,7 +322,6 @@ def apply_model_v2(model, mix, shifts=None, split=False,
     assert transition_power >= 1, "transition_power < 1 leads to weird behavior."
     device = mix.device
     channels, length = mix.shape
-    progress_value = 0
     
     if split:
         out = th.zeros(len(model.sources), channels, length, device=device)
@@ -332,14 +341,11 @@ def apply_model_v2(model, mix, shifts=None, split=False,
         # If the overlap < 50%, this will translate to linear transition when
         # transition_power is 1.
         weight = (weight / weight.max())**transition_power
-        for offset in offsets:
+        for chunk_i, offset in enumerate(offsets):
             chunk = TensorChunk(mix, offset, segment)
-            if set_progress_bar:
-                progress_value += 1
-                set_progress_bar(0.1, (0.8/len(offsets)*progress_value))
-                chunk_out = apply_model_v2(model, chunk, shifts=shifts, set_progress_bar=set_progress_bar)
-            else:
-                chunk_out = apply_model_v2(model, chunk, shifts=shifts)
+            chunk_out = apply_model_v2(
+                model, chunk, shifts=shifts,
+                set_progress_bar=progress_slice(set_progress_bar, chunk_i, len(offsets)))
             chunk_length = chunk_out.shape[-1]
             out[..., offset:offset + segment] += weight[:chunk_length] * chunk_out
             sum_weight[offset:offset + segment] += weight[:chunk_length]
@@ -352,16 +358,13 @@ def apply_model_v2(model, mix, shifts=None, split=False,
         mix = tensor_chunk(mix)
         padded_mix = mix.padded(length + 2 * max_shift)
         out = 0
-        for _ in range(shifts):
+        for shift_i in range(shifts):
             offset = random.randint(0, max_shift)
             shifted = TensorChunk(padded_mix, offset, length + max_shift - offset)
             
-            if set_progress_bar:
-                progress_value += 1
-                set_progress_bar(0.1, (0.8 / max(1, shifts) * progress_value))
-                shifted_out = apply_model_v2(model, shifted, set_progress_bar=set_progress_bar)
-            else:
-                shifted_out = apply_model_v2(model, shifted)
+            shifted_out = apply_model_v2(
+                model, shifted,
+                set_progress_bar=progress_slice(set_progress_bar, shift_i, shifts))
             out += shifted_out[..., max_shift - offset:]
         out /= shifts
         return out

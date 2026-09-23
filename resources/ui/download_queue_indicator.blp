@@ -1,0 +1,39 @@
+using Gtk 4.0;
+
+Gtk.MenuButton download_queue_button {
+  valign: center;
+  height-request: 34;
+  visible: false;
+  styles ["uvr-download-queue-chip"]
+
+  child: Gtk.Box chip_content {
+    orientation: horizontal;
+    spacing: 6;
+    valign: center;
+    styles ["uvr-chip-content"]
+
+    Gtk.Label chip_label {
+      ellipsize: end;
+      styles ["uvr-download-queue-chip-label"]
+    }
+  };
+
+  popover: Gtk.Popover queue_popover {
+    child: Gtk.ScrolledWindow {
+      hscrollbar-policy: never;
+      vscrollbar-policy: automatic;
+      max-content-height: 270;
+      propagate-natural-height: true;
+
+      child: Gtk.ListBox queue_list {
+        selection-mode: none;
+        activate-on-single-click: false;
+        margin-start: 6;
+        margin-end: 6;
+        margin-top: 6;
+        margin-bottom: 6;
+        styles ["operations-list"]
+      };
+    };
+  };
+}

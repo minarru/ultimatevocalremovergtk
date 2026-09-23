@@ -1,4 +1,8 @@
-# Maintenance scripts
+# Maintenance scripts guidance
+
+Follow the root [AGENTS.md](../AGENTS.md) and read the [architecture reference](../docs/development-architecture.md) before changing catalogue contracts. Commands below run from the repository root.
+
+## Maintenance scripts
 
 Three model-maintenance command entry points under `scripts/`, plus `model_tool_support.py` and the `scripts/catalogue/` collection/rendering package. None are part of the app.
 
@@ -15,6 +19,7 @@ Three model-maintenance command entry points under `scripts/`, plus `model_tool_
   `0` wrote/up to date, `1` drift (`--check`), `2` this run's data is too degraded to
   judge. A cold cache yields a fraction of the catalogue, so without the guard a partial
   run replaces a good 7,000-line document. `--allow-degraded` overrides.
+- **Checkpoint content identities ship in `bundled/checkpoint_identities.json`.** `--refresh` prepares its SHA-256 table from Hugging Face tree listings, deduplicates the same source snapshot with those identities, and publishes the table with the validated catalogue bundle; reviewed rehosts and withdrawn rows are preserved. Unresolved URLs retain their previous identities, and losing more than 10% requires `--allow-degraded`. Tests invoking refresh must patch `CHECKPOINT_IDENTITIES_PATH` to a temporary file. Live cached content identities take precedence over bundled identities.
 - **`--check` and `--summary` are read-only.** Publication YAML evidence comes only from
   checked-in seed configs or the URL-keyed generator cache; `FetchPolicy.allow_cache_writes`
   gates persistence there, and no generator path writes runtime model config storage.

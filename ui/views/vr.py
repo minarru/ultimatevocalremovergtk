@@ -1,5 +1,8 @@
 """VR Architecture method view."""
+
 import typing
+
+from gi.repository import Adw
 
 from bundled.constants import (
     AGGRESSION_SETTING_HELP,
@@ -30,31 +33,74 @@ class VRView(MethodView):
     stack_name = "vr"
     title = "VR Architecture"
     secondary_prefix = "vr"
+    layout_name = "vr_method"
 
     def list_models(self):
         return self.context.repo.list_vr_models()
 
     def build_options(self, group: typing.Any):
-        self.add_option_scale(group, "window_size", "Window size", values=VR_WINDOW, hint=WINDOW_SIZE_HELP)
+        self.add_option_scale(
+            group,
+            "window_size",
+            None,
+            values=VR_WINDOW,
+            hint=WINDOW_SIZE_HELP,
+            row=self._layout_object("window_size_row", Adw.ActionRow),
+        )
         self.add_option_scale(
             group,
             "aggression_setting",
-            "Aggression setting",
+            None,
             lower=0,
             upper=max(VR_AGGRESSION),
             step=1,
             hint=AGGRESSION_SETTING_HELP,
+            row=self._layout_object("aggression_setting_row", Adw.ActionRow),
         )
 
     def build_advanced(self, group: typing.Any):
-        self.add_advanced_scale("batch_size", "Batch size", values=BATCH_SIZE, hint=BATCH_SIZE_HELP)
-        self.add_advanced_scale("crop_size", "Crop size", values=VR_CROP, hint=CROP_SIZE_HELP)
-        self.add_advanced_scale(
+        self.add_option_scale(
+            group,
+            "batch_size",
+            None,
+            values=BATCH_SIZE,
+            hint=BATCH_SIZE_HELP,
+            row=self._layout_object("batch_size_row", Adw.ActionRow),
+        )
+        self.add_option_scale(
+            group,
+            "crop_size",
+            None,
+            values=VR_CROP,
+            hint=CROP_SIZE_HELP,
+            row=self._layout_object("crop_size_row", Adw.ActionRow),
+        )
+        self.add_option_scale(
+            group,
             "post_process_threshold",
-            "Post-process threshold",
+            None,
             values=POST_PROCESSES_THREASHOLD_VALUES,
             hint=POST_PROCESS_THREASHOLD_HELP,
+            row=self._layout_object("post_process_threshold_row", Adw.ActionRow),
         )
-        self.add_advanced_switch("is_tta", "Enable TTA", hint=IS_TTA_HELP)
-        self.add_advanced_switch("is_post_process", "Post-process", hint=IS_POST_PROCESS_HELP)
-        self.add_advanced_switch("is_high_end_process", "High-end process", hint=IS_HIGH_END_PROCESS_HELP)
+        self.add_option_switch(
+            group,
+            "is_tta",
+            None,
+            hint=IS_TTA_HELP,
+            row=self._layout_object("is_tta_row", Adw.SwitchRow),
+        )
+        self.add_option_switch(
+            group,
+            "is_post_process",
+            None,
+            hint=IS_POST_PROCESS_HELP,
+            row=self._layout_object("is_post_process_row", Adw.SwitchRow),
+        )
+        self.add_option_switch(
+            group,
+            "is_high_end_process",
+            None,
+            hint=IS_HIGH_END_PROCESS_HELP,
+            row=self._layout_object("is_high_end_process_row", Adw.SwitchRow),
+        )

@@ -50,7 +50,9 @@ def prepare_input_paths(
             prepared.append(clip_path)
             continue
 
-        debug("model", f"sample clip generating file={os.path.basename(path)!r} duration={duration}s")
+        debug(
+            "model", f"sample clip generating file={os.path.basename(path)!r} duration={duration}s"
+        )
         try:
             import librosa
             import soundfile as sf
@@ -62,7 +64,7 @@ def prepare_input_paths(
             else:
                 sf.write(clip_path, audio.T, sample_rate)
             prepared.append(clip_path)
-        except Exception as exc:  # noqa: BLE001 - reported via on_fallback
+        except Exception as exc:  # reported via on_fallback
             debug(
                 "model",
                 f"sample clip fallback to full file={os.path.basename(path)!r} "

@@ -5,28 +5,37 @@ worker via the callbacks marshaled onto the main loop (see
 :mod:`ui.dispatch`), so :meth:`ConsoleView.append` is only ever called on
 the GTK main thread.
 """
-import typing
 
+import typing
 from typing import Callable, Optional
 
 from gi.repository import GLib, Gtk
 
 from bundled.constants import DONE
+from ui.resources import RESOURCE_PREFIX, require_resource_bundle
+
+_TEMPLATE_RESOURCE = f"{RESOURCE_PREFIX}/ui/console.ui"
+require_resource_bundle(_TEMPLATE_RESOURCE)
 
 #: Soft cap matching typical terminal scrollback; trim from the head when exceeded.
 _CONSOLE_LINE_CAP = 5000
+# Bound long unbroken output too: at most 1 MiB of UTF-8, without copying the
+# retained buffer to encode/count bytes on every append. GTK offsets are chars.
+_CONSOLE_CHAR_CAP = 256 * 1024
 
 
+@Gtk.Template(resource_path=_TEMPLATE_RESOURCE)
 class ConsoleView(Gtk.ScrolledWindow):
+    __gtype_name__ = "ConsoleView"
+
+    _buffer: Gtk.TextBuffer = Gtk.Template.Child("buffer")
+    _view: Gtk.TextView = Gtk.Template.Child("view")
+
     #: Matches revealer slide duration in :class:`ui.widgets.log_panel.LogPanel`.
     _LAYOUT_SETTLE_MS = 250
 
     def __init__(self, on_changed: Optional[Callable[[bool], None]] = None):
         super().__init__()
-        self.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        self.set_vexpand(True)
-        self.set_propagate_natural_height(False)
-        self.set_overflow(Gtk.Overflow.HIDDEN)
 
         self._on_changed = on_changed
         self._scroll_idle_id: Optional[int] = None
@@ -34,21 +43,18 @@ class ConsoleView(Gtk.ScrolledWindow):
         self._viewport_idle_id: Optional[int] = None
         self._map_handler_id: Optional[int] = None
         self._defer_scroll = False
-        self._buffer = Gtk.TextBuffer()
-        self._view = Gtk.TextView(buffer=self._buffer)
-        self._view.set_editable(False)
-        self._view.set_cursor_visible(False)
-        self._view.set_monospace(True)
-        self._view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
-        self._view.set_left_margin(8)
-        self._view.set_right_margin(8)
-        self._view.set_top_margin(8)
-        self._view.set_bottom_margin(8)
-        self.set_child(self._view)
+        self._follow_tail = True
+        self._scrolling = False
 
         vadj = self.get_vadjustment()
+        vadj.connect("value-changed", self._on_scroll_changed)
         vadj.connect("notify::upper", self._on_viewport_changed)
         vadj.connect("notify::page-size", self._on_viewport_changed)
+
+    def _on_scroll_changed(self, adj: Gtk.Adjustment) -> None:
+        if self._scrolling or self._viewport_idle_id is not None or not self.get_mapped():
+            return
+        self._follow_tail = adj.get_value() >= adj.get_upper() - adj.get_page_size() - 2
 
     def _on_viewport_changed(self, _adj: Gtk.Adjustment, _pspec: typing.Any) -> None:
         if not self.get_mapped():
@@ -67,6 +73,8 @@ class ConsoleView(Gtk.ScrolledWindow):
         if upper <= page + 0.5 or self._defer_scroll:
             if vadj.get_value() != vadj.get_lower():
                 vadj.set_value(vadj.get_lower())
+        if self._follow_tail and not self._defer_scroll:
+            self._scroll_to_end()
         return GLib.SOURCE_REMOVE
 
     def defer_scroll_until_settled(self) -> None:
@@ -74,7 +82,6 @@ class ConsoleView(Gtk.ScrolledWindow):
 
     def resume_scroll(self) -> None:
         self._defer_scroll = False
-        self._reset_scroll()
 
     def append(self, text: str) -> None:
         # ``DONE`` completes the current in-progress line (no trailing newline).
@@ -86,6 +93,11 @@ class ConsoleView(Gtk.ScrolledWindow):
         end = self._buffer.get_end_iter()
         self._buffer.insert(end, text)
         self._trim_to_line_cap()
+        excess = self._buffer.get_char_count() - _CONSOLE_CHAR_CAP
+        if excess > 0:
+            self._buffer.delete(
+                self._buffer.get_start_iter(), self._buffer.get_iter_at_offset(excess)
+            )
         if self._defer_scroll:
             self._reset_scroll()
         else:
@@ -118,6 +130,7 @@ class ConsoleView(Gtk.ScrolledWindow):
         self._buffer.delete(start, end)
 
     def clear(self) -> None:
+        self._follow_tail = True
         self._buffer.set_text("")
         self._reset_scroll()
         self._notify_changed()
@@ -149,12 +162,10 @@ class ConsoleView(Gtk.ScrolledWindow):
         self._scroll_to_end()
         if self._reconcile_scroll_id is not None:
             GLib.source_remove(self._reconcile_scroll_id)
-        self._reconcile_scroll_id = GLib.timeout_add(
-            self._LAYOUT_SETTLE_MS, self._reconcile_scroll
-        )
+        self._reconcile_scroll_id = GLib.timeout_add(self._LAYOUT_SETTLE_MS, self._reconcile_scroll)
 
     def _scroll_to_end(self) -> None:
-        if self._defer_scroll:
+        if self._defer_scroll or not self._follow_tail:
             return
         # Already parked on the next map — do not schedule another idle that
         # would only discover we are still unmapped and return.
@@ -196,6 +207,9 @@ class ConsoleView(Gtk.ScrolledWindow):
         return GLib.SOURCE_REMOVE
 
     def _scroll_view_to_end(self) -> None:
+        if not self._follow_tail:
+            return
+        self._scrolling = True
         vadj = self.get_vadjustment()
 
         upper = vadj.get_upper()
@@ -209,3 +223,4 @@ class ConsoleView(Gtk.ScrolledWindow):
         else:
             vadj.set_value(upper - page)
         self._reset_horizontal_scroll()
+        self._scrolling = False

@@ -21,18 +21,19 @@ _DEFAULT_PRIMARY = MAX_SPEC
 _DEFAULT_SECONDARY = MIN_SPEC
 
 ENSEMBLE_ALGORITHM_BLURBS: Dict[str, str] = {
-    MAX_SPEC: "Strongest magnitude per bin (fuller; can add artifacts)",
-    MIN_SPEC: "Weakest magnitude per bin (cleaner; can sound muddy)",
-    AUDIO_AVERAGE: "Mean of all member waveforms",
-    MEDIAN_SPEC: "Per-bin median — robust with 3+ models",
-    SOFT_SPEC: "Agreement-weighted blend (automatic weights)",
-    MAX_MAG_AVG_PHASE: "Max magnitudes with averaged phase",
-    HYBRID_SPEC: "Average of Max Spec and Min Spec",
-    CHUNK_MIN: "Time-domain: quietest chunk from any member",
+    MAX_SPEC: "Strongest bins with fixed time/frequency smoothing",
+    MIN_SPEC: "Weakest bins for cleanness; optional smoothing preserves more detail",
+    AUDIO_AVERAGE: "Weighted mean of member waveforms",
+    MEDIAN_SPEC: "Median of real and imaginary components — robust with 3+ models",
+    SOFT_SPEC: "Mean/variance magnitude-agreement blend with adjustable strength",
+    MAX_MAG_AVG_PHASE: "Max magnitude with circular average phase",
+    HYBRID_SPEC: "Adjustable blend of smoothed maximum and minimum selections",
+    CHUNK_MIN: "1-second windows; switches only for a 10% quieter member, with crossfades",
 }
 
 CUSTOM_PRESET = "Custom"
 RECOMMENDED_PRESET = "Recommended (Max / Min)"
+PAIR_CONSISTENT_PRESET = "Pair-consistent (native / mix residual)"
 FULL_MAX_PRESET = "Full Max"
 SOFT_BLEND_PRESET = "Soft blend"
 HYBRID_CLEAN_PRESET = "Hybrid clean"
@@ -50,11 +51,20 @@ ENSEMBLE_PRESET_PAIRS: Dict[str, Tuple[str, str]] = {
 ENSEMBLE_PRESET_OPTIONS: Tuple[str, ...] = (
     CUSTOM_PRESET,
     RECOMMENDED_PRESET,
+    PAIR_CONSISTENT_PRESET,
     FULL_MAX_PRESET,
     SOFT_BLEND_PRESET,
     HYBRID_CLEAN_PRESET,
     MEDIAN_ROBUST_PRESET,
 )
+
+
+def ensemble_preset_options(*, include_pair_consistent: bool) -> Tuple[str, ...]:
+    """Algorithm-preset labels, optionally omitting the mix-residual preset."""
+    if include_pair_consistent:
+        return ENSEMBLE_PRESET_OPTIONS
+    return tuple(label for label in ENSEMBLE_PRESET_OPTIONS if label != PAIR_CONSISTENT_PRESET)
+
 
 _DEFAULT_WAV_ENSEMBLE_SUBTITLE = "Combine in the time domain instead of spectrograms"
 _CHUNK_MIN_WAV_SUBTITLE = (
@@ -71,26 +81,48 @@ def parse_ensemble_type(
     value: Optional[str],
     *,
     algorithms: Sequence[str] = ENSEMBLE_ALGORITHMS,
+    strict: bool = False,
 ) -> Tuple[str, str]:
     """Parse ``ensemble_type`` into ``(primary, secondary)`` atoms.
 
-    Accepts legacy pair strings and single-token 4-stem values. Unknown atoms
-    fall back to Max Spec / Min Spec.
+    Known atoms are matched before pair separators because an atom may itself
+    contain ``/``. Pair strings may contain spaces around their separator.
+    Unknown atoms fall back to Max Spec / Min Spec unless ``strict`` is true.
     """
     allowed = set(algorithms)
-    text = (value or "").strip() or MAX_MIN
-    if "/" in text:
-        primary, _sep, secondary = text.partition("/")
-        primary = primary.strip()
-        secondary = secondary.strip()
-    else:
-        primary = text
-        secondary = text
-    if primary not in allowed:
-        primary = _DEFAULT_PRIMARY
-    if secondary not in allowed:
-        secondary = _DEFAULT_SECONDARY
-    return primary, secondary
+    supplied = (value or "").strip()
+    if strict and not supplied:
+        raise ValueError("ensemble algorithm must be a known atom or pair")
+    text = supplied or MAX_MIN
+    if text in allowed:
+        return text, text
+
+    split_candidates: list[tuple[int, str, str]] = []
+    for index, character in enumerate(text):
+        if character != "/":
+            continue
+        primary = text[:index].strip()
+        secondary = text[index + 1 :].strip()
+        score = int(primary in allowed) + int(secondary in allowed)
+        split_candidates.append((score, primary, secondary))
+
+    exact_pairs = [candidate for candidate in split_candidates if candidate[0] == 2]
+    if len(exact_pairs) == 1:
+        _score, primary, secondary = exact_pairs[0]
+        return primary, secondary
+    if strict:
+        raise ValueError(f"unknown or ambiguous ensemble algorithm: {text!r}")
+    if exact_pairs:
+        _score, primary, secondary = exact_pairs[0]
+        return primary, secondary
+
+    if split_candidates:
+        _score, primary, secondary = max(split_candidates, key=lambda candidate: candidate[0])
+        return (
+            primary if primary in allowed else _DEFAULT_PRIMARY,
+            secondary if secondary in allowed else _DEFAULT_SECONDARY,
+        )
+    return _DEFAULT_PRIMARY, _DEFAULT_SECONDARY
 
 
 def legacy_pair_values() -> Tuple[str, ...]:
@@ -113,7 +145,7 @@ def legacy_pair_values() -> Tuple[str, ...]:
 def is_single_token_ensemble_type(value: Optional[str]) -> bool:
     """True for 4-stem / multi-stem styles that store one algorithm atom."""
     text = (value or "").strip()
-    return bool(text) and "/" not in text
+    return text in set(ENSEMBLE_ALGORITHMS)
 
 
 def normalize_ensemble_algorithm(
@@ -147,7 +179,23 @@ def pair_for_preset(preset: Optional[str]) -> Optional[Tuple[str, str]]:
     """Return ``(primary, secondary)`` for a named preset, or None for Custom/unknown."""
     if not preset or preset == CUSTOM_PRESET:
         return None
+    if preset == PAIR_CONSISTENT_PRESET:
+        return (_DEFAULT_PRIMARY, _DEFAULT_PRIMARY)
     return ENSEMBLE_PRESET_PAIRS.get(preset)
+
+
+def preset_for_state(
+    primary: str,
+    secondary: str,
+    *,
+    derive_complement_from_mix: bool = False,
+) -> str:
+    """Return the preset label for a pair plus the mix-residual flag."""
+    if derive_complement_from_mix:
+        if (primary, secondary) == (_DEFAULT_PRIMARY, _DEFAULT_PRIMARY):
+            return PAIR_CONSISTENT_PRESET
+        return CUSTOM_PRESET
+    return preset_for_pair(primary, secondary)
 
 
 def algorithm_row_titles(
@@ -155,11 +203,16 @@ def algorithm_row_titles(
     secondary_stem: Optional[str],
     *,
     multi_stem: bool,
+    derive_complement_from_mix: bool = False,
+    leftover_label: str | None = None,
 ) -> Tuple[str, str]:
     """Titles for primary/secondary algorithm combo rows."""
     if multi_stem:
         return "Ensemble algorithm", "Secondary algorithm"
     primary = f"{primary_stem} algorithm" if primary_stem else "Primary algorithm"
+    if derive_complement_from_mix:
+        leftover = leftover_label or "Complement"
+        return primary, f"{leftover} (from mix)"
     secondary = f"{secondary_stem} algorithm" if secondary_stem else "Secondary algorithm"
     return primary, secondary
 
@@ -174,14 +227,14 @@ def ensemble_options_summary(
     secondary_algo: str,
     model_count: int,
     multi_stem: bool,
+    derive_complement_from_mix: bool = False,
+    leftover_label: str | None = None,
 ) -> str:
     """Live description for the Ensemble options group."""
     if not stem_chosen:
         return "Choose a stem pair · select 2+ models"
 
-    models_bit = (
-        f"{model_count} model" if model_count == 1 else f"{model_count} models"
-    )
+    models_bit = f"{model_count} model" if model_count == 1 else f"{model_count} models"
     if model_count < 2:
         models_bit = f"{models_bit} (need 2+)"
 
@@ -189,6 +242,9 @@ def ensemble_options_summary(
         return f"{main_stem} · {primary_algo} · {models_bit}"
 
     left = primary_stem or "Primary"
+    if derive_complement_from_mix:
+        right = leftover_label or "mix residual"
+        return f"{left} ← {primary_algo} · {right} · {models_bit}"
     right = secondary_stem or "Secondary"
     return f"{left} ← {primary_algo} · {right} ← {secondary_algo} · {models_bit}"
 

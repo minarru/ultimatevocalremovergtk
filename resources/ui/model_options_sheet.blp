@@ -1,0 +1,30 @@
+using Gtk 4.0;
+using Adw 1;
+
+Adw.Dialog dialog {
+  title: "Model options";
+  content-width: 760;
+  follows-content-size: false;
+  width-request: 360;
+  height-request: 294;
+
+  Adw.ToolbarView toolbar {
+    [top]
+    Adw.HeaderBar header {}
+
+    [top]
+    Adw.Banner banner {
+      revealed: false;
+    }
+
+    content: Gtk.Box {
+      orientation: vertical;
+      margin-top: 12;
+      margin-bottom: 12;
+      margin-start: 12;
+      margin-end: 12;
+
+      Adw.ViewStack stack {}
+    };
+  }
+}

@@ -108,7 +108,7 @@ def save_format(
                     f"error={type(exc).__name__}: {exc}",
                 )
             return flac_path
-        except Exception as exc:  # noqa: BLE001 - fall through to pydub
+        except Exception as exc:  # fall through to pydub
             debug(
                 "audio",
                 f"direct flac export failed file={os.path.basename(audio_path)} "
@@ -129,7 +129,7 @@ def save_format(
 
     try:
         audio_segment = AudioSegment.from_wav(audio_path)
-    except Exception as exc:  # noqa: BLE001 - surfaced via missing output file
+    except Exception as exc:  # surfaced via missing output file
         message = (
             f"Audio export failed while reading {os.path.basename(audio_path)!r}: "
             f"{type(exc).__name__}: {exc}"
@@ -154,7 +154,7 @@ def save_format(
                     bitrate=mp3_bit_set,
                     codec="libmp3lame",
                 )
-            except Exception:  # noqa: BLE001 - fall back to default codec like UVR
+            except Exception:  # fall back to default codec like UVR
                 audio_segment.export(output_path, format="mp3", bitrate=mp3_bit_set)
         elif save_format_sel == OPUS:
             audio_segment.export(
@@ -164,7 +164,7 @@ def save_format(
                 codec="libopus",
                 parameters=opus_export_parameters(),
             )
-    except Exception as exc:  # noqa: BLE001 - surfaced via missing output file
+    except Exception as exc:  # surfaced via missing output file
         message = (
             f"Audio export failed for {os.path.basename(audio_path)!r} as {save_format_sel}: "
             f"{type(exc).__name__}: {exc}"

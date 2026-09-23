@@ -58,9 +58,7 @@ class ChunkCountForSamplesTests(unittest.TestCase):
         mix = np.zeros((2, 1000), dtype=np.float64)
         chunks = slice_mix(mix, chunk_seconds=10, overlap_seconds=2)
         self.assertEqual(
-            chunk_count_for_samples(
-                mix.shape[1], chunk_seconds=10, overlap_seconds=2
-            ),
+            chunk_count_for_samples(mix.shape[1], chunk_seconds=10, overlap_seconds=2),
             len(chunks),
         )
 
@@ -68,9 +66,7 @@ class ChunkCountForSamplesTests(unittest.TestCase):
         sr = 100
         mix = np.arange(23 * sr, dtype=np.float64)
         mix = np.stack([mix, mix])
-        chunks = slice_mix(
-            mix, sample_rate=sr, chunk_seconds=10.0, overlap_seconds=2.0
-        )
+        chunks = slice_mix(mix, sample_rate=sr, chunk_seconds=10.0, overlap_seconds=2.0)
         self.assertEqual(
             chunk_count_for_samples(
                 mix.shape[1],

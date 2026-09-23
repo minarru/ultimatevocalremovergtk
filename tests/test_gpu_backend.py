@@ -1,10 +1,10 @@
 """Tests for GPU / ONNX backend resolution."""
-import typing
 
+import typing
 import unittest
 from unittest import mock
 
-from core.gpu_backend import InferenceBackend, resolve_inference_backend
+from core.gpu_backend import resolve_inference_backend
 
 
 class GpuBackendTests(unittest.TestCase):
@@ -18,7 +18,9 @@ class GpuBackendTests(unittest.TestCase):
     @mock.patch("core.gpu_backend.directml_available", return_value=False)
     @mock.patch("torch.cuda.is_available", return_value=True)
     @mock.patch("core.cuda_runtime_fix.preload_onnxruntime_gpu", return_value=[])
-    def test_cuda_when_available(self, _preload: typing.Any, _cuda: typing.Any, _dml: typing.Any, configure: typing.Any):
+    def test_cuda_when_available(
+        self, _preload: typing.Any, _cuda: typing.Any, _dml: typing.Any, configure: typing.Any
+    ):
         backend = resolve_inference_backend(
             use_gpu=True,
             device_set="1",

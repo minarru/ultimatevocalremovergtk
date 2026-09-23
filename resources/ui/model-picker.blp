@@ -1,0 +1,107 @@
+using Gtk 4.0;
+using Adw 1;
+
+Adw.Dialog picker {
+ title: "Choose Model";
+ content-width: 800; content-height: 640; width-request: 360; height-request: 480;
+ child: Adw.ToastOverlay toasts {
+ child: Gtk.Stack pages {
+ transition-type: crossfade;
+      Gtk.StackPage {
+        name: "browser";
+        child: Adw.ToolbarView {
+          [top]
+          Adw.HeaderBar {
+            title-widget: Gtk.Box {
+              halign: center;
+              Gtk.Box purpose_tabs { spacing: 2; halign: center; }
+              Gtk.DropDown purpose_compact { visible: false; tooltip-text: "Purpose"; }
+            };
+            [start]
+            Gtk.Button more {
+              tooltip-text: "Get More Models";
+              icon-name: "folder-download-symbolic";
+            }
+          }
+          content: Gtk.Box {
+            orientation: vertical;
+            Gtk.Box controls {
+              orientation: vertical; spacing: 12;
+              margin-start: 20; margin-end: 20; margin-top: 12; margin-bottom: 12;
+              Gtk.Box {
+                spacing: 8;
+                Gtk.SearchEntry search { placeholder-text: "Search installed models"; hexpand: true; }
+                Gtk.Button reset { label: "Reset"; tooltip-text: "Reset search, filters and sorting"; styles ["flat"] }
+              }
+              Gtk.Box filter_bar {
+                spacing: 8;
+                Gtk.DropDown architecture { hexpand: true; tooltip-text: "Architecture"; }
+                Gtk.Box sort_controls {
+                  styles ["linked"]
+                  Gtk.DropDown sort { tooltip-text: "Sort by"; }
+                  Gtk.Button direction { label: "A–Z ↓"; tooltip-text: "Reverse sort direction"; }
+                }
+              }
+            }
+            Gtk.Separator {}
+            Gtk.ScrolledWindow model_scroll {
+              vexpand: true; hscrollbar-policy: never;
+              child: Gtk.Box {
+                orientation: vertical; spacing: 12;
+                margin-start: 20; margin-end: 20; margin-top: 16; margin-bottom: 20;
+                Gtk.Box {
+                  spacing: 8;
+                  Gtk.Label context_label { xalign: 0; wrap: true; hexpand: true; styles ["heading"] }
+                  Gtk.Label count { halign: end; styles ["caption", "dim-label"] }
+                }
+                Gtk.ListBox models { selection-mode: none; styles ["boxed-list"] }
+                Adw.StatusPage empty {
+                  visible: false; title: "No matching models";
+                  description: "Try a different search or reset your filters.";
+                  icon-name: "system-search-symbolic";
+                  child: Gtk.Button empty_reset { label: "Reset Filters"; halign: center; styles ["pill"] };
+                }
+              };
+            }
+          };
+        };
+      }
+      Gtk.StackPage {
+        name: "details";
+        child: Adw.ToolbarView {
+          [top]
+          Adw.HeaderBar {
+            title-widget: Adw.WindowTitle { title: "Model Details"; };
+            [start]
+            Gtk.Button back { icon-name: "go-previous-symbolic"; tooltip-text: "Back to models"; }
+          }
+          content: Gtk.ScrolledWindow {
+            hscrollbar-policy: never;
+            child: Adw.Clamp {
+              maximum-size: 660;
+              child: Gtk.Box {
+                orientation: vertical; spacing: 24;
+                margin-start: 24; margin-end: 24; margin-top: 24; margin-bottom: 24;
+                Gtk.Box {
+                  orientation: vertical; spacing: 8;
+                  Gtk.Label detail_name { xalign: 0; wrap: true; styles ["title-1"] }
+                  Gtk.Label detail_arch { xalign: 0; wrap: true; styles ["dim-label"] }
+                }
+                Gtk.ListBox {
+                  selection-mode: none; styles ["boxed-list"]
+                  Adw.ActionRow detail_outputs { title: "Outputs"; subtitle-lines: 3; }
+                  Adw.ActionRow detail_score { title: "SDR"; subtitle-lines: 3; }
+                  Adw.ActionRow detail_support { title: "Compatibility"; subtitle-lines: 3; }
+                  Adw.ActionRow detail_file { title: "Model file"; subtitle-lines: 4; }
+                }
+                Gtk.Label { label: "SDR is benchmark evidence, not a guarantee for every recording."; xalign: 0; wrap: true; styles ["caption", "dim-label"] }
+                Gtk.Button choose_detail { label: "Use This Model"; halign: center; styles ["pill", "suggested-action"] }
+              };
+            };
+          };
+        };
+      }
+
+ };
+ };
+}

@@ -115,7 +115,13 @@ def cmd_separate(args: argparse.Namespace) -> int:
         else:
             emit_document(
                 args,
-                {"ok": True, "status": "validated", "dry_run": True, "plan": job.plan, "inputs": []},
+                {
+                    "ok": True,
+                    "status": "validated",
+                    "dry_run": True,
+                    "plan": job.plan,
+                    "inputs": [],
+                },
             )
         return 0
     if job.identity_inherited and not args.accept_inherited:
@@ -132,7 +138,9 @@ def cmd_separate(args: argparse.Namespace) -> int:
     outcome = run_batch(args, job)
     try:
         manifest = write_manifest(
-            args, job, outcome,
+            args,
+            job,
+            outcome,
             original_argv=getattr(args, "original_argv", sys.argv[1:]),
         )
     except OSError as exc:

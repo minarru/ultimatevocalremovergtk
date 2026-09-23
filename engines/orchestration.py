@@ -1,11 +1,12 @@
 from __future__ import annotations
-import typing
 
 import os
-from typing import Any, TYPE_CHECKING
+import typing
+from typing import TYPE_CHECKING, Any
 
 from bundled.constants import *
 from core.debug_log import trace_phase
+from core.processing_phase import ProcessingPhase
 from ml import spec_utils
 
 from . import separator_factory
@@ -24,12 +25,12 @@ def _run_seperator(seperator: typing.Any) -> Any:
 def process_secondary_model(
     secondary_model: ModelConfig,
     process_data: typing.Any,
-    main_model_primary_stem_4_stem: typing.Any=None,
-    is_source_load: typing.Any=False,
-    main_process_method: typing.Any=None,
-    is_pre_proc_model: typing.Any=False,
-    is_return_dual: typing.Any=True,
-    main_model_primary: typing.Any=None,
+    main_model_primary_stem_4_stem: typing.Any = None,
+    is_source_load: typing.Any = False,
+    main_process_method: typing.Any = None,
+    is_pre_proc_model: typing.Any = False,
+    is_return_dual: typing.Any = True,
+    main_model_primary: typing.Any = None,
 ) -> Any:
     with trace_phase(
         "separate",
@@ -45,6 +46,12 @@ def process_secondary_model(
             process_iteration = process_data.process_iteration
             process_iteration()
 
+        if getattr(process_data, "report_phase", None) is not None:
+            process_data.report_phase(
+                ProcessingPhase.LOADING_PREPROCESS
+                if is_pre_proc_model
+                else ProcessingPhase.LOADING_SECONDARY
+            )
         seperator = separator_factory.build_seperator(
             secondary_model,
             process_data,
@@ -57,9 +64,7 @@ def process_secondary_model(
 
         if type(secondary_sources) is dict and not is_source_load and not is_pre_proc_model:
             primary_stem = str(secondary_model.primary_model_primary_stem or "")
-            return gather_sources(
-                primary_stem, secondary_stem(primary_stem), secondary_sources
-            )
+            return gather_sources(primary_stem, secondary_stem(primary_stem), secondary_sources)
         return secondary_sources
 
 
@@ -68,7 +73,7 @@ def process_chain_model(
     process_data: typing.Any,
     vocal_stem_path: typing.Any,
     master_vocal_source: typing.Any,
-    master_inst_source: typing.Any=None,
+    master_inst_source: typing.Any = None,
     *,
     vocal_stem_base: str | None = None,
 ):
@@ -76,7 +81,11 @@ def process_chain_model(
     process_iteration()
 
     if secondary_model.bv_model_rebalance:
-        vocal_source = spec_utils.reduce_mix_bv(master_inst_source, master_vocal_source, reduction_rate=secondary_model.bv_model_rebalance)
+        vocal_source = spec_utils.reduce_mix_bv(
+            master_inst_source,
+            master_vocal_source,
+            reduction_rate=secondary_model.bv_model_rebalance,
+        )
     else:
         vocal_source = master_vocal_source
 
@@ -88,6 +97,8 @@ def process_chain_model(
         vocal_base = "audio"
     vocal_stem_path = [vocal_source, vocal_base]
 
+    if getattr(process_data, "report_phase", None) is not None:
+        process_data.report_phase(ProcessingPhase.LOADING_SPLITTER)
     seperator = separator_factory.build_seperator(
         secondary_model,
         process_data,

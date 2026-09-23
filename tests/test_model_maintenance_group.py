@@ -1,9 +1,9 @@
 """Change-model-defaults lives in its own group, not among the extra models."""
 
 from __future__ import annotations
-import typing
 
 import os
+import typing
 import unittest
 
 

@@ -74,7 +74,7 @@ def is_oom_exc(exc: BaseException) -> bool:
 
         if isinstance(exc, torch.cuda.OutOfMemoryError):
             return True
-    except Exception:  # noqa: BLE001
+    except Exception:
         pass
     return is_oom_message(str(exc))
 
@@ -157,7 +157,7 @@ def run_separator(
             return run_separator_once(runner, active)
         except ProcessStopped:
             raise
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             if not is_oom_exc(exc):
                 raise
             debug("worker", f"oom during separate: {type(exc).__name__}: {exc}")
@@ -183,7 +183,7 @@ def run_separator(
                     or getattr(model, "model_basename", "")
                     or ""
                 )
-            except Exception:  # noqa: BLE001 - best-effort label for the dialog
+            except Exception:  # best-effort label for the dialog
                 model_label = str(
                     getattr(model, "model_name", None) or getattr(model, "model_basename", "") or ""
                 )
@@ -230,7 +230,7 @@ def run_separator(
                             return run_separator_once(runner, active)
                         except ProcessStopped:
                             raise
-                        except Exception as retry_exc:  # noqa: BLE001
+                        except Exception as retry_exc:
                             if not is_oom_exc(retry_exc):
                                 raise
                             last_oom = retry_exc

@@ -29,6 +29,20 @@ from .profiles import (
 )
 
 
+def _apply_stem_argument(settings: Settings, sources: dict[str, str], stems: str | None) -> None:
+    if stems is not None:
+        apply_stem_selection(settings, stems)
+        for path in (
+            "process.stem_focus",
+            "mdx.stems",
+            "mdx.stems_selected",
+            "demucs.stems",
+            "demucs.stems_selected",
+            "ensemble.stems_selected",
+        ):
+            sources[path] = "cli"
+
+
 def _resolved_settings(
     base: Settings,
     *,
@@ -50,15 +64,7 @@ def _resolved_settings(
     if model is not None:
         getattr(settings, model.family).model = model.id
         sources[f"{model.family}.model"] = model_source or "derived"
-    if stems is not None:
-        apply_stem_selection(settings, stems)
-        for path in (
-            "process.stem_focus",
-            "mdx.stems",
-            "mdx.stems_selected",
-            "demucs.stems",
-        ):
-            sources[path] = "cli"
+    _apply_stem_argument(settings, sources, stems)
     if long_chunk_seconds is not None:
         settings.process.long_file_chunk_seconds = float(long_chunk_seconds)
         sources["process.long_file_chunk_seconds"] = "cli"
@@ -378,7 +384,7 @@ def resolve_separate_job(args: argparse.Namespace, *, validation_level: Any = No
 
 def resolve_ensemble_job(args: argparse.Namespace, *, validation_level: Any = None) -> ResolvedJob:
     from bundled.constants import ENSEMBLE_ALGORITHMS
-    from core.ensemble_algorithms import format_ensemble_type
+    from core.ensemble_algorithms import format_ensemble_type, parse_ensemble_type
     from core.ensemble_service import EnsembleService
     from core.stem_pairs import normalize_stem_pair_id
 
@@ -404,7 +410,7 @@ def resolve_ensemble_job(args: argparse.Namespace, *, validation_level: Any = No
         base,
         output=output,
         method="ensemble",
-        stems=args.stems,
+        stems=None,
         long_chunk_seconds=args.long_chunk_seconds,
         long_chunk_overlap=args.long_chunk_overlap,
         base_provenance=_profile_provenance(base, profile),
@@ -424,6 +430,14 @@ def resolve_ensemble_job(args: argparse.Namespace, *, validation_level: Any = No
                 "ensemble.selected_models",
                 "ensemble.wav_ensemble",
                 "ensemble.save_all_outputs",
+                "ensemble.derive_complement_from_mix",
+                "ensemble.member_weights",
+                "ensemble.smoothing",
+                "ensemble.soft_strength",
+                "ensemble.hybrid_balance",
+                "ensemble.alignment_correction",
+                "ensemble.stems_selected",
+                "process.stem_focus",
             }
         )
         sources.update({path: "preset" for path in preset_paths})
@@ -446,14 +460,13 @@ def resolve_ensemble_job(args: argparse.Namespace, *, validation_level: Any = No
         settings.ensemble.main_stem = pair_id
         sources["ensemble.main_stem"] = "cli"
     if args.algorithm:
-        primary, sep, secondary = args.algorithm.partition("/")
-        atoms = (primary.strip(), (secondary if sep else primary).strip())
-        invalid = [atom for atom in atoms if atom not in ENSEMBLE_ALGORITHMS]
-        if invalid:
+        try:
+            atoms = parse_ensemble_type(args.algorithm, strict=True)
+        except ValueError as exc:
             raise ValueError(
-                f"unknown ensemble algorithm {invalid[0]!r}; expected one of: "
+                f"unknown ensemble algorithm {args.algorithm!r}; expected one of: "
                 + ", ".join(ENSEMBLE_ALGORITHMS)
-            )
+            ) from exc
         settings.ensemble.type = format_ensemble_type(*atoms)
         sources["ensemble.type"] = "cli"
     if args.wav_ensemble is not None:
@@ -462,6 +475,7 @@ def resolve_ensemble_job(args: argparse.Namespace, *, validation_level: Any = No
     if args.save_all_outputs is not None:
         settings.ensemble.save_all_outputs = bool(args.save_all_outputs)
         sources["ensemble.save_all_outputs"] = "cli"
+    _apply_stem_argument(settings, sources, args.stems)
     overrides = collect_overrides(args)
     _validate_job_overrides(overrides)
     device_pairs, device_explicit = _device_pairs(args, profile)

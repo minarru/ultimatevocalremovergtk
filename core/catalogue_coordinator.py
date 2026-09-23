@@ -11,12 +11,12 @@ from typing import Any, Callable, Mapping
 from bundled.constants import (
     APOLLO_ARCH_TYPE,
     DEMUCS_ARCH_TYPE,
-    DOWNLOAD_CHECKS,
     MDX_ARCH_TYPE,
     VR_ARCH_TYPE,
 )
 
 from .access_policy import AccessPolicy, current_access_policy
+from .catalogue_source_loader import default_sources
 from .catalogue_types import (
     ADAPTER_SCHEMA,
     UPSTREAM_DEMUCS_KEYS,
@@ -150,7 +150,7 @@ class CatalogueCoordinator:
         self._lock = threading.RLock()
         self._closed = False
         self._policy = policy
-        self._sources = dict(sources) if sources is not None else _default_sources()
+        self._sources = dict(sources) if sources is not None else default_sources()
         for source in self._sources.values():
             source._on_update = self._on_source_updated
         self._snapshots: dict[str, CatalogueSnapshot] = {}
@@ -179,6 +179,12 @@ class CatalogueCoordinator:
     @property
     def closed(self) -> bool:
         return self._closed
+
+    @property
+    def latest_snapshot(self) -> CatalogueSnapshot | None:
+        """Current immutable publication, without loading sources or doing I/O."""
+        with self._lock:
+            return self._latest
 
     @property
     def builds(self) -> int:
@@ -650,24 +656,9 @@ class CatalogueCoordinator:
         snapshot = self._publish(report=previous.report if previous else None)
         if previous is None:
             return None
-        delta = _delta_between(previous, snapshot)
-        if delta is not None and delta.removal_only:
-            delta = CatalogueDelta(
-                kind=DeltaKind.IDENTITY_REFINED,
-                added=delta.added,
-                removed=delta.removed,
-                changed=delta.changed,
-            )
-            self._notify(delta)
-        elif delta is not None and (delta.added or delta.changed):
-            delta = CatalogueDelta(
-                kind=DeltaKind.SOURCES_CHANGED,
-                added=delta.added,
-                removed=delta.removed,
-                changed=delta.changed,
-            )
-            self._notify(delta)
-        return delta
+        # _publish owns notification for every new snapshot; computing the
+        # return value must not publish that same transition a second time.
+        return _delta_between(previous, snapshot)
 
     def notify_metadata(self, labels: Mapping[str, tuple[str, ...]] | None = None) -> None:
         """Publish a metadata-only delta without remeshing sources."""
@@ -894,65 +885,6 @@ def _identity_urls_from_contents(
                 if url:
                     urls.append(url)
     return tuple(urls)
-
-
-def _default_sources() -> dict[SourceId, RemoteJsonSource]:
-    from bundled.constants import MVSEPLESS_MODELS_JSON_URL, POLITREES_MODEL_LINKS_URL
-
-    from . import extra_catalog, mvsepless_catalog, paths, politrees_catalog
-
-    def politrees_open(target: str | Any) -> Any:
-        return politrees_catalog._urlopen(target)
-
-    def mvsepless_open(target: str | Any) -> Any:
-        return mvsepless_catalog._urlopen(target)
-
-    def downloads_open(target: str | Any) -> Any:
-        from . import downloads
-
-        return downloads._urlopen(target)  # type: ignore[arg-type]
-
-    def bundled_upstream() -> Mapping[str, Any] | None:
-        from .downloads import DownloadManager
-
-        payload = DownloadManager._load_cache()
-        return payload or None
-
-    def extras_loader() -> Mapping[str, Any] | None:
-        data = extra_catalog.load_extra_models()
-        return data or None
-
-    return {
-        SourceId.UPSTREAM: RemoteJsonSource(
-            source_id=SourceId.UPSTREAM,
-            url=DOWNLOAD_CHECKS,
-            cache_filename="upstream_download_checks.json",
-            cache_path=paths.UPSTREAM_CATALOGUE_CACHE_FILE,
-            opener=downloads_open,
-            bundled_fallback=bundled_upstream,
-        ),
-        SourceId.POLITREES: RemoteJsonSource(
-            source_id=SourceId.POLITREES,
-            url=POLITREES_MODEL_LINKS_URL,
-            cache_filename="politrees_model_links.json",
-            cache_path=paths.POLITREES_CACHE_FILE,
-            opener=politrees_open,
-            enabled=politrees_catalog.politrees_enabled,
-        ),
-        SourceId.EXTRAS: RemoteJsonSource(
-            source_id=SourceId.EXTRAS,
-            local_loader=extras_loader,
-            enabled=extra_catalog.extra_catalog_enabled,
-        ),
-        SourceId.MVSEPLESS: RemoteJsonSource(
-            source_id=SourceId.MVSEPLESS,
-            url=MVSEPLESS_MODELS_JSON_URL,
-            cache_filename="mvsepless_models.json",
-            cache_path=paths.MVSEPLESS_CACHE_FILE,
-            opener=mvsepless_open,
-            enabled=mvsepless_catalog.mvsepless_enabled,
-        ),
-    }
 
 
 __all__ = [

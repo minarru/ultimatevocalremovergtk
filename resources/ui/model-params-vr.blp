@@ -1,0 +1,54 @@
+using Gtk 4.0;
+using Adw 1;
+
+Adw.Dialog dialog {
+  title: "Specify Model Parameters";
+  content-width: 440;
+  follows-content-size: true;
+}
+
+Gtk.Box content {
+  orientation: vertical;
+  margin-top: 12;
+  margin-bottom: 12;
+  margin-start: 12;
+  margin-end: 12;
+
+  Adw.PreferencesPage {
+    Adw.PreferencesGroup group {
+      description: "This model's parameters could not be detected automatically.";
+
+      Adw.ComboRow stem_row {
+        title: "Primary stem";
+      }
+
+      Adw.ComboRow vr_param_row {
+        title: "Model parameters";
+      }
+
+      Adw.SwitchRow is_51_row {
+        title: "VR 5.1 model";
+      }
+
+      Adw.ActionRow nout_row {
+        title: "Out channels";
+      }
+
+      Adw.ActionRow nout_lstm_row {
+        title: "Out channels (LSTM)";
+      }
+
+      Adw.SwitchRow kara_row {
+        title: "Karaoke model";
+      }
+
+      Adw.SwitchRow bv_row {
+        title: "Backing-vocal model";
+      }
+
+      Adw.ActionRow balance_row {
+        title: "BV rebalance";
+      }
+    }
+  }
+}

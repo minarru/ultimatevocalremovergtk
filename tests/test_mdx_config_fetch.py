@@ -1,8 +1,10 @@
 """Tests for MDX-C config fetch (TRvlvr + Politrees fallback)."""
 
+import builtins
 import os
 import tempfile
 import unittest
+from contextlib import contextmanager
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
 from urllib.error import HTTPError
@@ -17,7 +19,10 @@ from core.mdx_config_fetch import (
 
 class SafeConfigNameTests(unittest.TestCase):
     def test_accepts_yaml_basename(self) -> None:
-        self.assertEqual(_safe_config_name("config_melband_roformer_inst.yaml"), "config_melband_roformer_inst.yaml")
+        self.assertEqual(
+            _safe_config_name("config_melband_roformer_inst.yaml"),
+            "config_melband_roformer_inst.yaml",
+        )
 
     def test_rejects_path_traversal(self) -> None:
         self.assertIsNone(_safe_config_name("../secret.yaml"))
@@ -46,6 +51,42 @@ class EnsureMdxCConfigTests(unittest.TestCase):
     def tearDown(self) -> None:
         self._path_patch.stop()
         self._tmpdir.cleanup()
+
+    def test_failed_write_leaves_no_config_and_retry_fetches_again(self) -> None:
+        name = "retry.yaml"
+        dest = os.path.join(self._config_dir, name)
+        response = MagicMock()
+        response.__enter__.return_value = response
+        response.read.return_value = b"model:\n  dim: 256\n"
+        real_open, real_fdopen = builtins.open, os.fdopen
+
+        @contextmanager
+        def failing_writer(*args: Any, **kwargs: Any):
+            opener = real_fdopen if isinstance(args[0], int) else real_open
+            with opener(*args, **kwargs) as handle:
+                writer = MagicMock(wraps=handle)
+
+                def partial_write(data: bytes) -> None:
+                    handle.write(data[:4])
+                    handle.flush()
+                    raise OSError(28, "No space left on device")
+
+                writer.write.side_effect = partial_write
+                yield writer
+
+        with patch("core.mdx_config_fetch._urlopen", return_value=response) as network:
+            with (
+                patch("core.mdx_config_fetch.open", failing_writer, create=True),
+                patch("core.mdx_config_fetch.os.fdopen", failing_writer),
+                self.assertRaises(OSError),
+            ):
+                ensure_mdx_c_config(name)
+            self.assertFalse(os.path.exists(dest))
+            self.assertEqual(os.listdir(self._config_dir), [])
+            self.assertTrue(ensure_mdx_c_config(name))
+            self.assertEqual(network.call_count, 2)
+        with open(dest, "rb") as handle:
+            self.assertEqual(handle.read(), response.read.return_value)
 
     def test_existing_file_skips_network(self) -> None:
         name = "local_only.yaml"

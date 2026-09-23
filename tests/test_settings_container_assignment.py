@@ -12,9 +12,7 @@ from core.settings.access import (
 class ContainerAssignmentTests(unittest.TestCase):
     def test_a_list_field_accepts_a_list(self) -> None:
         """The sweep's ensemble job passes a real list and was rejected anyway."""
-        validate_setting_value(
-            Settings(), "ensemble.selected_models", ["mdx:a", "mdx:b"]
-        )
+        validate_setting_value(Settings(), "ensemble.selected_models", ["mdx:a", "mdx:b"])
 
     def test_a_list_field_accepts_a_tuple(self) -> None:
         validate_setting_value(Settings(), "ensemble.selected_models", ("mdx:a",))
@@ -27,9 +25,7 @@ class ContainerAssignmentTests(unittest.TestCase):
 
     def test_assignments_apply_a_list(self) -> None:
         settings = Settings()
-        apply_settings_overrides(
-            settings, [("ensemble.selected_models", ["mdx:a", "mdx:b"])]
-        )
+        apply_settings_overrides(settings, [("ensemble.selected_models", ["mdx:a", "mdx:b"])])
         self.assertEqual(settings.ensemble.selected_models, ["mdx:a", "mdx:b"])
 
     def test_assignments_still_reject_a_scalar_for_a_list(self) -> None:

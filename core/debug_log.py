@@ -131,9 +131,7 @@ _HARD_REDACT_KEYS = frozenset(
         "token",
     }
 )
-_OMIT_VALUE_KEYS = frozenset(
-    {"array", "audio", "samples", "tensor", "waveform", "weights"}
-)
+_OMIT_VALUE_KEYS = frozenset({"array", "audio", "samples", "tensor", "waveform", "weights"})
 _URL_RE = re.compile(r"https?://[^\s'\"]+", re.IGNORECASE)
 _UNIX_PATH_RE = re.compile(r"(?<![\w:])/(?:[^\s'\"]+/)*[^\s'\"]+")
 _WINDOWS_PATH_RE = re.compile(r"(?<!\w)[A-Za-z]:\\(?:[^\s'\"]+\\)*[^\s'\"]+")
@@ -350,9 +348,7 @@ def update_policy(*, level: str, include_sensitive: bool) -> None:
     global _CONFIGURED_LEVEL, _INCLUDE_SENSITIVE
     _CONFIGURED_LEVEL = _LEVEL_OVERRIDE or _normalize_level(level)
     _INCLUDE_SENSITIVE = (
-        _SENSITIVE_OVERRIDE
-        if _SENSITIVE_OVERRIDE is not None
-        else bool(include_sensitive)
+        _SENSITIVE_OVERRIDE if _SENSITIVE_OVERRIDE is not None else bool(include_sensitive)
     )
 
 
@@ -369,9 +365,7 @@ def _remember_policy_overrides(
     global _LEVEL_OVERRIDE, _SENSITIVE_OVERRIDE
     _LEVEL_OVERRIDE = _normalize_level(level) if level is not None else None
     _SENSITIVE_OVERRIDE = (
-        bool(include_sensitive_details)
-        if include_sensitive_details is not None
-        else None
+        bool(include_sensitive_details) if include_sensitive_details is not None else None
     )
 
 
@@ -382,9 +376,7 @@ def configure_bootstrap() -> None:
         env_level = "trace"
     env_sensitive = os.environ.get("UVR_DEBUG_SENSITIVE", "").strip().lower()
     level_override = env_level or None
-    sensitive_override = (
-        env_sensitive in {"1", "true", "yes"} if env_sensitive else None
-    )
+    sensitive_override = env_sensitive in {"1", "true", "yes"} if env_sensitive else None
     configure(
         level=level_override or "errors",
         include_sensitive=bool(sensitive_override),
@@ -673,27 +665,19 @@ def redact_text(value: str, *, reveal_sensitive: Optional[bool] = None) -> str:
     def sanitize_plain(text: str) -> str:
         text = _redact_quoted_mapping_secrets(text)
         text = _COOKIE_HEADER_RE.sub(
-            lambda match: (
-                f"{match.group('key')}{match.group('separator')}<redacted>"
-            ),
+            lambda match: f"{match.group('key')}{match.group('separator')}<redacted>",
             text,
         )
         text = _COOKIE_ASSIGNMENT_RE.sub(
-            lambda match: (
-                f"{match.group('key')}{match.group('separator')}<redacted>"
-            ),
+            lambda match: f"{match.group('key')}{match.group('separator')}<redacted>",
             text,
         )
         text = _HEADER_DUMP_RE.sub(
-            lambda match: (
-                f"{match.group('key')}{match.group('separator')}<redacted>"
-            ),
+            lambda match: f"{match.group('key')}{match.group('separator')}<redacted>",
             text,
         )
         text = _SECRET_ASSIGNMENT_RE.sub(
-            lambda match: (
-                f"{match.group('key')}{match.group('separator')}<redacted>"
-            ),
+            lambda match: f"{match.group('key')}{match.group('separator')}<redacted>",
             text,
         )
         text = _AUTH_SCHEME_RE.sub(
@@ -754,11 +738,11 @@ def _safe_field_repr(key: str, value: object) -> str:
     """Return a privacy-filtered, single-line representation that cannot raise."""
     try:
         rendered = repr(_safe_value(key, value))
-    except Exception:  # noqa: BLE001 - diagnostics must never break the caller
+    except Exception:  # diagnostics must never break the caller
         rendered = repr("<unavailable>")
     try:
         rendered = redact_text(rendered)
-    except Exception:  # noqa: BLE001 - retain fail-open behavior for hostile reprs
+    except Exception:  # retain fail-open behavior for hostile reprs
         rendered = repr("<unavailable>")
     return rendered.replace("\r", "\\r").replace("\n", "\\n")
 
@@ -771,9 +755,7 @@ def _structured_line(
     operation_id: Optional[str] = None,
     **fields: object,
 ) -> str:
-    timestamp = datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace(
-        "+00:00", "Z"
-    )
+    timestamp = datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
     parts = [
         f"timestamp={timestamp}",
         f"level={level.upper()}",
@@ -816,9 +798,7 @@ def log_event(
         return
     body_parts = [f"event={event}"]
     if operation_id:
-        body_parts.append(
-            f"operation={_single_line(redact_text(str(operation_id)))}"
-        )
+        body_parts.append(f"operation={_single_line(redact_text(str(operation_id)))}")
     try:
         formatted = format_ctx(**fields)
         if formatted:
@@ -899,9 +879,7 @@ def _diagnostic_excepthook(
         level="error",
         error_type=exc_type.__name__,
         error=str(exc_value),
-        traceback="".join(
-            traceback_module.format_exception(exc_type, exc_value, exc_traceback)
-        ),
+        traceback="".join(traceback_module.format_exception(exc_type, exc_value, exc_traceback)),
     )
     _ORIGINAL_EXCEPTHOOK(exc_type, exc_value, exc_traceback)
 

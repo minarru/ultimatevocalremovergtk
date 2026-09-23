@@ -85,9 +85,7 @@ class NormMLP(BaseNormMLP):
         batch, n_time, _ = mb.shape
         in_channels = cast(int, self.in_channels)
         if self.complex_mask:
-            mb = mb.reshape(
-                batch, n_time, in_channels, self.bandwidth, self.reim
-            ).contiguous()
+            mb = mb.reshape(batch, n_time, in_channels, self.bandwidth, self.reim).contiguous()
             mb = torch.view_as_complex(mb)
         else:
             mb = mb.reshape(batch, n_time, in_channels, self.bandwidth)

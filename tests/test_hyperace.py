@@ -12,7 +12,11 @@ from typing import Any
 _REPO = os.path.dirname(os.path.dirname(__file__))
 _CKPT = os.path.join(_REPO, "models", "MDX_Net_Models", "bs_inst_hyperace2_unwa.ckpt")
 _CONFIG = os.path.join(
-    _REPO, "models", "MDX_Net_Models", "model_data", "mdx_c_configs",
+    _REPO,
+    "models",
+    "MDX_Net_Models",
+    "model_data",
+    "mdx_c_configs",
     "bs_inst_hyperace2_unwa_config.yaml",
 )
 
@@ -171,9 +175,7 @@ class MaskEstimatorWiringTests(unittest.TestCase):
 
         dim_inputs = tuple([8] * 16)
         plain = MaskEstimator(dim=16, dim_inputs=dim_inputs, depth=1).eval()
-        with_ace = MaskEstimator(
-            dim=16, dim_inputs=dim_inputs, depth=1, hyperace=True
-        ).eval()
+        with_ace = MaskEstimator(dim=16, dim_inputs=dim_inputs, depth=1, hyperace=True).eval()
         x = torch.randn(1, 64, 16, 16)
         with torch.no_grad():
             self.assertEqual(plain(x).shape, with_ace(x).shape)
@@ -211,7 +213,8 @@ class CheckpointParityTests(unittest.TestCase):
     def test_every_shape_agrees(self) -> None:
         mine = self.model.state_dict()
         bad = [
-            k for k, v in self.checkpoint.items()
+            k
+            for k, v in self.checkpoint.items()
             if k in mine and tuple(mine[k].shape) != tuple(v.shape)
         ]
         self.assertEqual(bad, [])

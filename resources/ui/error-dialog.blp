@@ -1,0 +1,84 @@
+using Gtk 4.0;
+using Adw 1;
+
+Adw.Dialog dialog {
+  follows-content-size: false;
+  child: Adw.ToolbarView {
+    [top]
+    Adw.HeaderBar {}
+    content: Adw.Clamp clamp {
+      hexpand: true;
+      halign: fill;
+      child: Gtk.Box {
+        orientation: vertical;
+        spacing: 12;
+        margin-bottom: 20;
+        margin-start: 20;
+        margin-end: 20;
+        hexpand: true;
+        halign: fill;
+        Gtk.Box {
+          orientation: horizontal;
+          spacing: 12;
+          halign: fill;
+          Gtk.Image {
+            icon-name: "dialog-error-symbolic";
+            pixel-size: 36;
+            valign: start;
+            styles ["error"]
+          }
+          Gtk.Box {
+            orientation: vertical;
+            spacing: 6;
+            hexpand: true;
+            halign: fill;
+            valign: center;
+            Gtk.Label title_label {
+              wrap: true;
+              wrap-mode: word_char;
+              xalign: 0;
+              halign: fill;
+              hexpand: true;
+              styles ["title-4"]
+            }
+            Gtk.Label guidance_label {
+              visible: false;
+              wrap: true;
+              wrap-mode: word_char;
+              xalign: 0;
+              halign: fill;
+              hexpand: true;
+              selectable: true;
+            }
+          }
+        }
+        Gtk.Box summary_box {
+          orientation: vertical;
+          hexpand: true;
+          halign: fill;
+          styles ["card"]
+        }
+        Gtk.Label hint {
+          label: "View the log for the full traceback, or copy the report when asking for help";
+          wrap: true;
+          wrap-mode: word_char;
+          xalign: 0;
+          halign: fill;
+          hexpand: true;
+          styles ["dim-label"]
+        }
+        Gtk.Box {
+          orientation: horizontal;
+          spacing: 8;
+          halign: end;
+          margin-top: 4;
+          Gtk.Button copy_button { label: "Copy Report"; }
+          Gtk.Button view_button {
+            label: "View Log";
+            styles ["suggested-action"]
+          }
+        }
+      };
+    };
+  };
+}

@@ -6,23 +6,26 @@ main-window options that the Tk app shows for that method
 (``update_main_widget_states``), and knows how to read/write its slice of the
 typed :class:`~core.settings.Settings`.
 
-The window builds a ``Gtk.Stack`` from :data:`METHOD_VIEWS` and a "Process
-method" ``Adw.ComboRow`` to choose between them, so additional method panels can
-be registered by appending to the registry without touching the window assembly.
+The window uses :data:`METHOD_VIEWS` to show the selected model's option panel.
+The unified installed-model browser chooses exact IDs; each view retains its
+model combo as a settings adapter and owns stem reconciliation.
 """
 
 import typing
+from dataclasses import replace
 from typing import Callable, List, Optional, Type
 
-from gi.repository import Adw, Gio, Gtk
+from gi.repository import Adw, Gio, GObject, Gtk
 
 from bundled.constants import (
     BASS_STEM,
     CHOOSE_MODEL,
     CHOOSE_MODEL_HELP,
     CLEAR_CACHE_HELP,
+    DEMUCS_ARCH_TYPE,
     DRUM_STEM,
     INST_STEM,
+    MDX_ARCH_TYPE,
     NO_MODEL,
     OTHER_STEM,
     PRE_PROC_MODEL_ACTIVATE_HELP,
@@ -38,7 +41,13 @@ from core.model_display import map_basenames_to_display
 from core.model_identity import FAMILY_BY_ARCH, ModelIdentityService, parse_stored_model_id
 from core.model_scores import parse_sdr_score
 from core.model_stem_semantics import recommended_export_note, stem_display_overrides
-from core.run_estimate import compose_stem_group_tooltip, estimate_workload, format_workload_line
+from core.run_estimate import (
+    classify_export_tier,
+    compose_stem_group_tooltip,
+    count_expected_outputs,
+    estimate_workload,
+    format_workload_line,
+)
 from core.settings import Settings
 from core.stems import StemBucket, logical_secondary_route, model_stem_count, model_stem_routes
 
@@ -51,9 +60,15 @@ from ..option_summaries import (
     secondary_stem_pair_label,
 )
 from ..settings_bind import get_flat, set_flat, setting_for_combo
+from ..template import load_builder, object_from_builder
 from ..widget_state import fetch, stash
 from ..widgets.lazy_populate import LazyPopulator
+from ..widgets.output_stems import OutputStemsSection
 from ..widgets.rows import (
+    configure_combo_row,
+    configure_discrete_scale_row,
+    configure_numeric_scale_row,
+    configure_switch_row,
     get_combo_value,
     get_scale_row_float,
     get_scale_row_value,
@@ -68,10 +83,11 @@ from ..widgets.rows import (
 from ..widgets.stem_only import SaveStemsSection
 
 _DEFAULT_SETTINGS = Settings.defaults()
+LayoutObjectT = typing.TypeVar("LayoutObjectT", bound=GObject.Object)
 
 # Per-stem secondary-model slots keep only backend eligibility and native
-# arguments. Presentation comes from ``secondary_stem_pair_label``'s exact
-# manifest pair/role projection.
+# arguments. Each method Blueprint supplies the initial labels; the shared stem
+# semantics projector refreshes them after model metadata resolves.
 _SECONDARY_SLOTS = (
     (
         "voc_inst",
@@ -131,6 +147,8 @@ class MethodView:
     secondary_prefix: str = ""
     #: Whether this method exposes the Demucs pre-process model selector.
     has_preproc: bool = False
+    #: Resource-backed Blueprint document owning this method's fixed groups.
+    layout_name: str = ""
 
     def __init__(self, context: typing.Any, on_settings_changed: Callable[[], None]):
         self.context = context
@@ -151,6 +169,8 @@ class MethodView:
         self._switch_dependent_appliers = []
         self.hints = HelpHintManager()
 
+        self._layout_builder = load_builder(self.layout_name)
+
         # The window distributes these groups across one or two responsive
         # columns (see ``MainWindow._populate_columns``); ``self.groups`` is the
         # ordered list of top-level groups this view contributes. There is no
@@ -161,28 +181,26 @@ class MethodView:
         # No group title: the method combo directly above already names the
         # architecture (e.g. "MDX-Net"), so a per-arch header here was redundant
         # chrome. The group's first row ("Model") labels the content.
-        self.group = Adw.PreferencesGroup()
+        self.group = self._layout_object("primary_group", Adw.PreferencesGroup)
         self.groups.append(self.group)
 
-        self.model_row = make_combo_row(
-            "Model", [CHOOSE_MODEL], icon_name="applications-science-symbolic"
+        self.model_row = configure_combo_row(
+            self._layout_object("model_row", Adw.ComboRow), [CHOOSE_MODEL]
         )
         use_wrapping_list(self.model_row)
         self.model_row.connect("notify::selected", self._on_model_changed)
-        self.group.add(self.model_row)
         self.hints.register(self.model_row, CHOOSE_MODEL_HELP)
 
         # A stored value the picker cannot select stays on disk verbatim (the
         # cutover never writes Choose/No Model over it). Without this banner the
         # page just shows "Choose Model" and the user has no way to tell an
         # unset picker from a preserved illegal or uninstalled one.
-        self.stored_model_banner = Adw.Banner(revealed=False)
-        self.group.add(self.stored_model_banner)
+        self.stored_model_banner = self._layout_object("stored_model_banner", Adw.Banner)
 
         self.build_options(self.group)
 
         # Advanced / inference options: standard preferences list without an expander.
-        self.advanced_group = Adw.PreferencesGroup()
+        self.advanced_group = self._layout_object("advanced_group", Adw.PreferencesGroup)
         self.build_advanced(self.advanced_group)
         self.groups.append(self.advanced_group)
 
@@ -190,7 +208,7 @@ class MethodView:
         # (appends ``self.secondary_group`` to ``self.groups``).
         self._build_secondary_section()
 
-        self.stem_group = Adw.PreferencesGroup(title="Save stems")
+        self.stem_group = self._layout_object("stem_group", Adw.PreferencesGroup)
         self.save_stems = SaveStemsSection(
             settings=self.settings,
             on_changed=self._on_save_stems_changed,
@@ -199,7 +217,7 @@ class MethodView:
         self._resolved_secondary_stem = None
         self._resolved_model = None
         self._resolved_routes = ()
-        self.save_stems.attach_to(self.stem_group)
+        self.output_stems = OutputStemsSection(self.save_stems, self.stem_group)
         self.hints.register(self.stem_group, SAVE_STEM_ONLY_HELP)
         self.build_stem_options(self.stem_group)
         self.groups.append(self.stem_group)
@@ -337,6 +355,29 @@ class MethodView:
     def has_model(self) -> bool:
         return self.selected_model() not in (CHOOSE_MODEL, None)
 
+    def select_model(self, model_id: str) -> bool:
+        """Apply an explicit canonical choice from the unified Separation browser."""
+        family = FAMILY_BY_ARCH[self.method_key_for_resolution]
+        if not any(
+            record.id == model_id
+            and record.family == family
+            and record.installed
+            and record.identity_complete
+            for record in ModelIdentityService(self.context.repo).records()
+        ):
+            return False
+        self._loading = True
+        try:
+            self.populate_models()
+            set_combo_value(self.model_row, model_id)
+        finally:
+            self._loading = False
+        if self.selected_model() != model_id:
+            return False
+        self._clear_stored_model_banner()
+        self._on_model_changed()
+        return True
+
     def _on_model_changed(self, *_args: typing.Any) -> None:
         if self._loading:
             return
@@ -350,8 +391,9 @@ class MethodView:
             "model",
             f"model selected name={preview_text(name)} arch={self.title or self.method_key}",
         )
-        self._on_settings_changed()
         self.update_stem_labels()
+        # Readiness depends on the new model's reconciled Save Stems state.
+        self._on_settings_changed()
 
     # -- Custom stem naming -----------------------------------------------------
 
@@ -384,10 +426,15 @@ class MethodView:
         self._resolved_secondary_stem = secondary
         self._resolved_model = model
         self._resolved_routes = routes
+        self.save_stems.set_model_context(
+            str(getattr(model, "canonical_id", "") or model_name or "")
+        )
         if not self.has_model():
             self.save_stems.configure_hidden(has_model=False)
         else:
             self._configure_save_stems(model)
+        semantics = getattr(model, "stem_semantics", None)
+        self.save_stems.set_runtime_error(getattr(semantics, "runtime_error", ""))
         self._on_model_resolved(model)
         if self.has_model():
             self.save_stems.sync_from_settings()
@@ -411,18 +458,54 @@ class MethodView:
             routes=self._resolved_routes,
         )
 
-    def _update_stem_group_metadata(self) -> None:
-        line1 = self.save_stems.export_summary()
-        workload = estimate_workload(
-            self.settings,
-            method_key=self.method_key,
-            save_stems=self.save_stems,
-            repo=self.context.repo,
-            model_name=self.selected_model() if self.has_model() else None,
-            has_model=self.has_model(),
+    def _update_stem_group_metadata(self, *, refresh_workload: bool = True) -> None:
+        has_model = self.has_model()
+        model_id = self.selected_model() if has_model else None
+        scope = (
+            self.method_key,
+            model_id,
+            self.settings.demucs.stems
+            if self.method_key == DEMUCS_ARCH_TYPE
+            else self.settings.mdx.stems
+            if self.method_key == MDX_ARCH_TYPE
+            else None,
         )
-        line2 = format_workload_line(workload)
-        self.stem_group.set_description(f"{line1}\n{line2}" if line2 else line1)
+        cached = hasattr(self, "_stem_workload_estimate")
+        workload = getattr(self, "_stem_workload_estimate", None)
+        if not has_model:
+            workload = None
+        elif refresh_workload or not cached:
+            workload = estimate_workload(
+                self.settings,
+                method_key=self.method_key,
+                save_stems=self.save_stems,
+                repo=self.context.repo if refresh_workload else None,
+                model_name=model_id,
+                has_model=has_model,
+            )
+        elif workload is None or getattr(self, "_stem_workload_scope", None) != scope:
+            # Native focus can change the secondary/preprocessor graph. Hide
+            # stale costs until a normal refresh resolves it. A cached None
+            # preserves that invalidation through subsequent checkbox edits.
+            workload = None
+        else:
+            # Stable-scope stem edits only update export costs. Avoid assembly,
+            # hashing and config fetches in this checkbox callback.
+            output_count = count_expected_outputs(
+                self.save_stems, settings=self.settings, method_key=self.method_key
+            )
+            workload = replace(
+                workload,
+                output_count=output_count,
+                export_tier=classify_export_tier(output_count),
+            )
+        self._stem_workload_estimate = workload
+        self._stem_workload_scope = scope
+        line2 = format_workload_line(workload, include_output_count=False)
+        selected = self.model_row.get_selected_item()
+        model_name = selected.get_string() if isinstance(selected, Gtk.StringObject) else ""
+        self.output_stems.refresh(model_name=model_name if self.has_model() else "", workload=line2)
+        self.stem_group.set_description("")
         composed = compose_stem_group_tooltip(
             self.save_stems.active_hint(),
             workload,
@@ -448,7 +531,7 @@ class MethodView:
         if self._loading:
             return
         self._persist_stem_only()
-        self._update_stem_group_metadata()
+        self._update_stem_group_metadata(refresh_workload=False)
         self.sync_dynamic_option_state()
         self._on_settings_changed()
 
@@ -534,6 +617,10 @@ class MethodView:
 
     # -- Method-specific option controls ---------------------------------------
 
+    def _layout_object(self, name: str, kind: type[LayoutObjectT]) -> LayoutObjectT:
+        """Return one typed object from this method's Blueprint document."""
+        return object_from_builder(self._layout_builder, name, kind)
+
     @staticmethod
     def _add_row(container: typing.Any, row: typing.Any) -> None:
         """Add ``row`` to a ``PreferencesGroup`` (``add``) or ``ExpanderRow`` (``add_row``)."""
@@ -556,11 +643,16 @@ class MethodView:
         values: typing.Any,
         subtitle: typing.Any = None,
         hint: typing.Any = None,
+        *,
+        row: Optional[Adw.ComboRow] = None,
     ):
         """Add a combo row bound to settings ``key`` (stored as a string)."""
-        row = make_combo_row(title, values, subtitle)
+        if row is None:
+            row = make_combo_row(title, values, subtitle)
+            self._add_row(group, row)
+        else:
+            configure_combo_row(row, values)
         row.connect("notify::selected", lambda *_a, k=key, r=row: self._on_option_combo(k, r))
-        self._add_row(group, row)
         self._option_rows[key] = row
         return self._hint(row, hint)
 
@@ -578,6 +670,7 @@ class MethodView:
         subtitle: typing.Any = None,
         hint: typing.Any = None,
         store_float: typing.Any = False,
+        row: Optional[Adw.ActionRow] = None,
     ):
         """Add a constrained slider row bound to settings ``key``."""
         from ..widgets.rows import (
@@ -587,13 +680,21 @@ class MethodView:
         )
 
         if values is not None:
-            row = make_discrete_scale_row(title, values, subtitle)
+            if row is None:
+                row = make_discrete_scale_row(title, values, subtitle)
+                self._add_row(group, row)
+            else:
+                configure_discrete_scale_row(row, values)
         else:
             if lower is None or upper is None:
                 raise ValueError("lower and upper are required when values is None")
-            row = make_numeric_scale_row(
-                title, lower, upper, step=step, digits=digits, subtitle=subtitle
-            )
+            if row is None:
+                row = make_numeric_scale_row(
+                    title, lower, upper, step=step, digits=digits, subtitle=subtitle
+                )
+                self._add_row(group, row)
+            else:
+                configure_numeric_scale_row(row, lower, upper, step=step, digits=digits)
         stash(row, "_uvr_store_float", store_float)
         default_value = _DEFAULT_SETTINGS.get(key)
         if default_value is not None:
@@ -602,7 +703,6 @@ class MethodView:
             "value-changed",
             lambda *_a, k=key, r=row: self._on_option_scale(k, r),
         )
-        self._add_row(group, row)
         self._scale_rows[key] = row
         return self._hint(row, hint)
 
@@ -613,11 +713,16 @@ class MethodView:
         title: typing.Any,
         subtitle: typing.Any = None,
         hint: typing.Any = None,
+        *,
+        row: Optional[Adw.SwitchRow] = None,
     ):
         """Add a switch row bound to boolean settings ``key``."""
-        row = make_switch_row(title, subtitle)
+        if row is None:
+            row = make_switch_row(title, subtitle)
+            self._add_row(group, row)
+        else:
+            configure_switch_row(row)
         row.connect("notify::active", lambda *_a, k=key, r=row: self._on_option_switch(k, r))
-        self._add_row(group, row)
         self._switch_rows[key] = row
         return self._hint(row, hint)
 
@@ -786,6 +891,8 @@ class MethodView:
         hint: typing.Any = None,
         *,
         activate_key: typing.Any = None,
+        row: Optional[Adw.ComboRow] = None,
+        warning_row: Optional[Adw.ActionRow] = None,
     ):
         """Add a model-picker combo (lazily populated to avoid startup hashing).
 
@@ -795,14 +902,18 @@ class MethodView:
         """
         stored = get_flat(self.settings, key, NO_MODEL)
         initial = [NO_MODEL] if stored in (NO_MODEL, None) else [NO_MODEL, stored]
-        row = make_combo_row(title, initial)
+        if row is None:
+            row = make_combo_row(title, initial)
+            self._add_row(container, row)
+        else:
+            configure_combo_row(row, initial)
         use_wrapping_list(row)
         set_combo_value(row, stored)
         row.connect("notify::selected", lambda *_a, k=key, r=row: self._on_model_combo(k, r))
-        self._add_row(container, row)
-        warning_row = Adw.ActionRow(title="Saved model unavailable", visible=False)
-        warning_row.set_subtitle_lines(0)
-        self._add_row(container, warning_row)
+        if warning_row is None:
+            warning_row = Adw.ActionRow(title="Saved model unavailable", visible=False)
+            warning_row.set_subtitle_lines(0)
+            self._add_row(container, warning_row)
         self._model_combos.append(
             {
                 "row": row,
@@ -1014,19 +1125,19 @@ class MethodView:
         # rather than nested inside another expander: nesting expander rows adds
         # indentation levels that read as confusing, so the section stays one
         # level deep (group -> expander -> rows).
-        self.secondary_group = Adw.PreferencesGroup(title="Extra models")
-        group = self.secondary_group
+        self.secondary_group = self._layout_object("secondary_group", Adw.PreferencesGroup)
 
         # Secondary models (one selector + scale per stem pair).
         if self.secondary_prefix:
             prefix = self.secondary_prefix
-            self.secondary_expander = Adw.ExpanderRow(title="Secondary models")
+            self.secondary_expander = self._layout_object("secondary_expander", Adw.ExpanderRow)
             self.secondary_expander.connect("notify::expanded", self._ensure_model_combos_populated)
             activate = self.add_option_switch(
                 self.secondary_expander,
                 f"{prefix}_is_secondary_model_activate",
-                "Activate secondary model",
+                None,
                 hint=SECONDARY_MODEL_ACTIVATE_HELP,
+                row=self._layout_object("secondary_activate_row", Adw.SwitchRow),
             )
             dependents = []
             self._secondary_slot_rows = {}
@@ -1048,69 +1159,71 @@ class MethodView:
                     self.secondary_expander,
                     model_key,
                     provider,
-                    pair_label,
+                    None,
                     hint=SECONDARY_MODEL_HELP,
                     activate_key=f"{prefix}_is_secondary_model_activate",
+                    row=self._layout_object(f"secondary_{slot}_model_row", Adw.ComboRow),
+                    warning_row=self._layout_object(f"secondary_{slot}_warning_row", Adw.ActionRow),
                 )
+                combo.set_title(pair_label)
                 scale = self.add_option_scale(
                     self.secondary_expander,
                     scale_key,
-                    f"{pair_label} influence",
+                    None,
                     lower=0.01,
                     upper=0.99,
                     step=0.01,
                     digits=2,
                     hint=SECONDARY_MODEL_SCALE_HELP,
                     store_float=True,
+                    row=self._layout_object(f"secondary_{slot}_scale_row", Adw.ActionRow),
                 )
+                scale.set_title(f"{pair_label} influence")
                 dependents.extend((combo, scale))
                 self._secondary_slot_rows[slot] = [combo, scale]
             self._bind_switch_dependents(activate, dependents)
-            group.add(self.secondary_expander)
 
         # Demucs pre-process model.
         if self.has_preproc:
-            self.preproc_expander = Adw.ExpanderRow(title="Pre-process model")
+            self.preproc_expander = self._layout_object("preproc_expander", Adw.ExpanderRow)
             self.preproc_expander.connect("notify::expanded", self._ensure_model_combos_populated)
             activate = self.add_option_switch(
                 self.preproc_expander,
                 "is_demucs_pre_proc_model_activate",
-                "Activate pre-process model",
+                None,
                 hint=PRE_PROC_MODEL_ACTIVATE_HELP,
+                row=self._layout_object("preproc_activate_row", Adw.SwitchRow),
             )
             model_row = self._add_model_combo(
                 self.preproc_expander,
                 "demucs_pre_proc_model",
                 lambda: repo.model_list(settings, VOCAL_STEM, INST_STEM, is_no_demucs=True),
-                "Pre-process model",
+                None,
                 hint=PRE_PROC_MODEL_HELP,
                 activate_key="is_demucs_pre_proc_model_activate",
+                row=self._layout_object("preproc_model_row", Adw.ComboRow),
+                warning_row=self._layout_object("preproc_warning_row", Adw.ActionRow),
             )
             inst_mix_row = self.add_option_switch(
                 self.preproc_expander,
                 "is_demucs_pre_proc_model_inst_mix",
-                "Save instrumental mixture",
+                None,
                 hint=PRE_PROC_MODEL_INST_MIX_HELP,
+                row=self._layout_object("preproc_inst_mix_row", Adw.SwitchRow),
             )
             self._bind_switch_dependents(activate, [model_row, inst_mix_row])
-            group.add(self.preproc_expander)
 
         self.groups.append(self.secondary_group)
 
         # Model maintenance: editing an architecture's stored model parameters
         # is not an "extra model", so it gets its own group rather than sitting
         # as a fourth sibling among the model selectors.
-        self.maintenance_group = Adw.PreferencesGroup(title="Model maintenance")
-        self.change_row = Adw.ActionRow(
-            title="Change model defaults",
-            subtitle="Edit or delete a model's stored parameters",
-        )
-        change_button = Gtk.Button(label="Edit\u2026", valign=Gtk.Align.CENTER)
+        self.maintenance_group = self._layout_object("maintenance_group", Adw.PreferencesGroup)
+        self.change_row = self._layout_object("change_row", Adw.ActionRow)
+        change_button = self._layout_object("change_button", Gtk.Button)
         change_button.connect("clicked", self._on_change_defaults)
-        self.change_row.add_suffix(change_button)
         self.change_row.set_activatable_widget(change_button)
         self.hints.register(self.change_row, CLEAR_CACHE_HELP)
-        self.maintenance_group.add(self.change_row)
         self.groups.append(self.maintenance_group)
 
     # -- Dialog wiring (owned entirely by the method views) --------------------

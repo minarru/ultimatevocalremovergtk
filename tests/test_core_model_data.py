@@ -184,7 +184,7 @@ class InstalledMdxRuntimeContractTests(unittest.TestCase):
             for model_id, contract in contracts.items()
             if model_id != "mdx:UVR_MDXNET_KARA_2"
         }
-        self.assertEqual(len(promoted), 28)
+        self.assertEqual(len(promoted), 29)
         for model_id, contract in promoted.items():
             with self.subTest(model_id=model_id):
                 native_stems = (

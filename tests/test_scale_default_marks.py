@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import unittest
+
 from ui.widget_state import fetch
 
 
@@ -55,6 +56,7 @@ class ScaleDefaultMarkTests(unittest.TestCase):
         reconfigure_numeric_scale(row, 2, 50, step=1, digits=0)
         self.assertEqual(fetch(row, "_uvr_default"), "8")
 
+
 class MdxSegmentDefaultWiringTests(unittest.TestCase):
     def test_mdx_c_segment_choices_start_with_default(self) -> None:
         from bundled.constants import DEF_OPT
@@ -76,9 +78,7 @@ class MdxSegmentDefaultWiringTests(unittest.TestCase):
         self.assertEqual(mdx_c_default_segment_size(model), 512)
         self.assertIsNone(mdx_c_default_segment_size(SimpleNamespace(is_mdx_c=False)))
         self.assertIsNone(
-            mdx_c_default_segment_size(
-                SimpleNamespace(is_mdx_c=True, mdx_c_configs=None)
-            )
+            mdx_c_default_segment_size(SimpleNamespace(is_mdx_c=True, mdx_c_configs=None))
         )
 
     def test_nearest_mdx_segment_size_snaps(self) -> None:
@@ -109,9 +109,7 @@ class MdxStemSelectionStaleTests(unittest.TestCase):
     def test_a_name_the_model_does_not_have_is_stale(self) -> None:
         from ui.views.mdx import mdx_stem_selection_is_stale
 
-        self.assertTrue(
-            mdx_stem_selection_is_stale(["drums", "bass", "other", "vocals"], "Piano")
-        )
+        self.assertTrue(mdx_stem_selection_is_stale(["drums", "bass", "other", "vocals"], "Piano"))
 
     def test_all_stems_is_never_stale(self) -> None:
         from bundled.constants import ALL_STEMS

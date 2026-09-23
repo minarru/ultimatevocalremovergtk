@@ -26,6 +26,7 @@ except ImportError:  # pragma: no cover - only needed for non-musical band specs
 try:
     from spafe.utils.converters import hz2bark, hz2erb  # type: ignore[import-untyped]
 except ImportError:  # pragma: no cover
+
     def hz2bark(x: float) -> float:
         raise ImportError("spafe is required for bark filterbanks")
 
@@ -95,11 +96,8 @@ class BandsplitSpecification:
         return index
 
     def get_band_specs_with_bandwidth(
-            self,
-            start_index: Any,
-            end_index: Any,
-            bandwidth_hz: Any
-            ) -> Any:
+        self, start_index: Any, end_index: Any, bandwidth_hz: Any
+    ) -> Any:
         band_specs = []
         lower = start_index
 
@@ -129,110 +127,84 @@ class VocalBandsplitSpecification(BandsplitSpecification):
     @property
     def version1(self) -> Any:
         return self.get_band_specs_with_bandwidth(
-                start_index=0, end_index=self.max_index, bandwidth_hz=1000
+            start_index=0, end_index=self.max_index, bandwidth_hz=1000
         )
 
     def version2(self) -> Any:
         below16k = self.get_band_specs_with_bandwidth(
-                start_index=0, end_index=self.split16k, bandwidth_hz=1000
+            start_index=0, end_index=self.split16k, bandwidth_hz=1000
         )
         below20k = self.get_band_specs_with_bandwidth(
-                start_index=self.split16k,
-                end_index=self.split20k,
-                bandwidth_hz=2000
+            start_index=self.split16k, end_index=self.split20k, bandwidth_hz=2000
         )
 
         return below16k + below20k + self.above20k
 
     def version3(self) -> Any:
         below8k = self.get_band_specs_with_bandwidth(
-                start_index=0, end_index=self.split8k, bandwidth_hz=1000
+            start_index=0, end_index=self.split8k, bandwidth_hz=1000
         )
         below16k = self.get_band_specs_with_bandwidth(
-                start_index=self.split8k,
-                end_index=self.split16k,
-                bandwidth_hz=2000
+            start_index=self.split8k, end_index=self.split16k, bandwidth_hz=2000
         )
 
         return below8k + below16k + self.above16k
 
     def version4(self) -> Any:
         below1k = self.get_band_specs_with_bandwidth(
-                start_index=0, end_index=self.split1k, bandwidth_hz=100
+            start_index=0, end_index=self.split1k, bandwidth_hz=100
         )
         below8k = self.get_band_specs_with_bandwidth(
-                start_index=self.split1k,
-                end_index=self.split8k,
-                bandwidth_hz=1000
+            start_index=self.split1k, end_index=self.split8k, bandwidth_hz=1000
         )
         below16k = self.get_band_specs_with_bandwidth(
-                start_index=self.split8k,
-                end_index=self.split16k,
-                bandwidth_hz=2000
+            start_index=self.split8k, end_index=self.split16k, bandwidth_hz=2000
         )
 
         return below1k + below8k + below16k + self.above16k
 
     def version5(self) -> Any:
         below1k = self.get_band_specs_with_bandwidth(
-                start_index=0, end_index=self.split1k, bandwidth_hz=100
+            start_index=0, end_index=self.split1k, bandwidth_hz=100
         )
         below16k = self.get_band_specs_with_bandwidth(
-                start_index=self.split1k,
-                end_index=self.split16k,
-                bandwidth_hz=1000
+            start_index=self.split1k, end_index=self.split16k, bandwidth_hz=1000
         )
         below20k = self.get_band_specs_with_bandwidth(
-                start_index=self.split16k,
-                end_index=self.split20k,
-                bandwidth_hz=2000
+            start_index=self.split16k, end_index=self.split20k, bandwidth_hz=2000
         )
         return below1k + below16k + below20k + self.above20k
 
     def version6(self) -> Any:
         below1k = self.get_band_specs_with_bandwidth(
-                start_index=0, end_index=self.split1k, bandwidth_hz=100
+            start_index=0, end_index=self.split1k, bandwidth_hz=100
         )
         below4k = self.get_band_specs_with_bandwidth(
-                start_index=self.split1k,
-                end_index=self.split4k,
-                bandwidth_hz=500
+            start_index=self.split1k, end_index=self.split4k, bandwidth_hz=500
         )
         below8k = self.get_band_specs_with_bandwidth(
-                start_index=self.split4k,
-                end_index=self.split8k,
-                bandwidth_hz=1000
+            start_index=self.split4k, end_index=self.split8k, bandwidth_hz=1000
         )
         below16k = self.get_band_specs_with_bandwidth(
-                start_index=self.split8k,
-                end_index=self.split16k,
-                bandwidth_hz=2000
+            start_index=self.split8k, end_index=self.split16k, bandwidth_hz=2000
         )
         return below1k + below4k + below8k + below16k + self.above16k
 
     def version7(self) -> Any:
         below1k = self.get_band_specs_with_bandwidth(
-                start_index=0, end_index=self.split1k, bandwidth_hz=100
+            start_index=0, end_index=self.split1k, bandwidth_hz=100
         )
         below4k = self.get_band_specs_with_bandwidth(
-                start_index=self.split1k,
-                end_index=self.split4k,
-                bandwidth_hz=250
+            start_index=self.split1k, end_index=self.split4k, bandwidth_hz=250
         )
         below8k = self.get_band_specs_with_bandwidth(
-                start_index=self.split4k,
-                end_index=self.split8k,
-                bandwidth_hz=500
+            start_index=self.split4k, end_index=self.split8k, bandwidth_hz=500
         )
         below16k = self.get_band_specs_with_bandwidth(
-                start_index=self.split8k,
-                end_index=self.split16k,
-                bandwidth_hz=1000
+            start_index=self.split8k, end_index=self.split16k, bandwidth_hz=1000
         )
         below20k = self.get_band_specs_with_bandwidth(
-                start_index=self.split16k,
-                end_index=self.split20k,
-                bandwidth_hz=2000
+            start_index=self.split16k, end_index=self.split20k, bandwidth_hz=2000
         )
         return below1k + below4k + below8k + below16k + below20k + self.above20k
 
@@ -248,27 +220,19 @@ class BassBandsplitSpecification(BandsplitSpecification):
 
     def get_band_specs(self) -> Any:
         below500 = self.get_band_specs_with_bandwidth(
-                start_index=0, end_index=self.split500, bandwidth_hz=50
+            start_index=0, end_index=self.split500, bandwidth_hz=50
         )
         below1k = self.get_band_specs_with_bandwidth(
-                start_index=self.split500,
-                end_index=self.split1k,
-                bandwidth_hz=100
+            start_index=self.split500, end_index=self.split1k, bandwidth_hz=100
         )
         below4k = self.get_band_specs_with_bandwidth(
-                start_index=self.split1k,
-                end_index=self.split4k,
-                bandwidth_hz=500
+            start_index=self.split1k, end_index=self.split4k, bandwidth_hz=500
         )
         below8k = self.get_band_specs_with_bandwidth(
-                start_index=self.split4k,
-                end_index=self.split8k,
-                bandwidth_hz=1000
+            start_index=self.split4k, end_index=self.split8k, bandwidth_hz=1000
         )
         below16k = self.get_band_specs_with_bandwidth(
-                start_index=self.split8k,
-                end_index=self.split16k,
-                bandwidth_hz=2000
+            start_index=self.split8k, end_index=self.split16k, bandwidth_hz=2000
         )
         above16k = [(self.split16k, self.max_index)]
 
@@ -281,59 +245,43 @@ class DrumBandsplitSpecification(BandsplitSpecification):
 
     def get_band_specs(self) -> Any:
         below1k = self.get_band_specs_with_bandwidth(
-                start_index=0, end_index=self.split1k, bandwidth_hz=50
+            start_index=0, end_index=self.split1k, bandwidth_hz=50
         )
         below2k = self.get_band_specs_with_bandwidth(
-                start_index=self.split1k,
-                end_index=self.split2k,
-                bandwidth_hz=100
+            start_index=self.split1k, end_index=self.split2k, bandwidth_hz=100
         )
         below4k = self.get_band_specs_with_bandwidth(
-                start_index=self.split2k,
-                end_index=self.split4k,
-                bandwidth_hz=250
+            start_index=self.split2k, end_index=self.split4k, bandwidth_hz=250
         )
         below8k = self.get_band_specs_with_bandwidth(
-                start_index=self.split4k,
-                end_index=self.split8k,
-                bandwidth_hz=500
+            start_index=self.split4k, end_index=self.split8k, bandwidth_hz=500
         )
         below16k = self.get_band_specs_with_bandwidth(
-                start_index=self.split8k,
-                end_index=self.split16k,
-                bandwidth_hz=1000
+            start_index=self.split8k, end_index=self.split16k, bandwidth_hz=1000
         )
         above16k = [(self.split16k, self.max_index)]
 
         return below1k + below2k + below4k + below8k + below16k + above16k
 
 
-
-
 class PerceptualBandsplitSpecification(BandsplitSpecification):
     def __init__(
-            self,
-            nfft: int,
-            fs: int,
-            fbank_fn: Callable[[int, int, float, float, int], torch.Tensor],
-            n_bands: int,
-            f_min: float = 0.0,
-            f_max: float | None = None
+        self,
+        nfft: int,
+        fs: int,
+        fbank_fn: Callable[[int, int, float, float, int], torch.Tensor],
+        n_bands: int,
+        f_min: float = 0.0,
+        f_max: float | None = None,
     ) -> None:
         super().__init__(nfft=nfft, fs=fs)
         self.n_bands = n_bands
         if f_max is None:
             f_max = fs / 2
 
-        self.filterbank = fbank_fn(
-                n_bands, fs, f_min, f_max, self.max_index
-        )
+        self.filterbank = fbank_fn(n_bands, fs, f_min, f_max, self.max_index)
 
-        weight_per_bin = torch.sum(
-            self.filterbank,
-            dim=0,
-            keepdim=True
-            )  # (1, n_freqs)
+        weight_per_bin = torch.sum(self.filterbank, dim=0, keepdim=True)  # (1, n_freqs)
         normalized_mel_fb = self.filterbank / weight_per_bin  # (n_mels, n_freqs)
 
         freq_weights = []
@@ -366,13 +314,14 @@ class PerceptualBandsplitSpecification(BandsplitSpecification):
 
         with open(os.path.join(dir_path, "mel_bandsplit_spec.pkl"), "wb") as f:
             pickle.dump(
-                    {
-                            "band_specs": self.band_specs,
-                            "freq_weights": self.freq_weights,
-                            "filterbank": self.filterbank,
-                    },
-                    f,
+                {
+                    "band_specs": self.band_specs,
+                    "freq_weights": self.freq_weights,
+                    "filterbank": self.filterbank,
+                },
+                f,
             )
+
 
 def mel_filterbank(
     n_bands: int,
@@ -384,12 +333,12 @@ def mel_filterbank(
     if taF is None:
         raise ImportError("torchaudio is required for mel filterbanks")
     fb = taF.melscale_fbanks(
-                n_mels=n_bands,
-                sample_rate=fs,
-                f_min=f_min,
-                f_max=f_max,
-                n_freqs=n_freqs,
-        ).T
+        n_mels=n_bands,
+        sample_rate=fs,
+        f_min=f_min,
+        f_max=f_max,
+        n_freqs=n_freqs,
+    ).T
 
     fb[0, 0] = 1.0
 
@@ -398,14 +347,12 @@ def mel_filterbank(
 
 class MelBandsplitSpecification(PerceptualBandsplitSpecification):
     def __init__(
-            self,
-            nfft: int,
-            fs: int,
-            n_bands: int,
-            f_min: float = 0.0,
-            f_max: float | None = None
+        self, nfft: int, fs: int, n_bands: int, f_min: float = 0.0, f_max: float | None = None
     ) -> None:
-        super().__init__(fbank_fn=mel_filterbank, nfft=nfft, fs=fs, n_bands=n_bands, f_min=f_min, f_max=f_max)
+        super().__init__(
+            fbank_fn=mel_filterbank, nfft=nfft, fs=fs, n_bands=n_bands, f_min=f_min, f_max=f_max
+        )
+
 
 def musical_filterbank(
     n_bands: int,
@@ -442,23 +389,21 @@ def musical_filterbank(
     fb = np.zeros((n_bands, n_freqs))
 
     for i in range(n_bands):
-        fb[i, low_bins[i]:high_bins[i]+1] = 1.0
+        fb[i, low_bins[i] : high_bins[i] + 1] = 1.0
 
-    fb[0, :low_bins[0]] = 1.0
-    fb[-1, high_bins[-1]+1:] = 1.0
+    fb[0, : low_bins[0]] = 1.0
+    fb[-1, high_bins[-1] + 1 :] = 1.0
 
     return torch.as_tensor(fb)
 
+
 class MusicalBandsplitSpecification(PerceptualBandsplitSpecification):
     def __init__(
-            self,
-            nfft: int,
-            fs: int,
-            n_bands: int,
-            f_min: float = 0.0,
-            f_max: float | None = None
+        self, nfft: int, fs: int, n_bands: int, f_min: float = 0.0, f_max: float | None = None
     ) -> None:
-        super().__init__(fbank_fn=musical_filterbank, nfft=nfft, fs=fs, n_bands=n_bands, f_min=f_min, f_max=f_max)
+        super().__init__(
+            fbank_fn=musical_filterbank, nfft=nfft, fs=fs, n_bands=n_bands, f_min=f_min, f_max=f_max
+        )
 
 
 def bark_filterbank(
@@ -470,28 +415,21 @@ def bark_filterbank(
 ) -> Tensor:
     if bark_fbanks is None:
         raise ImportError("spafe is required for bark filterbanks")
-    nfft = 2 * (n_freqs -1)
+    nfft = 2 * (n_freqs - 1)
     fb, _ = bark_fbanks.bark_filter_banks(
-            nfilts=n_bands,
-            nfft=nfft,
-            fs=fs,
-            low_freq=f_min,
-            high_freq=f_max,
-            scale="constant"
+        nfilts=n_bands, nfft=nfft, fs=fs, low_freq=f_min, high_freq=f_max, scale="constant"
     )
 
     return torch.as_tensor(fb)
 
+
 class BarkBandsplitSpecification(PerceptualBandsplitSpecification):
     def __init__(
-            self,
-            nfft: int,
-            fs: int,
-            n_bands: int,
-            f_min: float = 0.0,
-            f_max: float | None = None
+        self, nfft: int, fs: int, n_bands: int, f_min: float = 0.0, f_max: float | None = None
     ) -> None:
-        super().__init__(fbank_fn=bark_filterbank, nfft=nfft, fs=fs, n_bands=n_bands, f_min=f_min, f_max=f_max)
+        super().__init__(
+            fbank_fn=bark_filterbank, nfft=nfft, fs=fs, n_bands=n_bands, f_min=f_min, f_max=f_max
+        )
 
 
 def triangular_bark_filterbank(
@@ -525,47 +463,41 @@ def triangular_bark_filterbank(
 
     return fb
 
+
 class TriangularBarkBandsplitSpecification(PerceptualBandsplitSpecification):
     def __init__(
-            self,
-            nfft: int,
-            fs: int,
-            n_bands: int,
-            f_min: float = 0.0,
-            f_max: float | None = None
+        self, nfft: int, fs: int, n_bands: int, f_min: float = 0.0, f_max: float | None = None
     ) -> None:
-        super().__init__(fbank_fn=triangular_bark_filterbank, nfft=nfft, fs=fs, n_bands=n_bands, f_min=f_min, f_max=f_max)
+        super().__init__(
+            fbank_fn=triangular_bark_filterbank,
+            nfft=nfft,
+            fs=fs,
+            n_bands=n_bands,
+            f_min=f_min,
+            f_max=f_max,
+        )
 
 
-
-def minibark_filterbank(
-    n_bands: Any, fs: Any, f_min: Any, f_max: Any, n_freqs: Any
-) -> Any:
-    fb = bark_filterbank(
-            n_bands,
-            fs,
-            f_min,
-            f_max,
-            n_freqs
-    )
+def minibark_filterbank(n_bands: Any, fs: Any, f_min: Any, f_max: Any, n_freqs: Any) -> Any:
+    fb = bark_filterbank(n_bands, fs, f_min, f_max, n_freqs)
 
     fb[fb < np.sqrt(0.5)] = 0.0
 
     return fb
 
+
 class MiniBarkBandsplitSpecification(PerceptualBandsplitSpecification):
     def __init__(
-            self,
-            nfft: int,
-            fs: int,
-            n_bands: int,
-            f_min: float = 0.0,
-            f_max: float | None = None
+        self, nfft: int, fs: int, n_bands: int, f_min: float = 0.0, f_max: float | None = None
     ) -> None:
-        super().__init__(fbank_fn=minibark_filterbank, nfft=nfft, fs=fs, n_bands=n_bands, f_min=f_min, f_max=f_max)
-
-
-
+        super().__init__(
+            fbank_fn=minibark_filterbank,
+            nfft=nfft,
+            fs=fs,
+            n_bands=n_bands,
+            f_min=f_min,
+            f_max=f_max,
+        )
 
 
 def erb_filterbank(
@@ -586,13 +518,12 @@ def erb_filterbank(
     m_max = hz2erb(f_max)
 
     m_pts = torch.linspace(m_min, m_max, n_bands + 2)
-    f_pts = (torch.pow(10, (m_pts / A)) - 1)/ 0.00437
+    f_pts = (torch.pow(10, (m_pts / A)) - 1) / 0.00437
 
     # create filterbank
     fb = _create_triangular_filterbank(all_freqs, f_pts)
 
     fb = fb.T
-
 
     first_active_band = torch.nonzero(torch.sum(fb, dim=-1))[0, 0]
     first_active_bin = torch.nonzero(fb[first_active_band, :])[0, 0]
@@ -602,35 +533,27 @@ def erb_filterbank(
     return fb
 
 
-
 class EquivalentRectangularBandsplitSpecification(PerceptualBandsplitSpecification):
     def __init__(
-            self,
-            nfft: int,
-            fs: int,
-            n_bands: int,
-            f_min: float = 0.0,
-            f_max: float | None = None
+        self, nfft: int, fs: int, n_bands: int, f_min: float = 0.0, f_max: float | None = None
     ) -> None:
-        super().__init__(fbank_fn=erb_filterbank, nfft=nfft, fs=fs, n_bands=n_bands, f_min=f_min, f_max=f_max)
+        super().__init__(
+            fbank_fn=erb_filterbank, nfft=nfft, fs=fs, n_bands=n_bands, f_min=f_min, f_max=f_max
+        )
+
 
 if __name__ == "__main__":
     import pandas as pd
 
     band_defs = []
 
-    for bands in [VocalBandsplitSpecification]:  
+    for bands in [VocalBandsplitSpecification]:
         band_name = bands.__name__.replace("BandsplitSpecification", "")
 
         mbs = bands(nfft=2048, fs=44100).get_band_specs()
 
         for i, (f_min, f_max) in enumerate(mbs):
-            band_defs.append({
-                "band": band_name,
-                "band_index": i,
-                "f_min": f_min,
-                "f_max": f_max
-            })
+            band_defs.append({"band": band_name, "band_index": i, "f_min": f_min, "f_max": f_max})
 
     df = pd.DataFrame(band_defs)
     df.to_csv("vox7bands.csv", index=False)

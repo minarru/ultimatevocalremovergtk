@@ -82,9 +82,7 @@ class ProcessingGroupPlacementTests(unittest.TestCase):
         window = MainWindow()
         self.addCleanup(window.set_application, None)
         ensemble_row = window._ensemble_page.vocal_split_row
-        self.assertEqual(
-            ensemble_row.splitter_row.get_tooltip_text(), VOC_SPLIT_MODEL_SELECT_HELP
-        )
+        self.assertEqual(ensemble_row.splitter_row.get_tooltip_text(), VOC_SPLIT_MODEL_SELECT_HELP)
 
     def test_audio_tools_does_not_get_the_row(self):
         """Audio Tools runs no separations, so the globals do not belong there."""

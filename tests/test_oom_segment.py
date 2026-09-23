@@ -68,10 +68,10 @@ class ModelSegmentTests(unittest.TestCase):
     def test_supports_segment_backoff(self) -> None:
         self.assertTrue(supports_segment_backoff(SimpleNamespace(is_mdx_c=True)))
         self.assertTrue(supports_segment_backoff(SimpleNamespace(is_roformer=True)))
-        self.assertTrue(
-            supports_segment_backoff(SimpleNamespace(process_method="MDX-Net"))
+        self.assertTrue(supports_segment_backoff(SimpleNamespace(process_method="MDX-Net")))
+        self.assertFalse(
+            supports_segment_backoff(SimpleNamespace(process_method="VR Architecture"))
         )
-        self.assertFalse(supports_segment_backoff(SimpleNamespace(process_method="VR Architecture")))
         self.assertFalse(supports_segment_backoff(None))
 
 

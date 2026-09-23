@@ -25,7 +25,7 @@ class MetadataRefreshTransactionTests(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         destinations = [os.path.join(tmp.name, f"mapper-{index}.json") for index in range(4)]
         originals = [{"old": index} for index in range(4)]
-        for path, payload in zip(destinations, originals):
+        for path, payload in zip(destinations, originals, strict=True):
             with open(path, "w", encoding="utf-8") as handle:
                 json.dump(payload, handle)
         return destinations, originals
@@ -35,11 +35,13 @@ class MetadataRefreshTransactionTests(unittest.TestCase):
         responses = [_JsonResponse({"new": index}) for index in range(3)]
         responses.append(_JsonResponse(["not", "an", "object"]))
         urls = [(f"https://example.test/{index}", path) for index, path in enumerate(destinations)]
-        with mock.patch.object(downloads_mod, "_MODEL_DATA_URLS", urls), mock.patch.object(
-            downloads_mod, "_NAME_MAPPER_DESTS", frozenset()
-        ), mock.patch.object(downloads_mod, "_urlopen", side_effect=responses):
+        with (
+            mock.patch.object(downloads_mod, "_MODEL_DATA_URLS", urls),
+            mock.patch.object(downloads_mod, "_NAME_MAPPER_DESTS", frozenset()),
+            mock.patch.object(downloads_mod, "_urlopen", side_effect=responses),
+        ):
             self.assertFalse(downloads_mod.DownloadManager().update_model_settings())
-        for path, expected in zip(destinations, originals):
+        for path, expected in zip(destinations, originals, strict=True):
             with open(path, encoding="utf-8") as handle:
                 self.assertEqual(json.load(handle), expected)
 
@@ -57,15 +59,20 @@ class MetadataRefreshTransactionTests(unittest.TestCase):
                 raise OSError("simulated commit failure")
             real_replace(source, destination)
 
-        with mock.patch.object(downloads_mod, "_MODEL_DATA_URLS", urls), mock.patch.object(
-            downloads_mod, "_NAME_MAPPER_DESTS", frozenset()
-        ), mock.patch.object(
-            downloads_mod, "_urlopen", side_effect=[_JsonResponse(payload) for payload in payloads]
-        ), mock.patch.object(downloads_mod.os, "replace", side_effect=replace_once_then_fail):
+        with (
+            mock.patch.object(downloads_mod, "_MODEL_DATA_URLS", urls),
+            mock.patch.object(downloads_mod, "_NAME_MAPPER_DESTS", frozenset()),
+            mock.patch.object(
+                downloads_mod,
+                "_urlopen",
+                side_effect=[_JsonResponse(payload) for payload in payloads],
+            ),
+            mock.patch.object(downloads_mod.os, "replace", side_effect=replace_once_then_fail),
+        ):
             repo = mock.Mock()
             self.assertFalse(downloads_mod.DownloadManager().update_model_settings(repo))
             repo.invalidate_models.assert_not_called()
-        for path, expected in zip(destinations, originals):
+        for path, expected in zip(destinations, originals, strict=True):
             with open(path, encoding="utf-8") as handle:
                 self.assertEqual(json.load(handle), expected)
 

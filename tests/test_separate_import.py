@@ -91,6 +91,24 @@ class SeparateImportWarmupTests(unittest.TestCase):
             self.assertTrue(engines_imported())
             self.assertEqual(warm_status(), "done")
 
+    def test_first_run_finishes_before_delayed_warmup(self) -> None:
+        import engines.separator_factory as factory
+
+        with (
+            mock.patch.object(factory, "preload_engine_modules") as preload,
+            mock.patch("core.separate_import.threading.Thread") as thread_cls,
+        ):
+            import_separate_engines()
+            self.assertTrue(engines_imported())
+            self.assertEqual(warm_status(), "done")
+
+            # A frame-delayed warmup may still run after a fast first run. The
+            # completed synchronous import must make that callback a no-op.
+            warm_import_separate_engines()
+
+        preload.assert_called_once_with()
+        thread_cls.assert_not_called()
+
     def test_engines_imported_false_until_import_completes(self) -> None:
         import engines.separator_factory as factory
 
@@ -112,9 +130,11 @@ class SeparateImportWarmupTests(unittest.TestCase):
             separate_import._warm_thread = thread
         self.assertEqual(warm_status(), "in_progress")
 
-    def test_application_activate_calls_warmup(self) -> None:
+    def test_application_activate_defers_warmup_to_window_frame_lifecycle(self) -> None:
         source = (_REPO / "ui" / "application.py").read_text(encoding="utf-8")
-        self.assertIn("warm_import_separate_engines", source)
+        self.assertNotIn("warm_import_separate_engines", source)
+        window_source = (_REPO / "ui" / "window.py").read_text(encoding="utf-8")
+        self.assertIn("_schedule_engine_warmup", window_source)
 
 
 if __name__ == "__main__":

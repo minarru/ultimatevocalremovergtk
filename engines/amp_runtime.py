@@ -52,7 +52,7 @@ def recommend_autocast(device_set: Any = DEFAULT) -> bool:
             return False
         major, _minor = torch.cuda.get_device_capability(index)
         return int(major) >= 8
-    except Exception:  # noqa: BLE001 - recommendation must never break settings load
+    except Exception:  # recommendation must never break settings load
         return False
 
 
@@ -75,7 +75,7 @@ def configure_cuda_inference(device_set: Any = DEFAULT) -> None:
                 torch.backends.cuda.matmul.allow_tf32 = True
                 torch.backends.cudnn.allow_tf32 = True
         _cuda_inference_configured = True
-    except Exception:  # noqa: BLE001 - never block backend resolution
+    except Exception:  # never block backend resolution
         return
 
 
@@ -130,7 +130,7 @@ def ort_fixed_batch_size(session: Any) -> Optional[int]:
     """
     try:
         shape = session.get_inputs()[0].shape
-    except Exception:  # noqa: BLE001 - probe must never break demix
+    except Exception:  # probe must never break demix
         return None
     if not shape:
         return None
@@ -157,7 +157,9 @@ def build_ort_runner(session: Any, torch_device: Any) -> Callable[[torch.Tensor]
     output_name = session.get_outputs()[0].name
     providers: list[str] = list(session.get_providers() or ())
     primary = providers[0] if providers else "CPUExecutionProvider"
-    device_obj = torch.device(torch_device) if not isinstance(torch_device, torch.device) else torch_device
+    device_obj = (
+        torch.device(torch_device) if not isinstance(torch_device, torch.device) else torch_device
+    )
     use_cuda_iobind = primary == "CUDAExecutionProvider" and device_obj.type == "cuda"
 
     if use_cuda_iobind:
@@ -177,9 +179,7 @@ def build_ort_runner(session: Any, torch_device: Any) -> Callable[[torch.Tensor]
             # if that assumption ever needs relaxing, re-add the synchronize()
             # here rather than silently trusting stream order.
             already_ready = (
-                spek.device == device_obj
-                and spek.dtype == torch.float32
-                and spek.is_contiguous()
+                spek.device == device_obj and spek.dtype == torch.float32 and spek.is_contiguous()
             )
             if not already_ready:
                 if spek.device != device_obj:
@@ -209,7 +209,7 @@ def build_ort_runner(session: Any, torch_device: Any) -> Callable[[torch.Tensor]
                 if out.device != device_obj:
                     out = out.to(device_obj)
                 return out.to(dtype=torch.float32)
-            except Exception:  # noqa: BLE001 - fall back to host copy
+            except Exception:  # fall back to host copy
                 return torch.as_tensor(
                     np.ascontiguousarray(ort_out.numpy()),
                     device=device_obj,

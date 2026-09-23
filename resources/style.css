@@ -2,12 +2,11 @@
  *
  * Spacing convention:
  *   - CSS: component padding, colors, radius, min-heights
- *   - ui/spacing.py: static GtkWidget margins (dialogs, labels, layout shells)
+ *   - Blueprint: static widget margins and box spacing
+ *   - ui/spacing.py: margins for widgets constructed in Python
  *   - Python: dynamic layout (overlay clearance, progress-dependent height)
  *   - SYNC comments link CSS values to Python measure constants when needed
  */
-
-/* --- Spacing utilities: see ui/spacing.py (Gtk margin API) --- */
 
 /* Apollo empty-state banner (class app-banner): inset and rounded rather than
    spanning edge-to-edge. The accent background lives on the banner's inner
@@ -24,8 +23,7 @@
 }
 
 .uvr-log-panel {
-    min-width: 360px;
-    border-radius: 16px 16px 12px 12px;
+    border-radius: 24px;
     background-image: none;
     background-color: @window_bg_color;
     color: @window_fg_color;
@@ -36,7 +34,7 @@
 }
 
 .uvr-log-expander-arrow image {
-    transition: -gtk-icon-transform 200ms cubic-bezier(0.4, 0, 0.2, 1);
+    transition: -gtk-icon-transform 220ms cubic-bezier(0.4, 0, 0.2, 1), color 220ms ease;
     -gtk-icon-transform: rotate(0deg);
 }
 
@@ -45,55 +43,26 @@
     -gtk-icon-transform: rotate(180deg);
 }
 
-.uvr-run-controls {
-    padding: 12px 12px 12px; /* SYNC: _RUN_CONTROLS_PADDING_Y in log_panel.py */
-}
-
-.uvr-progress-section {
-    margin-bottom: 4px;
-}
-
-.uvr-progress-label {
-    margin-top: 4px;
-    margin-bottom: 8px;
-    opacity: 0.85;
-}
-
-.uvr-log-meta {
-    padding: 0 0 8px;
-    min-height: 32px;
-}
-
-.uvr-log-body-wrap {
-    padding: 0 0 12px;
-}
-
-.uvr-run-actions {
-    min-height: 36px; /* SYNC: _RUN_ACTIONS_MIN_HEIGHT in log_panel.py */
-}
-
-/* Keep min-height in sync with _LOG_BODY_HEIGHT in ui/widgets/log_panel.py */
-.uvr-log-body {
-    min-height: 200px;
+.uvr-log-console textview {
+    background-color: alpha(@window_fg_color, 0.045);
     border-radius: 8px;
-    background-color: alpha(@window_fg_color, 0.04);
+    font-size: 1em;
 }
 
-.uvr-log-console {
+.uvr-log-console text { background-color: transparent; }
+
+.uvr-error-log-text {
+    background-color: @view_bg_color;
+    border: none;
+    border-radius: 12px;
+    box-shadow: none;
+}
+
+.uvr-error-log-text textview,
+.uvr-error-log-text textview text {
     background-color: transparent;
 }
 
-.uvr-log-console viewport {
-    border-radius: 8px;
-}
-
-.uvr-log-empty {
-    padding: 20px 16px;
-}
-
-.uvr-log-empty .dim-label {
-    opacity: 0.75;
-}
 
 /* MenuButton shell is transparent; keep chip height within the header bar. */
 menubutton.uvr-download-queue-chip {
@@ -186,3 +155,24 @@ scale marks mark indicator {
     min-width: 2px;
     background-color: alpha(@window_fg_color, 0.45);
 }
+
+/* Overlay badges do not contribute to the purpose button's measured width. */
+.uvr-selection-badge { background-color: @accent_bg_color; color: @accent_fg_color;
+  border-radius: 99px; padding: 0 5px; min-height: 16px; min-width: 6px;
+  font-weight: bold; transform: translate(3px, -3px); }
+
+/* Overlay checks sit over the corner without changing the label allocation. */
+.stem-check-badge {
+  border-radius: 999px;
+  padding: 3px;
+  background: @accent_bg_color;
+  color: @accent_fg_color;
+  transform: translate(9px, -9px);
+}
+.stem-toggle, .stem-quick-group toggle { padding: 0; }
+.stem-toggle-label { padding: 8px 12px; }
+
+.stem-quick-group .stem-toggle-label { padding-top: 3px; padding-bottom: 3px; }
+
+/* Separate-file shortcuts remain secondary to the selected output controls. */
+.stem-selection-action { font-weight: normal; }

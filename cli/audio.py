@@ -8,11 +8,17 @@ import os
 import shutil
 import sys
 import time
+from functools import partial
 from typing import Any
 
 from bundled.constants import (
-    ALIGN_INPUTS, APOLLO_RESTORE, CHANGE_PITCH, COMBINE_INPUTS, MANUAL_ENSEMBLE,
-    MATCH_INPUTS, TIME_STRETCH,
+    ALIGN_INPUTS,
+    APOLLO_RESTORE,
+    CHANGE_PITCH,
+    COMBINE_INPUTS,
+    MANUAL_ENSEMBLE,
+    MATCH_INPUTS,
+    TIME_STRETCH,
 )
 from core.audio_plan import AudioJobResolver, AudioJobSpec
 from core.audio_probe import probe_audio
@@ -24,13 +30,20 @@ from core.settings import Settings
 from core.settings.job_resolution import SettingsLayer, SettingsResolver
 
 from .execution import BatchOutcome, PromotionSkipped, _promote, run_runner_cli
+from .job import stored_identity_warnings
 from .model_identity import CliModelLookup
 from .process_flags import add_process_args, collect_overrides
 from .profiles import load_profile
-from .job import stored_identity_warnings
 from .reporting import (
-    add_reporting_args, emit_document, emit_event, ensure_job_id, fail,
-    finish_progress, make_progress_printer, report_mode, warn_validation,
+    add_reporting_args,
+    emit_document,
+    emit_event,
+    ensure_job_id,
+    fail,
+    finish_progress,
+    make_progress_printer,
+    report_mode,
+    warn_validation,
 )
 
 TOOL_BY_COMMAND = {
@@ -55,7 +68,9 @@ def _add_common(parser: argparse.ArgumentParser, *, paired: bool = False) -> Non
     parser.add_argument("--profile")
     parser.add_argument("--accept-inherited", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument("--on-exists", choices=("fail", "overwrite", "rename", "skip"), default="fail")
+    parser.add_argument(
+        "--on-exists", choices=("fail", "overwrite", "rename", "skip"), default="fail"
+    )
     parser.add_argument("--fail-fast", action="store_true")
     parser.add_argument(
         "--offline",
@@ -69,9 +84,7 @@ def _add_common(parser: argparse.ArgumentParser, *, paired: bool = False) -> Non
     add_reporting_args(parser)
 
 
-def _add_audio_commands(
-    children: argparse._SubParsersAction, *, validating: bool = False
-) -> None:
+def _add_audio_commands(children: argparse._SubParsersAction, *, validating: bool = False) -> None:
     command = cmd_audio_validate if validating else cmd_audio
     ensemble = children.add_parser("ensemble", help="Combine two or more audio files")
     _add_common(ensemble)
@@ -116,7 +129,8 @@ def _add_audio_commands(
     if validating:
         for parser in (ensemble, stretch, pitch, align, match, restore):
             parser.add_argument(
-                "--level", choices=tuple(level.value for level in ValidationLevel),
+                "--level",
+                choices=tuple(level.value for level in ValidationLevel),
                 default="model",
             )
 
@@ -142,13 +156,18 @@ def add_audio_validation_parser(sub: argparse._SubParsersAction) -> None:
 
 def cmd_audio_inspect(args: argparse.Namespace) -> int:
     try:
-        paths = InputDiscoveryService().discover(
-            args.inputs,
-            InputDiscoveryPolicy(
-                recursive=args.recursive, includes=tuple(args.include),
-                accept_any=args.accept_any_input,
-            ),
-        ).paths
+        paths = (
+            InputDiscoveryService()
+            .discover(
+                args.inputs,
+                InputDiscoveryPolicy(
+                    recursive=args.recursive,
+                    includes=tuple(args.include),
+                    accept_any=args.accept_any_input,
+                ),
+            )
+            .paths
+        )
     except ValueError as exc:
         return fail(args, str(exc), exit_code=2, exc=exc)
     rows = [{"path": path, **vars(probe_audio(path))} for path in paths]
@@ -222,14 +241,10 @@ def _resolve_audio(args: argparse.Namespace, level: ValidationLevel = Validation
     )
     repo = ModelRepository()
     persisted_settings = Settings.load()
-    repo.bind_model_hash_table(
-        lambda: persisted_settings.process.model_hash_table
-    )
+    repo.bind_model_hash_table(lambda: persisted_settings.process.model_hash_table)
     inherited = False
     if command == "restore":
-        profile_model = (
-            base.audio_tools.apollo_model if profile.source == "gui" else profile.model
-        )
+        profile_model = base.audio_tools.apollo_model if profile.source == "gui" else profile.model
         if str(profile_model or "").casefold() in {"", "choose model", "no model selected"}:
             profile_model = None
         reference = args.model or profile_model
@@ -245,17 +260,27 @@ def _resolve_audio(args: argparse.Namespace, level: ValidationLevel = Validation
         pairs = tuple((os.path.abspath(a), os.path.abspath(b)) for a, b in args.pair)
         inputs: tuple[str, ...] = ()
     else:
-        inputs = InputDiscoveryService().discover(
-            args.inputs,
-            InputDiscoveryPolicy(
-                recursive=args.recursive, includes=tuple(args.include),
-                accept_any=args.accept_any_input,
-            ),
-        ).paths
+        inputs = (
+            InputDiscoveryService()
+            .discover(
+                args.inputs,
+                InputDiscoveryPolicy(
+                    recursive=args.recursive,
+                    includes=tuple(args.include),
+                    accept_any=args.accept_any_input,
+                ),
+            )
+            .paths
+        )
         pairs = ()
     spec = AudioJobSpec(
-        TOOL_BY_COMMAND[command], settings, os.path.abspath(args.output),
-        inputs, pairs, getattr(args, "name", None), sources,
+        TOOL_BY_COMMAND[command],
+        settings,
+        os.path.abspath(args.output),
+        inputs,
+        pairs,
+        getattr(args, "name", None),
+        sources,
     )
     return (
         AudioJobResolver(repo).resolve(
@@ -269,14 +294,28 @@ def _resolve_audio(args: argparse.Namespace, level: ValidationLevel = Validation
 def _confirm_audio(args: argparse.Namespace, plan: Any) -> int:
     print(_format_audio_plan(plan), file=sys.stderr)
     if report_mode(args) != "human" or not getattr(sys.stdin, "isatty", lambda: False)():
-        return fail(args, "profile-supplied Apollo identity requires --accept-inherited", exit_code=2, extra={"plan": _audio_plan_payload(plan)})
+        return fail(
+            args,
+            "profile-supplied Apollo identity requires --accept-inherited",
+            exit_code=2,
+            extra={"plan": _audio_plan_payload(plan)},
+        )
     sys.stderr.write("Use these settings? [y/N] ")
     sys.stderr.flush()
-    return 0 if sys.stdin.readline().strip().casefold() in {"y", "yes"} else fail(args, "aborted; no files processed", exit_code=2)
+    return (
+        0
+        if sys.stdin.readline().strip().casefold() in {"y", "yes"}
+        else fail(args, "aborted; no files processed", exit_code=2)
+    )
 
 
 def _format_audio_plan(plan: Any) -> str:
-    lines = [f"Effective audio plan\n  tool: {plan.tool}", f"  output: {plan.output}", f"  units: {len(plan.units)}", f"  device: {plan.device}"]
+    lines = [
+        f"Effective audio plan\n  tool: {plan.tool}",
+        f"  output: {plan.output}",
+        f"  units: {len(plan.units)}",
+        f"  device: {plan.device}",
+    ]
     if plan.model:
         lines.append(f"  model: {plan.model.display} [{plan.model.id}]")
     for unit in plan.units[:5]:
@@ -287,7 +326,8 @@ def _format_audio_plan(plan: Any) -> str:
 def _run_audio(args: argparse.Namespace, plan: Any) -> BatchOutcome:
     started = time.perf_counter()
     collisions = {
-        index for index, unit in enumerate(plan.units)
+        index
+        for index, unit in enumerate(plan.units)
         if any(os.path.exists(path) for path in unit.outputs)
     }
     if collisions and args.on_exists == "fail":
@@ -300,7 +340,12 @@ def _run_audio(args: argparse.Namespace, plan: Any) -> BatchOutcome:
     try:
         for index, unit in enumerate(plan.units):
             if index in collisions and args.on_exists == "skip":
-                item = {"input": list(unit.inputs), "status": "skipped", "outputs": [], "elapsed_s": 0.0}
+                item = {
+                    "input": list(unit.inputs),
+                    "status": "skipped",
+                    "outputs": [],
+                    "elapsed_s": 0.0,
+                }
                 outcomes.append(item)
                 emit_event(args, "input_finished", **item)
                 continue
@@ -314,9 +359,7 @@ def _run_audio(args: argparse.Namespace, plan: Any) -> BatchOutcome:
                 if plan.tool == APOLLO_RESTORE and plan.model is not None
                 else None
             )
-            runner = AudioToolRunner(
-                settings, apollo_backend_name=apollo_backend_name
-            )
+            runner = AudioToolRunner(settings, apollo_backend_name=apollo_backend_name)
             singles = list(unit.inputs) if plan.tool not in {ALIGN_INPUTS, MATCH_INPUTS} else []
             pairs = [tuple(unit.inputs)] if plan.tool in {ALIGN_INPUTS, MATCH_INPUTS} else []
             apollo_params = None
@@ -331,16 +374,22 @@ def _run_audio(args: argparse.Namespace, plan: Any) -> BatchOutcome:
             manual_name = None
             if plan.tool == MANUAL_ENSEMBLE:
                 manual_name = unit.name
-                algorithm = str(getattr(
-                    settings.audio_tools.choose_algorithm, "value",
-                    settings.audio_tools.choose_algorithm,
-                ))
+                algorithm = str(
+                    getattr(
+                        settings.audio_tools.choose_algorithm,
+                        "value",
+                        settings.audio_tools.choose_algorithm,
+                    )
+                )
                 if algorithm == COMBINE_INPUTS:
                     manual_name = f"{manual_name} ({algorithm})"
             result = run_runner_cli(
                 runner,
-                lambda callbacks: runner.start(
-                    plan.tool, singles, pairs, callbacks,
+                partial(
+                    runner.start,
+                    plan.tool,
+                    singles,
+                    pairs,
                     apollo_params=apollo_params,
                     output_name=manual_name,
                 ),
@@ -351,12 +400,24 @@ def _run_audio(args: argparse.Namespace, plan: Any) -> BatchOutcome:
                 finish_progress(args)
             if result.interrupted or result.stopped:
                 interrupted = True
-                item = {"input": list(unit.inputs), "status": "failed", "error": "interrupted", "outputs": [], "elapsed_s": result.elapsed_s}
+                item = {
+                    "input": list(unit.inputs),
+                    "status": "failed",
+                    "error": "interrupted",
+                    "outputs": [],
+                    "elapsed_s": result.elapsed_s,
+                }
                 outcomes.append(item)
                 emit_event(args, "input_finished", **item)
                 break
             if result.error:
-                item = {"input": list(unit.inputs), "status": "failed", "error": f"{type(result.error).__name__}: {result.error}", "outputs": [], "elapsed_s": result.elapsed_s}
+                item = {
+                    "input": list(unit.inputs),
+                    "status": "failed",
+                    "error": f"{type(result.error).__name__}: {result.error}",
+                    "outputs": [],
+                    "elapsed_s": result.elapsed_s,
+                }
                 outcomes.append(item)
                 emit_event(args, "input_finished", **item)
                 if args.fail_fast:
@@ -371,26 +432,45 @@ def _run_audio(args: argparse.Namespace, plan: Any) -> BatchOutcome:
                     raise OSError("audio tool completed without output files")
             except PromotionSkipped:
                 item = {
-                    "input": list(unit.inputs), "status": "skipped",
-                    "outputs": [], "elapsed_s": time.perf_counter() - unit_started,
+                    "input": list(unit.inputs),
+                    "status": "skipped",
+                    "outputs": [],
+                    "elapsed_s": time.perf_counter() - unit_started,
                 }
                 outcomes.append(item)
                 emit_event(args, "input_finished", **item)
                 continue
             except OSError as exc:
-                item = {"input": list(unit.inputs), "status": "failed", "error": str(exc), "outputs": [], "elapsed_s": time.perf_counter() - unit_started}
+                item = {
+                    "input": list(unit.inputs),
+                    "status": "failed",
+                    "error": str(exc),
+                    "outputs": [],
+                    "elapsed_s": time.perf_counter() - unit_started,
+                }
                 outcomes.append(item)
+                emit_event(args, "input_finished", **item)
                 if args.fail_fast:
                     break
                 continue
-            item = {"input": list(unit.inputs), "status": "success", "outputs": outputs, "elapsed_s": time.perf_counter() - unit_started}
+            item = {
+                "input": list(unit.inputs),
+                "status": "success",
+                "outputs": outputs,
+                "elapsed_s": time.perf_counter() - unit_started,
+            }
             outcomes.append(item)
             emit_event(args, "input_finished", **item)
     finally:
         shutil.rmtree(temp_root, ignore_errors=True)
     failures = sum(row["status"] == "failed" for row in outcomes)
     successes = sum(row["status"] == "success" for row in outcomes)
-    return BatchOutcome("partial" if failures and successes else "failed" if failures else "success", time.perf_counter() - started, outcomes, interrupted)
+    return BatchOutcome(
+        "partial" if failures and successes else "failed" if failures else "success",
+        time.perf_counter() - started,
+        outcomes,
+        interrupted,
+    )
 
 
 def _write_audio_manifest(args: argparse.Namespace, plan: Any, outcome: BatchOutcome) -> str | None:
@@ -402,26 +482,35 @@ def _write_audio_manifest(args: argparse.Namespace, plan: Any, outcome: BatchOut
     from core.json_store import write_json_atomic
 
     plan_payload = _audio_plan_payload(plan)
-    write_json_atomic(path, {
-        "schema_version": 3,
-        "model_dependencies": plan_payload["model_dependencies"],
-        "model_identity_digest": plan_payload["model_identity_digest"],
-        "job_id": ensure_job_id(args), "command": "audio",
-        "argv": list(getattr(args, "original_argv", [])),
-        "plan": plan_payload, "status": outcome.status, "inputs": outcome.inputs,
-        "job_spec": {
-            "tool": args.audio_command,
-            "inputs": [path for unit in plan.units for path in unit.inputs]
-            if args.audio_command not in {"ensemble", "align", "match"}
-            else list(plan.units[0].inputs) if args.audio_command == "ensemble" else [],
-            "pairs": [list(unit.inputs) for unit in plan.units]
-            if args.audio_command in {"align", "match"} else [],
-            "output": plan.output,
-            "model": plan.model.id if plan.model else None,
-            "name": getattr(args, "name", None),
-            "collision_policy": args.on_exists,
+    write_json_atomic(
+        path,
+        {
+            "schema_version": 3,
+            "model_dependencies": plan_payload["model_dependencies"],
+            "model_identity_digest": plan_payload["model_identity_digest"],
+            "job_id": ensure_job_id(args),
+            "command": "audio",
+            "argv": list(getattr(args, "original_argv", [])),
+            "plan": plan_payload,
+            "status": outcome.status,
+            "inputs": outcome.inputs,
+            "job_spec": {
+                "tool": args.audio_command,
+                "inputs": [path for unit in plan.units for path in unit.inputs]
+                if args.audio_command not in {"ensemble", "align", "match"}
+                else list(plan.units[0].inputs)
+                if args.audio_command == "ensemble"
+                else [],
+                "pairs": [list(unit.inputs) for unit in plan.units]
+                if args.audio_command in {"align", "match"}
+                else [],
+                "output": plan.output,
+                "model": plan.model.id if plan.model else None,
+                "name": getattr(args, "name", None),
+                "collision_policy": args.on_exists,
+            },
         },
-    })
+    )
     return path
 
 
@@ -436,12 +525,26 @@ def cmd_audio(args: argparse.Namespace) -> int:
         return fail(args, str(exc), exit_code=2, exc=exc)
     warn_validation(args, warnings)
     if not plan.ok:
-        return fail(args, plan.diagnostics[0].message, exit_code=2, extra={"plan": _audio_plan_payload(plan)})
+        return fail(
+            args,
+            plan.diagnostics[0].message,
+            exit_code=2,
+            extra={"plan": _audio_plan_payload(plan)},
+        )
     if args.dry_run:
         if report_mode(args) == "human":
             print(_format_audio_plan(plan))
         else:
-            emit_document(args, {"ok": True, "status": "validated", "dry_run": True, "plan": _audio_plan_payload(plan), "inputs": []})
+            emit_document(
+                args,
+                {
+                    "ok": True,
+                    "status": "validated",
+                    "dry_run": True,
+                    "plan": _audio_plan_payload(plan),
+                    "inputs": [],
+                },
+            )
         return 0
     if inherited and not args.accept_inherited:
         confirmed = _confirm_audio(args, plan)
@@ -456,10 +559,16 @@ def cmd_audio(args: argparse.Namespace) -> int:
     except (OSError, ValueError) as exc:
         return fail(args, str(exc), exit_code=2 if isinstance(exc, ValueError) else 1, exc=exc)
     payload = {
-        "ok": outcome.exit_code == 0, "status": outcome.status,
-        "command": "audio", "tool": plan.tool, "elapsed_s": outcome.elapsed_s,
-        "export_path": plan.output, "plan": _audio_plan_payload(plan), "inputs": outcome.inputs,
-        "manifest": manifest, "stopped": outcome.interrupted,
+        "ok": outcome.exit_code == 0,
+        "status": outcome.status,
+        "command": "audio",
+        "tool": plan.tool,
+        "elapsed_s": outcome.elapsed_s,
+        "export_path": plan.output,
+        "plan": _audio_plan_payload(plan),
+        "inputs": outcome.inputs,
+        "manifest": manifest,
+        "stopped": outcome.interrupted,
     }
     emit_document(args, payload)
     return outcome.exit_code
@@ -473,21 +582,33 @@ def cmd_audio_validate(args: argparse.Namespace) -> int:
     warn_validation(args, warnings)
     if not plan.ok:
         return fail(
-            args, plan.diagnostics[0].message, exit_code=2,
-            extra={"plan": _audio_plan_payload(plan)}, kind="validation",
+            args,
+            plan.diagnostics[0].message,
+            exit_code=2,
+            extra={"plan": _audio_plan_payload(plan)},
+            kind="validation",
         )
     if report_mode(args) == "human":
         print(_format_audio_plan(plan))
         print(f"validation={args.level} ok")
     else:
-        emit_document(args, {
-            "ok": True, "status": "validated", "level": args.level,
-            "command": "audio", "plan": _audio_plan_payload(plan),
-        })
+        emit_document(
+            args,
+            {
+                "ok": True,
+                "status": "validated",
+                "level": args.level,
+                "command": "audio",
+                "plan": _audio_plan_payload(plan),
+            },
+        )
     return 0
 
 
 __all__ = [
-    "add_audio_parser", "add_audio_validation_parser", "cmd_audio",
-    "cmd_audio_inspect", "cmd_audio_validate",
+    "add_audio_parser",
+    "add_audio_validation_parser",
+    "cmd_audio",
+    "cmd_audio_inspect",
+    "cmd_audio_validate",
 ]

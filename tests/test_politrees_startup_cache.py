@@ -21,9 +21,7 @@ class PolitreesStartupCacheTests(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self.cache_path = os.path.join(self._tmp.name, "politrees_model_links.json")
-        self._patch = mock.patch.object(
-            pc, "_politrees_cache_path", return_value=self.cache_path
-        )
+        self._patch = mock.patch.object(pc, "_politrees_cache_path", return_value=self.cache_path)
         self._patch.start()
         # The suite may be run with UVR_DISABLE_POLITREES=1 ambient; these
         # tests exercise load_politrees_links's disk-cache path specifically
@@ -51,9 +49,12 @@ class PolitreesStartupCacheTests(unittest.TestCase):
 
     def test_fresh_disk_cache_skips_the_network(self) -> None:
         self._write_cache(time.time())
-        with mock.patch.object(
-            pc, "_urlopen", side_effect=AssertionError("network hit despite fresh cache")
-        ), mock.patch.object(pc, "_start_background_refresh") as refresh:
+        with (
+            mock.patch.object(
+                pc, "_urlopen", side_effect=AssertionError("network hit despite fresh cache")
+            ),
+            mock.patch.object(pc, "_start_background_refresh") as refresh,
+        ):
             data = pc.load_politrees_links()
         self.assertIsNotNone(data)
         assert data is not None
@@ -63,11 +64,14 @@ class PolitreesStartupCacheTests(unittest.TestCase):
     def test_expired_disk_cache_serves_immediately_and_refreshes(self) -> None:
         """Expired-but-present cache must not block the caller on HTTP."""
         self._write_cache(time.time() - (pc._POLITREES_CACHE_TTL_SECONDS + 60))
-        with mock.patch.object(
-            pc,
-            "_urlopen",
-            side_effect=AssertionError("network hit on caller despite disk cache"),
-        ), mock.patch.object(pc, "_start_background_refresh") as refresh:
+        with (
+            mock.patch.object(
+                pc,
+                "_urlopen",
+                side_effect=AssertionError("network hit on caller despite disk cache"),
+            ),
+            mock.patch.object(pc, "_start_background_refresh") as refresh,
+        ):
             data = pc.load_politrees_links()
         self.assertIsNotNone(data)
         assert data is not None
@@ -98,7 +102,11 @@ class PolitreesStartupCacheTests(unittest.TestCase):
                 pc,
                 "_urlopen",
                 side_effect=_fetch(
-                    {"vr_download_list": {"Politrees Regression A": {"a.pth": "https://example.com/a.pth"}}}
+                    {
+                        "vr_download_list": {
+                            "Politrees Regression A": {"a.pth": "https://example.com/a.pth"}
+                        }
+                    }
                 ),
             ):
                 pc.load_politrees_links(force=True)
@@ -114,11 +122,14 @@ class PolitreesStartupCacheTests(unittest.TestCase):
         pc._cached_links = None
         pc._cached_loaded_at = 0.0
         self._write_cache(time.time())
-        with mock.patch.object(
-            pc,
-            "_urlopen",
-            side_effect=AssertionError("network hit despite fresh cache"),
-        ), mock.patch.object(pc, "_start_background_refresh"):
+        with (
+            mock.patch.object(
+                pc,
+                "_urlopen",
+                side_effect=AssertionError("network hit despite fresh cache"),
+            ),
+            mock.patch.object(pc, "_start_background_refresh"),
+        ):
             pc.load_politrees_links()
 
         second = md._merged_for_display()

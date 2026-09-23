@@ -12,11 +12,11 @@ Two reusable facilities other views/the main window can adopt:
   installs them on a :class:`Gtk.Application`. The coordinator registers the
   matching actions; this module only declares the bindings + the apply helper.
 """
-import typing
 
+import typing
 from typing import Dict, List, Optional
 
-from gi.repository import Adw, Gtk
+from gi.repository import Gtk
 
 from ui.help_text import (
     AUDIO_TOOLS_HELP,
@@ -68,6 +68,7 @@ class HelpHintManager:
         for widget, text in self._registry:
             set_tooltip(widget, text)
 
+
 # Curated reuse of UVR help-hint text for shared main-window controls.
 SHARED_HINTS: Dict[str, str] = {
     "stop": STOP_HELP,
@@ -82,9 +83,7 @@ SHARED_HINTS: Dict[str, str] = {
 }
 
 
-def install_view_tab_tooltips(
-    switcher: typing.Any, hints: Optional[Dict[str, str]] = None
-) -> None:
+def install_view_tab_tooltips(switcher: typing.Any, hints: Optional[Dict[str, str]] = None) -> None:
     """Attach tooltips to tab buttons in a ViewSwitcher or ViewSwitcherBar.
 
     ``hints`` maps ``Adw.ViewStack`` page ``name`` to tooltip text. Page order is
@@ -109,7 +108,7 @@ def install_view_tab_tooltips(
                 child = child.get_next_sibling()
 
         collect(host)
-        for button, tip in zip(buttons, tips):
+        for button, tip in zip(buttons, tips, strict=False):
             if tip:
                 set_tooltip(button, tip)
 
@@ -140,7 +139,9 @@ KEYBOARD_ACCELERATORS: Dict[str, List[str]] = {
 }
 
 
-def apply_accelerators(app: typing.Any, accelerators: Optional[Dict[str, List[str]]] = None) -> None:
+def apply_accelerators(
+    app: typing.Any, accelerators: Optional[Dict[str, List[str]]] = None
+) -> None:
     """Install ``accelerators`` on a :class:`Gtk.Application`.
 
     Defaults to :data:`KEYBOARD_ACCELERATORS`. Actions with an empty list are

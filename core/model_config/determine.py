@@ -68,8 +68,8 @@ def _model_config_for_reference(
     :class:`ModelConfig` with the default ``ENSEMBLE_MODE`` leaves ``model_path``
     unset and crashes when reading ``model_basename``.
     """
-    from .config import ModelConfig
     from ..model_identity import ModelIdentityService
+    from .config import ModelConfig
 
     raw = str(reference or "")
     if not raw or raw in {CHOOSE_MODEL, NO_MODEL}:
@@ -121,12 +121,8 @@ def process_determine_secondary_model(
     slot = secondary_slot_for_primary_stem(main_model_primary_stem)
     section = getattr(settings, prefix)
     dependency_path = f"{prefix}.{slot}_secondary_model" if slot else None
-    secondary_model_name = (
-        getattr(section, f"{slot}_secondary_model") if slot else NO_MODEL
-    )
-    secondary_model_scale = (
-        getattr(section, f"{slot}_secondary_model_scale") if slot else None
-    )
+    secondary_model_name = getattr(section, f"{slot}_secondary_model") if slot else NO_MODEL
+    secondary_model_scale = getattr(section, f"{slot}_secondary_model_scale") if slot else None
     if secondary_model_scale:
         secondary_model_scale = float(secondary_model_scale)
 
@@ -138,14 +134,18 @@ def process_determine_secondary_model(
     )
     if record is not None:
         secondary_model = _model_config_for_record(
-            settings, repo, record,
+            settings,
+            repo,
+            record,
             model_dependencies=model_dependencies,
             is_secondary_model=True,
             primary_model_primary_stem=main_model_primary_stem,
         )
     elif model_dependencies is None and secondary_model_name and secondary_model_name != NO_MODEL:
         secondary_model = _model_config_for_reference(
-            settings, repo, secondary_model_name,
+            settings,
+            repo,
+            secondary_model_name,
             is_secondary_model=True,
             primary_model_primary_stem=main_model_primary_stem,
         )
@@ -166,22 +166,29 @@ def process_determine_demucs_pre_proc_model(
     if pre_proc_name != NO_MODEL and settings.demucs.is_pre_proc_model_activate:
         record = (
             model_dependencies.get("demucs.pre_proc_model")
-            if model_dependencies is not None else None
+            if model_dependencies is not None
+            else None
         )
         pre_proc_model = (
             _model_config_for_record(
-                settings, repo, record,
+                settings,
+                repo,
+                record,
                 model_dependencies=model_dependencies,
                 primary_model_primary_stem=primary_stem,
                 is_pre_proc_model=True,
             )
-            if record is not None else (
+            if record is not None
+            else (
                 _model_config_for_reference(
-                    settings, repo, pre_proc_name,
+                    settings,
+                    repo,
+                    pre_proc_name,
                     primary_model_primary_stem=primary_stem,
                     is_pre_proc_model=True,
                 )
-                if model_dependencies is None else None
+                if model_dependencies is None
+                else None
             )
         )
         if pre_proc_model is not None and pre_proc_model.model_status:
@@ -199,19 +206,22 @@ def process_determine_vocal_split_model(
     if split_name != NO_MODEL and settings.process.vocal_splitter_enabled:
         record = (
             model_dependencies.get("process.vocal_splitter")
-            if model_dependencies is not None else None
+            if model_dependencies is not None
+            else None
         )
         vocal_splitter_model = (
             _model_config_for_record(
-                settings, repo, record,
+                settings,
+                repo,
+                record,
                 model_dependencies=model_dependencies,
                 is_vocal_split_model=True,
             )
-            if record is not None else (
-                _model_config_for_reference(
-                    settings, repo, split_name, is_vocal_split_model=True
-                )
-                if model_dependencies is None else None
+            if record is not None
+            else (
+                _model_config_for_reference(settings, repo, split_name, is_vocal_split_model=True)
+                if model_dependencies is None
+                else None
             )
         )
         if vocal_splitter_model is not None and vocal_splitter_model.model_status:

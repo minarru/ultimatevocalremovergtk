@@ -104,6 +104,7 @@ class MdxRuntimeContract:
     artifact_evidence: tuple[MdxArtifactEvidence, ...]
     config_evidence: Mapping[str, MdxConfigEvidence]
     evidence: MdxRuntimeEvidence
+    target_aliases: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,7 +119,7 @@ class MdxRuntimeContractRegistry:
 
 @dataclass(frozen=True, slots=True)
 class ReconciledMdxRuntimeSignature:
-    """One exact lookup result; a warning means semantic review must stay raw."""
+    """Strict evidence validation, separate from reviewed runtime role binding."""
 
     native_signature: tuple[str, ...]
     contract: MdxRuntimeContract | None
@@ -144,12 +145,13 @@ def _closed_mapping(
     path: tuple[str | int, ...],
     *,
     fields: frozenset[str],
+    optional: frozenset[str] = frozenset(),
 ) -> Mapping[str, object]:
     document = _mapping(value, path)
     missing = sorted(fields.difference(document))
     if missing:
         raise _error(path + (missing[0],), "missing required field")
-    unknown = sorted(set(document).difference(fields))
+    unknown = sorted(set(document).difference(fields | optional))
     if unknown:
         raise _error(path + (unknown[0],), "unknown field")
     return document
@@ -418,7 +420,9 @@ def load_mdx_runtime_contract_document(
     for raw_model_id, raw_contract in raw_contracts.items():
         path = ("contracts", raw_model_id)
         model_id = _canonical_mdx_id(raw_model_id, path)
-        value = _closed_mapping(raw_contract, path, fields=_CONTRACT_FIELDS)
+        value = _closed_mapping(
+            raw_contract, path, fields=_CONTRACT_FIELDS, optional=frozenset({"target_aliases"})
+        )
         backend_value = _string(value["backend"], path + ("backend",))
         if backend_value not in _BACKENDS:
             raise _error(path + ("backend",), "invalid backend")
@@ -430,6 +434,14 @@ def load_mdx_runtime_contract_document(
             casefold_unique=True,
         )
         primary = _string(value["primary_native"], path + ("primary_native",))
+        target_aliases = _string_list(
+            value.get("target_aliases", []),
+            path + ("target_aliases",),
+            non_empty=False,
+            casefold_unique=True,
+        )
+        if target_aliases and backend != "mdx_c_target":
+            raise _error(path + ("target_aliases",), "only single-target contracts accept aliases")
         if primary not in signature:
             raise _error(path + ("primary_native",), "must be an exact native_signature member")
         configs = _config_names(value["config_yamls"], path + ("config_yamls",))
@@ -442,6 +454,15 @@ def load_mdx_runtime_contract_document(
             path + ("config_evidence",),
             configs=configs,
         )
+        if target_aliases:
+            used_aliases = {config.target_instrument for config in config_evidence.values()} - {
+                primary
+            }
+            if not artifact_evidence or set(target_aliases) != used_aliases:
+                raise _error(
+                    path + ("target_aliases",),
+                    "aliases require checkpoint evidence and exact alternate config targets",
+                )
         if backend == "classic_onnx":
             if len(signature) != 2:
                 raise _error(path + ("native_signature",), "classic_onnx requires exactly two keys")
@@ -458,12 +479,12 @@ def load_mdx_runtime_contract_document(
             if not configs:
                 raise _error(path + ("config_yamls",), "mdx_c_target requires configs")
             for config_name, config in config_evidence.items():
-                if config.target_instrument != primary:
+                if config.target_instrument not in (primary, *target_aliases):
                     raise _error(
                         path + ("config_evidence", config_name, "target_instrument"),
                         "mdx_c_target requires the exact primary_native target",
                     )
-                if primary not in config.training_instruments:
+                if config.target_instrument not in config.training_instruments:
                     raise _error(
                         path + ("config_evidence", config_name, "training_instruments"),
                         "must contain primary_native",
@@ -566,6 +587,7 @@ def load_mdx_runtime_contract_document(
             artifact_evidence=artifact_evidence,
             config_evidence=config_evidence,
             evidence=evidence,
+            target_aliases=target_aliases,
         )
     return MdxRuntimeContractRegistry(MappingProxyType(contracts))
 
