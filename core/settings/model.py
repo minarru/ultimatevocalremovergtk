@@ -204,6 +204,7 @@ class DemucsSettings:
     bass_secondary_model_scale: float = 0.5
     drums_secondary_model_scale: float = 0.5
     stems: str = ALL_STEMS
+    stems_selected: list[str] = field(default_factory=list)
     pre_proc_model: str = NO_MODEL
     is_pre_proc_model_activate: bool = False
     is_pre_proc_model_inst_mix: bool = False
@@ -214,11 +215,19 @@ class EnsembleSettings:
     main_stem: str = ""
     type: str = MAX_MIN
     selected_models: list[str] = field(default_factory=list)
+    stems_selected: list[str] = field(default_factory=list)
     chosen_ensemble: str = CHOOSE_ENSEMBLE_OPTION
     save_all_outputs: bool = True
     append_ensemble_name: bool = False
     wav_ensemble: bool = False
     cleanup_temps: bool = True
+    derive_complement_from_mix: bool = False
+    member_weights: dict[str, dict[str, float]] = field(default_factory=dict)
+    # Min Spec only; Max and Hybrid use fixed smoothing in the spectral backend.
+    smoothing: float = 0.0
+    soft_strength: float = 1.0
+    hybrid_balance: float = 0.5
+    alignment_correction: bool = False
 
 
 @dataclass
@@ -252,6 +261,7 @@ class UiSettings:
     notify_download_complete: bool = True
     notify_download_failed: bool = True
     confirm_processing_plan: bool = True
+    auto_expand_log: bool = False
 
 
 @dataclass
@@ -314,7 +324,17 @@ class Settings:
             source_schema = 1
         raw_ensemble = raw_data.get("ensemble")
         raw_main_stem = raw_ensemble.get("main_stem") if isinstance(raw_ensemble, dict) else ""
-        coerced = coerce_json_dict(data or {})
+        blend_warnings: list[str] = []
+        sanitized_data: dict[str, Any] = data or {}
+        if isinstance(raw_ensemble, dict):
+            from core.ensemble_blend import restore_blend_options
+
+            sanitized_data = dict(sanitized_data)
+            sanitized_data["ensemble"] = {
+                **raw_ensemble,
+                **restore_blend_options(raw_ensemble, blend_warnings),
+            }
+        coerced = coerce_json_dict(sanitized_data)
         # Stamp the current version, never the file's: ``coerce_json_dict`` has
         # already migrated the payload, so keeping the old number would leave a
         # v3 file claiming v1 and mis-gate the next migration.
@@ -337,6 +357,7 @@ class Settings:
                 coerced.get("diagnostics"),
             ),
         )
+        settings.validation_warnings.extend(blend_warnings)
         if source_schema < SETTINGS_SCHEMA_VERSION:
             settings.validation_warnings.append(
                 "ensemble.main_stem: settings schema predates semantic pair IDs; choose an ensemble stem pair again"

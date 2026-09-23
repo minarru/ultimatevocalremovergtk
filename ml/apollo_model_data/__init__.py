@@ -4,8 +4,8 @@
 # Email: lk21@mails.tsinghua.edu.cn
 # LastEditTime: 2022-10-04 16:24:53
 ###
-from .base_model import BaseModel
 from .apollo import Apollo
+from .base_model import BaseModel
 
 __all__ = [
     "BaseModel",
@@ -24,9 +24,7 @@ def register_model(custom_model: type) -> None:
         custom_model.__name__ in globals().keys()
         or custom_model.__name__.lower() in globals().keys()
     ):
-        raise ValueError(
-            f"Model {custom_model.__name__} already exists. Choose another name."
-        )
+        raise ValueError(f"Model {custom_model.__name__} already exists. Choose another name.")
     globals().update({custom_model.__name__: custom_model})
 
 

@@ -15,7 +15,12 @@ shares the same :attr:`~core.ModelRepository.on_unrecognized_model` handler.
 """
 
 import threading
-from typing import Any, Callable, Optional, Sequence
+from typing import TYPE_CHECKING, Callable, Optional, Sequence
+
+if TYPE_CHECKING:
+    from core.catalogue_coordinator import CatalogueCoordinator
+    from core.download_queue import DownloadQueue
+    from core.downloads import DownloadManager
 
 from core import ModelRepository
 from core.debug_log import debug, log_event
@@ -31,13 +36,37 @@ class AppContext:
         self._runner = None
         self._catalogue = None
         self._catalogue_lock = threading.Lock()
-        self._download_manager = None
+        self._download_manager: DownloadManager | None = None
+        self._download_queue: DownloadQueue | None = None
+        self._size_cache_warmup_started = False
         self._get_dialog_parent: Optional[Callable[[], object]] = None
         #: Session cache for :func:`core.gpu.list_gpu_devices` (None until probed).
         self.gpu_devices = None
         self._unrecognized_hook_installed = False
         #: Ephemeral: paths that failed the last Verify Inputs run (not persisted).
         self.unreadable_input_paths: set[str] = set()
+        self._input_verification_generation = 0
+
+    def begin_input_verification(self) -> int:
+        self._input_verification_generation += 1
+        return self._input_verification_generation
+
+    def apply_input_verification(
+        self, generation: int, verified_paths: Sequence[str], failed_paths: Sequence[str]
+    ) -> bool:
+        """Merge completed probes into current app state, independently of a dialog."""
+        if generation != self._input_verification_generation:
+            return False
+        current = set(self.settings.process.input_paths or [])
+        verified = set(verified_paths) & current
+        if not verified:
+            return False
+        failures = (
+            (self.unreadable_input_paths - verified) | (set(failed_paths) & verified)
+        ) & current
+        changed = failures != self.unreadable_input_paths
+        self.set_unreadable_input_paths(sorted(failures))
+        return changed
 
     def set_unreadable_input_paths(self, paths: Sequence[str]) -> None:
         self.unreadable_input_paths = {p for p in paths if p}
@@ -62,13 +91,11 @@ class AppContext:
             return
         from .dialogs.model_params import make_unrecognized_handler
 
-        repo.on_unrecognized_model = make_unrecognized_handler(
-            self, self._get_dialog_parent
-        )
+        repo.on_unrecognized_model = make_unrecognized_handler(self, self._get_dialog_parent)
         self._unrecognized_hook_installed = True
 
     @property
-    def catalogue(self) -> Any:
+    def catalogue(self) -> "CatalogueCoordinator":
         if self._catalogue is None:
             with self._catalogue_lock:
                 if self._catalogue is None:
@@ -78,8 +105,8 @@ class AppContext:
         return self._catalogue
 
     @property
-    def download_manager(self) -> Any:
-        manager = getattr(self, "_download_manager", None)
+    def download_manager(self) -> "DownloadManager":
+        manager = self._download_manager
         if manager is None:
             from core.downloads import DownloadManager
 
@@ -88,14 +115,22 @@ class AppContext:
         return manager
 
     @property
+    def download_queue(self) -> "DownloadQueue":
+        if self._download_queue is None:
+            from core.download_queue import DownloadQueue
+
+            self._download_queue = DownloadQueue(
+                self.download_manager, on_changed=lambda: None, repo=self.repo
+            )
+        return self._download_queue
+
+    @property
     def repo(self) -> ModelRepository:
         if self._repo is None:
             with self._repo_lock:
                 if self._repo is None:
                     repo = ModelRepository(catalogue=self.catalogue)
-                    repo.bind_model_hash_table(
-                        lambda: self.settings.process.model_hash_table
-                    )
+                    repo.bind_model_hash_table(lambda: self.settings.process.model_hash_table)
                     self._repo = repo
                     self._install_unrecognized_model_hook()
         return self._repo
@@ -107,6 +142,10 @@ class AppContext:
 
             self._runner = JobRunner(self.settings, self.repo)
         return self._runner
+
+    def restore_runner_settings(self) -> None:
+        if self._runner is not None:
+            self._runner.settings = self.settings
 
     def save_settings(self, *, trigger: str = "unspecified") -> None:
         path = self.settings.path
@@ -143,7 +182,7 @@ class AppContext:
         """Cooperatively stop (or force-terminate) every started worker."""
         if self._runner is not None:
             self._runner.stop(force=force)
-        queue = getattr(self, "_download_queue", None)
+        queue = self._download_queue
         if queue is not None:
             queue.cancel_all()
         from core.download_sizes import request_shutdown
@@ -152,11 +191,11 @@ class AppContext:
         from core.catalogue_stem_cache import request_shutdown as stop_stem_workers
 
         stop_stem_workers()
-        catalogue = getattr(self, "_catalogue", None)
+        catalogue = self._catalogue
         if catalogue is not None:
             catalogue.close()
 
     def active_download_count(self) -> int:
         """Return queued/downloading model count without creating a queue."""
-        queue = getattr(self, "_download_queue", None)
+        queue = self._download_queue
         return queue.active_count() if queue is not None else 0

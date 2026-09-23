@@ -140,15 +140,11 @@ class ApolloDownloadWiringTests(unittest.TestCase):
         self.assertIn(APOLLO_ARCH_TYPE, available)
 
     def test_model_directory_maps_apollo(self) -> None:
-        self.assertEqual(
-            self.manager.model_directory(APOLLO_ARCH_TYPE), paths.APOLLO_MODELS_DIR
-        )
+        self.assertEqual(self.manager.model_directory(APOLLO_ARCH_TYPE), paths.APOLLO_MODELS_DIR)
         # Existing arch types must keep their directories.
         self.assertEqual(self.manager.model_directory(VR_ARCH_TYPE), paths.VR_MODELS_DIR)
         self.assertEqual(self.manager.model_directory(MDX_ARCH_TYPE), paths.MDX_MODELS_DIR)
-        self.assertEqual(
-            self.manager.model_directory(DEMUCS_ARCH_TYPE), paths.DEMUCS_MODELS_DIR
-        )
+        self.assertEqual(self.manager.model_directory(DEMUCS_ARCH_TYPE), paths.DEMUCS_MODELS_DIR)
 
     def test_curated_separation_entries_resolve_through_mdx_path(self) -> None:
         expected = {
@@ -183,9 +179,11 @@ class ApolloRegistryTests(unittest.TestCase):
 
             jobs = [("https://x/some_apollo.ckpt", ckpt), ("https://x/some_apollo.yaml", yaml_path)]
 
-            with mock.patch.object(paths, "APOLLO_MODELS_DIR", models_dir), mock.patch.object(
-                paths, "APOLLO_CONFIG_PATH", config_dir
-            ), mock.patch.object(paths, "APOLLO_HASH_DIR", hash_dir):
+            with (
+                mock.patch.object(paths, "APOLLO_MODELS_DIR", models_dir),
+                mock.patch.object(paths, "APOLLO_CONFIG_PATH", config_dir),
+                mock.patch.object(paths, "APOLLO_HASH_DIR", hash_dir),
+            ):
                 self.assertTrue(apollo_registry.register_apollo_from_download_jobs(jobs))
                 digest = apollo.checkpoint_md5(ckpt)
                 written = os.path.join(hash_dir, f"{digest}.json")
@@ -207,8 +205,9 @@ class ApolloRegistryTests(unittest.TestCase):
                 handle.write("model: {}\n")
 
             jobs = [("https://x/only_config.yaml", yaml_path)]
-            with mock.patch.object(paths, "APOLLO_MODELS_DIR", models_dir), mock.patch.object(
-                paths, "APOLLO_CONFIG_PATH", config_dir
+            with (
+                mock.patch.object(paths, "APOLLO_MODELS_DIR", models_dir),
+                mock.patch.object(paths, "APOLLO_CONFIG_PATH", config_dir),
             ):
                 self.assertEqual(apollo_registry.pair_apollo_jobs(jobs), [])
 
@@ -247,9 +246,11 @@ class ApolloRegistryTests(unittest.TestCase):
 
             jobs = [("https://x/apollo_big.ckpt", ckpt), ("https://x/apollo_big.yaml", yaml_path)]
 
-            with mock.patch.object(paths, "APOLLO_MODELS_DIR", models_dir), mock.patch.object(
-                paths, "APOLLO_CONFIG_PATH", config_dir
-            ), mock.patch.object(paths, "APOLLO_HASH_DIR", hash_dir):
+            with (
+                mock.patch.object(paths, "APOLLO_MODELS_DIR", models_dir),
+                mock.patch.object(paths, "APOLLO_CONFIG_PATH", config_dir),
+                mock.patch.object(paths, "APOLLO_HASH_DIR", hash_dir),
+            ):
                 apollo_registry.register_apollo_from_download_jobs(jobs)
 
                 self.assertEqual(apollo.list_apollo_models(), ["apollo_big.ckpt"])

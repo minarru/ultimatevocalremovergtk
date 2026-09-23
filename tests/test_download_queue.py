@@ -1,4 +1,5 @@
 """Tests for the background download queue."""
+
 import os
 import tempfile
 import threading
@@ -106,9 +107,7 @@ class DownloadQueueTests(unittest.TestCase):
         self.queue.cancel(second_id)
         items = {item.item_id: item for item in self.queue.items()}
         self.assertEqual(items[second_id].status, STATUS_CANCELLED)
-        self.assertEqual(
-            items[second_id].detail, default_detail_for_status(STATUS_CANCELLED)
-        )
+        self.assertEqual(items[second_id].detail, default_detail_for_status(STATUS_CANCELLED))
 
         release.set()
 
@@ -394,12 +393,9 @@ class DownloadUiInterfaceTests(unittest.TestCase):
         from ui.download import init_download_queue_ui, open_download_center
         from ui.download_center import DownloadCenterWindow
 
-        for func in (init_download_queue_ui, open_download_center,
-                     DownloadCenterWindow.__init__):
+        for func in (init_download_queue_ui, open_download_center, DownloadCenterWindow.__init__):
             with self.subTest(entry=getattr(func, "__qualname__", func)):
-                self.assertNotIn(
-                    "on_models_changed", inspect.signature(func).parameters
-                )
+                self.assertNotIn("on_models_changed", inspect.signature(func).parameters)
 
     def test_batch_completion_does_not_invalidate(self) -> None:
         """No invalidation call survives anywhere in the batch UI path."""

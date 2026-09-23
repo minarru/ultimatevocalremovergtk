@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   id="svg1"
+   viewBox="0 0 16 16"
+   preserveAspectRatio="xMidYMid meet"
+   width="16"
+   height="16"
+   version="1.1"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <defs
+     id="defs1" />
+  <!-- GNOME Icon Development Kit: icons/speaker.svg; static outline export, 2026-09-10. CC0-1.0. -->
+  <title
+     id="title1">speaker</title>
+  <metadata
+     id="metadata1">
+    <rdf:RDF>
+      <Work>
+        <license
+           rdf:resource="https://creativecommons.org/publicdomain/zero/1.0/" />
+        <dc:creator>
+          <Agent>
+            <dc:title>Jakub Steiner</dc:title>
+          </Agent>
+        </dc:creator>
+        <dc:subject>
+          <rdf:Bag>
+            <rdf:li>audio-speakers sound audio volume high loud speaker libadwaita</rdf:li>
+          </rdf:Bag>
+        </dc:subject>
+      </Work>
+    </rdf:RDF>
+  </metadata>
+  <path
+     style="baseline-shift:baseline;display:inline;overflow:visible;vector-effect:none;fill:#2e3436;stroke-linecap:round;stroke-linejoin:round;enable-background:accumulate;stop-color:#000000;stop-opacity:1;opacity:1"
+     d="M 9.3164063,0.05078125 A 1.0001,1.0001 0 0 0 8.1992188,0.40039063 L 5.5,4 H 3 C 1.3549904,4 0,5.3549904 0,7 v 2 c 0,1.64501 1.3549904,3 3,3 h 1.5859375 l 3.7070313,3.707031 A 1.0001,1.0001 0 0 0 10,15 V 1 A 1.0001,1.0001 0 0 0 9.3164063,0.05078125 Z M 13.078125,2.1347656 11.460938,3.0683594 a 1,1 0 0 0 -0.365235,1.3652343 1,1 0 0 0 1.365235,0.3652344 L 14.078125,3.8652344 A 1,1 0 0 0 14.445313,2.5 1,1 0 0 0 13.078125,2.1347656 Z M 8,4 v 8.585938 L 5.7070312,10.292969 A 1.0001,1.0001 0 0 0 5,10 H 3 C 2.4358706,10 2,9.5641294 2,9 V 7 C 2,6.4358706 2.4358706,6 3,6 H 6 A 1.0001,1.0001 0 0 0 6.8007812,5.5996094 Z m 4,3 a 1,1 0 0 0 -1,1 1,1 0 0 0 1,1 h 2.917969 a 1,1 0 0 0 1,-1 1,1 0 0 0 -1,-1 z m 0.460938,4.201172 a 1,1 0 0 0 -1.365235,0.365234 1,1 0 0 0 0.365235,1.365235 l 1.617187,0.933593 A 1,1 0 0 0 14.445313,13.5 1,1 0 0 0 14.078125,12.134766 Z"
+     id="speaker" />
+</svg>

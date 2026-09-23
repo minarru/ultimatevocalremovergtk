@@ -1,2 +1,5 @@
 # Waiver rows retain three schema-required empty terminal TSV fields.
 docs/model_stem_semantics_reference.tsv whitespace=-blank-at-eol
+
+# Reviewed model configs are byte-hashed source evidence; preserve upstream bytes.
+models/MDX_Net_Models/model_data/mdx_c_configs/*.yaml -text whitespace=-blank-at-eol

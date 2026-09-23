@@ -109,6 +109,7 @@ class EnsembleFinalizationTests(unittest.TestCase):
                 },
                 callbacks=SimpleNamespace(
                     console=lambda _text: None,
+                    report_phase=lambda _phase: None,
                     progress=lambda *_args, **_kwargs: None,
                 ),
                 progress_sink=SimpleNamespace(fraction=0.9),
@@ -130,19 +131,11 @@ class EnsembleFinalizationTests(unittest.TestCase):
                     handle.write(b"member")
             ensembler = _ensembler(folder)
             side = ensembler.pair_stems[0]
+            combined = np.zeros((2, 8), dtype=np.float32)
 
-            def combine(
-                _inputs: object,
-                _algorithm: object,
-                _normalize: object,
-                _wav_type: object,
-                output: str,
-                **_kwargs: object,
-            ) -> None:
-                with open(output, "wb") as handle:
-                    handle.write(b"ensemble")
-
-            with patch("ml.spec_utils.ensemble_inputs", side_effect=combine):
+            with patch.object(
+                ensembler, "combine_stem_waveforms", return_value=combined
+            ) as combine:
                 output = ensembler.ensemble_outputs(
                     "song Ensembled",
                     folder,
@@ -150,6 +143,11 @@ class EnsembleFinalizationTests(unittest.TestCase):
                     stem_paths={side.group_key: [member_a, member_b]},
                 )
 
+            combine.assert_called_once()
+            self.assertEqual(
+                combine.call_args.kwargs["stem_paths"][side.group_key],
+                [member_a, member_b],
+            )
             self.assertEqual(output, os.path.join(folder, "song Ensembled (Side).wav"))
             self.assertTrue(os.path.isfile(output))
 
@@ -165,18 +163,11 @@ class EnsembleFinalizationTests(unittest.TestCase):
             ensembler = _ensembler(folder)
             ensembler.save_format = FLAC
             side = ensembler.pair_stems[0]
+            combined = np.zeros((2, 32), dtype=np.float32)
 
-            def combine(
-                _inputs: object,
-                _algorithm: object,
-                _normalize: object,
-                _wav_type: object,
-                output: str,
-                **_kwargs: object,
-            ) -> None:
-                sf.write(output, wave, 44100)
-
-            with patch("ml.spec_utils.ensemble_inputs", side_effect=combine):
+            with patch.object(
+                ensembler, "combine_stem_waveforms", return_value=combined
+            ) as combine:
                 output = ensembler.ensemble_outputs(
                     "song",
                     folder,
@@ -184,6 +175,7 @@ class EnsembleFinalizationTests(unittest.TestCase):
                     stem_paths={side.group_key: [member_a, member_b]},
                 )
 
+            combine.assert_called_once()
             self.assertEqual(output, os.path.join(folder, "song (Side).flac"))
             self.assertTrue(os.path.isfile(output))
             self.assertTrue(os.path.isfile(os.path.join(folder, "member-a.flac")))
@@ -201,26 +193,13 @@ class EnsembleFinalizationTests(unittest.TestCase):
                 np.ones((32, 2), dtype=np.float32),
             ]
 
-            def combine(
-                _inputs: object,
-                _algorithm: object,
-                _normalize: object,
-                _wav_type: object,
-                output: str,
-                **_kwargs: object,
-            ) -> None:
-                import soundfile as sf
-
-                sf.write(output, arrays[0], 44100)
-
-            with patch("ml.spec_utils.ensemble_inputs", side_effect=combine):
-                output = ensembler.ensemble_outputs(
-                    "song",
-                    folder,
-                    side,
-                    stem_arrays={side.group_key: arrays},
-                    stem_paths={},
-                )
+            output = ensembler.ensemble_outputs(
+                "song",
+                folder,
+                side,
+                stem_arrays={side.group_key: arrays},
+                stem_paths={},
+            )
 
             self.assertTrue(os.path.isfile(output))
 
@@ -259,7 +238,9 @@ class EnsembleFinalizationTests(unittest.TestCase):
                     "audio_file_base": "song Model",
                     "model_label": "Model",
                 },
-                callbacks=SimpleNamespace(console=lambda _text: None),
+                callbacks=SimpleNamespace(
+                    console=lambda _text: None, report_phase=lambda _phase: None
+                ),
             )
             hook = _EnsembleRunHooks(_ensembler(folder), is_multi_stem=False)
 

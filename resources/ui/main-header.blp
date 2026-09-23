@@ -1,0 +1,17 @@
+using Gtk 4.0;
+using Adw 1;
+
+Adw.WindowTitle window_title { title: "Separation"; }
+Adw.ViewSwitcherBar view_switcher_bar { reveal: false; }
+Adw.HeaderBar header {
+  title-widget: Adw.ViewSwitcher view_switcher {
+    policy: wide;
+  };
+  [end]
+  Gtk.Box end_box {
+    orientation: horizontal;
+    spacing: 6;
+    valign: center;
+    Gtk.MenuButton menu_button { icon-name: "open-menu-symbolic"; }
+  }
+}

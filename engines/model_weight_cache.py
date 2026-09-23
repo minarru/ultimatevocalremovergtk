@@ -43,7 +43,7 @@ def _release_module(model: Any) -> None:
         cpu = getattr(model, "cpu", None)
         if callable(cpu):
             cpu()
-    except Exception:  # noqa: BLE001
+    except Exception:
         pass
 
 
@@ -54,7 +54,7 @@ def _close_ort(session: Any) -> None:
     if callable(close):
         try:
             close()
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
 
 
@@ -192,8 +192,7 @@ class ModelWeightCache:
                 self._destroy(evicted)
             debug(
                 "cache",
-                f"weight cache store kind={next(iter(key), '')!r} "
-                f"size={len(self._items)}",
+                f"weight cache store kind={next(iter(key), '')!r} size={len(self._items)}",
             )
 
     def stash_separator(self, separator: Any) -> bool:
@@ -223,10 +222,15 @@ class ModelWeightCache:
         if module is None and ort_session is None:
             return False
 
-        self.put(key, module=module, ort_session=ort_session, meta={
-            **meta,
-            **dict(getattr(separator, "_weight_cache_meta", {}) or {}),
-        })
+        self.put(
+            key,
+            module=module,
+            ort_session=ort_session,
+            meta={
+                **meta,
+                **dict(getattr(separator, "_weight_cache_meta", {}) or {}),
+            },
+        )
 
         if hasattr(separator, "_ort_session"):
             separator._ort_session = None
@@ -271,9 +275,7 @@ class ModelWeightCache:
         protect = set(protect_identities or ())
         with self._lock:
             remove_keys = [
-                key
-                for key in list(self._items.keys())
-                if _key_identity(key) not in protect
+                key for key in list(self._items.keys()) if _key_identity(key) not in protect
             ]
             for key in remove_keys:
                 handle = self._items.pop(key)
@@ -305,9 +307,7 @@ class ModelWeightCache:
                 self._device_resident_key = None
         return touched
 
-    def _park_device_resident_locked(
-        self, *, except_key: Optional[tuple[Any, ...]] = None
-    ) -> None:
+    def _park_device_resident_locked(self, *, except_key: Optional[tuple[Any, ...]] = None) -> None:
         key = self._device_resident_key
         if key is None or key == except_key:
             return
@@ -341,7 +341,7 @@ def _cuda_device_index(device: Any = None) -> int:
 
         if device == DEFAULT or device == "":
             return 0
-    except Exception:  # noqa: BLE001
+    except Exception:
         pass
     try:
         import torch
@@ -350,7 +350,7 @@ def _cuda_device_index(device: Any = None) -> int:
         if device_obj.type != "cuda":
             return 0
         return int(device_obj.index or 0)
-    except Exception:  # noqa: BLE001
+    except Exception:
         text = str(device).split(":")[-1].strip()
         try:
             return int(text)
@@ -370,7 +370,7 @@ def cuda_mem_info(device: Any = None) -> Optional[Tuple[int, int]]:
             return None
         free, total = torch.cuda.mem_get_info(index)
         return int(free), int(total)
-    except Exception:  # noqa: BLE001
+    except Exception:
         return None
 
 
@@ -394,7 +394,7 @@ def _flush_cuda_allocator() -> None:
         from engines.gpu_cache import clear_gpu_cache
 
         clear_gpu_cache("cuda")
-    except Exception:  # noqa: BLE001
+    except Exception:
         pass
     try:
         import gc
@@ -404,7 +404,7 @@ def _flush_cuda_allocator() -> None:
         gc.collect()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
-    except Exception:  # noqa: BLE001
+    except Exception:
         pass
 
 
@@ -452,8 +452,7 @@ def ensure_weight_cache_vram_headroom(
         if _headroom_ok(device):
             debug(
                 "cache",
-                "weight cache parked_all (no protect set) "
-                f"free_mib={free_bytes // (1024 * 1024)}",
+                f"weight cache parked_all (no protect set) free_mib={free_bytes // (1024 * 1024)}",
             )
             return "parked_all"
         cache.clear()

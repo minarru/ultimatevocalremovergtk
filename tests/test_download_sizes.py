@@ -218,25 +218,20 @@ class PrefetchRemoteSizesTests(unittest.TestCase):
 
             try:
                 with patch("core.download_sizes._cache_path", return_value=cache_path):
-                    with patch(
-                        "core.download_sizes._head_remote_meta", side_effect=fake_head
-                    ):
+                    with patch("core.download_sizes._head_remote_meta", side_effect=fake_head):
                         with patch.dict(os.environ, {"UVR_SIZE_HEAD_WORKERS": "2"}):
                             prefetch_remote_sizes(urls)
             finally:
                 download_sizes._shutdown.clear()
 
-        self.assertLessEqual(
-            len(calls), 2, f"kept submitting after shutdown: {len(calls)} HEADs"
-        )
+        self.assertLessEqual(len(calls), 2, f"kept submitting after shutdown: {len(calls)} HEADs")
 
     def test_identity_pass_stops_submitting_once_shutdown_requested(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             cache_path = os.path.join(tmp, "download_size_cache.json")
             now = time.time()
             payload = {
-                f"https://example.com/{i}.ckpt": {"size": 100, "fetched_at": now}
-                for i in range(20)
+                f"https://example.com/{i}.ckpt": {"size": 100, "fetched_at": now} for i in range(20)
             }
             with open(cache_path, "w", encoding="utf-8") as handle:
                 json.dump(payload, handle)
@@ -249,17 +244,13 @@ class PrefetchRemoteSizesTests(unittest.TestCase):
 
             try:
                 with patch("core.download_sizes._cache_path", return_value=cache_path):
-                    with patch(
-                        "core.download_sizes._head_remote_meta", side_effect=fake_head
-                    ):
+                    with patch("core.download_sizes._head_remote_meta", side_effect=fake_head):
                         with patch.dict(os.environ, {"UVR_SIZE_HEAD_WORKERS": "2"}):
                             prefetch_same_size_identity(list(payload))
             finally:
                 download_sizes._shutdown.clear()
 
-        self.assertLessEqual(
-            len(calls), 2, f"kept submitting after shutdown: {len(calls)} HEADs"
-        )
+        self.assertLessEqual(len(calls), 2, f"kept submitting after shutdown: {len(calls)} HEADs")
 
     def test_identity_pass_targets_oldest_entries_first(self) -> None:
         """The capped window must follow staleness, not URL order.
@@ -366,8 +357,9 @@ class RequestUrlSizeCoalesceTests(unittest.TestCase):
             return 123
 
         seen: list[int | None] = []
-        with patch("core.download_sizes.fetch_remote_size", side_effect=fetch), patch(
-            "core.download_sizes._cache_get", return_value=None
+        with (
+            patch("core.download_sizes.fetch_remote_size", side_effect=fetch),
+            patch("core.download_sizes._cache_get", return_value=None),
         ):
             request_url_size("https://example.com/a.ckpt", lambda _u, size: seen.append(size))
             self.assertTrue(started.wait(timeout=2))
@@ -378,6 +370,93 @@ class RequestUrlSizeCoalesceTests(unittest.TestCase):
                 time.sleep(0.01)
         self.assertEqual(calls["n"], 1)
         self.assertEqual(seen, [123, 123])
+
+
+class HeadRemoteMetaRedirectTests(unittest.TestCase):
+    """A real loopback redirect shaped like a Hugging Face ``resolve/`` HEAD."""
+
+    def _serve(
+        self, *, redirect_headers: dict[str, str], redirect_codes: tuple[int, ...] = (302,)
+    ) -> tuple[str, list[tuple[str, str]]]:
+        import threading
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+        requests: list[tuple[str, str]] = []
+        paths = [
+            "/resolve/model.ckpt",
+            *[f"/hop/{i}" for i in range(1, len(redirect_codes))],
+            "/cdn/model.ckpt",
+        ]
+        redirects = {
+            path: (code, destination)
+            for path, code, destination in zip(paths[:-1], redirect_codes, paths[1:], strict=True)
+        }
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_HEAD(self) -> None:
+                requests.append((self.command, self.path))
+                if self.path in redirects:
+                    code, destination = redirects[self.path]
+                    self.send_response(code)
+                    self.send_header("Location", destination)
+                    if self.path == paths[0]:
+                        for name, value in redirect_headers.items():
+                            self.send_header(name, value)
+                else:
+                    self.send_response(200)
+                    self.send_header("Content-Length", "1234")
+                    self.send_header("ETag", '"cdn-object-etag"')
+                self.end_headers()
+
+            def do_GET(self) -> None:
+                requests.append((self.command, self.path))
+                self.send_error(405, "Only metadata HEAD requests are allowed")
+
+            def log_message(self, format: str, *args: object) -> None:
+                pass
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(thread.join)
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        return f"http://127.0.0.1:{server.server_address[1]}/resolve/model.ckpt", requests
+
+    def test_linked_etag_on_the_redirect_becomes_the_content_id(self) -> None:
+        url, requests = self._serve(
+            redirect_headers={"X-Linked-Etag": '"abc123sha"', "X-Linked-Size": "1234"}
+        )
+        size, validator, content_id = download_sizes._head_remote_meta(url)
+        self.assertEqual(size, 1234)
+        self.assertEqual(validator, "cdn-object-etag")
+        self.assertEqual(content_id, "abc123sha")
+        self.assertEqual([method for method, _path in requests], ["HEAD", "HEAD"])
+
+    def test_plain_redirect_has_no_content_id(self) -> None:
+        url, requests = self._serve(redirect_headers={})
+        size, validator, content_id = download_sizes._head_remote_meta(url)
+        self.assertEqual(size, 1234)
+        self.assertEqual(validator, "cdn-object-etag")
+        self.assertIsNone(content_id)
+        self.assertEqual([method for method, _path in requests], ["HEAD", "HEAD"])
+
+    def test_every_redirect_hop_preserves_head_and_first_linked_headers(self) -> None:
+        url, requests = self._serve(
+            redirect_headers={"X-Linked-Etag": '"checkpoint-sha"', "X-Linked-Size": "5678"},
+            redirect_codes=(301, 302, 303, 307, 308),
+        )
+        self.assertEqual(
+            download_sizes._head_remote_meta(url), (5678, "cdn-object-etag", "checkpoint-sha")
+        )
+        self.assertEqual(
+            requests,
+            [
+                ("HEAD", "/resolve/model.ckpt"),
+                *[("HEAD", f"/hop/{i}") for i in range(1, 5)],
+                ("HEAD", "/cdn/model.ckpt"),
+            ],
+        )
 
 
 if __name__ == "__main__":

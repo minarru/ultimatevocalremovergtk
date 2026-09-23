@@ -1,11 +1,11 @@
 """Trusted checkpoint loading compatible with PyTorch 2.6+."""
 
 from __future__ import annotations
-import typing
 
 import importlib
 import sys
 import types
+import typing
 from typing import Any, Mapping
 
 import torch

@@ -93,9 +93,7 @@ class BandSplitModule(nn.Module):
                 )
                 for bw in self.band_widths
             ]
-            self.norm_fc_modules = nn.ModuleList(
-                cast(List[nn.Module], compiled_modules)
-            )
+            self.norm_fc_modules = nn.ModuleList(cast(List[nn.Module], compiled_modules))
         except Exception:
             self.norm_fc_modules = nn.ModuleList(
                 [
@@ -113,9 +111,7 @@ class BandSplitModule(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         batch, _in_chan, _band_width, n_time = x.shape
 
-        z = torch.zeros(
-            size=(batch, self.n_bands, n_time, self.emb_dim), device=x.device
-        )
+        z = torch.zeros(size=(batch, self.n_bands, n_time, self.emb_dim), device=x.device)
 
         x = torch.permute(x, (0, 3, 1, 2)).contiguous()
 

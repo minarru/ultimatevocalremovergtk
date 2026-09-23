@@ -56,7 +56,9 @@ class DownloadManagerResolveTests(unittest.TestCase):
         self.assertTrue(save_path.endswith("model.onnx"))
 
     def test_resolve_demucs_multiple_files(self):
-        self.manager.demucs_download_list["Demucs Test"]["meta.yaml"] = "https://example.com/meta.yaml"
+        self.manager.demucs_download_list["Demucs Test"]["meta.yaml"] = (
+            "https://example.com/meta.yaml"
+        )
         jobs = self.manager.resolve("Demucs Test", DEMUCS_ARCH_TYPE)
         self.assertEqual(len(jobs), 2)
 
@@ -90,9 +92,7 @@ class DownloadManagerResolveTests(unittest.TestCase):
         from core.downloads import DownloadManager
 
         # No repository is accepted, so no publication decision can be made here.
-        self.assertNotIn(
-            "repo", inspect.signature(DownloadManager.download).parameters
-        )
+        self.assertNotIn("repo", inspect.signature(DownloadManager.download).parameters)
 
         with tempfile.TemporaryDirectory() as tmp:
             checkpoint = os.path.join(tmp, "already_there.ckpt")
@@ -100,11 +100,10 @@ class DownloadManagerResolveTests(unittest.TestCase):
                 handle.write(b"present")
             jobs = [("https://example.com/already_there.ckpt", checkpoint)]
 
-            with _patch(
-                "core.mdx_c_registry.register_mdx_c_from_download_jobs"
-            ) as mdx_c, _patch(
-                "core.apollo_registry.register_apollo_from_download_jobs"
-            ) as apollo:
+            with (
+                _patch("core.mdx_c_registry.register_mdx_c_from_download_jobs") as mdx_c,
+                _patch("core.apollo_registry.register_apollo_from_download_jobs") as apollo,
+            ):
                 result = self.manager.download(jobs)
 
             self.assertEqual(result, "exists")
@@ -133,22 +132,21 @@ class PresentationBackfillRefreshTests(unittest.TestCase):
         )
         coordinator.snapshot.return_value = snapshot
         coordinator.ensure.return_value = snapshot
-        coordinator.source.return_value = SimpleNamespace(
-            state=SimpleNamespace(content=None)
-        )
+        coordinator.source.return_value = SimpleNamespace(state=SimpleNamespace(content=None))
         repo = object()
         manager = DownloadManager(coordinator=coordinator, repo=repo)
         return manager, coordinator, repo
 
     def test_live_backfill_failure_warns_keeps_snapshot_and_retries(self) -> None:
         manager, _coordinator, _repo = self._manager()
-        with patch(
-            "core.model_inventory.backfill_installed_presentations",
-            side_effect=OSError("registry is read-only"),
-        ) as backfill, patch(
-            "core.downloads._urlopen", side_effect=OSError("no bulletin")
-        ), patch.object(manager, "schedule_size_cache_warmup"), self.assertWarnsRegex(
-            RuntimeWarning, "live catalogue remains active"
+        with (
+            patch(
+                "core.model_inventory.backfill_installed_presentations",
+                side_effect=OSError("registry is read-only"),
+            ) as backfill,
+            patch("core.downloads._urlopen", side_effect=OSError("no bulletin")),
+            patch.object(manager, "schedule_size_cache_warmup"),
+            self.assertWarnsRegex(RuntimeWarning, "live catalogue remains active"),
         ):
             self.assertTrue(manager.refresh())
             self.assertTrue(manager.refresh())
@@ -158,9 +156,7 @@ class PresentationBackfillRefreshTests(unittest.TestCase):
 
     def test_offline_catalogue_load_never_backfills(self) -> None:
         manager, _coordinator, _repo = self._manager()
-        with patch(
-            "core.model_inventory.backfill_installed_presentations"
-        ) as backfill:
+        with patch("core.model_inventory.backfill_installed_presentations") as backfill:
             self.assertTrue(manager.ensure_catalogues(allow_network=False))
 
         backfill.assert_not_called()
@@ -173,17 +169,13 @@ class DownloadManagerAvailabilityTests(unittest.TestCase):
         retained_checkpoint = "huge_scnet_4stems_strong_fullness.ckpt"
         installed_checkpoint = "scnet_huge_4stem_str_fullness_aname.ckpt"
 
-        with tempfile.TemporaryDirectory() as tmp, patch.object(
-            paths, "MDX_MODELS_DIR", tmp
-        ):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(paths, "MDX_MODELS_DIR", tmp):
             with open(os.path.join(tmp, installed_checkpoint), "wb") as handle:
                 handle.write(b"installed alias")
 
             manager = DownloadManager()
             manager.mdx_download_list = {
-                retained_label: {
-                    retained_checkpoint: "https://curated/strong-fullness.ckpt"
-                }
+                retained_label: {retained_checkpoint: "https://curated/strong-fullness.ckpt"}
             }
             manager.catalogue_meta = {
                 retained_label: EntryMeta(
@@ -209,9 +201,7 @@ class LegacyCatalogueSchemaTests(unittest.TestCase):
     def test_rebuild_accepts_bundled_mdx23_key(self) -> None:
         manager = DownloadManager()
         manager.online_data = {
-            "mdx23_download_list": {
-                "MDX23 Model: Legacy": {"legacy.ckpt": "legacy.yaml"}
-            }
+            "mdx23_download_list": {"MDX23 Model: Legacy": {"legacy.ckpt": "legacy.yaml"}}
         }
 
         manager._rebuild_catalogues()
@@ -234,26 +224,20 @@ class AdditionalPublicRepositoryTests(unittest.TestCase):
 
     def test_former_vip_mdx_model_uses_additional_public_repo(self) -> None:
         label = "MDX-Net Model VIP: UVR-MDX-NET_Main_427"
-        self.manager.mdx_download_list = {
-            label: "UVR-MDX-NET_Main_427.onnx"
-        }
+        self.manager.mdx_download_list = {label: "UVR-MDX-NET_Main_427.onnx"}
         jobs = self.manager.resolve(label, MDX_ARCH_TYPE, fetch_config=False)
         self.assertEqual(
             jobs[0][0],
-            "https://github.com/Anjok0109/ai_magic/releases/download/v5/"
-            "UVR-MDX-NET_Main_427.onnx",
+            "https://github.com/Anjok0109/ai_magic/releases/download/v5/UVR-MDX-NET_Main_427.onnx",
         )
 
     def test_former_vip_mdx_c_checkpoint_uses_additional_public_repo(self) -> None:
         label = "MDX23C Model VIP: MDX23C_D1581"
-        self.manager.mdx_download_list = {
-            label: {"MDX23C_D1581.ckpt": "model_2_stem_061321.yaml"}
-        }
+        self.manager.mdx_download_list = {label: {"MDX23C_D1581.ckpt": "model_2_stem_061321.yaml"}}
         jobs = self.manager.resolve(label, MDX_ARCH_TYPE, fetch_config=False)
         self.assertEqual(
             jobs[0][0],
-            "https://github.com/Anjok0109/ai_magic/releases/download/v5/"
-            "MDX23C_D1581.ckpt",
+            "https://github.com/Anjok0109/ai_magic/releases/download/v5/MDX23C_D1581.ckpt",
         )
 
 
@@ -265,9 +249,7 @@ class WarmSizeCacheTests(unittest.TestCase):
 
         from core.downloads import DownloadManager
 
-        manager = DownloadManager.__new__(DownloadManager)
-        manager._size_warmup_lock = threading.Lock()
-        manager._size_warmup_done_for = None
+        manager = DownloadManager()
         manager.ensure_catalogues = mock.MagicMock(return_value=True)
         manager.catalogue_checkpoint_urls = mock.MagicMock(
             return_value=["https://example.test/a.ckpt"]
@@ -281,18 +263,21 @@ class WarmSizeCacheTests(unittest.TestCase):
         from core import downloads as downloads_mod
 
         manager = self._manager()
-        with mock.patch.object(
-            downloads_mod, "prefetch_remote_sizes", return_value={
-                "total": 1, "fresh": 1, "fetched": 0, "failed": 0
-            }
-        ), mock.patch.object(
-            downloads_mod,
-            "prefetch_same_size_identity",
-            return_value={"total": 64, "fetched": 0, "failed": 64, "skipped": 0, "capped": 10},
+        with (
+            mock.patch.object(
+                downloads_mod,
+                "prefetch_remote_sizes",
+                return_value={"total": 1, "fresh": 1, "fetched": 0, "failed": 0},
+            ),
+            mock.patch.object(
+                downloads_mod,
+                "prefetch_same_size_identity",
+                return_value={"total": 64, "fetched": 0, "failed": 64, "skipped": 0, "capped": 10},
+            ),
         ):
             manager.warm_size_cache()
         self.assertIsNone(
-            manager._size_warmup_done_for,
+            manager._size_evidence.done_for,
             "latched while identity candidates remained, stranding them for the session",
         )
 
@@ -302,18 +287,21 @@ class WarmSizeCacheTests(unittest.TestCase):
         from core import downloads as downloads_mod
 
         manager = self._manager()
-        with mock.patch.object(
-            downloads_mod, "prefetch_remote_sizes", return_value={
-                "total": 1, "fresh": 1, "fetched": 0, "failed": 0
-            }
-        ), mock.patch.object(
-            downloads_mod,
-            "prefetch_same_size_identity",
-            return_value={"total": 2, "fetched": 2, "failed": 0, "skipped": 0, "capped": 0},
+        with (
+            mock.patch.object(
+                downloads_mod,
+                "prefetch_remote_sizes",
+                return_value={"total": 1, "fresh": 1, "fetched": 0, "failed": 0},
+            ),
+            mock.patch.object(
+                downloads_mod,
+                "prefetch_same_size_identity",
+                return_value={"total": 2, "fetched": 2, "failed": 0, "skipped": 0, "capped": 0},
+            ),
         ):
             manager.warm_size_cache()
         self.assertEqual(
-            manager._size_warmup_done_for, frozenset({"https://example.test/a.ckpt"})
+            manager._size_evidence.done_for, frozenset({"https://example.test/a.ckpt"})
         )
 
 
@@ -485,20 +473,24 @@ class UpdateModelSettingsTests(unittest.TestCase):
                 _FileResp(remote_demucs),
             ]
 
-            with mock.patch.object(
-                downloads_mod,
-                "_MODEL_DATA_URLS",
-                [
-                    ("https://x/vr", vr_hash),
-                    ("https://x/mdx_hash", mdx_hash),
-                    ("https://x/mdx_name", mdx_mapper),
-                    ("https://x/demucs_name", demucs_mapper),
-                ],
-            ), mock.patch.object(
-                downloads_mod,
-                "_NAME_MAPPER_DESTS",
-                frozenset({mdx_mapper, demucs_mapper}),
-            ), mock.patch.object(downloads_mod, "_urlopen", side_effect=side):
+            with (
+                mock.patch.object(
+                    downloads_mod,
+                    "_MODEL_DATA_URLS",
+                    [
+                        ("https://x/vr", vr_hash),
+                        ("https://x/mdx_hash", mdx_hash),
+                        ("https://x/mdx_name", mdx_mapper),
+                        ("https://x/demucs_name", demucs_mapper),
+                    ],
+                ),
+                mock.patch.object(
+                    downloads_mod,
+                    "_NAME_MAPPER_DESTS",
+                    frozenset({mdx_mapper, demucs_mapper}),
+                ),
+                mock.patch.object(downloads_mod, "_urlopen", side_effect=side),
+            ):
                 ok = DownloadManager().update_model_settings()
             self.assertTrue(ok)
             from core.name_mapper import load_name_mapper
@@ -544,19 +536,22 @@ class UpdateModelSettingsTests(unittest.TestCase):
 
             side = [_FileResp(data) for _ in dests]
             repo = mock.Mock()
-            with mock.patch.object(
-                downloads_mod,
-                "_MODEL_DATA_URLS",
-                [(f"https://x/{i}", dest) for i, dest in enumerate(dests)],
-            ), mock.patch.object(
-                downloads_mod,
-                "_NAME_MAPPER_DESTS",
-                frozenset(dests[2:]),
-            ), mock.patch.object(downloads_mod, "_urlopen", side_effect=side):
+            with (
+                mock.patch.object(
+                    downloads_mod,
+                    "_MODEL_DATA_URLS",
+                    [(f"https://x/{i}", dest) for i, dest in enumerate(dests)],
+                ),
+                mock.patch.object(
+                    downloads_mod,
+                    "_NAME_MAPPER_DESTS",
+                    frozenset(dests[2:]),
+                ),
+                mock.patch.object(downloads_mod, "_urlopen", side_effect=side),
+            ):
                 ok = DownloadManager().update_model_settings(repo)
             self.assertTrue(ok)
             repo.invalidate_models.assert_not_called()
-
 
     def _run_update(
         self,
@@ -600,28 +595,30 @@ class UpdateModelSettingsTests(unittest.TestCase):
             side = [_FileResp(payload) for payload in remote]
             repo = mock.Mock()
             repo.catalogue = SimpleNamespace(
-                _latest=SimpleNamespace(
+                latest_snapshot=SimpleNamespace(
                     vr={},
                     mdx={},
                     demucs={},
                     apollo={},
-                    meta_by_family={
-                        "vr": {}, "mdx": {}, "demucs": {}, "apollo": {}
-                    },
+                    meta_by_family={"vr": {}, "mdx": {}, "demucs": {}, "apollo": {}},
                     display_index_vr={},
                     display_index_mdx={},
                     display_index_demucs={},
                 )
             )
-            with mock.patch.object(
-                downloads_mod,
-                "_MODEL_DATA_URLS",
-                [(f"https://x/{i}", dest) for i, dest in enumerate(dests)],
-            ), mock.patch.object(
-                downloads_mod,
-                "_NAME_MAPPER_DESTS",
-                frozenset(dests[i] for i in name_dest_indexes),
-            ), mock.patch.object(downloads_mod, "_urlopen", side_effect=side):
+            with (
+                mock.patch.object(
+                    downloads_mod,
+                    "_MODEL_DATA_URLS",
+                    [(f"https://x/{i}", dest) for i, dest in enumerate(dests)],
+                ),
+                mock.patch.object(
+                    downloads_mod,
+                    "_NAME_MAPPER_DESTS",
+                    frozenset(dests[i] for i in name_dest_indexes),
+                ),
+                mock.patch.object(downloads_mod, "_urlopen", side_effect=side),
+            ):
                 ok = DownloadManager().update_model_settings(repo)
             self.assertTrue(ok)
             return repo
@@ -706,27 +703,29 @@ class UpdateModelSettingsTests(unittest.TestCase):
                 def __exit__(self, *args: object) -> None:
                     return None
 
-            with mock.patch.object(
-                paths, "MDX_HASH_JSON", mdx_hash_json
-            ), mock.patch.object(
-                paths,
-                "REGISTERED_MODEL_INDEX",
-                os.path.join(tmp, "registered_models.json"),
-            ), mock.patch.object(
-                paths,
-                "LEGACY_REGISTERED_MODEL_INDEX",
-                os.path.join(tmp, "legacy-registered_models.json"),
+            with (
+                mock.patch.object(paths, "MDX_HASH_JSON", mdx_hash_json),
+                mock.patch.object(
+                    paths,
+                    "REGISTERED_MODEL_INDEX",
+                    os.path.join(tmp, "registered_models.json"),
+                ),
+                mock.patch.object(
+                    paths,
+                    "LEGACY_REGISTERED_MODEL_INDEX",
+                    os.path.join(tmp, "legacy-registered_models.json"),
+                ),
             ):
                 repo = ModelRepository()
                 self.assertNotIn("fresh-md5", repo.mdx_hash_MAPPER)
-                with mock.patch.object(
-                    downloads_mod,
-                    "_MODEL_DATA_URLS",
-                    [("https://x/mdx", mdx_hash_json)],
-                ), mock.patch.object(
-                    downloads_mod, "_NAME_MAPPER_DESTS", frozenset()
-                ), mock.patch.object(
-                    downloads_mod, "_urlopen", side_effect=[_FileResp(payload)]
+                with (
+                    mock.patch.object(
+                        downloads_mod,
+                        "_MODEL_DATA_URLS",
+                        [("https://x/mdx", mdx_hash_json)],
+                    ),
+                    mock.patch.object(downloads_mod, "_NAME_MAPPER_DESTS", frozenset()),
+                    mock.patch.object(downloads_mod, "_urlopen", side_effect=[_FileResp(payload)]),
                 ):
                     ok = DownloadManager().update_model_settings(repo)
 
@@ -940,8 +939,10 @@ class DownloadManagerSwrFreshnessTests(unittest.TestCase):
         release.set()
         self.assertTrue(
             _wait_until(
-                lambda: coordinator._latest is not None
-                and "New" in coordinator._latest.mdx
+                lambda: (
+                    coordinator.latest_snapshot is not None
+                    and "New" in coordinator.latest_snapshot.mdx
+                )
             )
         )
         self.assertTrue(
@@ -949,10 +950,13 @@ class DownloadManagerSwrFreshnessTests(unittest.TestCase):
             "manager lists must pick up the SWR snapshot without calling refresh()",
         )
         self.assertNotIn("Old", manager.mdx_download_list)
-        self.assertIn("New", coordinator.snapshot(
-            mode=RefreshMode.OFFLINE,
-            policy=AccessPolicy(allow_network=False, allow_metadata_writes=False),
-        ).mdx)
+        self.assertIn(
+            "New",
+            coordinator.snapshot(
+                mode=RefreshMode.OFFLINE,
+                policy=AccessPolicy(allow_network=False, allow_metadata_writes=False),
+            ).mdx,
+        )
         self.assertTrue(manager.ensure_catalogues(allow_network=True))
 
 

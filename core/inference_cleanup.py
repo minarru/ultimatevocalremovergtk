@@ -17,7 +17,7 @@ def release_torch_model(model: Any) -> None:
         cpu = getattr(model, "cpu", None)
         if callable(cpu):
             cpu()
-    except Exception:  # noqa: BLE001 - best-effort teardown
+    except Exception:  # best-effort teardown
         pass
 
 
@@ -54,7 +54,7 @@ def release_separator(separator: Any) -> None:
         from engines.model_weight_cache import get_weight_cache
 
         cached = get_weight_cache().stash_separator(separator)
-    except Exception:  # noqa: BLE001 - never fail cleanup on cache errors
+    except Exception:  # never fail cleanup on cache errors
         cached = False
 
     if not cached:
@@ -67,7 +67,7 @@ def release_separator(separator: Any) -> None:
             if callable(close):
                 try:
                     close()
-                except Exception:  # noqa: BLE001 - best-effort teardown
+                except Exception:  # best-effort teardown
                     pass
             if hasattr(separator, "_ort_session"):
                 separator._ort_session = None
@@ -160,7 +160,7 @@ def release_inference_memory(
             cache.clear()
         elif park_weights:
             cache.park_all()
-    except Exception:  # noqa: BLE001
+    except Exception:
         pass
     from engines.gpu_cache import clear_gpu_cache
 

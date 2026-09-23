@@ -9,10 +9,10 @@ Covers two fixes:
 """
 
 from __future__ import annotations
-import typing
 
 import os
 import threading
+import typing
 import unittest
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
@@ -35,8 +35,9 @@ class DownloadCenterStateTests(unittest.TestCase):
         cls._app.register()
 
     def _make_bare_window(self):
-        from core.model_scores import PURPOSE_ALL, SORT_NAME
         from gi.repository import Adw, Gtk
+
+        from core.model_scores import ARCH_FILTER_ALL, PURPOSE_ALL, SORT_NAME
         from ui.download_center import _NETWORKS, DownloadCenterWindow
 
         # Derived from _NETWORKS rather than hardcoded so adding a network tab
@@ -44,16 +45,27 @@ class DownloadCenterStateTests(unittest.TestCase):
         arches = [arch for _label, arch in _NETWORKS]
 
         win = object.__new__(DownloadCenterWindow)
+        from ui.catalogue_browser import CatalogueBrowserState
+
+        win.browser = CatalogueBrowserState()
+        from ui.lifetime import UiLifetime
+
+        win._lifetime = UiLifetime()
+        win._listening = False
+        win._sort_mode = "name"
+        win._arch_filter = "all"
         win.manager = MagicMock()
+        win.manager.latest_snapshot = None
         win.manager.catalogue_meta = {}
         win.manager.resolve.return_value = []
-        win._available = {}
-        win._unsupported = {}
+        win.browser.available = {}
+        win.browser.unsupported = {}
         win._hide_unsupported = False
         win._catalogue_online = True
         win._refreshing = False
         win._sort_mode = SORT_NAME
         win._purpose = PURPOSE_ALL
+        win._arch_filter = ARCH_FILTER_ALL
         win._row_checks = {}
         win._row_actions = {}
         win._size_lookup_ids = {}
@@ -64,15 +76,15 @@ class DownloadCenterStateTests(unittest.TestCase):
         win.status_label = Gtk.Label()
         win.stack = Gtk.Stack()
         win._stack_pages = {}
-        win._pinned_snapshot = None
-        win._pending_source_delta = False
+        win.browser.snapshot = None
+        win.browser.pending_source = False
         return win
 
     def test_rebuild_catalogue_preserves_checked_selection(self) -> None:
         from bundled.constants import MDX_ARCH_TYPE
 
         win = self._make_bare_window()
-        win._available = {MDX_ARCH_TYPE: ["Model A", "Model B"]}
+        win.browser.available = {MDX_ARCH_TYPE: ["Model A", "Model B"]}
         win._rebuild_catalogue()
 
         key = (MDX_ARCH_TYPE, "Model A")
@@ -92,12 +104,14 @@ class DownloadCenterStateTests(unittest.TestCase):
         from bundled.constants import MDX_ARCH_TYPE
 
         win = self._make_bare_window()
-        win._available = {MDX_ARCH_TYPE: ["Model A", "Model B"]}
+        win.browser.available = {MDX_ARCH_TYPE: ["Model A", "Model B"]}
         win._rebuild_catalogue()
 
         key_a = (MDX_ARCH_TYPE, "Model A")
         key_b = (MDX_ARCH_TYPE, "Model B")
 
+        win.browser.set_selected(key_a, True)
+        win.browser.set_selected(key_b, True)
         a_started = threading.Event()
         a_release = threading.Event()
 
@@ -133,8 +147,10 @@ class DownloadCenterStateTests(unittest.TestCase):
             finally:
                 a_release.set()
 
-        self.assertIn("12 MB", win._row_actions[key_a].get_subtitle() or "")
-        self.assertIn("5 MB", win._row_actions[key_b].get_subtitle() or "")
+        from ui.widget_state import fetch
+
+        self.assertIn("12 MB", fetch(win._row_actions[key_a], "_uvr_status_label").get_label())
+        self.assertIn("5 MB", fetch(win._row_actions[key_b], "_uvr_status_label").get_label())
 
 
 if __name__ == "__main__":

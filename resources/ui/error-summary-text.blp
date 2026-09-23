@@ -1,0 +1,17 @@
+using Gtk 4.0;
+
+Gtk.TextBuffer buffer {}
+Gtk.TextView view {
+  buffer: buffer;
+  editable: false;
+  cursor-visible: false;
+  monospace: true;
+  wrap-mode: word_char;
+  left-margin: 12;
+  right-margin: 12;
+  top-margin: 10;
+  bottom-margin: 10;
+  hexpand: true;
+  vexpand: false;
+  styles ["uvr-error-summary"]
+}

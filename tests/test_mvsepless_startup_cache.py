@@ -50,9 +50,12 @@ class MvseplessStartupCacheTests(unittest.TestCase):
 
     def test_fresh_disk_cache_skips_the_network(self) -> None:
         self._write_cache(time.time())
-        with mock.patch.object(
-            mc, "_urlopen", side_effect=AssertionError("network hit despite fresh cache")
-        ), mock.patch.object(mc, "_start_background_refresh") as refresh:
+        with (
+            mock.patch.object(
+                mc, "_urlopen", side_effect=AssertionError("network hit despite fresh cache")
+            ),
+            mock.patch.object(mc, "_start_background_refresh") as refresh,
+        ):
             data = mc.load_mvsepless_models()
         self.assertIsNotNone(data)
         assert data is not None
@@ -62,11 +65,14 @@ class MvseplessStartupCacheTests(unittest.TestCase):
     def test_expired_disk_cache_serves_immediately_and_refreshes(self) -> None:
         """Expired-but-present cache must not block the caller on HTTP."""
         self._write_cache(time.time() - (mc._MVSEPLESS_CACHE_TTL_SECONDS + 60))
-        with mock.patch.object(
-            mc,
-            "_urlopen",
-            side_effect=AssertionError("network hit on caller despite disk cache"),
-        ), mock.patch.object(mc, "_start_background_refresh") as refresh:
+        with (
+            mock.patch.object(
+                mc,
+                "_urlopen",
+                side_effect=AssertionError("network hit on caller despite disk cache"),
+            ),
+            mock.patch.object(mc, "_start_background_refresh") as refresh,
+        ):
             data = mc.load_mvsepless_models()
         self.assertIsNotNone(data)
         assert data is not None
@@ -119,11 +125,14 @@ class MvseplessStartupCacheTests(unittest.TestCase):
         mc._cached_models = None
         mc._cached_loaded_at = 0.0
         self._write_cache(time.time())
-        with mock.patch.object(
-            mc,
-            "_urlopen",
-            side_effect=AssertionError("network hit despite fresh cache"),
-        ), mock.patch.object(mc, "_start_background_refresh"):
+        with (
+            mock.patch.object(
+                mc,
+                "_urlopen",
+                side_effect=AssertionError("network hit despite fresh cache"),
+            ),
+            mock.patch.object(mc, "_start_background_refresh"),
+        ):
             mc.load_mvsepless_models()
 
         second = md._merged_for_display()

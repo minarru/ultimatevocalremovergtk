@@ -127,7 +127,7 @@ class ManualDownloadMergeTests(unittest.TestCase):
             }
         }
         self.manager._coordinator = SimpleNamespace(
-            _latest=SimpleNamespace(meta_by_family={"vr": {}})
+            latest_snapshot=SimpleNamespace(meta_by_family={"vr": {}})
         )
 
         with mock.patch(

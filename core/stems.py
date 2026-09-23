@@ -11,7 +11,7 @@ Reviewed ensemble pairs and modes are exact IDs owned by :mod:`core.stem_pairs`.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from hashlib import sha256
 from typing import Any, Mapping, Optional, Sequence, Tuple, Union
@@ -49,7 +49,6 @@ from .model_stem_manifest import (
     StemPairDefinition,
     load_bundled_stem_semantics,
 )
-from .model_stem_semantics import resolve_catalogue_stem_semantics
 from .stem_roles import (
     ModelStemSemantics,
     StemId,
@@ -129,6 +128,7 @@ class StemRoute:
     selection_scope: str
     derived_from: tuple[StemRoleId, ...]
     complement_of: StemRoleId | None
+    legacy_focus: str = field(compare=False, repr=False)
 
     def __init__(
         self,
@@ -146,6 +146,7 @@ class StemRoute:
         *,
         logical_secondary: bool = False,
         concept: str | None = None,
+        legacy_focus: str = "",
     ) -> None:
         """Create a route; ``concept=`` remains constructor compatibility only."""
         if role is None:
@@ -164,6 +165,7 @@ class StemRoute:
         object.__setattr__(self, "selection_scope", selection_scope)
         object.__setattr__(self, "derived_from", tuple(derived_from))
         object.__setattr__(self, "complement_of", complement_of)
+        object.__setattr__(self, "legacy_focus", legacy_focus)
 
     @property
     def concept(self) -> str:
@@ -928,11 +930,6 @@ def _installed_mdx_reconciliation(
     model: Any,
     observed: Sequence[str],
 ) -> ReconciledMdxRuntimeSignature:
-    cached = getattr(model, "mdx_runtime_reconciliation", None)
-    if isinstance(cached, ReconciledMdxRuntimeSignature) and (
-        cached.native_signature == tuple(observed)
-    ):
-        return cached
     config = getattr(model, "mdx_c_configs", None)
     training = getattr(config, "training", None)
     if training is None and isinstance(config, Mapping):
@@ -978,26 +975,53 @@ def _model_semantics(model: Any, native_stems: Sequence[str]) -> ModelStemSemant
         _installed_mdx_reconciliation(model, native_stems) if model_id.startswith("mdx:") else None
     )
     runtime_warning = reconciled.warning if reconciled is not None else ""
+    config = getattr(model, "mdx_c_configs", None) if model_id.startswith("mdx:") else None
+    training = (
+        config.get("training") if isinstance(config, Mapping) else getattr(config, "training", None)
+    )
+    target = (
+        training.get("target_instrument")
+        if isinstance(training, Mapping)
+        else getattr(training, "target_instrument", None)
+    )
+    instruments = (
+        training.get("instruments")
+        if isinstance(training, Mapping)
+        else getattr(training, "instruments", None)
+    )
     cache_key = (
         model_id,
         tuple((StemId(stem).casefold(), str(stem)) for stem in native_stems),
         context,
         runtime_warning,
+        str(getattr(model, "model_hash", "") or ""),
+        str(target or ""),
+        training is not None,
+        tuple(instruments or ()),
+        str(
+            getattr(model, "primary_stem_native", None) or getattr(model, "primary_stem", "") or ""
+        ),
+        str(getattr(model, "mdx_config_sha256", "") or ""),
     )
     cached = getattr(model, "stem_semantics", None)
     if isinstance(cached, ModelStemSemantics) and (
         getattr(model, "_stem_semantics_cache_key", None) == cache_key
     ):
         return cached
-    semantics = resolve_catalogue_stem_semantics(
+    from .stem_reconciliation import reconcile_stem_roles
+
+    semantics = reconcile_stem_roles(
         model_id,
         native_stems=native_stems,
         backend_primary=str(
             getattr(model, "primary_stem_native", None) or getattr(model, "primary_stem", "") or ""
         ),
-        backend_target=str(getattr(model, "target_instrument", "") or ""),
+        backend_target=str(target or ""),
         context=context,
-        runtime_warning=runtime_warning,
+        runtime=reconciled,
+        artifact_digest=str(getattr(model, "model_hash", "") or ""),
+        has_runtime_config=training is not None,
+        training_instruments=tuple(instruments or ()),
     )
     # Model configuration state is per assembled model; never write the shared
     # Settings object while retaining this exact resolution for later routes.
@@ -1023,6 +1047,13 @@ def _semantic_routes(semantics: ModelStemSemantics) -> tuple[StemRoute, ...]:
     registry = load_bundled_stem_semantics()
     routes: list[StemRoute] = []
     raw_scope = _raw_selection_scope(semantics)
+    legacy_scope = ""
+    if semantics.reconciled_native_stems and not semantics.runtime_error:
+        signature = "\x1f".join(
+            StemId(name).casefold() for name in semantics.reconciled_native_stems
+        )
+        identity = "\x1f".join((semantics.model_id, semantics.context.value, signature))
+        legacy_scope = sha256(identity.encode("utf-8")).hexdigest()
     for output in sorted(semantics.outputs, key=lambda output: not output.logical_primary):
         if isinstance(output.role, StemRoleId):
             definition = registry.roles.get(output.role)
@@ -1041,6 +1072,11 @@ def _semantic_routes(semantics: ModelStemSemantics) -> tuple[StemRoute, ...]:
         routes.append(
             StemRoute(
                 native=output.native,
+                legacy_focus=(
+                    f"raw:{output.native.casefold()}{_RAW_SCOPE_MARKER}{legacy_scope}"
+                    if output.native is not None and legacy_scope
+                    else ""
+                ),
                 role=output.role,
                 label=label,
                 filename_tag=tag,
@@ -1065,19 +1101,63 @@ def _semantic_routes(semantics: ModelStemSemantics) -> tuple[StemRoute, ...]:
     return tuple(routes)
 
 
+def with_instrumental_mix(routes: Sequence[StemRoute]) -> tuple[StemRoute, ...]:
+    """Add an optional sum of reviewed non-vocal music sources.
+
+    This is an exporter capability, not a guessed model output. Raw, karaoke,
+    cinematic and already-paired inventories retain their declared routes.
+    """
+    inventory = tuple(routes)
+    natives = tuple(r for r in inventory if r.native is not None)
+    vocals = tuple(r for r in natives if r.role == StemRoleId("vocal.vocals"))
+    others = tuple(r for r in natives if r not in vocals)
+    if (
+        len(vocals) != 1
+        or len(others) < 2
+        or len({r.role for r in natives}) != len(natives)
+        or any(r.concept == "mix.instrumental" for r in inventory)
+        or not all(
+            isinstance(r.role, StemRoleId) and r.role.value.startswith(("instrument.", "residual."))
+            for r in others
+        )
+    ):
+        return inventory
+    return (
+        *inventory,
+        StemRoute(
+            None,
+            StemRoleId("mix.instrumental"),
+            label="Instrumental mix",
+            filename_tag="Instrumental",
+            kind=StemRouteKind.DERIVED,
+            selected_by_default=False,
+            derived_from=tuple(r.role for r in others if isinstance(r.role, StemRoleId)),
+        ),
+    )
+
+
 def model_stem_routes(model: Any) -> Tuple[StemRoute, ...]:
     """Complete exact semantic route inventory for one assembled model.
 
     A reviewed declaration is resolved once from the canonical ID, whole
     native signature, backend metadata, and explicit processing context.  A
-    missing/mismatched declaration returns raw literals rather than guessed
-    buckets.  The legacy branch only serves non-assembled compatibility stubs
+    missing declaration returns raw literals. Reviewed roles survive runtime
+    conflicts, which carry a blocking diagnostic rather than guessed bindings.  The legacy branch only serves non-assembled compatibility stubs
     that lack a canonical model identity.
     """
     native_stems = _model_native_stems(model)
     semantics = _model_semantics(model, native_stems)
     if semantics is not None:
-        return _dedupe_routes(_semantic_routes(semantics))
+        semantic_routes = _semantic_routes(semantics)
+        if (
+            semantics.context is StemProcessingContext.FULL_MIX
+            and semantics.model_id.startswith(("mdx:", "demucs:"))
+            and not getattr(model, "is_ensemble_mode", False)
+            and not getattr(model, "is_secondary_model", False)
+            and not getattr(model, "is_pre_proc_model", False)
+        ):
+            semantic_routes = with_instrumental_mix(semantic_routes)
+        return _dedupe_routes(semantic_routes)
 
     mdx_stems = tuple(str(item) for item in getattr(model, "mdx_model_stems", ()) or () if item)
 
@@ -1126,6 +1206,8 @@ def model_stem_routes(model: Any) -> Tuple[StemRoute, ...]:
 
 
 def _route_matches_focus(route: StemRoute, requested: str) -> bool:
+    if route.legacy_focus and requested == route.legacy_focus:
+        return True
     if isinstance(route.role, StemRoleId):
         return route.role.value == requested
     if route.role.tag.startswith("legacy:"):
@@ -1218,21 +1300,27 @@ def routes_matching_stems(
     """Native inventory routes matching ``stems``, in sidecar order.
 
     Derived routes (no native key) are skipped so a custom MDX-C subset
-    does not pull in a vocals complement. Unmatched names are ignored.
+    does not pull in a vocals complement. Exact native keys take precedence
+    over case-insensitive native matches and legacy display/concept aliases.
+    Unmatched names are ignored.
     """
     picked: list[StemRoute] = []
     seen: set[str] = set()
+    native_routes = tuple(route for route in routes if route.native is not None)
     for stem in stems:
         token = str(stem).strip()
         if not token:
             continue
-        for route in routes:
-            if route.native is None or route.concept in seen:
-                continue
-            if route_matches_stem(route, token, model):
-                picked.append(route)
-                seen.add(route.concept)
-                break
+        matches = (
+            tuple(route for route in native_routes if route.native and route.native.raw == token)
+            or tuple(
+                route for route in native_routes if route.native and route.native.matches(token)
+            )
+            or tuple(route for route in native_routes if route_matches_stem(route, token, model))
+        )
+        if matches and matches[0].concept not in seen:
+            picked.append(matches[0])
+            seen.add(matches[0].concept)
     return tuple(picked)
 
 
@@ -1276,6 +1364,10 @@ def run_export_routes(model: Any) -> Tuple[StemRoute, ...]:
     provenance never narrow that inventory. Every other run uses
     ``selected_stem_routes``.
     """
+    semantics = getattr(model, "stem_semantics", None)
+    error = getattr(semantics, "runtime_error", "")
+    if error:
+        raise ValueError(error)
     available: tuple[StemRoute, ...] = tuple(getattr(model, "available_stem_routes", ()) or ())
     selected: tuple[StemRoute, ...] = tuple(getattr(model, "selected_stem_routes", ()) or ())
     if getattr(model, "is_vocal_split_model", False):

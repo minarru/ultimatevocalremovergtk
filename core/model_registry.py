@@ -94,14 +94,10 @@ def _normalize_registry(payload: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _same_path(first: str, second: str) -> bool:
-    return os.path.normcase(os.path.abspath(first)) == os.path.normcase(
-        os.path.abspath(second)
-    )
+    return os.path.normcase(os.path.abspath(first)) == os.path.normcase(os.path.abspath(second))
 
 
-def _merge_registries(
-    base: Mapping[str, Any], overlay: Mapping[str, Any]
-) -> dict[str, Any]:
+def _merge_registries(base: Mapping[str, Any], overlay: Mapping[str, Any]) -> dict[str, Any]:
     """Merge two normalized registries with field-level overlay precedence."""
     merged = _empty_registry()
     merged["hashes"] = {**base["hashes"], **overlay["hashes"]}
@@ -175,9 +171,7 @@ def _next_legacy_archive_path() -> str:
 
 def _archive_legacy_registry() -> None:
     legacy_path = paths.LEGACY_REGISTERED_MODEL_INDEX
-    if _same_path(legacy_path, paths.REGISTERED_MODEL_INDEX) or not os.path.isfile(
-        legacy_path
-    ):
+    if _same_path(legacy_path, paths.REGISTERED_MODEL_INDEX) or not os.path.isfile(legacy_path):
         return
     archive = _next_legacy_archive_path()
     try:
@@ -224,7 +218,9 @@ class ModelRegistryService:
             APOLLO_ARCH_TYPE: paths.APOLLO_HASH_DIR,
         }.get(process_method)
         if directory is None or not model_hash:
-            raise ValueError("local metadata is supported only for hashed VR, MDX, and Apollo models")
+            raise ValueError(
+                "local metadata is supported only for hashed VR, MDX, and Apollo models"
+            )
         return os.path.join(directory, f"{model_hash}.json")
 
     def read_local(self, process_method: str, model_hash: str) -> dict[str, Any] | None:
@@ -313,11 +309,7 @@ class ModelRegistryService:
                 _presentation_input("display_override", display_override),
             ),
         )
-        updates = {
-            field: value
-            for field, value in fields
-            if value != ""
-        }
+        updates = {field: value for field, value in fields if value != ""}
         if not updates:
             return False
         with locked_json_path(paths.REGISTERED_MODEL_INDEX):
@@ -342,7 +334,8 @@ class ModelRegistryService:
         """
         changed = False
         extensions = {
-            "vr": (".pth",), "mdx": (".onnx", ".ckpt"),
+            "vr": (".pth",),
+            "mdx": (".onnx", ".ckpt"),
             "apollo": (".ckpt", ".bin"),
         }.get(family, ())
         for _url, checkpoint in jobs:
@@ -367,9 +360,14 @@ class ModelRegistryService:
                 ):
                     changed = True
         return changed
+
     def write_local(
-        self, process_method: str, model_hash: str, payload: dict[str, Any],
-        *, replace: bool = True,
+        self,
+        process_method: str,
+        model_hash: str,
+        payload: dict[str, Any],
+        *,
+        replace: bool = True,
     ) -> str:
         if not payload:
             raise ValueError("model metadata must be a non-empty object")
@@ -439,8 +437,14 @@ class ModelRegistryService:
         return result
 
     def configure(
-        self, family: str, process_method: str, model_hash: str,
-        payload: dict[str, Any], *, model_path: str = "", replace: bool = False,
+        self,
+        family: str,
+        process_method: str,
+        model_hash: str,
+        payload: dict[str, Any],
+        *,
+        model_path: str = "",
+        replace: bool = False,
     ) -> str:
         validated = self.validate_payload(family, payload, model_path=model_path)
         return self.write_local(process_method, model_hash, validated, replace=replace)

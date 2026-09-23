@@ -1,0 +1,130 @@
+# BS/PolarFormer inference config for compatible UVR/MSST runtime.
+# Source: ep0003_loss0.0459_sdrL9.91_sdrB16.71.ckpt (SHA256 c8415f5772f8af524065aeff2f0508375179323b6c2f2decf5c25a790a650e70)
+# Weights: ema_state_dict
+# This is not a complete training/resume configuration.
+# Public variant: !!python/tuple tags (stock MSST/UVR convention)
+
+metadata:
+  schema_version: 1
+  source_checkpoint: ep0003_loss0.0459_sdrL9.91_sdrB16.71.ckpt
+  source_checkpoint_sha256: c8415f5772f8af524065aeff2f0508375179323b6c2f2decf5c25a790a650e70
+  weights_source: ema_state_dict
+  model_architecture: PolarFormer (PoPE)
+  band_count: 62
+audio:
+  chunk_size: 588800
+  dim_f: 1024
+  dim_t: 1151
+  hop_length: 512
+  n_fft: 2048
+  num_channels: 2
+  sample_rate: 44100
+  min_mean_abs: 0.0
+model:
+  dim: 256
+  depth: 12
+  stereo: true
+  num_stems: 1
+  time_transformer_depth: 1
+  freq_transformer_depth: 1
+  linear_transformer_depth: 0
+  freqs_per_bands: !!python/tuple
+  - 2
+  - 2
+  - 2
+  - 2
+  - 2
+  - 2
+  - 2
+  - 2
+  - 2
+  - 2
+  - 2
+  - 2
+  - 2
+  - 2
+  - 2
+  - 2
+  - 2
+  - 2
+  - 2
+  - 2
+  - 2
+  - 2
+  - 2
+  - 2
+  - 4
+  - 4
+  - 4
+  - 4
+  - 4
+  - 4
+  - 4
+  - 4
+  - 4
+  - 4
+  - 4
+  - 4
+  - 12
+  - 12
+  - 12
+  - 12
+  - 12
+  - 12
+  - 12
+  - 12
+  - 24
+  - 24
+  - 24
+  - 24
+  - 24
+  - 24
+  - 24
+  - 24
+  - 48
+  - 48
+  - 48
+  - 48
+  - 48
+  - 48
+  - 48
+  - 48
+  - 128
+  - 129
+  dim_head: 64
+  heads: 8
+  attn_dropout: 0.0
+  ff_dropout: 0.0
+  flash_attn: true
+  dim_freqs_in: 1025
+  stft_n_fft: 2048
+  stft_hop_length: 512
+  stft_win_length: 2048
+  stft_normalized: false
+  zero_dc: true
+  mask_estimator_depth: 2
+  multi_stft_resolution_loss_weight: 1.0
+  multi_stft_resolutions_window_sizes: !!python/tuple
+  - 4096
+  - 2048
+  - 1024
+  - 512
+  - 256
+  multi_stft_hop_size: 147
+  multi_stft_normalized: false
+  mlp_expansion_factor: 4
+  use_torch_checkpoint: false
+  skip_connection: false
+  use_pope: true
+training:
+  batch_size: 1
+  instruments:
+  - lead
+  - back_instrum
+  target_instrument: lead
+  use_amp: true
+inference:
+  chunk_size: 588800
+  batch_size: 1
+  dim_t: 1151
+  num_overlap: 2

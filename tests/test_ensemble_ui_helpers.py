@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import unittest
+from collections.abc import Iterable
+from typing import Any
 
 from bundled.constants import (
     CHUNK_MIN,
@@ -15,6 +17,7 @@ from bundled.constants import (
 from core.ensemble_algorithms import (
     CUSTOM_PRESET,
     HYBRID_CLEAN_PRESET,
+    PAIR_CONSISTENT_PRESET,
     RECOMMENDED_PRESET,
     SOFT_BLEND_PRESET,
     algorithm_blurb,
@@ -26,6 +29,8 @@ from core.ensemble_algorithms import (
     preset_for_pair,
     wav_ensemble_subtitle,
 )
+from core.stem_roles import StemRoleId
+from core.stems import StemId, StemRoute, StemRouteKind
 from tests.private_gtk import require_private_gtk
 
 
@@ -64,6 +69,27 @@ class StemTitleTests(unittest.TestCase):
     def test_multi_stem_title(self) -> None:
         primary, _secondary = algorithm_row_titles("Vocals", "Instrumental", multi_stem=True)
         self.assertEqual(primary, "Ensemble algorithm")
+
+    def test_pair_consistent_titles_generic_when_unresolved(self) -> None:
+        primary, secondary = algorithm_row_titles(
+            None,
+            None,
+            multi_stem=False,
+            derive_complement_from_mix=True,
+        )
+        self.assertEqual(primary, "Primary algorithm")
+        self.assertEqual(secondary, "Complement (from mix)")
+
+    def test_pair_consistent_titles_use_leftover_from_mix(self) -> None:
+        primary, secondary = algorithm_row_titles(
+            "Vocals",
+            "Instrumental",
+            multi_stem=False,
+            derive_complement_from_mix=True,
+            leftover_label="Instrumental",
+        )
+        self.assertEqual(primary, "Vocals algorithm")
+        self.assertEqual(secondary, "Instrumental (from mix)")
 
 
 class FilterAndStatusTests(unittest.TestCase):
@@ -110,6 +136,63 @@ class SummaryAndBlurbTests(unittest.TestCase):
             "Vocals ← Max Spec · Instrumental ← Min Spec · 3 models",
         )
 
+    def test_pair_consistent_summary_uses_mix_residual_not_min_spec(self) -> None:
+        """Flag on must not describe the leftover as an independent Min Spec combine."""
+        text = ensemble_options_summary(
+            stem_chosen=True,
+            main_stem="Vocals/Instrumental",
+            primary_stem="Vocals",
+            secondary_stem="Instrumental",
+            primary_algo=MAX_SPEC,
+            secondary_algo=MIN_SPEC,
+            model_count=2,
+            multi_stem=False,
+            derive_complement_from_mix=True,
+        )
+        self.assertEqual(
+            text,
+            "Vocals ← Max Spec · mix residual · 2 models",
+        )
+        self.assertNotIn("← Min Spec", text)
+
+    def test_pair_consistent_summary_uses_leftover_label(self) -> None:
+        text = ensemble_options_summary(
+            stem_chosen=True,
+            main_stem="Vocals/Instrumental",
+            primary_stem="Vocals",
+            secondary_stem="Instrumental",
+            primary_algo=MAX_SPEC,
+            secondary_algo=MIN_SPEC,
+            model_count=3,
+            multi_stem=False,
+            derive_complement_from_mix=True,
+            leftover_label="Instrumental",
+        )
+        self.assertEqual(
+            text,
+            "Vocals ← Max Spec · Instrumental · 3 models",
+        )
+        self.assertNotIn("← Min Spec", text)
+
+    def test_karaoke_shaped_summary_uses_stacked_role_on_the_left(self) -> None:
+        """pair.karaoke is accompaniment-first; stacked lead must be the left stem."""
+        text = ensemble_options_summary(
+            stem_chosen=True,
+            main_stem="Instrumental with Backing Vocals/Lead Vocals",
+            primary_stem="Lead Vocals",
+            secondary_stem="Instrumental with Backing Vocals",
+            primary_algo=MAX_SPEC,
+            secondary_algo=MIN_SPEC,
+            model_count=2,
+            multi_stem=False,
+            derive_complement_from_mix=True,
+            leftover_label="Instrumental with Backing Vocals",
+        )
+        self.assertEqual(
+            text,
+            "Lead Vocals ← Max Spec · Instrumental with Backing Vocals · 2 models",
+        )
+
     def test_algorithm_blurb_and_wav_subtitle(self) -> None:
         self.assertIn("agreement", algorithm_blurb(SOFT_SPEC).casefold())
         self.assertIn("chunk", wav_ensemble_subtitle(uses_chunk_min=True).casefold())
@@ -117,13 +200,300 @@ class SummaryAndBlurbTests(unittest.TestCase):
         self.assertTrue(algorithm_blurb(CHUNK_MIN))
 
 
+class EnsembleOptionsSummaryCallSiteTests(unittest.TestCase):
+    """The group description must follow the same plan as the algorithm rows."""
+
+    def _page(self, *, pair_id: str, pair_label: str, pair_stems: tuple[str, str]) -> Any:
+        from unittest import mock
+
+        from core.settings import Settings
+        from ui.ensemble.window import EnsemblePage
+
+        page: Any = object.__new__(EnsemblePage)
+        page.settings = Settings.defaults()
+        page.settings.ensemble.derive_complement_from_mix = True
+        page.settings.ensemble.type = "Max Spec/Min Spec"
+        page.ensemble_group = mock.Mock()
+        page._lock_leftover_algo = False
+        page._pair_consistent_leftover_label = None
+        page._ensemble_pair = mock.Mock(return_value=pair_id)
+        page._stem_pair_chosen = mock.Mock(return_value=True)
+        page._ensemble_pair_label = mock.Mock(return_value=pair_label)
+        page._ensemble_stem_pair = mock.Mock(return_value=pair_stems)
+        page._effective_selected_models = mock.Mock(return_value=["mdx:a", "mdx:b"])
+        return page
+
+    def test_karaoke_plan_summary_uses_stacked_role_on_the_left(self) -> None:
+        page = self._page(
+            pair_id="pair.karaoke",
+            pair_label="Instrumental with Backing Vocals/Lead Vocals",
+            pair_stems=("Instrumental with Backing Vocals", "Lead Vocals"),
+        )
+        page._lock_leftover_algo = True
+        page._pair_consistent_leftover_label = "Instrumental with Backing Vocals"
+        page._pair_consistent_stacked_label = "Lead Vocals"
+        page._describe_mix_residual = True
+
+        page._update_ensemble_options_summary()
+
+        page.ensemble_group.set_description.assert_called_once_with(
+            "Lead Vocals ← Max Spec · Instrumental with Backing Vocals · 2 models"
+        )
+
+    def test_noop_dual_native_keeps_independent_algorithm_summary(self) -> None:
+        page = self._page(
+            pair_id="pair.center_side",
+            pair_label="Center/Side",
+            pair_stems=("Center", "Side"),
+        )
+        page._lock_leftover_algo = False
+        page._pair_consistent_leftover_label = None
+        page._pair_consistent_stacked_label = None
+        page._describe_mix_residual = False
+
+        page._update_ensemble_options_summary()
+
+        page.ensemble_group.set_description.assert_called_once_with(
+            "Center ← Max Spec · Side ← Min Spec · 2 models"
+        )
+
+
+_VOCALS = StemRoleId("vocal.vocals")
+_INST = StemRoleId("mix.instrumental")
+
+
+def _native_route(role: StemRoleId, key: str) -> StemRoute:
+    return StemRoute(StemId(key), role, key, key, StemRouteKind.NATIVE)
+
+
+def _complement_route(role: StemRoleId, of_role: StemRoleId) -> StemRoute:
+    return StemRoute(
+        None,
+        role,
+        str(role),
+        str(role),
+        StemRouteKind.DERIVED,
+        complement_of=of_role,
+    )
+
+
+class PairConsistentPlanAvailabilityTests(unittest.TestCase):
+    def test_real_preset_signals_settle_and_preserve_complement_state(self) -> None:
+        from unittest import mock
+
+        import gi
+
+        gi.require_version("Gtk", "4.0")
+        gi.require_version("Adw", "1")
+        from gi.repository import Adw, Gtk
+
+        from ui.ensemble.window import EnsemblePage
+        from ui.template import load_builder
+        from ui.widgets.rows import get_combo_value, set_combo_value
+
+        if not Gtk.init_check():
+            self.skipTest("GTK display unavailable")
+        Adw.init()
+        page = self._page()
+        page._loading = False
+        page._custom_algorithms = False
+        page._stem_pair_chosen = lambda: True
+        page._update_wav_ensemble_subtitle = mock.Mock()
+        page._update_ensemble_options_summary = mock.Mock()
+        page._update_algorithm_visibility = EnsemblePage._update_algorithm_visibility.__get__(page)
+        builder = load_builder("ensemble-page")
+        for name in (
+            "preset_row",
+            "derive_complement_row",
+            "primary_algo_row",
+            "secondary_algo_row",
+        ):
+            setattr(page, name, builder.get_object(name))
+        vocal = (_native_route(_VOCALS, "vocals"), _complement_route(_INST, _VOCALS))
+        page._dry_resolved_member_routes.return_value = (vocal, vocal)
+        page._refresh_ensemble_type_values()
+        notifications = 0
+
+        def changed(*args: object) -> None:
+            nonlocal notifications
+            notifications += 1
+            # Bound a regression without hanging the suite or raising inside GI.
+            if notifications <= 20:
+                page._on_preset_changed(*args)
+
+        page.preset_row.connect("notify::selected", changed)
+        page.derive_complement_row.connect("notify::active", page._on_derive_complement_changed)
+        for row in (page.primary_algo_row, page.secondary_algo_row):
+            row.connect("notify::selected", page._on_ensemble_type_changed)
+
+        set_combo_value(page.preset_row, PAIR_CONSISTENT_PRESET)
+        self.assertLess(notifications, 20, "Preset selection entered a notification loop")
+        self.assertEqual(get_combo_value(page.preset_row), PAIR_CONSISTENT_PRESET)
+        self.assertTrue(page.settings.ensemble.derive_complement_from_mix)
+        self.assertTrue(page.derive_complement_row.get_active())
+        self.assertFalse(page.secondary_algo_row.get_sensitive())
+
+        set_combo_value(page.preset_row, CUSTOM_PRESET)
+        self.assertTrue(page.primary_algo_row.get_visible())
+        self.assertFalse(page.secondary_algo_row.get_sensitive())
+        page.derive_complement_row.set_active(False)
+        self.assertFalse(page.settings.ensemble.derive_complement_from_mix)
+        self.assertTrue(page.secondary_algo_row.get_sensitive())
+        page.derive_complement_row.set_active(True)
+
+        page._dry_resolved_member_routes.return_value = None
+        page._apply_algorithm_row_presentation()
+        page._update_algo_sensitivity()
+        self.assertFalse(page.derive_complement_row.get_visible())
+        self.assertTrue(page.settings.ensemble.derive_complement_from_mix)
+        self.assertTrue(page.secondary_algo_row.get_sensitive())
+        page._dry_resolved_member_routes.return_value = (vocal, vocal)
+        page._apply_algorithm_row_presentation()
+        page._update_algo_sensitivity()
+        self.assertTrue(page.derive_complement_row.get_visible())
+        self.assertTrue(page.derive_complement_row.get_active())
+        self.assertFalse(page.secondary_algo_row.get_sensitive())
+
+        set_combo_value(page.preset_row, RECOMMENDED_PRESET)
+        self.assertFalse(page.settings.ensemble.derive_complement_from_mix)
+        self.assertFalse(page.derive_complement_row.get_active())
+        self.assertLess(notifications, 20)
+
+    def _page(self) -> Any:
+        from unittest import mock
+
+        from core.settings import Settings
+        from ui.ensemble.window import EnsemblePage
+
+        page: Any = object.__new__(EnsemblePage)
+        page.settings = Settings.defaults()
+        page._syncing_preset = False
+        page._lock_leftover_algo = False
+        page._pair_consistent_leftover_label = None
+        page._pair_consistent_stacked_label = None
+        page._describe_mix_residual = False
+        page._ensemble_is_multi_or_four = mock.Mock(return_value=False)
+        page._ensemble_pair = mock.Mock(return_value="pair.vocals_instrumental")
+        page._ensemble_stem_pair = mock.Mock(return_value=("Vocals", "Instrumental"))
+        page._dry_resolved_member_routes = mock.Mock(return_value=None)
+        page.derive_complement_row = mock.Mock()
+        page.preset_row = mock.Mock()
+        page._update_algorithm_visibility = mock.Mock()
+        page.primary_algo_row = mock.Mock()
+        page.secondary_algo_row = mock.Mock()
+        return page
+
+    def test_voc_primary_members_yield_a_plan(self) -> None:
+        page = self._page()
+        voc_member = (_native_route(_VOCALS, "vocals"), _complement_route(_INST, _VOCALS))
+        page._dry_resolved_member_routes.return_value = (voc_member, voc_member)
+
+        plan = page._pair_consistent_plan()
+
+        self.assertIsNotNone(plan)
+        assert plan is not None
+        self.assertEqual(plan.stacked_role, _VOCALS)
+        self.assertEqual(plan.leftover_role, _INST)
+
+    def test_dual_native_or_unresolved_or_multi_has_no_plan(self) -> None:
+        page = self._page()
+        dual = (_native_route(_VOCALS, "vocals"), _native_route(_INST, "instrumental"))
+        page._dry_resolved_member_routes.return_value = (dual, dual)
+        self.assertIsNone(page._pair_consistent_plan())
+
+        page._dry_resolved_member_routes.return_value = None
+        self.assertIsNone(page._pair_consistent_plan())
+
+        page._ensemble_is_multi_or_four.return_value = True
+        page._dry_resolved_member_routes.return_value = (
+            (_native_route(_VOCALS, "vocals"), _complement_route(_INST, _VOCALS)),
+            (_native_route(_VOCALS, "vocals"), _complement_route(_INST, _VOCALS)),
+        )
+        self.assertIsNone(page._pair_consistent_plan())
+
+    def test_switch_visible_only_when_a_plan_exists(self) -> None:
+        from unittest import mock
+
+        import ui.ensemble.window as ensemble_window
+
+        page = self._page()
+        voc_member = (_native_route(_VOCALS, "vocals"), _complement_route(_INST, _VOCALS))
+        page._dry_resolved_member_routes.return_value = (voc_member, voc_member)
+
+        with (
+            mock.patch.object(ensemble_window, "set_combo_values"),
+            mock.patch.object(ensemble_window, "set_combo_value"),
+            mock.patch.object(ensemble_window, "set_row_title"),
+        ):
+            page._apply_algorithm_row_presentation()
+
+        page.derive_complement_row.set_visible.assert_called_with(True)
+
+        page._dry_resolved_member_routes.return_value = None
+        with (
+            mock.patch.object(ensemble_window, "set_combo_values"),
+            mock.patch.object(ensemble_window, "set_combo_value"),
+            mock.patch.object(ensemble_window, "set_row_title"),
+        ):
+            page._apply_algorithm_row_presentation()
+
+        page.derive_complement_row.set_visible.assert_called_with(False)
+
+    def test_leftover_stays_unlocked_until_the_toggle_is_on(self) -> None:
+        from unittest import mock
+
+        import ui.ensemble.window as ensemble_window
+
+        page = self._page()
+        voc_member = (_native_route(_VOCALS, "vocals"), _complement_route(_INST, _VOCALS))
+        page._dry_resolved_member_routes.return_value = (voc_member, voc_member)
+        page.settings.ensemble.derive_complement_from_mix = False
+
+        with (
+            mock.patch.object(ensemble_window, "set_combo_values"),
+            mock.patch.object(ensemble_window, "set_combo_value"),
+            mock.patch.object(ensemble_window, "set_row_title"),
+        ):
+            page._apply_algorithm_row_presentation()
+
+        self.assertFalse(page._lock_leftover_algo)
+
+        page.settings.ensemble.derive_complement_from_mix = True
+        with (
+            mock.patch.object(ensemble_window, "set_combo_values"),
+            mock.patch.object(ensemble_window, "set_combo_value"),
+            mock.patch.object(ensemble_window, "set_row_title"),
+        ):
+            page._apply_algorithm_row_presentation()
+
+        self.assertTrue(page._lock_leftover_algo)
+
+    def test_preset_combo_drops_pair_consistent_when_plan_is_missing(self) -> None:
+        from unittest import mock
+
+        import ui.ensemble.window as ensemble_window
+
+        page = self._page()
+        page._dry_resolved_member_routes.return_value = None
+        captured: list[tuple[str, ...]] = []
+
+        def _capture(_row: object, values: Iterable[str]) -> None:
+            captured.append(tuple(values))
+
+        with (
+            mock.patch.object(ensemble_window, "set_combo_values", side_effect=_capture),
+            mock.patch.object(ensemble_window, "set_combo_value"),
+            mock.patch.object(ensemble_window, "set_row_title"),
+        ):
+            page._apply_algorithm_row_presentation()
+
+        self.assertTrue(captured)
+        self.assertNotIn(PAIR_CONSISTENT_PRESET, captured[-1])
+
+
 class MainStemChangedOrderTests(unittest.TestCase):
-    def test_model_list_rebuilds_before_stem_toggles(self) -> None:
-        """Regression: stem-only toggles resolve export-semantics hints from
-        _selected_model_tags(), which reads the model checklist built by
-        _rebuild_model_list(). Rebuilding toggles first meant that checklist
-        still reflected the *previous* stem pair for one render pass.
-        """
+    def test_stem_change_reconciles_members_before_summary(self) -> None:
+        """Reconciliation now owns refreshing output choices after the model list."""
         from unittest import mock
 
         import ui.ensemble.window as ensemble_window
@@ -138,7 +508,7 @@ class MainStemChangedOrderTests(unittest.TestCase):
         page._refresh_ensemble_type_values = mock.Mock(
             side_effect=lambda: order.append("refresh_type")
         )
-        page._rebuild_model_list = mock.Mock(
+        page._reconcile_member_list = mock.Mock(
             side_effect=lambda tags: order.append("rebuild_model_list")
         )
         page._rebuild_stem_only_toggles = mock.Mock(
@@ -161,7 +531,7 @@ class MainStemChangedOrderTests(unittest.TestCase):
 
         self.assertEqual(
             order,
-            ["refresh_type", "rebuild_model_list", "rebuild_stem_toggles", "update_summary"],
+            ["refresh_type", "rebuild_model_list", "update_summary"],
         )
 
 
@@ -257,6 +627,7 @@ class RebuildStemOnlyTogglesConfidenceTests(unittest.TestCase):
         page = object.__new__(ensemble_window.EnsemblePage)
         page.settings = mock.Mock()
         page.save_stems = save_stems
+        page.output_stems = mock.Mock()
         page.stems_group = mock.Mock()
         page._ensemble_stem_pair = mock.Mock(return_value=("Vocals", "Instrumental"))
         page._ensemble_is_multi_or_four = mock.Mock(return_value=False)
@@ -292,6 +663,60 @@ class RebuildStemOnlyTogglesConfidenceTests(unittest.TestCase):
         self.assertFalse(kwargs["is_karaoke"])
         self.assertFalse(kwargs["is_karaoke_curated"])
         self.assertFalse(kwargs["is_bv"])
+
+
+class ConflictingMemberRoutesTests(unittest.TestCase):
+    """Regression: ``run_export_routes`` raises on a stem-semantics runtime
+    error, and the unfiltered Multi-Stem list can hold such a member. The
+    ensemble page's GTK callbacks must treat it as unresolved instead of
+    letting the ``ValueError`` escape."""
+
+    def _page(self, models: dict[str, Any]) -> Any:
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from ui.ensemble.window import EnsemblePage
+
+        page: Any = object.__new__(EnsemblePage)
+        page._effective_selected_models = mock.Mock(return_value=list(models))
+        page._resolve_ensemble_member_model = mock.Mock(side_effect=models.__getitem__)
+        page.context = SimpleNamespace(repo=None)
+        return page
+
+    @staticmethod
+    def _model(runtime_error: str = "") -> Any:
+        from types import SimpleNamespace
+
+        route = _native_route(_VOCALS, "vocals")
+        return SimpleNamespace(
+            stem_semantics=SimpleNamespace(runtime_error=runtime_error),
+            available_stem_routes=(route,),
+            selected_stem_routes=(route,),
+        )
+
+    def test_conflicting_member_makes_dry_routes_unresolved(self) -> None:
+        page = self._page({"mdx:ok": self._model(), "mdx:bad": self._model("config conflicts")})
+        self.assertIsNone(page._dry_resolved_member_routes())
+
+    def test_clean_members_still_resolve(self) -> None:
+        page = self._page({"mdx:a": self._model(), "mdx:b": self._model()})
+        routes = page._dry_resolved_member_routes()
+        self.assertIsNotNone(routes)
+        self.assertEqual(len(routes), 2)
+
+    def test_blend_options_skip_conflicting_member(self) -> None:
+        from unittest import mock
+
+        page = self._page({"mdx:ok": self._model(), "mdx:bad": self._model("config conflicts")})
+        page.window = mock.Mock()
+        page.settings = mock.Mock()
+        with (
+            mock.patch("core.model_display.format_tag_title", side_effect=lambda tag, _repo: tag),
+            mock.patch("ui.ensemble.blend_dialog.show_blend_dialog") as show,
+        ):
+            page._open_blend_options()
+        members = show.call_args.args[2]
+        self.assertEqual([member[0] for member in members], ["mdx:ok"])
 
 
 if __name__ == "__main__":

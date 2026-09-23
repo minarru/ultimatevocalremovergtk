@@ -176,6 +176,7 @@ class StemSemanticProjection:
     canonical_roles: tuple[str, ...] = ()
     evidence: str = ""
     warning: str = ""
+    runtime_error: str = ""
 
     def as_dict(self) -> dict[str, Any]:
         result = {
@@ -189,6 +190,8 @@ class StemSemanticProjection:
         }
         if self.warning:
             result["stem_semantics_warning"] = self.warning
+        if self.runtime_error:
+            result["stem_configuration_error"] = self.runtime_error
         return result
 
 

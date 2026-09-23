@@ -1,0 +1,33 @@
+using Gtk 4.0;
+using Adw 1;
+
+Adw.Dialog dialog {
+  title: "Specify Model Parameters";
+  content-width: 440;
+  follows-content-size: true;
+}
+
+Gtk.Box content {
+  orientation: vertical;
+  margin-top: 12;
+  margin-bottom: 12;
+  margin-start: 12;
+  margin-end: 12;
+
+  Adw.PreferencesPage {
+    Adw.PreferencesGroup group {
+      description: "This model's parameters could not be detected automatically.";
+
+      Adw.ComboRow mdx_c_row {
+        title: "Model configuration";
+      }
+
+      Adw.ActionRow arch_row {
+        title: "Architecture";
+        activatable: false;
+      }
+
+      Adw.SwitchRow is_roformer_row {}
+    }
+  }
+}

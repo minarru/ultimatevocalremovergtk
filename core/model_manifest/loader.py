@@ -323,7 +323,7 @@ def load_model_manifest_document(document: object) -> ModelManifestRegistry:
                     value["runtime_contract"],
                     path + ("runtime_contract",),
                     required=_RUNTIME_CONTRACT_FIELDS,
-                    allowed=_RUNTIME_CONTRACT_FIELDS,
+                    allowed=_RUNTIME_CONTRACT_FIELDS | {"target_aliases"},
                 )
             )
             if not has_semantics:

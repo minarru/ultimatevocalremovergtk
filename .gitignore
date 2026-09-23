@@ -65,6 +65,13 @@ models/MDX_Net_Models/model_data/mdx_c_configs/*
 !models/MDX_Net_Models/model_data/mdx_c_configs/config_musdb18_scnet_xl.yaml
 !models/MDX_Net_Models/model_data/mdx_c_configs/config_dnr_bandit_v2_mus64.yaml
 !models/MDX_Net_Models/model_data/mdx_c_configs/config_dnr_bandit_bsrnn_multi_mus64.yaml
+!models/MDX_Net_Models/model_data/mdx_c_configs/bs_bowed_str2_gilliaaan_config.yaml
+!models/MDX_Net_Models/model_data/mdx_c_configs/bs_deeffect_gilliaaan_config.yaml
+!models/MDX_Net_Models/model_data/mdx_c_configs/bs_invert_clean1_gilliaaan_config.yaml
+!models/MDX_Net_Models/model_data/mdx_c_configs/bs_pope_karaoke2_lambda_config.yaml
+!models/MDX_Net_Models/model_data/mdx_c_configs/mbr_karaoke1_gilliaaan_config.yaml
+!models/MDX_Net_Models/model_data/mdx_c_configs/mbr_mid_side3_gilliaaan_config.yaml
+!models/MDX_Net_Models/model_data/mdx_c_configs/mbr_xeno3_config.yaml
 !models/VR_Models/
 models/VR_Models/*
 !models/VR_Models/model_data/
@@ -119,12 +126,13 @@ docs/.community_cache/
 
 # Generated GResource manifest (rebuilt by resources/compile_resources.sh)
 resources/uvr.gresource.xml
+# Generated GtkBuilder XML (compiled from resources/ui/*.blp).
+resources/ui/*.ui
+resources/ui/**/*.ui
 # Ignore local .cursor contents but keep the committed Cloud Agent environment.
 .cursor/*
 !.cursor/environment.json
 !.cursor/install.sh
-resources/icons/scalable/actions/bug-symbolic.svg
-resources/icons/scalable/actions/cross-small-symbolic.svg
 
 # Subagent-driven-development scratch (any depth, including worktrees)
 .superpowers/
@@ -142,3 +150,20 @@ docs/superpowers/specs/
 
 # Git worktrees (local isolation)
 .worktrees/
+
+# Catalogue responsibility owners.
+!scripts/catalogue/audit_reference.py
+!scripts/catalogue/audit_rules.py
+!scripts/catalogue/audit_types.py
+!scripts/catalogue/cache.py
+!scripts/catalogue/confidence.py
+!scripts/catalogue/config_evidence.py
+!scripts/catalogue/entry_rules.py
+!scripts/catalogue/evidence.py
+!scripts/catalogue/identities.py
+!scripts/catalogue/locations.py
+!scripts/catalogue/manifest_candidate.py
+!scripts/catalogue/stem_audit.py
+!scripts/catalogue/types.py
+
+!scripts/check_resource_bundle.py

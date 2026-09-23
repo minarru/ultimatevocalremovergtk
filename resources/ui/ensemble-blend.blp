@@ -1,0 +1,53 @@
+using Gtk 4.0;
+using Adw 1;
+
+Adw.Dialog dialog {
+  title: "Blend options";
+  content-width: 540;
+  content-height: 620;
+  child: Adw.ToolbarView {
+    [top]
+    Adw.HeaderBar {
+      [end]
+      Gtk.Button apply_button {
+        label: "Apply";
+        styles ["suggested-action"]
+      }
+    }
+    content: Adw.PreferencesPage page {
+      Adw.PreferencesGroup {
+        title: "Spectral blending";
+        description: "Max Spec and Hybrid use fixed smoothing. Min Spec can trade cleanness for detail. Chunk Min uses its own window selection.";
+        Adw.SpinRow smoothing_row {
+          title: "Min Spec smoothing";
+          subtitle: "0 keeps hard bin selection; higher values may preserve more detail while allowing more bleed";
+          digits: 2;
+          adjustment: Gtk.Adjustment { lower: 0; upper: 4; step-increment: 0.1; };
+        }
+        Adw.SpinRow soft_row {
+          title: "Soft agreement strength";
+          subtitle: "0 uses only model weights; higher values favor agreement";
+          digits: 2;
+          adjustment: Gtk.Adjustment { lower: 0; upper: 10; step-increment: 0.1; };
+        }
+        Adw.SpinRow hybrid_row {
+          title: "Hybrid Max share";
+          subtitle: "0 uses smoothed minima; 1 uses smoothed maxima";
+          digits: 2;
+          adjustment: Gtk.Adjustment { lower: 0; upper: 1; step-increment: 0.05; };
+        }
+      }
+      Adw.PreferencesGroup {
+        title: "Alignment";
+        Adw.SwitchRow alignment_row {
+          title: "Correct confirmed timing offsets";
+          subtitle: "Off by default. Checks up to 20 ms; shifts only when multiple excerpts agree. Diagnostics are recorded in the debug log.";
+        }
+      }
+      Adw.PreferencesGroup weights_group {
+        title: "Model weights by output";
+        description: "1 gives equal influence; 0 excludes a member. Keep at least two contributors per output. Higher weights give more influence, not a quality score.";
+      }
+    };
+  };
+}

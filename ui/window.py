@@ -3,9 +3,8 @@
 This is the GTK4 / libadwaita port of ``UVR.py``'s ``MainWindow`` core
 separation surface. It provides:
 
-* a "Process method" dropdown (``Adw.ComboRow``) that swaps the visible option
-  panel in a ``Gtk.Stack`` (VR Architecture / MDX-Net / Demucs), each panel
-  contributed by a :class:`ui.views.MethodView`;
+* one installed-model browser that selects the matching VR / MDX / Demucs
+  option panel contributed by a :class:`ui.views.MethodView`;
 * input file(s) and output folder choosers with native drag and drop;
 * the shared main-window options (output format, GPU conversion, sample mode);
 * Start / Stop and a progress bar in a collapsible log panel at the bottom of
@@ -23,6 +22,18 @@ Error Log and the input viewer are all reachable through window
 actions wired in :meth:`MainWindow._install_actions`, with keyboard accelerators
 and help-hint tooltips installed from :mod:`ui.hints`.
 """
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from ui.run_error_context import RunErrorContext
+
+if TYPE_CHECKING:
+    from core.audio_plan import ResolvedAudioJob
+    from core.job_callbacks import JobCallbacks
+    from core.job_plan import JobSpec, ResolvedJob
+    from core.settings import Settings
 
 import os
 import typing
@@ -66,16 +77,21 @@ from .model_options import (
     OPEN_CONTEXT_SEPARATION,
     open_model_options_sheet,
 )
+from .protocols import FormatEdit, VocalSplitEdit
 from .run_control import RunController
 from .shared_settings import (
     SAMPLE_MODE_TITLE,
-    apply_sample_mode_label,
+    SharedSettingsSession,
     apply_shared_file_options,
     format_input_sanitize_toasts,
+    gpu_autocast_subtitle,
     gpu_dependent_enabled,
     sample_mode_subtitle,
     sanitize_input_paths,
+    shared_settings_bindings,
 )
+from .startup import FirstFrameScheduler
+from .template import load_builder, object_from_builder
 from .views import METHOD_VIEWS
 from .widgets.columns import (
     build_columns_box,
@@ -88,7 +104,7 @@ from .widgets.download_queue_indicator import DownloadQueueIndicator
 from .widgets.file_chooser import InputFilesRow, OutputFolderRow
 from .widgets.format_row import OutputFormatRow
 from .widgets.log_panel import OVERLAY_MARGIN_BOTTOM, LogPanel
-from .widgets.rows import get_combo_value, make_combo_row, make_switch_row, set_combo_value
+from .widgets.rows import configure_combo_row, get_combo_value, set_combo_value
 from .widgets.vocal_split_row import VocalSplitRow
 
 #: Cadence (ms) and step of the indeterminate progress pulse shown before the
@@ -167,13 +183,15 @@ class _SeparationTarget:
     def on_deactivated(self) -> None:
         pass
 
-    def start(self, callbacks: typing.Any, plan: typing.Any = None) -> None:
+    def start(
+        self, callbacks: JobCallbacks, plan: ResolvedJob | ResolvedAudioJob | None = None
+    ) -> None:
         self.window._start_separation(callbacks, plan=plan)
 
     def start_blocked_reason(self) -> Optional[str]:
         return self.window._separation_blocked_reason()
 
-    def build_job_spec(self) -> typing.Any:
+    def build_job_spec(self) -> JobSpec:
         import copy
 
         from core.job_plan import JobSpec
@@ -186,6 +204,26 @@ class _SeparationTarget:
             self.window.output_row.path,
             {"profile": "gui"},
         )
+
+    run_label = 'Separation'
+
+    def worker_is_running(self) -> bool:
+        return self.window.context.runner.is_running()
+
+    def snapshot_error_context(self) -> RunErrorContext:
+        from core.error_context import build_separation_context
+
+        return RunErrorContext.from_fields(
+            build_separation_context(
+                self.window.settings,
+                self.window.context.repo,
+                list(self.window.input_row.paths),
+                self.error_key,
+            )
+        )
+
+    def bind_run_settings(self, settings: Settings) -> None:
+        pass  # The shared separation runner is bound by the host.
 
     def stop(self) -> None:
         self.window.context.runner.stop()
@@ -203,6 +241,9 @@ class MainWindow(Adw.ApplicationWindow):
 
         self.context = AppContext()
         self.settings = self.context.settings
+        self._shared_session: SharedSettingsSession | None = None
+        self._deferred_model_refresh: str | None = None
+        self._engine_warmup = FirstFrameScheduler()
 
         self.set_title(APP_TITLE)
         # Restore the persisted geometry (falling back to the default size), and
@@ -237,9 +278,7 @@ class MainWindow(Adw.ApplicationWindow):
         self._hint_manager = HelpHintManager()
 
         page = self._build_content()
-        self.log_panel = LogPanel(
-            on_expanded_changed=lambda *_: self._sync_options_bottom_clearance()
-        )
+        self.log_panel = LogPanel(on_completion_expired=self._refresh_start_readiness)
         self.console = self.log_panel.console
         self.start_button = self.log_panel.start_button
         self.stop_button = self.log_panel.stop_button
@@ -250,46 +289,32 @@ class MainWindow(Adw.ApplicationWindow):
         self.stop_button.connect("clicked", self._on_stop)
         self.log_copy_button.connect("clicked", self._on_log_copy)
         self.log_clear_button.connect("clicked", self._on_log_clear)
-        self.log_panel._progress_revealer.connect(
-            "notify::child-revealed", lambda *_: self._sync_options_bottom_clearance()
-        )
-        self.log_panel._progress_revealer.connect(
-            "notify::reveal-child", lambda *_: self._sync_options_bottom_clearance()
-        )
-        self.log_panel._log_revealer.connect(
-            "notify::child-revealed", lambda *_: self._sync_options_bottom_clearance()
-        )
-        self.log_panel._log_revealer.connect(
-            "notify::reveal-child", lambda *_: self._sync_options_bottom_clearance()
-        )
+        self.log_panel.set_layout_changed_callback(lambda: self._sync_options_bottom_clearance())
 
-        root = Gtk.Overlay()
+        shell = load_builder("main-window")
+        root = object_from_builder(shell, "root", Gtk.Overlay)
         root.set_child(page)
         root.add_overlay(self.log_panel)
         window_drop = Gtk.DropTarget.new(Gdk.FileList, Gdk.DragAction.COPY)
         window_drop.connect("drop", self._on_window_drop)
         root.add_controller(window_drop)
-        self.log_panel.set_halign(Gtk.Align.CENTER)
-        self.log_panel.set_valign(Gtk.Align.END)
+        self.log_panel.set_halign(Gtk.Align.FILL)
+        self.log_panel.set_valign(Gtk.Align.FILL)
         self.log_panel.set_margin_bottom(OVERLAY_MARGIN_BOTTOM)
 
+        from .download import DownloadQueueUiBinding
+
+        self._download_ui: DownloadQueueUiBinding | None = None
         self._download_queue_indicator = DownloadQueueIndicator()
 
-        toolbar_view = Adw.ToolbarView()
+        toolbar_view = object_from_builder(shell, "toolbar_view", Adw.ToolbarView)
         toolbar_view.add_top_bar(self._build_header())
         # Narrow widths reveal a bottom ViewSwitcherBar; the header switcher is
         # swapped for a plain window title (Adwaita adaptive navigation).
         toolbar_view.add_bottom_bar(self._view_switcher_bar)
-        toolbar_view.set_content(root)
-        toolbar_view.set_vexpand(True)
-
-        self._data_banner = Adw.Banner(button_label="Show Folder", revealed=False)
+        self._data_banner = object_from_builder(shell, "data_banner", Adw.Banner)
         self._data_banner.connect("button-clicked", self._on_data_banner_clicked)
-        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        outer.append(self._data_banner)
-        outer.append(toolbar_view)
-        self.toast_overlay = Adw.ToastOverlay()
-        self.toast_overlay.set_child(outer)
+        self.toast_overlay = object_from_builder(shell, "toast_overlay", Adw.ToastOverlay)
         self.set_content(self.toast_overlay)
         self._reveal_data_dir_banner_if_needed()
 
@@ -308,6 +333,7 @@ class MainWindow(Adw.ApplicationWindow):
         self._register_hints()
         self._apply_accelerators()
 
+        self._install_shared_session()
         self._load_from_settings()
         # Core mutates model state from places with no path to the UI --
         # update_model_settings and downloads' MDX-C registration both run on
@@ -321,55 +347,38 @@ class MainWindow(Adw.ApplicationWindow):
     # -- Construction -----------------------------------------------------------
 
     def _build_header(self) -> Adw.HeaderBar:
-        self._header = Adw.HeaderBar()
-
-        self._view_switcher = Adw.ViewSwitcher()
-        self._view_switcher.set_policy(Adw.ViewSwitcherPolicy.WIDE)
+        builder = load_builder("main-header")
+        self._header = object_from_builder(builder, "header", Adw.HeaderBar)
+        self._view_switcher = object_from_builder(builder, "view_switcher", Adw.ViewSwitcher)
         self._view_switcher.set_stack(self.content_stack)
         install_view_tab_tooltips(self._view_switcher)
-        self._header.set_title_widget(self._view_switcher)
-
-        self._window_title = Adw.WindowTitle(title="Separation")
-        self._view_switcher_bar = Adw.ViewSwitcherBar()
+        self._window_title = object_from_builder(builder, "window_title", Adw.WindowTitle)
+        self._view_switcher_bar = object_from_builder(
+            builder, "view_switcher_bar", Adw.ViewSwitcherBar
+        )
         self._view_switcher_bar.set_stack(self.content_stack)
-        self._view_switcher_bar.set_reveal(False)
         install_view_tab_tooltips(self._view_switcher_bar)
-
-        end_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        end_box.set_valign(Gtk.Align.CENTER)
-        end_box.append(self._download_queue_indicator.widget)
-
-        menu_button = Gtk.MenuButton(icon_name="open-menu-symbolic")
+        end_box = object_from_builder(builder, "end_box", Gtk.Box)
+        end_box.prepend(self._download_queue_indicator.widget)
+        menu_button = object_from_builder(builder, "menu_button", Gtk.MenuButton)
         set_icon_button_a11y(menu_button, MAIN_MENU_HINT)
         menu_button.set_menu_model(self._build_primary_menu())
-        end_box.append(menu_button)
-
-        self._header.pack_end(end_box)
 
         return self._header
 
     def _build_primary_menu(self) -> Gio.Menu:
-        menu = Gio.Menu()
-        tools = Gio.Menu()
-        tools.append("Verify Inputs", "win.view_inputs")
-        tools.append("Model options", "win.model_options")
-        tools.append("Download Center", "win.download")
-        tools.append("Error Log", "win.error_log")
+        builder = load_builder("main-menu")
+        menu = object_from_builder(builder, "primary_menu", Gio.Menu)
+        tools = object_from_builder(builder, "tools", Gio.Menu)
         if os.environ.get("UVR_DEBUG_OOM", "").strip() in ("1", "true", "yes"):
             tools.append("Mock GPU OOM dialog", "win.mock_oom_dialog")
             tools.append("Mock OOM (Separation)", "win.mock_oom_dialog_separation")
-        menu.append_section(None, tools)
-        info = Gio.Menu()
-        info.append("Settings", "win.settings")
-        info.append("Check for Updates", "win.updates")
-        info.append("Keyboard Shortcuts", "win.shortcuts")
-        info.append("About", "win.about")
-        menu.append_section(None, info)
         return menu
 
     def _build_content(self) -> Gtk.Widget:
         # Static groups are kept as attributes so they can be reparented between
         # the columns alongside the per-method groups.
+        self._groups_builder = load_builder("separation-groups")
         self.files_group = self._build_files_group()
         self.method_group = self._build_method_group()
         self.shared_group = self._build_shared_group()
@@ -383,19 +392,8 @@ class MainWindow(Adw.ApplicationWindow):
         self._columns_ready = True
         self._populate_columns()
 
-        # Proactive empty-state hint: a full-width banner above the two columns,
-        # shown only when the active method has no installed models. It opens the
-        # in-app Download Center and auto-hides once models appear (see
-        # ``_update_sep_banner``, driven from method switch / load / refresh).
-        self._sep_banner = Adw.Banner(
-            title="No models installed for this method. Open the Download Center to get models.",
-            button_label="Download Models",
-            revealed=False,
-        )
-        self._sep_banner.connect("button-clicked", self._on_sep_banner_clicked)
-        separation_page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        separation_page.set_vexpand(True)
-        separation_page.append(self._sep_banner)
+        page_builder = load_builder("separation-page")
+        separation_page = object_from_builder(page_builder, "separation_page", Gtk.Box)
         self._options_page = wrap_options_scroller(self._columns_box)
         separation_page.append(self._options_page)
 
@@ -406,18 +404,23 @@ class MainWindow(Adw.ApplicationWindow):
 
         # Runnable mode pages only; the shared console lives in the collapsible
         # log panel and auto-expands when a run starts.
-        self.content_stack = Adw.ViewStack()
+        self.content_stack = object_from_builder(page_builder, "content_stack", Adw.ViewStack)
+        # ViewStack gained native crossfades in libadwaita 1.7. Keep older
+        # runtimes usable; native transitions respect system animation settings.
+        if hasattr(self.content_stack, "set_enable_transitions"):
+            self.content_stack.set_property("transition-duration", 180)
+            self.content_stack.set_property("enable-transitions", True)
         self.content_stack.add_titled_with_icon(
             separation_page, "separation", "Separation", "audio-x-generic-symbolic"
         )
         self.content_stack.add_titled_with_icon(
-            self._ensemble_page.widget, "ensemble", "Ensemble", "media-playlist-shuffle-symbolic"
+            self._ensemble_page.widget, "ensemble", "Ensemble", "uvr-api-symbolic"
         )
         self.content_stack.add_titled_with_icon(
             self._audio_tools_page.widget,
             "audio_tools",
             "Audio Tools",
-            "applications-utilities-symbolic",
+            "uvr-mixer-sliders-symbolic",
         )
 
         # Every page's columns_box is flipped together by the responsive
@@ -444,7 +447,9 @@ class MainWindow(Adw.ApplicationWindow):
             "audio_tools": self._audio_tools_page,
         }
         self._run_target = self._separation_target
-        self._run_controller = RunController(self)
+        from .run_host import GtkRunHost
+
+        self._run_controller = RunController(GtkRunHost(self))
         self.content_stack.connect("notify::visible-child", self._on_visible_child)
 
         self.content_stack.set_vexpand(True)
@@ -457,10 +462,9 @@ class MainWindow(Adw.ApplicationWindow):
         method changes. Groups are removed from their current column and
         re-appended so the layout reflects ``self._current_view``.
 
-        The split keeps the common path on the left (Files, method, model,
-        basic options, model-options entry) and the run/output path on the right
-        (Save stems, Processing). Advanced and extra-model controls live in the
-        model-options sheet instead of inline expanders.
+        Input and Model occupy the left column; Output and Processing the
+        right. Shared rows move between the active view's groups without
+        recreating their widgets or changing their settings bindings.
         """
         for column in (self._col_start, self._col_end):
             child = column.get_first_child()
@@ -470,12 +474,21 @@ class MainWindow(Adw.ApplicationWindow):
                 child = nxt
 
         self._col_start.append(self.files_group)
-        self._col_start.append(self.method_group)
 
         view = self._current_view
         if view is not None:
+            self.selected_model_row = self._picker_rows[view.method_key]
+            if self._model_options_host is not view.group:
+                self._model_options_host.remove(self.model_options_row)
+                view.group.add(self.model_options_row)
+                self._model_options_host = view.group
+            if self._output_rows_host is not view.stem_group:
+                for row in (self.format_row, self.output_row):
+                    if self._output_rows_host is not None:
+                        self._output_rows_host.remove(row)
+                    view.stem_group.add(row)
+                self._output_rows_host = view.stem_group
             self._col_start.append(view.group)
-            self._col_start.append(self.model_options_group)
             self._col_end.append(view.stem_group)
             self._col_end.append(self.shared_group)
         else:
@@ -491,8 +504,9 @@ class MainWindow(Adw.ApplicationWindow):
             return
         view._sync_only_active()
         self._populate_columns()
-        self._update_sep_banner()
+        self._refresh_start_readiness()
         self._refresh_separation_layout()
+        self._sync_selected_model()
 
     def _refresh_separation_layout(self) -> None:
         """Force the options scroller to remeasure after column reparenting."""
@@ -506,6 +520,8 @@ class MainWindow(Adw.ApplicationWindow):
             clamp.queue_resize()
 
     def _on_window_mapped(self, *_args: typing.Any) -> None:
+        self._schedule_engine_warmup()
+
         def refresh() -> None:
             if self._current_view is not None:
                 self._populate_columns()
@@ -514,6 +530,20 @@ class MainWindow(Adw.ApplicationWindow):
             self._reveal_data_dir_banner_if_needed()
 
         idle_on_main(refresh)
+
+    def _schedule_engine_warmup(self) -> None:
+        """Start engine import after the first rendered window frame."""
+
+        def warmup() -> None:
+            from core.separate_import import warm_import_separate_engines
+
+            warm_import_separate_engines()
+
+        self._engine_warmup.schedule(self, warmup)
+
+    def cancel_startup_work(self) -> None:
+        """Cancel startup callbacks when the application shuts down directly."""
+        self._engine_warmup.cancel()
 
     def _sync_options_bottom_clearance(self) -> None:
         """Keep scroll padding aligned with the floating log panel height."""
@@ -538,17 +568,6 @@ class MainWindow(Adw.ApplicationWindow):
         from core import paths
 
         open_folder_in_file_manager(self, paths.DATA_DIR, on_error=self.toast)
-
-    def _update_sep_banner(self) -> None:
-        """Reveal the empty-state banner when the active method has no models."""
-        banner = getattr(self, "_sep_banner", None)
-        if banner is None:
-            return
-        banner.set_revealed(not self._active_view().has_any_models())
-        self._refresh_start_readiness()
-
-    def _on_sep_banner_clicked(self, _banner: Adw.Banner) -> None:
-        self._on_download(None, None)
 
     def _on_breakpoint_narrow(self, _breakpoint: typing.Any) -> None:
         # Single stacked column on every page: drop homogeneity so groups size
@@ -588,12 +607,11 @@ class MainWindow(Adw.ApplicationWindow):
         self.toast(_LOG_COPIED_TOAST)
 
     def _build_files_group(self) -> Adw.PreferencesGroup:
-        group = Adw.PreferencesGroup(title="Files")
-        view_inputs_button = Gtk.Button(icon_name="view-list-symbolic", valign=Gtk.Align.CENTER)
-        view_inputs_button.add_css_class("flat")
+        group = object_from_builder(self._groups_builder, "files_group", Adw.PreferencesGroup)
+        view_inputs_button = object_from_builder(
+            self._groups_builder, "view_inputs_button", Gtk.Button
+        )
         set_icon_button_a11y(view_inputs_button, VIEW_INPUTS_BUTTON_HINT)
-        view_inputs_button.set_action_name("win.view_inputs")
-        group.set_header_suffix(view_inputs_button)
         self.input_row = InputFilesRow(
             self._on_inputs_changed,
             on_toast=self.toast,
@@ -606,61 +624,133 @@ class MainWindow(Adw.ApplicationWindow):
         )
         self.output_row = OutputFolderRow(self._on_output_changed, on_toast=self.toast)
         group.add(self.input_row)
-        group.add(self.output_row)
+        self._output_rows_host: Adw.PreferencesGroup | None = None
         return group
 
     def _build_method_group(self) -> Adw.PreferencesGroup:
-        # No group title: the "Process method" row already names the step, and
-        # the adjacent (title-less) model group reads as one "pick method ->
-        # pick model" block. This drops a redundant header from the separation
-        # page (see also the per-arch title removed on the model group).
-        group = Adw.PreferencesGroup()
-        self.method_row = make_combo_row(
-            "Process method",
-            [view.title for view in self._views],
-            icon_name="system-run-symbolic",
-        )
+        # Existing method/view adapters retain ownership of per-method settings.
+        # Only the unified installed-model row is visible on Separation.
+        group = object_from_builder(self._groups_builder, "method_group", Adw.PreferencesGroup)
+        self.method_row = object_from_builder(self._groups_builder, "method_row", Adw.ComboRow)
+        configure_combo_row(self.method_row, [view.title for view in self._views])
         self.method_row.connect("notify::selected", self._on_method_selected)
-        group.add(self.method_row)
+        from .model_picker import ModelPicker
+
+        self._model_picker: ModelPicker | None = None
+        self._picker_rows: dict[str, Adw.ActionRow] = {}
+        for view in self._views:
+            view.model_row.set_visible(False)
+            row = view._layout_object("selected_model_row", Adw.ActionRow)
+            row.set_visible(True)
+            row.connect("activated", self._open_model_picker)
+            self._picker_rows[view.method_key] = row
+            view.group.set_title("Model")
+            view.stem_group.set_title("Output")
         return group
 
-    def _build_model_options_group(self) -> Adw.PreferencesGroup:
-        group = Adw.PreferencesGroup()
-        self.model_options_row = Adw.ActionRow(
-            title="Model options",
-            subtitle="Batch size, secondary models, and more",
-            activatable=True,
+    def _selected_model_id(self) -> str:
+        view = self._current_view
+        return view.selected_model() if view is not None else ""
+
+    def _sync_selected_model(self) -> None:
+        from core.model_identity import ModelIdentityService
+
+        from .model_picker_state import project_installed
+
+        row = getattr(self, "selected_model_row", None)
+        if row is None:
+            return
+        from .settings_bind import get_flat
+
+        view = self._current_view
+        model_id = str(get_flat(self.settings, view.model_key, "")) if view is not None else ""
+        record = next(
+            (r for r in ModelIdentityService(self.context.repo).records() if r.id == model_id), None
         )
-        self.model_options_row.add_suffix(Gtk.Image(icon_name="go-next-symbolic"))
+        if record is not None and record.installed:
+            snapshot = getattr(self.context.repo.catalogue, "latest_snapshot", None)
+            models = project_installed((record,), snapshot, {})
+            row.set_title(record.display)
+            if model_id != self._selected_model_id():
+                row.set_subtitle("Saved model available · Choose this model again to use it")
+            else:
+                row.set_subtitle(models[0].outputs if models else "Output details unavailable")
+        elif model_id and ":" in model_id:
+            row.set_title(model_id)
+            row.set_subtitle("Saved model unavailable · Choose another installed model")
+        else:
+            row.set_title("Choose a model")
+            row.set_subtitle("Browse installed models")
+
+    def _can_choose_model(self) -> bool:
+        controller = getattr(self, "_run_controller", None)
+        return self.content_stack.get_visible_child_name() == "separation" and (
+            controller is None or controller.can_edit_configuration()
+        )
+
+    def _open_model_picker(self, *_args: object) -> None:
+        if not self._can_choose_model():
+            return
+        if self._model_picker is None:
+            from .model_picker import ModelPicker
+
+            self._model_picker = ModelPicker(
+                self.context.repo,
+                self._selected_model_id,
+                self._choose_model,
+                lambda: self._on_download(None, None),
+            )
+        self._model_picker.present(self)
+
+    def _choose_model(self, model_id: str) -> bool:
+        from core.model_identity import ModelIdentityService
+
+        if not self._can_choose_model():
+            return False
+        record = next(
+            (r for r in ModelIdentityService(self.context.repo).records() if r.id == model_id), None
+        )
+        if record is None or not record.installed or not record.identity_complete:
+            return False
+        view = self._views_by_method.get(record.method)
+        if view is None:
+            return False
+        # Select the exact ID only after the target view has a fresh inventory.
+        # Its established callback owns persistence and Save Stems reconciliation.
+        set_combo_value(self.method_row, view.title)
+        selected = view.select_model(model_id)
+        self._sync_selected_model()
+        return selected
+
+    def _build_model_options_group(self) -> Adw.PreferencesGroup:
+        group = object_from_builder(
+            self._groups_builder, "model_options_group", Adw.PreferencesGroup
+        )
+        self.model_options_row = object_from_builder(
+            self._groups_builder, "model_options_row", Adw.ActionRow
+        )
+        self._model_options_host = group
         self.model_options_row.connect("activated", lambda *_: self._open_model_options())
         set_tooltip(self.model_options_row, MODEL_OPTIONS_ROW_HINT)
-        group.add(self.model_options_row)
         return group
 
     def _build_shared_group(self) -> Adw.PreferencesGroup:
-        group = Adw.PreferencesGroup(title="Processing")
+        group = object_from_builder(self._groups_builder, "processing_group", Adw.PreferencesGroup)
 
         self.format_row = OutputFormatRow(self._on_format_changed)
-        group.add(self.format_row)
 
-        self.gpu_row = make_switch_row("GPU conversion", icon_name="pci-card-symbolic")
+        self.gpu_row = object_from_builder(self._groups_builder, "gpu_row", Adw.SwitchRow)
         self.gpu_row.connect("notify::active", self._on_gpu_changed)
         group.add(self.gpu_row)
 
-        self.autocast_row = make_switch_row(
-            "FP16 autocast",
-            subtitle="Faster VR/MDX/Roformer on modern NVIDIA GPUs",
-            icon_name="emblem-system-symbolic",
-        )
+        self.autocast_row = object_from_builder(self._groups_builder, "autocast_row", Adw.SwitchRow)
         self.autocast_row.connect("notify::active", self._on_autocast_changed)
         group.add(self.autocast_row)
 
         duration = self.settings.process.sample_mode_duration
-        self.sample_row = make_switch_row(
-            SAMPLE_MODE_TITLE,
-            sample_mode_subtitle(duration),
-            icon_name="preferences-system-time-symbolic",
-        )
+        self.sample_row = object_from_builder(self._groups_builder, "sample_row", Adw.SwitchRow)
+        self.sample_row.set_title(SAMPLE_MODE_TITLE)
+        self.sample_row.set_subtitle(sample_mode_subtitle(duration))
         self.sample_row.connect("notify::active", self._on_sample_changed)
         group.add(self.sample_row)
 
@@ -685,6 +775,7 @@ class MainWindow(Adw.ApplicationWindow):
             "start": self._on_start_action,
             "stop": self._on_stop_action,
             "shortcuts": self._on_shortcuts,
+            "mock_error_log": self._on_mock_error_log,
             "mock_oom_dialog": self._on_mock_oom_dialog,
             "mock_oom_dialog_separation": self._on_mock_oom_dialog_separation,
         }
@@ -722,18 +813,9 @@ class MainWindow(Adw.ApplicationWindow):
         cleaned_inputs, input_result = sanitize_input_paths(raw_inputs)
         if cleaned_inputs != raw_inputs:
             self.settings.process.input_paths = cleaned_inputs
-        self.input_row.set_paths(cleaned_inputs, notify=False)
         self._maybe_notify_stale_inputs(input_result)
-        export_path = self.settings.process.export_path or ""
-        self.output_row.set_path(export_path, notify=False)
+        self._sync_shared_from_settings()
         self._maybe_notify_stale_export_path()
-        self.format_row.apply_from_settings(self.settings)
-        self.vocal_split_row.apply_from_settings(self.settings)
-        self.gpu_row.set_active(bool(self.settings.process.use_gpu))
-        self.autocast_row.set_active(bool(self.settings.process.autocast))
-        self._sync_gpu_dependent_rows()
-        apply_sample_mode_label(self.sample_row, self.settings.process.sample_mode_duration)
-        self.sample_row.set_active(bool(self.settings.process.sample_mode))
 
         method = self.settings.process.method or MDX_ARCH_TYPE
         method = _METHOD_SETTING_ALIASES.get(method, method)
@@ -754,7 +836,7 @@ class MainWindow(Adw.ApplicationWindow):
         idle_on_main(self._refresh_separation_layout)
 
         # The embedded mode pages load their own slice of the settings model.
-        self._ensemble_page.load()
+        self._ensemble_page.load(defer_models=True)
         self._audio_tools_page.load()
         self._sync_narrow_window_title()
         self._sync_model_options_action()
@@ -788,8 +870,22 @@ class MainWindow(Adw.ApplicationWindow):
     def _active_view(self):
         return self._current_view or self._views[0]
 
-    def _sync_shared_from_settings(self) -> None:
-        """Re-read the cross-tab shared keys into the separation widgets."""
+    def _install_shared_session(self) -> None:
+        self._shared_session = SharedSettingsSession(
+            self.settings,
+            shared_settings_bindings(
+                input_row=self.input_row,
+                output_row=self.output_row,
+                format_row=self.format_row,
+                gpu_row=self.gpu_row,
+                autocast_row=self.autocast_row,
+                sample_row=self.sample_row,
+                vocal_row=self.vocal_split_row,
+            ),
+            can_commit=lambda: self.content_stack.get_visible_child_name() == "separation",
+        )
+
+    def _apply_shared_widgets(self) -> None:
         apply_shared_file_options(
             self.settings,
             input_row=self.input_row,
@@ -800,6 +896,11 @@ class MainWindow(Adw.ApplicationWindow):
             sample_row=self.sample_row,
         )
         self.vocal_split_row.apply_from_settings(self.settings)
+
+    def _sync_shared_from_settings(self) -> None:
+        """Refresh displayed baselines without creating shared edits."""
+        assert self._shared_session is not None
+        self._shared_session.refresh(self._apply_shared_widgets)
         self._sync_gpu_dependent_rows()
 
     def _activate_separation(self) -> None:
@@ -823,6 +924,9 @@ class MainWindow(Adw.ApplicationWindow):
         target = self._targets.get(name)
         if target is None:
             return
+        previous = getattr(self, "_run_target", None)
+        if previous is not None and previous is not target:
+            previous.on_deactivated()
         if name != "ensemble":
             self.settings.process.method = ProcessMethod(self._active_view().method_key)
         self._run_target = target
@@ -882,6 +986,7 @@ class MainWindow(Adw.ApplicationWindow):
         In-memory updates are flushed to disk on Start and on close. Readiness
         is refreshed here because method views call this hook after model edits.
         """
+        self._sync_selected_model()
         self._refresh_start_readiness()
 
     def _on_method_selected(self, *_args: typing.Any) -> None:
@@ -898,38 +1003,60 @@ class MainWindow(Adw.ApplicationWindow):
         self._refresh_start_readiness()
 
     def _on_inputs_changed(self) -> None:
-        paths = list(self.input_row.paths)
-        self.settings.process.input_paths = paths
-        self.context.prune_unreadable_input_paths(paths)
+        session = self._shared_session
+        if session is None or not session.editable:
+            return
+        session.commit(edited=(session.bindings.input_paths,))
+        self.context.prune_unreadable_input_paths(list(self.input_row.paths))
         self._refresh_start_readiness()
 
     def _on_external_inputs_changed(self, paths: typing.Any) -> None:
         paths = list(paths)
         self.input_row.set_paths(paths, notify=False)
         self.settings.process.input_paths = paths
+        assert self._shared_session is not None
+        self._shared_session.adopt(self._shared_session.bindings.input_paths)
         self.context.prune_unreadable_input_paths(paths)
         self._refresh_start_readiness()
 
     def _on_output_changed(self) -> None:
-        self.settings.process.export_path = self.output_row.path
+        session = self._shared_session
+        if session is None or not session.editable:
+            return
+        session.commit(edited=(session.bindings.export_path,))
         self._refresh_start_readiness()
 
-    def _on_format_changed(self, *_args: typing.Any) -> None:
-        self.format_row.persist_to_settings(self.settings)
+    def _on_format_changed(self, event: FormatEdit) -> None:
+        session = self._shared_session
+        if session is None or not session.editable:
+            return
+        session.format_changed(event)
 
-    def _on_vocal_split_changed(self, *_args: typing.Any) -> None:
-        self.vocal_split_row.persist_to_settings(self.settings)
+    def _on_vocal_split_changed(self, event: VocalSplitEdit) -> None:
+        session = self._shared_session
+        if session is None or not session.editable:
+            return
+        session.vocal_changed(event)
 
     def _on_gpu_changed(self, *_args: typing.Any) -> None:
-        self.settings.process.use_gpu = self.gpu_row.get_active()
+        session = self._shared_session
+        if session is None or not session.editable:
+            return
+        session.commit(edited=(session.bindings.use_gpu,))
         self._sync_gpu_dependent_rows()
         self._refresh_active_stem_metadata()
 
     def _on_autocast_changed(self, *_args: typing.Any) -> None:
-        self.settings.process.autocast = self.autocast_row.get_active()
+        session = self._shared_session
+        if session is None or not session.editable:
+            return
+        session.commit(edited=(session.bindings.autocast,))
 
     def _on_sample_changed(self, *_args: typing.Any) -> None:
-        self.settings.process.sample_mode = self.sample_row.get_active()
+        session = self._shared_session
+        if session is None or not session.editable:
+            return
+        session.commit(edited=(session.bindings.sample_mode,))
         self._refresh_active_stem_metadata()
 
     def _refresh_active_stem_metadata(self) -> None:
@@ -939,18 +1066,23 @@ class MainWindow(Adw.ApplicationWindow):
 
     def _sync_gpu_dependent_rows(self) -> None:
         """Dim GPU-only options while GPU conversion is off."""
-        self.autocast_row.set_sensitive(gpu_dependent_enabled(self.gpu_row.get_active()))
+        gpu_enabled = self.gpu_row.get_active()
+        self.autocast_row.set_sensitive(gpu_dependent_enabled(gpu_enabled))
+        self.autocast_row.set_subtitle(gpu_autocast_subtitle(gpu_enabled))
 
     def _on_close_request(self, *_args: typing.Any) -> bool:
         return self._run_controller.handle_close_request(self._finalize_close)
 
     def _finalize_close(self, deferred: bool) -> None:
+        self.cancel_startup_work()
         # The repository outlives this window (it hangs off AppContext), so a
         # live subscription would keep calling into a dead widget tree.
         self._unsubscribe_model_events()
         self._flush_settings()
         self._save_geometry()
         self._handle_settings_error(self.context.try_save_settings(trigger="close"))
+        if self._download_ui is not None:
+            self._download_ui.dispose()
 
     def _save_geometry(self) -> None:
         # Only record the un-maximized size so a later un-maximize restores a
@@ -983,13 +1115,8 @@ class MainWindow(Adw.ApplicationWindow):
         # per-family options; view order only matters if something writes a
         # shared key — another reason inactive views must not touch stem_focus.
         if self.content_stack.get_visible_child_name() == "separation":
-            self.settings.process.input_paths = list(self.input_row.paths)
-            self.settings.process.export_path = self.output_row.path
-            self.format_row.persist_to_settings(self.settings)
-            self.vocal_split_row.persist_to_settings(self.settings)
-            self.settings.process.use_gpu = self.gpu_row.get_active()
-            self.settings.process.autocast = self.autocast_row.get_active()
-            self.settings.process.sample_mode = self.sample_row.get_active()
+            assert self._shared_session is not None
+            self._shared_session.commit()
 
     # -- Run control ------------------------------------------------------------
 
@@ -1050,7 +1177,7 @@ class MainWindow(Adw.ApplicationWindow):
                     plan.model_dependencies if isinstance(plan, ResolvedJob) else None
                 ),
             )
-        except Exception as exc:  # noqa: BLE001 - surfaced to the user
+        except Exception as exc:  # surfaced to the user
             self.fail_to_start(f"Unable to start separation: {exc}", exc)
 
     def begin_run(self, target: typing.Any) -> None:
@@ -1139,7 +1266,7 @@ class MainWindow(Adw.ApplicationWindow):
         must expose ``refresh_models()``.
         """
         consumers: typing.List[typing.Any] = list(self._views)
-        for attr in ("_ensemble_page", "_audio_tools_page", "vocal_split_row"):
+        for attr in ("_ensemble_page", "_audio_tools_page", "vocal_split_row", "_model_picker"):
             # getattr: a refresh can arrive before the window finishes building.
             consumer = getattr(self, attr, None)
             if consumer is not None:
@@ -1159,7 +1286,7 @@ class MainWindow(Adw.ApplicationWindow):
             method = getattr(view, "method_key", type(view).__name__)
             model_count = len(getattr(view, "list_models", lambda: [])())
             debug("model", f"refresh_models view={method} models={model_count}")
-        self._update_sep_banner()
+        self._sync_selected_model()
         self._refresh_start_readiness()
         self._deferred_model_refresh = None
 
@@ -1221,6 +1348,13 @@ class MainWindow(Adw.ApplicationWindow):
 
         open_error_log(self)
 
+    def _on_mock_error_log(self, _action: Gio.SimpleAction, _param: typing.Any) -> None:
+        # Inspector-only entry point: intentionally no menu item or accelerator.
+        from .errorlog import append_error_log, mock_error_log, open_error_log
+
+        append_error_log(mock_error_log())
+        open_error_log(self)
+
     def _on_mock_oom_dialog(self, _action: Gio.SimpleAction, _param: typing.Any) -> None:
         self._present_mock_oom_dialog(separation=False)
 
@@ -1277,9 +1411,23 @@ class MainWindow(Adw.ApplicationWindow):
             if page._current_tool() in DUAL_INPUT_TOOLS:
                 page._on_open_dual_editor()
                 return
+        import weakref
+
         from .inputs import open_view_inputs
 
-        open_view_inputs(self, self.context, on_inputs_changed=self._on_external_inputs_changed)
+        window_ref = weakref.ref(self)
+
+        def verification_changed() -> None:
+            window = window_ref()
+            if window is not None and not window._run_controller._closing:
+                window._refresh_start_readiness()
+
+        open_view_inputs(
+            self,
+            self.context,
+            on_inputs_changed=self._on_external_inputs_changed,
+            on_verification_changed=verification_changed,
+        )
 
     def _on_model_options(self, _action: Gio.SimpleAction, _param: typing.Any) -> None:
         self._open_model_options()

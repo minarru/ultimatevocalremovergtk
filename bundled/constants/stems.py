@@ -68,41 +68,38 @@ VOCAL_STEM_ONLY = f'{VOCAL_STEM} Only'
 
 INST_STEM_ONLY = f'{INST_STEM} Only'
 
-IS_SAVE_INST_ONLY = f'save_only_inst'
+IS_SAVE_INST_ONLY = 'save_only_inst'
 
-IS_SAVE_VOC_ONLY = f'save_only_voc'
+IS_SAVE_VOC_ONLY = 'save_only_voc'
 
-DEVERB_MAPPER = {'Main Vocals Only':VOCAL_STEM, 
-                 'Lead Vocals Only':LEAD_VOCAL_STEM_LABEL, 
-                 'Backing Vocals Only':BV_VOCAL_STEM_LABEL, 
-                 'All Vocal Types':'ALL'}
+DEVERB_MAPPER = {
+    'Main Vocals Only': VOCAL_STEM,
+    'Lead Vocals Only': LEAD_VOCAL_STEM_LABEL,
+    'Backing Vocals Only': BV_VOCAL_STEM_LABEL,
+    'All Vocal Types': 'ALL',
+}
 
 BALANCE_VALUES = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
 
-#Other Constants
+# Other Constants
 DEMUCS_2_SOURCE = ["instrumental", "vocals"]
 
 DEMUCS_4_SOURCE = ["drums", "bass", "other", "vocals"]
 
 DEMUCS_6_SOURCE = ["drums", "bass", "other", "vocals", "guitar", "piano"]
 
-DEMUCS_2_SOURCE_MAPPER = {
-                        INST_STEM: 0,
-                        VOCAL_STEM: 1}
+DEMUCS_2_SOURCE_MAPPER = {INST_STEM: 0, VOCAL_STEM: 1}
 
-DEMUCS_4_SOURCE_MAPPER = {
-                        BASS_STEM: 0,
-                        DRUM_STEM: 1,
-                        OTHER_STEM: 2,
-                        VOCAL_STEM: 3}
+DEMUCS_4_SOURCE_MAPPER = {BASS_STEM: 0, DRUM_STEM: 1, OTHER_STEM: 2, VOCAL_STEM: 3}
 
 DEMUCS_6_SOURCE_MAPPER = {
-                        BASS_STEM:0,
-                        DRUM_STEM:1,
-                        OTHER_STEM:2,
-                        VOCAL_STEM:3,
-                        GUITAR_STEM:4,
-                        PIANO_STEM:5}
+    BASS_STEM: 0,
+    DRUM_STEM: 1,
+    OTHER_STEM: 2,
+    VOCAL_STEM: 3,
+    GUITAR_STEM: 4,
+    PIANO_STEM: 5,
+}
 
 DEMUCS_4_SOURCE_LIST = [BASS_STEM, DRUM_STEM, OTHER_STEM, VOCAL_STEM]
 
@@ -110,50 +107,63 @@ DEMUCS_UVR_MODEL = 'UVR_Model'
 
 CHOOSE_STEM_PAIR = 'Choose Stem Pair'
 
-STEM_SET_MENU = (VOCAL_STEM, 
-                 INST_STEM, 
-                 OTHER_STEM, 
-                 BASS_STEM, 
-                 DRUM_STEM, 
-                 GUITAR_STEM, 
-                 PIANO_STEM, 
-                 SYNTH_STEM, 
-                 STRINGS_STEM, 
-                 WOODWINDS_STEM, 
-                 BRASS_STEM, 
-                 WIND_INST_STEM)
+STEM_SET_MENU = (
+    VOCAL_STEM,
+    INST_STEM,
+    OTHER_STEM,
+    BASS_STEM,
+    DRUM_STEM,
+    GUITAR_STEM,
+    PIANO_STEM,
+    SYNTH_STEM,
+    STRINGS_STEM,
+    WOODWINDS_STEM,
+    BRASS_STEM,
+    WIND_INST_STEM,
+)
 
 STEM_PAIR_MAPPER = {
-            VOCAL_STEM: INST_STEM,
-            INST_STEM: VOCAL_STEM,
-            LEAD_VOCAL_STEM: BV_VOCAL_STEM,
-            BV_VOCAL_STEM: LEAD_VOCAL_STEM,
-            PRIMARY_STEM: SECONDARY_STEM}
+    VOCAL_STEM: INST_STEM,
+    INST_STEM: VOCAL_STEM,
+    LEAD_VOCAL_STEM: BV_VOCAL_STEM,
+    BV_VOCAL_STEM: LEAD_VOCAL_STEM,
+    PRIMARY_STEM: SECONDARY_STEM,
+}
 
 NO_STEM = "No "
 
 NON_ACCOM_STEMS = (
-            VOCAL_STEM,
-            OTHER_STEM,
-            BASS_STEM,
-            DRUM_STEM,
-            GUITAR_STEM,
-            PIANO_STEM,
-            SYNTH_STEM,
-            STRINGS_STEM,
-            WOODWINDS_STEM,
-            BRASS_STEM,
-            WIND_INST_STEM)
+    VOCAL_STEM,
+    OTHER_STEM,
+    BASS_STEM,
+    DRUM_STEM,
+    GUITAR_STEM,
+    PIANO_STEM,
+    SYNTH_STEM,
+    STRINGS_STEM,
+    WOODWINDS_STEM,
+    BRASS_STEM,
+    WIND_INST_STEM,
+)
 
 MDX_NET_FREQ_CUT = [VOCAL_STEM, INST_STEM]
 
 DEMUCS_4_STEM_OPTIONS = (ALL_STEMS, VOCAL_STEM, OTHER_STEM, BASS_STEM, DRUM_STEM)
 
-DEMUCS_6_STEM_OPTIONS = (ALL_STEMS, VOCAL_STEM, OTHER_STEM, BASS_STEM, DRUM_STEM, GUITAR_STEM, PIANO_STEM)
+DEMUCS_6_STEM_OPTIONS = (
+    ALL_STEMS,
+    VOCAL_STEM,
+    OTHER_STEM,
+    BASS_STEM,
+    DRUM_STEM,
+    GUITAR_STEM,
+    PIANO_STEM,
+)
 
-SAVING_STEM = 'Saving ', ' stem...'
+SAVING_STEM = 'Saving ', '...'
 
-def secondary_stem(stem:str):
+
+def secondary_stem(stem: str):
     """Determines secondary stem.
 
     Yaml configs often use lowercase ``vocals`` / ``instrumental`` while UVR's

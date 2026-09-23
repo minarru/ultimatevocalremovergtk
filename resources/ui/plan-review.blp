@@ -1,0 +1,90 @@
+using Gtk 4.0;
+using Adw 1;
+
+template $ReviewPlanDialog : Adw.Dialog {
+  title: "Review processing plan";
+  content-width: 560;
+  content-height: 600;
+  width-request: 360;
+  height-request: 400;
+  child: Adw.ToolbarView {
+    [top]
+    Adw.HeaderBar { show-end-title-buttons: false; }
+    content: Gtk.ScrolledWindow scroll {
+      hscrollbar-policy: never;
+      child: Adw.Clamp {
+        maximum-size: 560;
+        unit: sp;
+        child: Gtk.Box {
+          orientation: vertical;
+          spacing: 16;
+          margin-start: 20;
+          margin-end: 20;
+          margin-top: 8;
+          margin-bottom: 16;
+          Gtk.Box {
+            orientation: vertical;
+            spacing: 6;
+            Gtk.Label summary { xalign: 0; wrap: true; styles ["title-2"] }
+            Gtk.Label result { xalign: 0; wrap: true; styles ["dim-label"] }
+          }
+          Adw.PreferencesGroup configuration {
+            title: "Configuration";
+            Adw.ActionRow model { title: "Model"; subtitle-lines: 2; }
+            Adw.ExpanderRow members { title: "Member models"; }
+            Adw.ActionRow combination { title: "Combination"; }
+            Adw.ExpanderRow inputs { title: "Input files"; }
+          }
+          Adw.PreferencesGroup {
+            title: "Output";
+            Adw.ExpanderRow stems { title: "Output stems"; }
+            Adw.ActionRow additional { title: "Additional outputs"; subtitle-lines: 2; }
+            Adw.ActionRow destination { title: "Save to"; subtitle-lines: 2; }
+          }
+          Adw.PreferencesGroup {
+            Adw.ExpanderRow processing {
+              title: "Processing";
+              Adw.ActionRow device { title: "Device"; }
+              Adw.ActionRow sample { title: "Sample mode"; }
+              Adw.ActionRow vocal_split { title: "Vocal splitting"; }
+              Adw.ActionRow retention { title: "Individual model outputs"; }
+            }
+          }
+          Adw.PreferencesGroup warnings {
+            title: "Before you start";
+          }
+          Adw.PreferencesGroup {
+            Adw.ExpanderRow technical {
+              title: "Technical details";
+              Gtk.Box {
+                orientation: vertical;
+                spacing: 12;
+                margin-start: 16;
+                margin-end: 16;
+                margin-top: 16;
+                margin-bottom: 16;
+                Gtk.Label plan_text { xalign: 0; selectable: true; wrap: true; wrap-mode: word_char; styles ["monospace", "caption"] }
+                Gtk.Button copy { label: "Copy Plan"; halign: start; }
+              }
+            }
+          }
+        };
+      };
+    };
+    [bottom]
+    Gtk.Box {
+      orientation: vertical;
+      Gtk.Separator {}
+      Gtk.Box {
+        spacing: 12;
+        margin-start: 20;
+        margin-end: 20;
+        margin-top: 16;
+        margin-bottom: 16;
+        Gtk.Button cancel { label: "Cancel"; styles ["pill"] }
+        Gtk.Box { hexpand: true; }
+        Gtk.Button start { label: "Start Processing"; styles ["pill", "suggested-action"] }
+      }
+    }
+  };
+}

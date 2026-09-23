@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import unittest
 from typing import Any
+from unittest.mock import Mock
 
-from core.job_plan import JobResolver, JobSpec, ValidationLevel
+from core.job_plan import JobSpec, ValidationLevel
 from core.model_identity import IdentityIndex, ModelArtifacts, ModelRecord
 from core.settings import Settings
 from core.settings.defaults import default_settings_dict
 from core.types import ProcessMethod
+from tests.diagnostic_fixtures import expected_event
+from tests.planning_fixtures import resolver_with_ports
 
 
 class KeepTextCutoverTests(unittest.TestCase):
@@ -22,7 +25,8 @@ class KeepTextCutoverTests(unittest.TestCase):
         import json
         import tempfile
         from unittest.mock import patch
-        from cli.profiles import load_profile, PROFILE_SCHEMA_VERSION
+
+        from cli.profiles import PROFILE_SCHEMA_VERSION, load_profile
         from core.settings import Settings
 
         payload = {
@@ -45,13 +49,12 @@ class KeepTextCutoverTests(unittest.TestCase):
         with patch.object(Settings, "from_json_dict", side_effect=wrapped):
             _settings, loaded = load_profile(path)
         self.assertEqual(loaded.model, "mdx:UVR-MDX-NET-Inst_HQ_4")
-        self.assertEqual(
-            loaded.settings["process.vocal_splitter"], "vr:UVR-De-Echo-Normal"
-        )
+        self.assertEqual(loaded.settings["process.vocal_splitter"], "vr:UVR-De-Echo-Normal")
 
     def test_sparse_cli_profile_keeps_illegal_text_with_transient_warnings(self) -> None:
         import json
         import tempfile
+
         from cli.profiles import PROFILE_SCHEMA_VERSION, load_profile
 
         payload = {
@@ -76,6 +79,7 @@ class KeepTextCutoverTests(unittest.TestCase):
     def test_sparse_cli_profile_keeps_illegal_primary_text(self) -> None:
         import json
         import tempfile
+
         from cli.profiles import PROFILE_SCHEMA_VERSION, load_profile
 
         payload = {
@@ -98,6 +102,7 @@ class KeepTextCutoverTests(unittest.TestCase):
         import json
         import tempfile
         from unittest.mock import patch
+
         from cli.profiles import PROFILE_SCHEMA_VERSION, load_profile
 
         payload = {
@@ -214,9 +219,7 @@ class KeepTextCutoverTests(unittest.TestCase):
 
         plan = self._config_plan(record)
 
-        self.assertTrue(
-            any("not installed" in item.message for item in plan.diagnostics)
-        )
+        self.assertTrue(any("not installed" in item.message for item in plan.diagnostics))
 
     def test_stage_two_planning_rejects_an_incomplete_identity(self) -> None:
         record = ModelRecord(
@@ -233,9 +236,7 @@ class KeepTextCutoverTests(unittest.TestCase):
 
         plan = self._config_plan(record)
 
-        self.assertTrue(
-            any("mdx_kind is unknown" in item.message for item in plan.diagnostics)
-        )
+        self.assertTrue(any("mdx_kind is unknown" in item.message for item in plan.diagnostics))
 
     def _config_plan(self, record: ModelRecord) -> Any:
         import os
@@ -244,8 +245,8 @@ class KeepTextCutoverTests(unittest.TestCase):
         settings = Settings.defaults()
         settings.process.method = ProcessMethod.MDX
         settings.mdx.model = record.id
-        resolver = JobResolver(object())
-        resolver.identities = IdentityIndex({record.id: record})  # type: ignore[assignment]
+        resolver = resolver_with_ports(object())
+        resolver.identities.lookup = Mock(side_effect=IdentityIndex({record.id: record}).lookup)
         with tempfile.TemporaryDirectory() as root:
             source = os.path.join(root, "song.wav")
             open(source, "wb").close()
@@ -259,11 +260,10 @@ class KeepTextCutoverTests(unittest.TestCase):
         import os
         import tempfile
         from unittest.mock import patch
+
         from core import ensemble_service, paths
 
-        with tempfile.TemporaryDirectory() as root, patch.object(
-            paths, "ENSEMBLE_CACHE_DIR", root
-        ):
+        with tempfile.TemporaryDirectory() as root, patch.object(paths, "ENSEMBLE_CACHE_DIR", root):
             saved_path = ensemble_service.save_ensemble(
                 "canonical", "vocals_instrumental", "Max Spec", ["mdx:model-a"]
             )
@@ -287,12 +287,11 @@ class KeepTextCutoverTests(unittest.TestCase):
         import os
         import tempfile
         from unittest.mock import patch
+
         from core import ensemble_service, paths
 
         member = {"legacy": ["model", 17]}
-        with tempfile.TemporaryDirectory() as root, patch.object(
-            paths, "ENSEMBLE_CACHE_DIR", root
-        ):
+        with tempfile.TemporaryDirectory() as root, patch.object(paths, "ENSEMBLE_CACHE_DIR", root):
             with open(os.path.join(root, "nonstring.json"), "w", encoding="utf-8") as handle:
                 json.dump({"selected_models": [member]}, handle)
             loaded = ensemble_service.load_ensemble("nonstring")
@@ -338,9 +337,7 @@ class KeepTextCutoverTests(unittest.TestCase):
             def resolve(self, value: str) -> ModelRecord:
                 return index.lookup(value)
 
-        with tempfile.TemporaryDirectory() as root, patch.object(
-            paths, "ENSEMBLE_CACHE_DIR", root
-        ):
+        with tempfile.TemporaryDirectory() as root, patch.object(paths, "ENSEMBLE_CACHE_DIR", root):
             ensemble_service.save_ensemble(
                 "missing-member",
                 "vocals_instrumental",
@@ -353,18 +350,14 @@ class KeepTextCutoverTests(unittest.TestCase):
 
         self.assertEqual(preset.members, (first.id, second.id, missing))
         matching = [
-            warning for warning in preset.validation_warnings
-            if "selected_models[2]" in warning
+            warning for warning in preset.validation_warnings if "selected_models[2]" in warning
         ]
         self.assertEqual(len(matching), 1, preset.validation_warnings)
         self.assertIn(missing, matching[0])
 
 
 class ReplayManifestContractTests(unittest.TestCase):
-    _EMPTY_DIGEST = (
-        "sha256:44136fa355b3678a1146ad16f7e8649e"
-        "94fb4fc21fe77e8310c060f61caaff8a"
-    )
+    _EMPTY_DIGEST = "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
     _RECORDED_DIGEST = "sha256:" + "1" * 64
     _CURRENT_DIGEST = "sha256:" + "2" * 64
 
@@ -409,9 +402,7 @@ class ReplayManifestContractTests(unittest.TestCase):
         }
 
     @classmethod
-    def _ensemble_manifest(
-        cls, indices: tuple[int, ...] = (0, 1)
-    ) -> dict[str, Any]:
+    def _ensemble_manifest(cls, indices: tuple[int, ...] = (0, 1)) -> dict[str, Any]:
         settings = Settings.defaults()
         settings.process.method = ProcessMethod.ENSEMBLE
         members = [f"mdx:member-{index}" for index in indices]
@@ -422,14 +413,14 @@ class ReplayManifestContractTests(unittest.TestCase):
             "command": "ensemble",
             "model_dependencies": {
                 f"ensemble.selected_models[{index}]": model_id
-                for index, model_id in zip(indices, members)
+                for index, model_id in zip(indices, members, strict=True)
             },
             "model_identity_digest": cls._RECORDED_DIGEST,
             "settings": settings.to_json_dict(),
             "plan": {
                 "models": [
                     {"id": model_id, "checkpoint_hash": f"hash-{index}"}
-                    for index, model_id in zip(indices, members)
+                    for index, model_id in zip(indices, members, strict=True)
                 ],
             },
             "job_spec": {
@@ -449,9 +440,7 @@ class ReplayManifestContractTests(unittest.TestCase):
     ) -> dict[str, Any]:
         settings = Settings.defaults()
         if "audio_tools.apollo_model" in dependencies:
-            settings.audio_tools.apollo_model = dependencies[
-                "audio_tools.apollo_model"
-            ]
+            settings.audio_tools.apollo_model = dependencies["audio_tools.apollo_model"]
         return {
             "schema_version": 3,
             "job_id": "recorded-audio",
@@ -483,14 +472,18 @@ class ReplayManifestContractTests(unittest.TestCase):
             json.dump(manifest, handle)
             handle.flush()
             stdout = io.StringIO()
-            with patch(
-                "cli.replay._run",
-                side_effect=AssertionError("replay child must not run"),
-            ), redirect_stdout(stdout), redirect_stderr(io.StringIO()):
-                code = cmd_run(
-                    self._args(handle.name, allow_model_change=allow_model_change)
-                )
-        return code, json.loads(stdout.getvalue())
+            with (
+                patch(
+                    "cli.replay._run",
+                    side_effect=AssertionError("replay child must not run"),
+                ),
+                redirect_stdout(stdout),
+                redirect_stderr(io.StringIO()),
+                expected_event(self, "command_failed"),
+            ):
+                code = cmd_run(self._args(handle.name, allow_model_change=allow_model_change))
+        payload = json.loads(stdout.getvalue())
+        return code, payload
 
     def _invoke_with_successful_child(
         self,
@@ -509,12 +502,8 @@ class ReplayManifestContractTests(unittest.TestCase):
         calls = 0
         profiles: list[dict[str, Any]] = []
         checked_plan = dict(manifest.get("plan") or {})
-        checked_plan["model_dependencies"] = dict(
-            manifest["model_dependencies"]
-        )
-        checked_plan["model_identity_digest"] = manifest[
-            "model_identity_digest"
-        ]
+        checked_plan["model_dependencies"] = dict(manifest["model_dependencies"])
+        checked_plan["model_identity_digest"] = manifest["model_identity_digest"]
 
         def run_child(argv: list[str]) -> tuple[int, dict[str, Any], str]:
             nonlocal calls
@@ -530,14 +519,12 @@ class ReplayManifestContractTests(unittest.TestCase):
             json.dump(manifest, handle)
             handle.flush()
             stdout = io.StringIO()
-            with patch("cli.replay._run", side_effect=run_child), redirect_stdout(
-                stdout
-            ), redirect_stderr(io.StringIO()):
-                code = cmd_run(
-                    self._args(
-                        handle.name, allow_model_change=allow_model_change
-                    )
-                )
+            with (
+                patch("cli.replay._run", side_effect=run_child),
+                redirect_stdout(stdout),
+                redirect_stderr(io.StringIO()),
+            ):
+                code = cmd_run(self._args(handle.name, allow_model_change=allow_model_change))
         return code, json.loads(stdout.getvalue()), calls, profiles
 
     def test_override_cannot_admit_noncanonical_empty_digest(self) -> None:
@@ -559,9 +546,7 @@ class ReplayManifestContractTests(unittest.TestCase):
 
         ensemble_short = self._ensemble_manifest((0,))
         ensemble_gapped = self._ensemble_manifest((0, 2))
-        restore_empty = self._audio_manifest(
-            "restore", {}, self._EMPTY_DIGEST
-        )
+        restore_empty = self._audio_manifest("restore", {}, self._EMPTY_DIGEST)
         model_free_apollo = self._audio_manifest(
             "stretch",
             {"audio_tools.apollo_model": "apollo:restorer"},
@@ -576,9 +561,7 @@ class ReplayManifestContractTests(unittest.TestCase):
         )
         for name, manifest, message in cases:
             with self.subTest(name=name):
-                code, payload, calls, _profiles = (
-                    self._invoke_with_successful_child(manifest)
-                )
+                code, payload, calls, _profiles = self._invoke_with_successful_child(manifest)
 
                 self.assertEqual(code, 2)
                 self.assertEqual(calls, 0)
@@ -595,9 +578,7 @@ class ReplayManifestContractTests(unittest.TestCase):
 
         for command, manifest in (("separate", separate), ("ensemble", ensemble)):
             with self.subTest(command=command):
-                code, payload, calls, _profiles = (
-                    self._invoke_with_successful_child(manifest)
-                )
+                code, payload, calls, _profiles = self._invoke_with_successful_child(manifest)
 
                 self.assertEqual(code, 2)
                 self.assertEqual(calls, 0)
@@ -607,9 +588,7 @@ class ReplayManifestContractTests(unittest.TestCase):
         manifest = self._manifest()
         manifest["model_dependencies"]["process.vocal_splitter"] = "vr:splitter"
 
-        code, payload, calls, _profiles = self._invoke_with_successful_child(
-            manifest
-        )
+        code, payload, calls, _profiles = self._invoke_with_successful_child(manifest)
 
         self.assertEqual(code, 2)
         self.assertEqual(calls, 0)
@@ -621,12 +600,8 @@ class ReplayManifestContractTests(unittest.TestCase):
         manifest = self._manifest()
         manifest["settings"]["mdx"]["stems"] = "Drums"
         manifest["settings"]["mdx"]["is_secondary_model_activate"] = True
-        manifest["settings"]["mdx"]["voc_inst_secondary_model"] = (
-            "mdx:voc-inst-helper"
-        )
-        manifest["settings"]["mdx"]["drums_secondary_model"] = (
-            "mdx:drums-helper"
-        )
+        manifest["settings"]["mdx"]["voc_inst_secondary_model"] = "mdx:voc-inst-helper"
+        manifest["settings"]["mdx"]["drums_secondary_model"] = "mdx:drums-helper"
         manifest["plan"]["models"][0]["primary_stem"] = "instrumental"
         dependencies = {
             "mdx.model": "mdx:primary",
@@ -649,10 +624,12 @@ class ReplayManifestContractTests(unittest.TestCase):
         manifest["plan"]["models"][0]["primary_stem"] = "Vocals"
         manifest["plan"]["models"][1]["primary_stem"] = "other"
         dependencies = dict(manifest["model_dependencies"])
-        dependencies.update({
-            "mdx.voc_inst_secondary_model": "mdx:voc-helper",
-            "mdx.other_secondary_model": "mdx:other-helper",
-        })
+        dependencies.update(
+            {
+                "mdx.voc_inst_secondary_model": "mdx:voc-helper",
+                "mdx.other_secondary_model": "mdx:other-helper",
+            }
+        )
 
         _validate_active_dependency_paths(manifest, "ensemble", dependencies)
 
@@ -663,16 +640,12 @@ class ReplayManifestContractTests(unittest.TestCase):
     def test_sparse_profiles_copy_identities_only_from_dependency_map(self) -> None:
         separate = self._manifest()
         separate["settings"]["process"]["vocal_splitter"] = "vr:stale-splitter"
-        separate["settings"]["mdx"]["voc_inst_secondary_model"] = (
-            "vr:stale-secondary"
-        )
+        separate["settings"]["mdx"]["voc_inst_secondary_model"] = "vr:stale-secondary"
         separate["settings"]["demucs"]["pre_proc_model"] = "mdx:stale-pre"
 
         ensemble = self._ensemble_manifest()
         ensemble["settings"]["process"]["vocal_splitter"] = "vr:stale-splitter"
-        ensemble["settings"]["mdx"]["voc_inst_secondary_model"] = (
-            "vr:stale-secondary"
-        )
+        ensemble["settings"]["mdx"]["voc_inst_secondary_model"] = "vr:stale-secondary"
 
         audio = self._audio_manifest(
             "restore",
@@ -703,9 +676,7 @@ class ReplayManifestContractTests(unittest.TestCase):
         )
         for name, manifest, forbidden in cases:
             with self.subTest(name=name):
-                code, _payload, calls, profiles = (
-                    self._invoke_with_successful_child(manifest)
-                )
+                code, _payload, calls, profiles = self._invoke_with_successful_child(manifest)
 
                 self.assertEqual(code, 0)
                 self.assertEqual(calls, 2)
@@ -759,9 +730,7 @@ class ReplayManifestContractTests(unittest.TestCase):
                 payload = json.load(handle)
 
         self.assertEqual(payload["schema_version"], 3)
-        self.assertEqual(
-            payload["model_dependencies"], {"mdx.model": "mdx:primary"}
-        )
+        self.assertEqual(payload["model_dependencies"], {"mdx.model": "mdx:primary"})
         self.assertEqual(payload["model_identity_digest"], self._RECORDED_DIGEST)
 
     def test_audio_writer_emits_empty_identity_contract_without_a_model(self) -> None:
@@ -835,12 +804,9 @@ class ReplayManifestContractTests(unittest.TestCase):
                 to_dict=lambda: {
                     "command": "audio",
                     "model": None,
-                    "model_dependencies": {
-                        "audio_tools.apollo_model": "apollo:restorer"
-                    },
+                    "model_dependencies": {"audio_tools.apollo_model": "apollo:restorer"},
                     "model_identity_digest": (
-                        "sha256:6237d0e7483c76dc8c0cb6860acfd195"
-                        "b817e4ce1b92b7c5159ff58d6047fcd2"
+                        "sha256:6237d0e7483c76dc8c0cb6860acfd195b817e4ce1b92b7c5159ff58d6047fcd2"
                     ),
                 },
             )
@@ -865,8 +831,7 @@ class ReplayManifestContractTests(unittest.TestCase):
         )
         self.assertEqual(
             payload["model_identity_digest"],
-            "sha256:6237d0e7483c76dc8c0cb6860acfd195"
-            "b817e4ce1b92b7c5159ff58d6047fcd2",
+            "sha256:6237d0e7483c76dc8c0cb6860acfd195b817e4ce1b92b7c5159ff58d6047fcd2",
         )
 
     def test_apollo_plan_carries_artifacts_used_by_manifest_digest(self) -> None:
@@ -886,14 +851,12 @@ class ReplayManifestContractTests(unittest.TestCase):
             installed=True,
         )
         resolver = AudioJobResolver(Mock())
-        resolver.identities = Mock()
+        resolver.identities.lookup = Mock()
         resolver.identities.lookup.return_value = record
         settings = Settings.defaults()
         settings.audio_tools.apollo_model = record.id
 
-        descriptor = resolver._resolve_apollo(
-            settings, [], ValidationLevel.CONFIG
-        )
+        descriptor = resolver._resolve_apollo(settings, [], ValidationLevel.CONFIG)
 
         self.assertIsNotNone(descriptor)
         assert descriptor is not None
@@ -903,9 +866,7 @@ class ReplayManifestContractTests(unittest.TestCase):
         manifest = self._manifest()
         manifest["schema_version"] = 1
 
-        code, payload = self._invoke_without_child(
-            manifest, allow_model_change=True
-        )
+        code, payload = self._invoke_without_child(manifest, allow_model_change=True)
 
         self.assertEqual(code, 2)
         self.assertIn("schema 1", payload["error"]["message"])
@@ -951,9 +912,7 @@ class ReplayManifestContractTests(unittest.TestCase):
         manifest = self._manifest()
         manifest["model_dependencies"] = {"mdx.model": "vr:wrong-family"}
 
-        code, payload = self._invoke_without_child(
-            manifest, allow_model_change=True
-        )
+        code, payload = self._invoke_without_child(manifest, allow_model_change=True)
 
         self.assertEqual(code, 2)
         self.assertIn("mdx.model", payload["error"]["message"])
@@ -963,9 +922,7 @@ class ReplayManifestContractTests(unittest.TestCase):
         manifest = self._manifest()
         manifest["model_dependencies"] = {"mdx.model": "MDX-Net: Primary"}
 
-        code, payload = self._invoke_without_child(
-            manifest, allow_model_change=True
-        )
+        code, payload = self._invoke_without_child(manifest, allow_model_change=True)
 
         self.assertEqual(code, 2)
         self.assertIn("canonical model ID", payload["error"]["message"])
@@ -984,18 +941,18 @@ class ReplayManifestContractTests(unittest.TestCase):
             "plan": {
                 "model_dependencies": {"mdx.model": "mdx:primary"},
                 "model_identity_digest": self._CURRENT_DIGEST,
-                "models": [
-                    {"id": "mdx:primary", "checkpoint_hash": "old-hash"}
-                ],
+                "models": [{"id": "mdx:primary", "checkpoint_hash": "old-hash"}],
             }
         }
         with tempfile.NamedTemporaryFile("w", suffix=".json") as handle:
             json.dump(manifest, handle)
             handle.flush()
             stdout = io.StringIO()
-            with patch("cli.replay._run", return_value=(0, checked, "")), redirect_stdout(
-                stdout
-            ), redirect_stderr(io.StringIO()):
+            with (
+                patch("cli.replay._run", return_value=(0, checked, "")),
+                redirect_stdout(stdout),
+                redirect_stderr(io.StringIO()),
+            ):
                 code = cmd_run(self._args(handle.name))
 
         payload = json.loads(stdout.getvalue())
@@ -1019,9 +976,12 @@ class ReplayManifestContractTests(unittest.TestCase):
             json.dump(self._manifest(), handle)
             handle.flush()
             stdout = io.StringIO()
-            with patch(
-                "cli.replay._run", return_value=(0, {"plan": {}}, "")
-            ), redirect_stdout(stdout), redirect_stderr(io.StringIO()):
+            with (
+                patch("cli.replay._run", return_value=(0, {"plan": {}}, "")),
+                redirect_stdout(stdout),
+                redirect_stderr(io.StringIO()),
+                expected_event(self, "command_failed"),
+            ):
                 code = cmd_run(self._args(handle.name))
 
         payload = json.loads(stdout.getvalue())
@@ -1055,12 +1015,12 @@ class ReplayManifestContractTests(unittest.TestCase):
             json.dump(self._manifest(), handle)
             handle.flush()
             stdout = io.StringIO()
-            with patch("cli.replay._run", side_effect=run_child), redirect_stdout(
-                stdout
-            ), redirect_stderr(io.StringIO()):
-                code = cmd_run(
-                    self._args(handle.name, allow_model_change=True)
-                )
+            with (
+                patch("cli.replay._run", side_effect=run_child),
+                redirect_stdout(stdout),
+                redirect_stderr(io.StringIO()),
+            ):
+                code = cmd_run(self._args(handle.name, allow_model_change=True))
 
         payload = json.loads(stdout.getvalue())
         self.assertEqual(code, 2)
@@ -1081,9 +1041,7 @@ class ReplayManifestContractTests(unittest.TestCase):
             "plan": {
                 "model_dependencies": {"mdx.model": "mdx:primary"},
                 "model_identity_digest": self._CURRENT_DIGEST,
-                "models": [
-                    {"id": "mdx:primary", "checkpoint_hash": "new-hash"}
-                ],
+                "models": [{"id": "mdx:primary", "checkpoint_hash": "new-hash"}],
             }
         }
         captured_profile: dict[str, Any] = {}
@@ -1103,12 +1061,12 @@ class ReplayManifestContractTests(unittest.TestCase):
             json.dump(manifest, handle)
             handle.flush()
             stdout = io.StringIO()
-            with patch("cli.replay._run", side_effect=run_child), redirect_stdout(
-                stdout
-            ), redirect_stderr(io.StringIO()):
-                code = cmd_run(
-                    self._args(handle.name, allow_model_change=True)
-                )
+            with (
+                patch("cli.replay._run", side_effect=run_child),
+                redirect_stdout(stdout),
+                redirect_stderr(io.StringIO()),
+            ):
+                code = cmd_run(self._args(handle.name, allow_model_change=True))
 
         payload = json.loads(stdout.getvalue())
         self.assertEqual(code, 0)
@@ -1195,19 +1153,16 @@ class ValidationWarningSurfacingTests(unittest.TestCase):
         settings = Settings.defaults()
         settings.mdx.model = "mdx:known"
         profile = LoadedProfile(
-            name="p", source="profile",
+            name="p",
+            source="profile",
             validation_warnings=["mdx.model: syntax note"],
         )
         index = IdentityIndex({record.id: record})
-        with patch.object(
-            ModelIdentityService, "_published_index", return_value=index
-        ):
+        with patch.object(ModelIdentityService, "_published_index", return_value=index):
             warnings = stored_identity_warnings(settings, mock.Mock(), profile)
 
         self.assertIn("mdx.model: syntax note", warnings)
-        self.assertTrue(
-            any("is not installed" in item for item in warnings), warnings
-        )
+        self.assertTrue(any("is not installed" in item for item in warnings), warnings)
 
     def test_stage_two_does_not_repeat_a_stage_one_syntax_complaint(self) -> None:
         from unittest import mock
@@ -1220,22 +1175,18 @@ class ValidationWarningSurfacingTests(unittest.TestCase):
         settings = Settings.defaults()
         settings.mdx.voc_inst_secondary_model = "MDX-Net: Kim Vocal 2"
         profile = LoadedProfile(
-            name="p", source="profile",
+            name="p",
+            source="profile",
             validation_warnings=[
                 "mdx.voc_inst_secondary_model: expected canonical model ID "
                 "family:basename or a permitted sentinel; preserved "
                 "'MDX-Net: Kim Vocal 2'; run 'uvr models list' to find IDs"
             ],
         )
-        with patch.object(
-            ModelIdentityService, "_published_index", return_value=IdentityIndex({})
-        ):
+        with patch.object(ModelIdentityService, "_published_index", return_value=IdentityIndex({})):
             warnings = stored_identity_warnings(settings, mock.Mock(), profile)
 
-        matching = [
-            item for item in warnings
-            if item.startswith("mdx.voc_inst_secondary_model:")
-        ]
+        matching = [item for item in warnings if item.startswith("mdx.voc_inst_secondary_model:")]
         self.assertEqual(len(matching), 1, warnings)
 
     def test_stored_identity_warnings_survive_an_unavailable_index(self) -> None:
@@ -1247,7 +1198,9 @@ class ValidationWarningSurfacingTests(unittest.TestCase):
         from core.model_identity import ModelIdentityService
 
         profile = LoadedProfile(
-            name="p", source="profile", validation_warnings=["mdx.model: syntax note"],
+            name="p",
+            source="profile",
+            validation_warnings=["mdx.model: syntax note"],
         )
         with patch.object(
             ModelIdentityService, "_published_index", side_effect=OSError("no models")

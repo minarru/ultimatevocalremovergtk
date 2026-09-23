@@ -1,0 +1,75 @@
+using Gtk 4.0;
+using Adw 1;
+
+Adw.Dialog dialog {
+  title: "Member models";
+  content-width: 440;
+  content-height: 560;
+  follows-content-size: true;
+
+  child: Adw.ToolbarView {
+    [top]
+    Adw.HeaderBar {}
+
+    content: Gtk.Box {
+      orientation: vertical;
+      spacing: 12;
+      margin-top: 12;
+      margin-bottom: 12;
+      margin-start: 12;
+      margin-end: 12;
+
+      Gtk.Label description {
+        label: "Select two or more models compatible with the chosen stem pair.";
+        wrap: true;
+        xalign: 0;
+        styles ["dim-label"]
+      }
+
+      Gtk.Label models_status_label {
+        wrap: true;
+        xalign: 0;
+        styles ["dim-label"]
+      }
+
+      Gtk.Box toolbar {
+        orientation: horizontal;
+        spacing: 8;
+
+        Gtk.SearchEntry models_search {
+          placeholder-text: "Search models";
+          hexpand: true;
+        }
+
+        Gtk.Box actions {
+          orientation: horizontal;
+          spacing: 6;
+          halign: end;
+
+          Gtk.Button select_all_button {
+            label: "Select all";
+            styles ["flat"]
+          }
+
+          Gtk.Button clear_button {
+            label: "Clear";
+            styles ["flat"]
+          }
+        }
+      }
+
+      Gtk.ScrolledWindow scroller {
+        hscrollbar-policy: never;
+        vscrollbar-policy: automatic;
+        min-content-height: 320;
+        vexpand: true;
+
+        child: Gtk.ListBox models_listbox {
+          selection-mode: none;
+          valign: start;
+          styles ["boxed-list"]
+        };
+      }
+    };
+  };
+}

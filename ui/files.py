@@ -1,9 +1,9 @@
 """Open local paths and URIs via GTK launchers (portal-friendly)."""
 
 from __future__ import annotations
-import typing
 
 import os
+import typing
 from typing import Callable, Optional
 
 from gi.repository import Gio, GLib, Gtk
@@ -63,7 +63,9 @@ def _report_error(
         toast(message)
 
 
-def _on_folder_launch_finished(launcher: Gtk.FileLauncher, result: typing.Any, data: typing.Any) -> None:
+def _on_folder_launch_finished(
+    launcher: Gtk.FileLauncher, result: typing.Any, data: typing.Any
+) -> None:
     window = data["window"]
     on_error = data.get("on_error")
     try:
@@ -76,7 +78,9 @@ def _on_folder_launch_finished(launcher: Gtk.FileLauncher, result: typing.Any, d
         )
 
 
-def _on_uri_launch_finished(launcher: Gtk.UriLauncher, result: typing.Any, data: typing.Any) -> None:
+def _on_uri_launch_finished(
+    launcher: Gtk.UriLauncher, result: typing.Any, data: typing.Any
+) -> None:
     window = data["window"]
     on_error = data.get("on_error")
     try:

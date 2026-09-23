@@ -36,7 +36,7 @@ def init() -> None:
         from gi.repository import GLib
 
         _GLIB = GLib
-    except Exception:  # noqa: BLE001 - optional until first emit
+    except Exception:  # optional until first emit
         _GLIB = None
     finally:
         _INITIALIZING = False

@@ -34,6 +34,8 @@ ARCH_BY_FAMILY = {
 }
 FAMILY_BY_ARCH = {value: key for key, value in ARCH_BY_FAMILY.items()}
 FAMILY_BY_ARCH[VR_ARCH_PM] = "vr"
+
+
 @dataclass(frozen=True, order=True)
 class ModelId:
     family: str
@@ -42,11 +44,7 @@ class ModelId:
     def __post_init__(self) -> None:
         if self.family not in FAMILIES:
             raise ValueError(f"unknown model family {self.family!r}")
-        if (
-            not self.basename
-            or self.basename != self.basename.strip()
-            or ":" in self.basename
-        ):
+        if not self.basename or self.basename != self.basename.strip() or ":" in self.basename:
             raise ValueError(f"invalid model basename {self.basename!r}")
 
     @property
@@ -196,10 +194,12 @@ class _ModelInventory:
         ):
             basenames = list(lister())
             displays = map_basenames_to_display(
-                basenames, ARCH_BY_FAMILY[family], self.repo,
+                basenames,
+                ARCH_BY_FAMILY[family],
+                self.repo,
                 allow_network=False,
             )
-            for basename, display in zip(basenames, displays):
+            for basename, display in zip(basenames, displays, strict=True):
                 model_id = str(ModelId(family, basename))
                 result[model_id] = ModelRecord(
                     id=model_id,
@@ -258,7 +258,7 @@ class _ModelInventory:
         coordinator = getattr(self.repo, "catalogue", None)
         if coordinator is None:
             return None
-        latest = getattr(coordinator, "_latest", None)
+        latest = getattr(coordinator, "latest_snapshot", None)
         if latest is not None:
             return latest
         ensure = getattr(coordinator, "ensure", None)
@@ -296,6 +296,10 @@ class _ModelInventory:
             return build_identity_index(repo, snapshot=self._snapshot())
         slot = self._cache_slot()
         with lock:
+            # Initial publication establishes the catalogue revision before we
+            # capture the key. Read the build's snapshot after the key below,
+            # so a concurrent publication still triggers the revision retry.
+            self._snapshot()
             generation = repo.inventory_generation
             catalogue_revision = repo.catalogue_revision
             naming_revision = repo.naming_revision
@@ -332,7 +336,10 @@ class _ModelInventory:
             return provider()
 
     def resolve(
-        self, query: str, *, family: str | None = None,
+        self,
+        query: str,
+        *,
+        family: str | None = None,
         allowed_families: Iterable[str] | None = None,
     ) -> ModelRecord:
         model_id = parse_stored_model_id(str(query or ""))
@@ -342,9 +349,7 @@ class _ModelInventory:
             if family not in FAMILIES:
                 raise ValueError(f"unknown model family {family!r}")
             if record.family != family:
-                raise ValueError(
-                    f"model {record.id!r} does not belong to required family {family}"
-                )
+                raise ValueError(f"model {record.id!r} does not belong to required family {family}")
         if allowed_families is not None:
             allowed = frozenset(str(value).casefold() for value in allowed_families)
             invalid = allowed.difference(FAMILIES)
@@ -355,9 +360,7 @@ class _ModelInventory:
         return record
 
 
-def resolve_model_record(
-    query: str, records: Iterable[ModelRecord]
-) -> ModelRecord:
+def resolve_model_record(query: str, records: Iterable[ModelRecord]) -> ModelRecord:
     """Resolve an exact canonical ID against an already-enumerated inventory."""
     model_id = parse_stored_model_id(str(query or "")).value
     for record in records:
@@ -367,7 +370,6 @@ def resolve_model_record(
 
 
 class ModelIdentityService(_ModelInventory):
-
     def display_label(self, reference: str) -> str:
         return self.resolve(reference).display
 

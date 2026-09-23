@@ -3,7 +3,7 @@
 import sys
 from typing import Optional, Sequence
 
-from gi.repository import Adw, Gio, GLib, Gtk
+from gi.repository import Adw, Gio, GLib
 
 from core import Settings, ensure_data_dir
 
@@ -41,11 +41,11 @@ class UVRApplication(Adw.Application):
 
         try:
             adw_ver = f"{Adw.MAJOR_VERSION}.{Adw.MINOR_VERSION}"
-        except Exception:  # noqa: BLE001
+        except Exception:
             adw_ver = "unknown"
         try:
             from __version__ import VERSION
-        except Exception:  # noqa: BLE001
+        except Exception:
             VERSION = "unknown"
         log_event(
             "ui",
@@ -67,14 +67,14 @@ class UVRApplication(Adw.Application):
         quit_action = Gio.SimpleAction.new("quit", None)
         quit_action.connect("activate", self._on_quit_requested)
         self.add_action(quit_action)
-        open_output = Gio.SimpleAction.new(
-            "open-output-folder", GLib.VariantType.new("s")
-        )
+        open_output = Gio.SimpleAction.new("open-output-folder", GLib.VariantType.new("s"))
         open_output.connect("activate", self._on_open_output_folder)
         self.add_action(open_output)
 
     # GAction callbacks pass None when the action carries no parameter type.
-    def _on_open_output_folder(self, _action: Gio.SimpleAction, param: Optional[GLib.Variant]) -> None:
+    def _on_open_output_folder(
+        self, _action: Gio.SimpleAction, param: Optional[GLib.Variant]
+    ) -> None:
         from .files import open_folder_in_file_manager
 
         window = self.props.active_window
@@ -115,14 +115,18 @@ class UVRApplication(Adw.Application):
     def do_activate(self):
         self._did_activate = True
         register_gresources()
-        from core.separate_import import warm_import_separate_engines
-
-        warm_import_separate_engines()
         window = self._main_window
         if window is None:
             window = MainWindow(application=self)
             self._main_window = window
         window.present()
+
+    def do_shutdown(self):
+        # ``app.quit()`` can end the application without a window close-request;
+        # release any after-paint/idle startup callback before GTK tears down.
+        if self._main_window is not None:
+            self._main_window.cancel_startup_work()
+        Adw.Application.do_shutdown(self)
 
 
 def main(
@@ -140,12 +144,10 @@ def main(
         install_runtime_hooks,
         log_event,
     )
-    from core.torch_checkpoint import ensure_demucs_import_aliases
 
     if configure_diagnostics:
         configure_bootstrap()
     install_runtime_hooks()
-    ensure_demucs_import_aliases()
     if configure_diagnostics:
         configure_from_settings(Settings.load())
     glib_log.init()

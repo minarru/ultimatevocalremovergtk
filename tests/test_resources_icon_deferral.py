@@ -40,9 +40,7 @@ class IconDeferralTests(unittest.TestCase):
     def test_ensure_application_icon_performs_registration(self) -> None:
         import ui.resources as resources
 
-        with mock.patch.object(
-            resources, "_register_application_icon", return_value=True
-        ) as icon:
+        with mock.patch.object(resources, "_register_application_icon", return_value=True) as icon:
             self.assertTrue(resources.ensure_application_icon())
         icon.assert_called_once()
 
@@ -98,14 +96,13 @@ class IconDeferralTests(unittest.TestCase):
             call_sequence.append("about_window_built")
             return mock.MagicMock()
 
-        with mock.patch.object(
-            resources, "ensure_application_icon", side_effect=track_icon_call
-        ) as icon_mock, mock.patch.object(
-            resources, "register_gresources"
-        ), mock.patch(
-            "ui.about.Adw.AboutDialog", side_effect=track_dialog_call
-        ), mock.patch(
-            "ui.about.Adw.AboutWindow", side_effect=track_about_window_call
+        with (
+            mock.patch.object(
+                resources, "ensure_application_icon", side_effect=track_icon_call
+            ) as icon_mock,
+            mock.patch.object(resources, "register_gresources"),
+            mock.patch("ui.about.Adw.AboutDialog", side_effect=track_dialog_call),
+            mock.patch("ui.about.Adw.AboutWindow", side_effect=track_about_window_call),
         ):
             try:
                 about.open_about(mock.MagicMock())
@@ -119,9 +116,7 @@ class IconDeferralTests(unittest.TestCase):
         # Verify that ensure_icon was called before any dialog was constructed
         # Either AboutDialog or AboutWindow may have been called, depending on
         # libadwaita version, but ensure_icon must come first
-        self.assertIn(
-            "ensure_icon", call_sequence, "ensure_application_icon must be called"
-        )
+        self.assertIn("ensure_icon", call_sequence, "ensure_application_icon must be called")
         self.assertTrue(
             any(d in call_sequence for d in ["dialog_built", "about_window_built"]),
             "AboutDialog or AboutWindow must be constructed",

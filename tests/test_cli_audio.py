@@ -1,23 +1,60 @@
 from __future__ import annotations
 
+import argparse
 import io
 import json
 import os
-import argparse
 import tempfile
 import unittest
-from types import SimpleNamespace
 from contextlib import redirect_stdout
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from cli.main import build_parser, main
 from bundled.constants import APOLLO_RESTORE, CHANGE_PITCH
+from cli.main import build_parser, main
 from core.audio_plan import AudioJobResolver, AudioJobSpec
 from core.job_plan import ValidationLevel
 from core.settings import Settings
 
 
 class AudioCliSurfaceTests(unittest.TestCase):
+    def test_promotion_failure_emits_one_jsonl_event_per_attempted_input(self) -> None:
+        from cli.audio import _run_audio
+        from core.blocking_runner import RunResult
+
+        for fail_fast in (False, True):
+            with self.subTest(fail_fast=fail_fast), tempfile.TemporaryDirectory() as root:
+                plan = SimpleNamespace(
+                    tool=CHANGE_PITCH,
+                    output=os.path.join(root, "out"),
+                    settings=Settings.defaults(),
+                    units=tuple(
+                        SimpleNamespace(inputs=(f"song{index}.wav",), outputs=())
+                        for index in range(2)
+                    ),
+                )
+                args = argparse.Namespace(
+                    on_exists="fail", quiet=True, fail_fast=fail_fast, report="jsonl"
+                )
+                stdout = io.StringIO()
+                with (
+                    patch("cli.audio.AudioToolRunner"),
+                    patch("cli.audio.run_runner_cli", return_value=RunResult(0.1, completed=True)),
+                    patch("cli.audio._promote", side_effect=OSError("disk full")),
+                    redirect_stdout(stdout),
+                ):
+                    outcome = _run_audio(args, plan)
+                events = [json.loads(line) for line in stdout.getvalue().splitlines()]
+                expected_count = 1 if fail_fast else 2
+                self.assertEqual(outcome.exit_code, 1)
+                self.assertEqual(len(events), expected_count)
+                self.assertEqual(len(outcome.inputs), expected_count)
+                for event, item in zip(events, outcome.inputs, strict=True):
+                    self.assertEqual(event["event"], "input_finished")
+                    self.assertEqual(event["input"], item["input"])
+                    self.assertEqual(event["status"], "failed")
+                    self.assertEqual(event["error"], "disk full")
+
     def test_restore_execution_hands_backend_filename_to_runtime(self) -> None:
         from cli.audio import _run_audio
         from core.job_plan import ModelDescriptor
@@ -44,8 +81,11 @@ class AudioCliSurfaceTests(unittest.TestCase):
                 ),
             )
             args = argparse.Namespace(
-                on_exists="fail", quiet=True, fail_fast=True,
-                job_id="apollo-handoff", report="text",
+                on_exists="fail",
+                quiet=True,
+                fail_fast=True,
+                job_id="apollo-handoff",
+                report="text",
             )
             runner = Mock()
             runner.start = Mock()
@@ -65,9 +105,7 @@ class AudioCliSurfaceTests(unittest.TestCase):
                 _run_audio(args, plan)
 
         runner_cls.assert_called_once()
-        self.assertEqual(
-            runner_cls.call_args.kwargs["apollo_backend_name"], "restorer.ckpt"
-        )
+        self.assertEqual(runner_cls.call_args.kwargs["apollo_backend_name"], "restorer.ckpt")
         self.assertEqual(
             runner_cls.call_args.args[0].audio_tools.apollo_model,
             "apollo:restorer",
@@ -87,7 +125,9 @@ class AudioCliSurfaceTests(unittest.TestCase):
         for command, tail in commands.items():
             with self.subTest(command=command):
                 self.assertTrue(callable(parser.parse_args(["audio", command, *tail]).func))
-                self.assertTrue(callable(parser.parse_args(["validate", "audio", command, *tail]).func))
+                self.assertTrue(
+                    callable(parser.parse_args(["validate", "audio", command, *tail]).func)
+                )
 
     def test_dry_run_creates_no_output_and_emits_resolved_plan(self) -> None:
         with tempfile.TemporaryDirectory() as root:
@@ -96,16 +136,27 @@ class AudioCliSurfaceTests(unittest.TestCase):
             output = os.path.join(root, "out")
             stdout = io.StringIO()
             with redirect_stdout(stdout):
-                code = main([
-                    "audio", "stretch", source, "-o", output, "--rate", "1.25",
-                    "--dry-run", "--report", "json",
-                ])
+                code = main(
+                    [
+                        "audio",
+                        "stretch",
+                        source,
+                        "-o",
+                        output,
+                        "--rate",
+                        "1.25",
+                        "--dry-run",
+                        "--report",
+                        "json",
+                    ]
+                )
             payload = json.loads(stdout.getvalue())
             self.assertEqual(code, 0)
             self.assertFalse(os.path.exists(output))
-            self.assertEqual(payload["plan"]["units"][0]["outputs"], [
-                os.path.join(output, "song time stretched.flac")
-            ])
+            self.assertEqual(
+                payload["plan"]["units"][0]["outputs"],
+                [os.path.join(output, "song time stretched.flac")],
+            )
 
     def test_manual_ensemble_requires_two_inputs(self) -> None:
         with tempfile.TemporaryDirectory() as root:
@@ -113,10 +164,18 @@ class AudioCliSurfaceTests(unittest.TestCase):
             open(source, "wb").close()
             stdout = io.StringIO()
             with redirect_stdout(stdout):
-                code = main([
-                    "audio", "ensemble", source, "-o", os.path.join(root, "out"),
-                    "--dry-run", "--report", "json",
-                ])
+                code = main(
+                    [
+                        "audio",
+                        "ensemble",
+                        source,
+                        "-o",
+                        os.path.join(root, "out"),
+                        "--dry-run",
+                        "--report",
+                        "json",
+                    ]
+                )
             self.assertEqual(code, 2)
             self.assertFalse(json.loads(stdout.getvalue())["ok"])
 
@@ -126,10 +185,20 @@ class AudioCliSurfaceTests(unittest.TestCase):
             open(source, "wb").close()
             stdout = io.StringIO()
             with redirect_stdout(stdout):
-                code = main([
-                    "audio", "align", "--pair", root, source, "-o", os.path.join(root, "out"),
-                    "--dry-run", "--report", "json",
-                ])
+                code = main(
+                    [
+                        "audio",
+                        "align",
+                        "--pair",
+                        root,
+                        source,
+                        "-o",
+                        os.path.join(root, "out"),
+                        "--dry-run",
+                        "--report",
+                        "json",
+                    ]
+                )
             self.assertEqual(code, 2)
 
 
@@ -148,7 +217,9 @@ class AudioPlanTests(unittest.TestCase):
             settings.audio_tools.pitch_rate = 5
             self.assertTrue(plan.ok)
             self.assertEqual(plan.settings.audio_tools.pitch_rate, -3)
-            self.assertEqual(plan.units[0].outputs, (os.path.join(output, "track pitch shifted.flac"),))
+            self.assertEqual(
+                plan.units[0].outputs, (os.path.join(output, "track pitch shifted.flac"),)
+            )
 
 
 if __name__ == "__main__":

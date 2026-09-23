@@ -1,6 +1,6 @@
-import typing
 import importlib
 import sys
+import typing
 import unittest
 from unittest.mock import patch
 
@@ -87,12 +87,8 @@ class AsModelStateDictTests(unittest.TestCase):
 class LoadTorchCheckpointTests(unittest.TestCase):
     def test_installs_demucs_aliases_before_load(self):
         with patch("core.torch_checkpoint.torch.load", return_value={}) as mock_load:
-            with patch(
-                "core.torch_checkpoint.ensure_demucs_import_aliases"
-            ) as mock_aliases:
-                with patch(
-                    "core.torch_checkpoint.ensure_optional_checkpoint_stubs"
-                ) as mock_stubs:
+            with patch("core.torch_checkpoint.ensure_demucs_import_aliases") as mock_aliases:
+                with patch("core.torch_checkpoint.ensure_optional_checkpoint_stubs") as mock_stubs:
                     load_torch_checkpoint("model.th", map_location="cpu")
         mock_aliases.assert_called_once_with()
         mock_stubs.assert_called_once_with()

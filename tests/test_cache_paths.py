@@ -4,8 +4,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from core import paths
-from core import download_sizes
+from core import download_sizes, paths
 
 
 class CachePathMigrationTests(unittest.TestCase):
@@ -17,9 +16,11 @@ class CachePathMigrationTests(unittest.TestCase):
                     json.dump({"ok": 1}, handle)
                 dest = os.path.join(cache_dir, "download_size_cache.json")
 
-                with mock.patch.object(paths, "DATA_DIR", data_dir), mock.patch.object(
-                    paths, "BASE_PATH", data_dir
-                ), mock.patch.object(paths, "CACHE_DIR", cache_dir):
+                with (
+                    mock.patch.object(paths, "DATA_DIR", data_dir),
+                    mock.patch.object(paths, "BASE_PATH", data_dir),
+                    mock.patch.object(paths, "CACHE_DIR", cache_dir),
+                ):
                     result = paths.migrate_cache_file("download_size_cache.json", dest)
 
                 self.assertEqual(result, dest)

@@ -6,7 +6,7 @@ import functools
 import json
 import os
 import re
-from typing import Any, TYPE_CHECKING, Dict, Iterable, List, Mapping, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Mapping, Optional, Tuple
 
 from bundled.constants import (
     DEMUCS_ARCH_TYPE,
@@ -157,7 +157,7 @@ def resolve_mapper_basename(label: str, name_mapper: Optional[Dict[str, str]]) -
     for file_key, display_name in name_mapper.items():
         if label == display_name:
             return os.path.splitext(file_key)[0]
-    for file_key, display_name in name_mapper.items():
+    for file_key in name_mapper:
         if os.path.splitext(file_key)[0] == label:
             return label
     # Separator- and case-insensitive pass before the substring fallback below,
@@ -166,7 +166,7 @@ def resolve_mapper_basename(label: str, name_mapper: Optional[Dict[str, str]]) -
     for file_key, display_name in name_mapper.items():
         if normalized == _normalize_mapper_label(display_name):
             return os.path.splitext(file_key)[0]
-    for file_key, display_name in name_mapper.items():
+    for file_key in name_mapper:
         if normalized == _normalize_mapper_label(os.path.splitext(file_key)[0]):
             return os.path.splitext(file_key)[0]
     for file_key, display_name in name_mapper.items():
@@ -506,9 +506,11 @@ def display_name_for_model(
             repo.demucs_name_select_MAPPER,
             catalogue_index=lookup,
         )
-        return lookup.get(basename) or lookup_mapper_display(
-            basename, repo.demucs_name_select_MAPPER
-        ) or name
+        return (
+            lookup.get(basename)
+            or lookup_mapper_display(basename, repo.demucs_name_select_MAPPER)
+            or name
+        )
     return name
 
 
@@ -545,11 +547,7 @@ def format_tag_title(tag: str, repo: "ModelRepository") -> str:
     overlay reloads bump the naming revision only.
     """
     raw_naming = getattr(repo, "naming_revision", 0)
-    naming = (
-        raw_naming
-        if isinstance(raw_naming, int) and not isinstance(raw_naming, bool)
-        else 0
-    )
+    naming = raw_naming if isinstance(raw_naming, int) and not isinstance(raw_naming, bool) else 0
     raw_rev = getattr(repo, "catalogue_revision", "")
     catalogue_rev = raw_rev if isinstance(raw_rev, str) else ""
     key = (tag, catalogue_rev, naming, _display_generation)
@@ -573,6 +571,7 @@ def map_basenames_to_display(
     allow_network: bool = False,
 ) -> List[str]:
     """Map on-disk basenames to runtime display labels for a method dropdown."""
+
     def catalogue_index(name: str) -> Dict[str, str]:
         provider = getattr(repo, name)
         try:

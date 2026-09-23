@@ -7,6 +7,7 @@ import tempfile
 import unittest
 
 from core import model_hash_cache as mhc
+from tests.model_config_fixtures import model_config_shell
 
 
 class ModelHashCacheTests(unittest.TestCase):
@@ -141,7 +142,6 @@ class ModelHashWireTests(unittest.TestCase):
     def test_get_model_hash_remembers_into_settings(self) -> None:
         from unittest import mock
 
-        from core.model_config import ModelConfig
         from core.model_repository import ModelRepository
         from core.settings import Settings
 
@@ -155,7 +155,7 @@ class ModelHashWireTests(unittest.TestCase):
         repo = ModelRepository()
         repo.model_hash_table = {}
 
-        cfg = ModelConfig.__new__(ModelConfig)
+        cfg = model_config_shell()
         cfg.settings = settings
         cfg.repo = repo
         cfg.model_path = path
@@ -163,9 +163,7 @@ class ModelHashWireTests(unittest.TestCase):
         cfg.model_hash = None
         cfg.is_dry_check = True
 
-        with mock.patch(
-            "core.model_config.config.compute_checkpoint_hash", return_value="abc123"
-        ):
+        with mock.patch("core.model_config.config.compute_checkpoint_hash", return_value="abc123"):
             cfg.get_model_hash()
 
         self.assertEqual(repo.model_hash_table[path], "abc123")
@@ -182,7 +180,6 @@ class ModelHashWireTests(unittest.TestCase):
         from unittest import mock
 
         from core import model_hash_cache as mhc
-        from core.model_config import ModelConfig
         from core.model_repository import ModelRepository
         from core.settings import Settings
 
@@ -202,7 +199,7 @@ class ModelHashWireTests(unittest.TestCase):
         with open(path, "wb") as handle:
             handle.write(b"a completely different, longer payload")
 
-        cfg = ModelConfig.__new__(ModelConfig)
+        cfg = model_config_shell()
         cfg.settings = settings
         cfg.repo = repo
         cfg.model_path = path
@@ -210,9 +207,7 @@ class ModelHashWireTests(unittest.TestCase):
         cfg.model_hash = None
         cfg.is_dry_check = True
 
-        with mock.patch(
-            "core.model_config.config.compute_checkpoint_hash", return_value="NEWHASH"
-        ):
+        with mock.patch("core.model_config.config.compute_checkpoint_hash", return_value="NEWHASH"):
             cfg.get_model_hash()
 
         self.assertEqual(cfg.model_hash, "NEWHASH")
@@ -226,7 +221,6 @@ class ModelHashWireTests(unittest.TestCase):
         """
         from unittest import mock
 
-        from core.model_config import ModelConfig
         from core.model_repository import ModelRepository
         from core.settings import Settings
 
@@ -240,7 +234,7 @@ class ModelHashWireTests(unittest.TestCase):
         repo = ModelRepository()
         repo.model_hash_table = {path: "MEMONLY"}
 
-        cfg = ModelConfig.__new__(ModelConfig)
+        cfg = model_config_shell()
         cfg.settings = settings
         cfg.repo = repo
         cfg.model_path = path
@@ -324,9 +318,7 @@ class ModelHashPersistTests(unittest.TestCase):
             i = 0
             while not stop.is_set():
                 try:
-                    mhc.remember(
-                        settings.process.model_hash_table, f"{checkpoint}.{i}", "h"
-                    )
+                    mhc.remember(settings.process.model_hash_table, f"{checkpoint}.{i}", "h")
                 except BaseException as exc:  # pragma: no cover - failure path
                     errors.append(exc)
                     return

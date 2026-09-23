@@ -61,8 +61,14 @@ class Conv(Module):
     """1x1/3x3 conv + InstanceNorm + SiLU."""
 
     def __init__(
-        self, c1: int, c2: int, k: _Size = 1, s: _Size = 1,
-        p: _Size | None = None, g: int = 1, act: bool = True,
+        self,
+        c1: int,
+        c2: int,
+        k: _Size = 1,
+        s: _Size = 1,
+        p: _Size | None = None,
+        g: int = 1,
+        act: bool = True,
     ) -> None:
         super().__init__()
         self.conv = nn.Conv2d(c1, c2, k, s, autopad(k, p), groups=g, bias=False)
@@ -77,8 +83,13 @@ class DSConv(Module):
     """Depthwise-separable conv: depthwise, pointwise, norm, activation."""
 
     def __init__(
-        self, c1: int, c2: int, k: _Size = 3, s: _Size = 1,
-        p: _Size | None = None, act: bool = True,
+        self,
+        c1: int,
+        c2: int,
+        k: _Size = 3,
+        s: _Size = 1,
+        p: _Size | None = None,
+        act: bool = True,
     ) -> None:
         super().__init__()
         self.dwconv = nn.Conv2d(c1, c1, k, s, autopad(k, p), groups=c1, bias=False)
@@ -111,9 +122,7 @@ class DS_C3k(Module):
         self.cv1 = Conv(c1, c_, 1, 1)
         self.cv2 = Conv(c1, c_, 1, 1)
         self.cv3 = Conv(2 * c_, c2, 1, 1)
-        self.m = nn.Sequential(
-            *[DS_Bottleneck(c_, c_, k=k, shortcut=True) for _ in range(n)]
-        )
+        self.m = nn.Sequential(*[DS_Bottleneck(c_, c_, k=k, shortcut=True) for _ in range(n)])
 
     def forward(self, x: Tensor) -> Tensor:
         return self.cv3(torch.cat((self.m(self.cv1(x)), self.cv2(x)), dim=1))
@@ -141,11 +150,9 @@ class AdaptiveHyperedgeGeneration(Module):
         self.head_dim = in_channels // num_heads
 
         self.global_proto = nn.Parameter(torch.randn(num_hyperedges, in_channels))
-        self.context_mapper = nn.Linear(
-            2 * in_channels, num_hyperedges * in_channels, bias=False
-        )
+        self.context_mapper = nn.Linear(2 * in_channels, num_hyperedges * in_channels, bias=False)
         self.query_proj = nn.Linear(in_channels, in_channels, bias=False)
-        self.scale = self.head_dim ** -0.5
+        self.scale = self.head_dim**-0.5
 
     def forward(self, x: Tensor) -> Tensor:
         B, N, C = x.shape
@@ -159,9 +166,7 @@ class AdaptiveHyperedgeGeneration(Module):
 
         z = self.query_proj(x)
         z = z.view(B, N, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
-        P = P.view(
-            B, self.num_hyperedges, self.num_heads, self.head_dim
-        ).permute(0, 2, 3, 1)
+        P = P.view(B, self.num_hyperedges, self.num_heads, self.head_dim).permute(0, 2, 3, 1)
 
         sim = (z @ P) * self.scale
         s_bar = sim.mean(dim=1)
@@ -188,8 +193,11 @@ class HypergraphConvolution(Module):
 
 class AdaptiveHypergraphComputation(Module):
     def __init__(
-        self, in_channels: int, out_channels: int,
-        num_hyperedges: int = 8, num_heads: int = 8,
+        self,
+        in_channels: int,
+        out_channels: int,
+        num_hyperedges: int = 8,
+        num_heads: int = 8,
     ) -> None:
         super().__init__()
         self.adaptive_hyperedge_gen = AdaptiveHyperedgeGeneration(
@@ -210,8 +218,12 @@ class C3AH(Module):
     """CSP block whose transformed half goes through hypergraph attention."""
 
     def __init__(
-        self, c1: int, c2: int, num_hyperedges: int = 8,
-        num_heads: int = 8, e: float = 0.5,
+        self,
+        c1: int,
+        c2: int,
+        num_hyperedges: int = 8,
+        num_heads: int = 8,
+        e: float = 0.5,
     ) -> None:
         super().__init__()
         c_ = int(c1 * e)
@@ -230,9 +242,15 @@ class HyperACE(Module):
     """Fuse the pyramid, then split into high-order, low-order and skip paths."""
 
     def __init__(
-        self, in_channels: Sequence[int], out_channels: int,
-        num_hyperedges: int = 8, num_heads: int = 8,
-        k: int = 2, l: int = 1, c_h: float = 0.5, c_l: float = 0.25,
+        self,
+        in_channels: Sequence[int],
+        out_channels: int,
+        num_hyperedges: int = 8,
+        num_heads: int = 8,
+        k: int = 2,
+        num_layers: int = 1,
+        c_h: float = 0.5,
+        c_l: float = 0.25,
     ) -> None:
         super().__init__()
         c2, c3, c4, c5 = in_channels
@@ -250,7 +268,7 @@ class HyperACE(Module):
         )
         self.high_order_fuse = Conv(self.c_h * k, self.c_h, 1, 1)
         self.low_order_branch = nn.Sequential(
-            *[DS_C3k(self.c_l, self.c_l, n=1, k=3, e=1.0) for _ in range(l)]
+            *[DS_C3k(self.c_l, self.c_l, n=1, k=3, e=1.0) for _ in range(num_layers)]
         )
         self.final_fuse = Conv(self.c_h + self.c_l + self.c_s, out_channels, 1, 1)
 
@@ -259,12 +277,17 @@ class HyperACE(Module):
         _B, _C, H4, W4 = B4.shape
 
         size = (H4, W4)
-        x_b = self.fuse_conv(torch.cat((
-            F.interpolate(B2, size=size, mode="bilinear", align_corners=False),
-            F.interpolate(B3, size=size, mode="bilinear", align_corners=False),
-            B4,
-            F.interpolate(B5, size=size, mode="bilinear", align_corners=False),
-        ), dim=1))
+        x_b = self.fuse_conv(
+            torch.cat(
+                (
+                    F.interpolate(B2, size=size, mode="bilinear", align_corners=False),
+                    F.interpolate(B3, size=size, mode="bilinear", align_corners=False),
+                    B4,
+                    F.interpolate(B5, size=size, mode="bilinear", align_corners=False),
+                ),
+                dim=1,
+            )
+        )
 
         x_h, x_l, x_s = torch.split(x_b, [self.c_h, self.c_l, self.c_s], dim=1)
 
@@ -297,7 +320,10 @@ class Backbone(Module):
     """
 
     def __init__(
-        self, in_channels: int = 256, base_channels: int = 64, base_depth: int = 3,
+        self,
+        in_channels: int = 256,
+        base_channels: int = 64,
+        base_depth: int = 3,
         variant: str = VARIANT_V2,
     ) -> None:
         super().__init__()
@@ -309,9 +335,7 @@ class Backbone(Module):
         deep_stride: _Size = 2 if variant == VARIANT_V2 else (2, 1)
 
         self.stem = DSConv(in_channels, c2, k=3, s=(2, 1), p=1)
-        self.p2 = nn.Sequential(
-            DSConv(c2, c3, k=3, s=(2, 1), p=1), DS_C3k2(c3, c3, n=base_depth)
-        )
+        self.p2 = nn.Sequential(DSConv(c2, c3, k=3, s=(2, 1), p=1), DS_C3k2(c3, c3, n=base_depth))
         self.p3 = nn.Sequential(
             DSConv(c3, c4, k=3, s=(2, 1), p=1), DS_C3k2(c4, c4, n=base_depth * 2)
         )
@@ -336,7 +360,9 @@ class Decoder(Module):
     """Top-down FPN decoder, gated at every level by the HyperACE feature."""
 
     def __init__(
-        self, encoder_channels: Sequence[int], hyperace_out_c: int,
+        self,
+        encoder_channels: Sequence[int],
+        hyperace_out_c: int,
         decoder_channels: Sequence[int],
     ) -> None:
         super().__init__()
@@ -424,10 +450,10 @@ class _TfcTdfBlock(Module):
 class TFC_TDF(Module):
     """Stack of :class:`_TfcTdfBlock`. Distinct from ``ml.tfc_tdf_v3``'s MDX23C block."""
 
-    def __init__(self, in_c: int, c: int, l: int, f: int, bn: int = 4) -> None:
+    def __init__(self, in_c: int, c: int, num_layers: int, f: int, bn: int = 4) -> None:
         super().__init__()
         blocks = []
-        for _ in range(l):
+        for _ in range(num_layers):
             blocks.append(_TfcTdfBlock(in_c, c, f, bn))
             in_c = c
         self.blocks = nn.ModuleList(blocks)
@@ -466,8 +492,11 @@ class ProgressiveUpsampleHead(Module):
     """Four pixel-shuffle stages from band resolution up to full STFT bins."""
 
     def __init__(
-        self, in_channels: int, out_channels: int,
-        target_bins: int = 1025, in_bands: int = 62,
+        self,
+        in_channels: int,
+        out_channels: int,
+        target_bins: int = 1025,
+        in_bands: int = 62,
         variant: str = VARIANT_V2,
     ) -> None:
         super().__init__()
@@ -488,9 +517,7 @@ class ProgressiveUpsampleHead(Module):
         self.block2 = FreqPixelShuffle(widths[0], widths[1], scale=2, f=refine[1])
         self.block3 = FreqPixelShuffle(widths[1], widths[2], scale=2, f=refine[2])
         self.block4 = FreqPixelShuffle(widths[2], widths[3], scale=2, f=refine[3])
-        self.final_conv = nn.Conv2d(
-            widths[3], out_channels, bias=False, **final_kernel
-        )
+        self.final_conv = nn.Conv2d(widths[3], out_channels, bias=False, **final_kernel)
 
     def forward(self, x: Tensor) -> Tensor:
         x = self.block1(x)
@@ -500,8 +527,10 @@ class ProgressiveUpsampleHead(Module):
 
         if x.shape[-1] != self.target_bins:
             x = F.interpolate(
-                x, size=(x.shape[2], self.target_bins),
-                mode="bilinear", align_corners=False,
+                x,
+                size=(x.shape[2], self.target_bins),
+                mode="bilinear",
+                align_corners=False,
             )
         return self.final_conv(x)
 
@@ -510,9 +539,15 @@ class SegmModel(Module):
     """The ``segm`` branch a HyperACE mask estimator adds to its band MLPs."""
 
     def __init__(
-        self, in_bands: int = 62, in_dim: int = 256, out_bins: int = 1025,
-        out_channels: int = 4, base_channels: int = 64, base_depth: int = 2,
-        num_hyperedges: int | None = None, num_heads: int = 8,
+        self,
+        in_bands: int = 62,
+        in_dim: int = 256,
+        out_bins: int = 1025,
+        out_channels: int = 4,
+        base_channels: int = 64,
+        base_depth: int = 2,
+        num_hyperedges: int | None = None,
+        num_heads: int = 8,
         variant: str = VARIANT_V2,
     ) -> None:
         super().__init__()
@@ -520,17 +555,19 @@ class SegmModel(Module):
         if num_hyperedges is None:
             num_hyperedges = 32 if is_v2 else 16
         # v1 runs a wider high-order branch and a deeper low-order one.
-        k, l = (2, 1) if is_v2 else (3, 2)
+        k, num_layers = (2, 1) if is_v2 else (3, 2)
 
         self.backbone = Backbone(
-            in_channels=in_dim, base_channels=base_channels,
-            base_depth=base_depth, variant=variant,
+            in_channels=in_dim,
+            base_channels=base_channels,
+            base_depth=base_depth,
+            variant=variant,
         )
         enc_channels = self.backbone.out_channels
         _c2, _c3, c4, _c5 = enc_channels
 
         self.hyperace = HyperACE(
-            enc_channels, c4, num_hyperedges, num_heads, k=k, l=l
+            enc_channels, c4, num_hyperedges, num_heads, k=k, num_layers=num_layers
         )
         self.decoder = Decoder(enc_channels, c4, enc_channels)
         self.upsample_head = ProgressiveUpsampleHead(

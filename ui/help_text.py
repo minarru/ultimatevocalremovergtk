@@ -56,7 +56,9 @@ def validate_help_text(text: str, *, name: str = "") -> List[str]:
                 issues.append(f"{prefix}line {index}: consecutive blank lines")
             continue
         if raw_line != raw_line.lstrip() and not raw_line.startswith("  "):
-            issues.append(f"{prefix}line {index}: use two spaces before sub-bullets, not other indentation")
+            issues.append(
+                f"{prefix}line {index}: use two spaces before sub-bullets, not other indentation"
+            )
         if "\t" in raw_line or raw_line.startswith("\t"):
             issues.append(f"{prefix}line {index}: use spaces, not tabs")
         if line.endswith(".") and not line.endswith("..."):
@@ -126,14 +128,14 @@ ENSEMBLE_TYPE_HELP = """How member outputs are combined
 
 Dual-stem ensembles use a Primary and a Secondary algorithm (saved as Primary/Secondary). 4-stem and multi-stem ensembles use one algorithm for every stem
 
-• Max Spec — strongest magnitude per bin (fuller; can add artifacts)
-• Min Spec — weakest magnitude per bin (cleaner; can sound muddy)
-• Average — mean of member waveforms
-• Median Spec — per-bin median of complex spectrograms (robust with 3+ models)
-• Soft Spec — softmax blend with automatic magnitude-agreement weights
-• Max Mag / Avg Phase — Max Spec magnitudes with a stable average phase
-• Hybrid Spec — average of Max Spec and Min Spec
-• Chunk Min — time-domain: quietest chunk from any member
+• Max Spec — strongest bins with fixed time/frequency smoothing
+• Min Spec — weakest bins for cleanness; optional smoothing may preserve detail while allowing more bleed
+• Average — weighted mean of member waveforms
+• Median Spec — median of real and imaginary components (robust with 3+ models)
+• Soft Spec — mean/variance magnitude agreement with adjustable strength and model weights
+• Max Mag / Avg Phase — maximum magnitude with circular average phase
+• Hybrid Spec — adjustable blend of smoothed maximum and minimum selections
+• Chunk Min — 1-second windows, 100 ms crossfades; keeps the current model unless another is at least 10% quieter or the current model ends
 
 Default dual-stem pair is Max Spec / Min Spec"""
 
@@ -145,9 +147,7 @@ SAVE_STEM_ONLY_HELP = (
     "Choose outputs to write. Choices depend on the selected model or ensemble stem pair"
 )
 
-RUN_WORKLOAD_HINT = (
-    "Passes = model runs; outputs = saved files; speed labels are relative"
-)
+RUN_WORKLOAD_HINT = "Passes = model runs; outputs = saved files; speed labels are relative"
 
 PROGRESS_ETA_HINT = (
     "The bar pulses while loading, then fills during inference, save, and "
@@ -235,9 +235,7 @@ IS_DEMUCS_COMBINE_STEMS_HELP = (
     "subtracting the primary stem from the mixture"
 )
 
-COMPENSATE_HELP = (
-    "Classic MDX-Net only: scale the primary output before deriving its complement"
-)
+COMPENSATE_HELP = "Classic MDX-Net only: scale the primary output before deriving its complement"
 
 IS_DENOISE_HELP = (
     "Standard averages positive and negative classic MDX-Net predictions. "
@@ -283,9 +281,15 @@ IS_WAV_ENSEMBLE_HELP = (
 
 DONATE_HELP = "Open the official UVR donation page in the default browser"
 
+DERIVE_COMPLEMENT_FROM_MIX_HELP = (
+    "Combine native stems with the first algorithm, then derive the other "
+    "pair file from the mix (mix minus the combined native, or Spectral inversion)"
+)
+
 IS_INVERT_SPEC_HELP = (
     "Derive the complement by subtracting spectrograms instead of waveforms. "
-    "This is slower and may improve some outputs"
+    "This is slower and may improve some outputs. Ensemble leftovers use the "
+    "same WAV-level invert"
 )
 
 IS_TESTING_AUDIO_HELP = "Add a timestamp to output names to avoid overwrites"
@@ -306,11 +310,17 @@ IS_CREATE_MODEL_FOLDER_HELP = (
     "directory (export / <model> / <track> / file(s))"
 )
 
-MDX_DIM_T_SET_HELP = "Internal time-dimension setting — leave the default unless you know the training value"
+MDX_DIM_T_SET_HELP = (
+    "Internal time-dimension setting — leave the default unless you know the training value"
+)
 
-MDX_DIM_F_SET_HELP = "Internal frequency-dimension setting — leave the default unless you know the training value"
+MDX_DIM_F_SET_HELP = (
+    "Internal frequency-dimension setting — leave the default unless you know the training value"
+)
 
-MDX_N_FFT_SCALE_SET_HELP = "N_FFT size used when the model was trained — leave the default unless you know it"
+MDX_N_FFT_SCALE_SET_HELP = (
+    "N_FFT size used when the model was trained — leave the default unless you know it"
+)
 
 POPUP_COMPENSATE_HELP = (
     "Select the appropriate volume compensation for the chosen model\n\n"
@@ -484,9 +494,7 @@ VIEW_TAB_HINTS: Dict[str, str] = {
     "separation": (
         "Separate vocals, instrumentals, and other stems using VR, MDX-Net, or Demucs models"
     ),
-    "ensemble": (
-        "Combine outputs from multiple compatible models with selectable algorithms"
-    ),
+    "ensemble": ("Combine outputs from multiple compatible models with selectable algorithms"),
     "audio_tools": (
         "Time stretch, change pitch, align tracks, matchering, manual ensemble, and Apollo audio restoration"
     ),
@@ -516,13 +524,9 @@ DEMUCS_STEMS_SAVE_HELP = (
     "output; other focuses can write the stem, its complement, or both"
 )
 
-QUICK_EXPORT_INSTRUMENTAL_HINT = (
-    "Export a single derived Instrumental file (mixture minus vocals)"
-)
+QUICK_EXPORT_INSTRUMENTAL_HINT = "Export a single derived Instrumental file (mixture minus vocals)"
 
-QUICK_EXPORT_VOCALS_HINT = (
-    "Export a single native Vocals stem file"
-)
+QUICK_EXPORT_VOCALS_HINT = "Export a single native Vocals stem file"
 
 SAVE_STEMS_NO_MODEL_HELP = "Choose a model to configure stem export"
 
@@ -559,7 +563,9 @@ FLAC_BIT_DEPTH_HINT = "Bit depth used when saving FLAC output (16-bit or 24-bit)
 MAIN_MENU_HINT = "Main menu"
 VIEW_INPUTS_BUTTON_HINT = "Review and verify inputs"
 MODEL_OPTIONS_BUTTON_HINT = "Open inference, extra-model, and model-maintenance options"
-MODEL_OPTIONS_ROW_HINT = "Open inference, extra-model, and model-maintenance options for each architecture"
+MODEL_OPTIONS_ROW_HINT = (
+    "Open inference, extra-model, and model-maintenance options for each architecture"
+)
 ENSEMBLE_MEMBER_MODEL_OPTIONS_HINT = (
     "Adjust architecture-level inference and extra-model options used by selected ensemble members"
 )

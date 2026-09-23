@@ -51,7 +51,9 @@ class DeviceRequest:
             return cls(f"cuda:{device}")
         return cls("auto")
 
-    def settings_overrides(self, inventory: tuple[DeviceInfo, ...] | None = None) -> list[tuple[str, Any]]:
+    def settings_overrides(
+        self, inventory: tuple[DeviceInfo, ...] | None = None
+    ) -> list[tuple[str, Any]]:
         token = self.id
         if token == "auto":
             devices = inventory if inventory is not None else list_devices()
@@ -59,22 +61,26 @@ class DeviceRequest:
             return DeviceRequest.parse(selected).settings_overrides(devices)
         if token == "cpu":
             return [
-                ("process.use_gpu", False), ("process.device", None),
+                ("process.use_gpu", False),
+                ("process.device", None),
                 ("process.use_directml", False),
             ]
         if token.startswith("cuda:"):
             return [
-                ("process.use_gpu", True), ("process.device", token.partition(":")[2]),
+                ("process.use_gpu", True),
+                ("process.device", token.partition(":")[2]),
                 ("process.use_directml", False),
             ]
         if token == "mps":
             return [
-                ("process.use_gpu", True), ("process.device", "mps"),
+                ("process.use_gpu", True),
+                ("process.device", "mps"),
                 ("process.use_directml", False),
             ]
         suffix = token.partition(":")[2]
         return [
-            ("process.use_gpu", True), ("process.device", suffix or "directml"),
+            ("process.use_gpu", True),
+            ("process.device", suffix or "directml"),
             ("process.use_directml", True),
         ]
 
@@ -93,11 +99,9 @@ def list_devices() -> tuple[DeviceInfo, ...]:
         rows.append(DeviceInfo(stable, label))
     selected = rows[1].id if len(rows) > 1 else "cpu"
     return tuple(
-        DeviceInfo(item.id, item.label, item.available, item.id == selected)
-        for item in rows
+        DeviceInfo(item.id, item.label, item.available, item.id == selected) for item in rows
     )
 
 
 def resolve_device_request(value: Optional[str]) -> list[tuple[str, Any]]:
     return DeviceRequest.parse(value).settings_overrides()
-

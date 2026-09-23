@@ -6,8 +6,8 @@ import json
 import os
 import re
 import tempfile
-from dataclasses import dataclass
-from typing import Any, List, Optional
+from dataclasses import dataclass, field
+from typing import Any, List, Optional, Sequence
 
 from . import paths
 from .ensemble_presets import curated_combo_label, curated_id_from_combo_label
@@ -67,9 +67,18 @@ def save_ensemble(
     *,
     wav_ensemble: bool = False,
     save_all_outputs: bool = True,
+    derive_complement_from_mix: bool = False,
+    stems_selected: Sequence[str] = (),
+    stem_focus: str = "",
+    blend_options: dict[str, Any] | None = None,
 ) -> str:
     """Persist an ensemble with an exact current semantic pair/mode id."""
+    from core.ensemble_blend import restore_blend_options
+
     pair_id = normalize_stem_pair_id(ensemble_main_stem)
+    validated_blend_options = (
+        restore_blend_options(blend_options, strict=True) if blend_options is not None else {}
+    )
     saved_data = {
         "schema_version": 2,
         "ensemble_main_stem": pair_id,
@@ -77,6 +86,10 @@ def save_ensemble(
         "selected_models": list(selected_models),
         "is_wav_ensemble": bool(wav_ensemble),
         "save_all_outputs": bool(save_all_outputs),
+        "derive_complement_from_mix": bool(derive_complement_from_mix),
+        "stems_selected": list(stems_selected),
+        "stem_focus": stem_focus,
+        "blend_options": validated_blend_options,
     }
     path = _saved_ensemble_path(name)
     cache_dir = paths.ENSEMBLE_CACHE_DIR
@@ -179,7 +192,11 @@ class ResolvedEnsemblePreset:
     description: str = ""
     wav_ensemble: bool = False
     save_all_outputs: bool = True
+    derive_complement_from_mix: bool = False
     validation_warnings: tuple[str, ...] = ()
+    stems_selected: tuple[str, ...] = ()
+    stem_focus: str = ""
+    blend_options: dict[str, Any] = field(default_factory=dict)
 
 
 class EnsembleService:
@@ -247,6 +264,9 @@ class EnsembleService:
         # Preserve unresolved references for the GUI's missing-model download
         # offer; persistence validation never rewrites stored text.
         members.extend(unresolved)
+        from core.ensemble_blend import restore_blend_options
+
+        blend_options = restore_blend_options(data.get("blend_options"), validation_warnings)
         return ResolvedEnsemblePreset(
             preset_id,
             display,
@@ -258,7 +278,11 @@ class EnsembleService:
             str(data.get("description") or "").strip(),
             bool(data.get("is_wav_ensemble", False)),
             bool(data.get("save_all_outputs", True)),
+            bool(data.get("derive_complement_from_mix", False)),
             tuple(validation_warnings),
+            tuple(data.get("stems_selected") or ()),
+            str(data.get("stem_focus") or ""),
+            blend_options,
         )
 
     def apply(self, settings: Any, name: str) -> ResolvedEnsemblePreset:
@@ -270,6 +294,11 @@ class EnsembleService:
         settings.ensemble.chosen_ensemble = preset.display
         settings.ensemble.wav_ensemble = preset.wav_ensemble
         settings.ensemble.save_all_outputs = preset.save_all_outputs
+        settings.ensemble.derive_complement_from_mix = preset.derive_complement_from_mix
+        settings.ensemble.stems_selected = list(preset.stems_selected)
+        settings.process.stem_focus = preset.stem_focus
+        for name, value in preset.blend_options.items():
+            setattr(settings.ensemble, name, value)
         return preset
 
     def create(
@@ -281,7 +310,11 @@ class EnsembleService:
         algorithm: str,
         wav_ensemble: bool = False,
         save_all_outputs: bool = True,
+        derive_complement_from_mix: bool = False,
         replace: bool = False,
+        stems_selected: Sequence[str] = (),
+        stem_focus: str = "",
+        blend_options: dict[str, Any] | None = None,
     ) -> ResolvedEnsemblePreset:
         if load_ensemble(name) is not None and not replace:
             raise ValueError(f"ensemble {name!r} already exists; pass --replace")
@@ -303,6 +336,10 @@ class EnsembleService:
             canonical,
             wav_ensemble=wav_ensemble,
             save_all_outputs=save_all_outputs,
+            derive_complement_from_mix=derive_complement_from_mix,
+            stems_selected=stems_selected,
+            stem_focus=stem_focus,
+            blend_options=blend_options,
         )
         return self.resolve(name)
 

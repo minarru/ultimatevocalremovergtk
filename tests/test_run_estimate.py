@@ -33,6 +33,7 @@ from core.stem_selection import (
     _QUICK_ALL,
     _QUICK_VOCALS,
 )
+from tests.stem_ui_helpers import _DemucsFocusProxy
 from ui.widgets.stem_only import (
     SaveStemsSection,
 )
@@ -352,7 +353,7 @@ class SaveStemsOutputCountTests(unittest.TestCase):
             has_model=True,
             demucs_stem_count=6,
         )
-        self.section._demucs_focus.set_active_name(_QUICK_ALL)
+        _DemucsFocusProxy(self.section).set_active_name(_QUICK_ALL)
         self.assertEqual(self.section.expected_output_count(), 6)
 
 
@@ -560,3 +561,20 @@ class JobProgressCallbackTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OutputDialogWorkloadTests(unittest.TestCase):
+    def test_workload_can_omit_total_when_dialog_owns_main_output_count(self):
+        estimate = WorkloadEstimate(
+            inference_passes=2,
+            output_count=3,
+            uses_gpu=True,
+            sample_mode=False,
+            sample_seconds=30,
+            export_tier=RunCostTier.SLOWER,
+        )
+        self.assertEqual(
+            format_workload_line(estimate, include_output_count=False),
+            "2 passes · GPU · Slower",
+        )
+        self.assertEqual(format_workload_line(estimate), "2 passes · 3 outputs · GPU · Slower")

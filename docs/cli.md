@@ -354,3 +354,70 @@ earlier experimental surface.
 
 Removed Python headless helpers are replaced by the public resolved-job and
 blocking-runner APIs in `core`; no import trampoline remains.
+
+### Ensemble blend controls
+
+The Ensemble page's **Blend options** dialog controls model weights by output,
+Min Spec smoothing, Soft agreement strength, Hybrid balance, and optional timing
+correction. These preferences are retained in saved ensembles and GUI profiles.
+They also appear in resolved settings and replay manifests.
+
+For CLI ensembles, scalar controls work through `--set`:
+
+```bash
+uvr ensemble song.wav -o out --ensemble My_Ensemble \
+  --set ensemble.smoothing=0 \
+  --set ensemble.soft_strength=1 \
+  --set ensemble.hybrid_balance=0.65 \
+  --set ensemble.alignment_correction=false
+```
+
+`ensemble.smoothing` applies only to Min Spec, from 0 (the default, hard bin
+selection) to 4. Positive values may preserve more target detail while allowing
+more bleed. Max Spec and Hybrid always use smoothing 1; this setting cannot
+disable or change their smoothing. Soft strength ranges from 0
+(model weights only) to 10. Hybrid balance is the smoothed Max share, from 0 to 1;
+its Min side also remains smoothed. Average uses normalized model weights.
+Median Spec takes medians of the real and imaginary components; Max Mag / Avg
+Phase uses the circular mean of unit phasors. Soft Spec uses the original
+mean/variance agreement rule.
+Time-domain Max/Min retain sample selection; smoothing applies to spectral blends.
+Chunk Min keeps its independent 1-second selection and 100 ms crossfade path.
+
+A sparse profile JSON can set per-output weights using reviewed role IDs and
+exact canonical model IDs (replace the example IDs with installed members):
+
+```json
+{
+  "schema_version": 1,
+  "name": "weighted-ensemble",
+  "ensemble": "My_Ensemble",
+  "settings": {
+    "ensemble.member_weights": {
+      "*": {"mdx:MODEL_A": 1.2},
+      "vocal.vocals": {"mdx:MODEL_A": 2, "mdx:MODEL_B": 1},
+      "mix.instrumental": {"mdx:MODEL_A": 1, "mdx:MODEL_B": 2}
+    }
+  }
+}
+```
+
+A role-specific weight overrides `*`; otherwise the weight is 1. Weights range
+from 0 (exclude) to 100. An ordinary ensemble output requires at least two
+positive-weight contributors. These are user preferences, not measured quality
+scores. Hard Max/Min use weights for exclusion; blended algorithms also use their
+relative values.
+
+Alignment diagnostics run without shifting audio by default. `--debug` records
+the estimated delay and confidence. Optional correction requires consistent,
+unambiguous correlation across several excerpts within 20 ms; stereo channels
+move together. Missing prefixes and tails do not vote as padded silence. This
+check does not measure separation quality or automatically normalize gain.
+
+## Reference scoring for models and ensembles
+
+`uvr score prepare`, `files`, `run`, and `compare` evaluate saved outputs against
+known reference stems without running inference. See [the scoring guide](scoring.md)
+for manifests, optional BSS Eval installation, metric definitions, progress and
+report comparison. Use `--metrics basic` for waveform SDR and SI-SDR with the
+existing dependencies. The existing `uvr bench` A/B inference workflow is unchanged.

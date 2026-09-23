@@ -33,9 +33,7 @@ class BaseNormMLP(nn.Module):
         self.hidden = torch.jit.script(
             nn.Sequential(
                 nn.Linear(in_features=emb_dim, out_features=mlp_dim),
-                activation.__dict__[hidden_activation](
-                    **self.hidden_activation_kwargs
-                ),
+                activation.__dict__[hidden_activation](**self.hidden_activation_kwargs),
             )
         )
 
@@ -372,7 +370,7 @@ class MultAddMaskEstimationModule(OverlappingMaskEstimationModule):
         )
         add = torch.zeros_like(mult)
 
-        for im, (mm, am) in enumerate(zip(mult_list, add_list)):
+        for im, (mm, am) in enumerate(zip(mult_list, add_list, strict=True)):
             fstart, fend = self.band_specs[im]
             if self.use_freq_weights:
                 fw = self.get_buffer(f"freq_weights/{im}")[:, None]

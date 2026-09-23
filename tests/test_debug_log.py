@@ -96,6 +96,38 @@ class DebugLogTests(unittest.TestCase):
         else:
             os.environ.pop("UVR_DEBUG_SENSITIVE", None)
 
+    def test_runtime_ignored_keys_reach_debug_sink_without_values_or_stdout(self) -> None:
+        import io
+        from contextlib import redirect_stdout
+
+        from engines.mdx_c import filter_init_kwargs
+
+        class Explicit:
+            def __init__(self, accepted: int = 2) -> None:
+                pass
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "diagnostic.log"
+            for level in ("errors", "debug", "trace"):
+                debug_log.configure(level=level, log_file=str(path))
+                output = io.StringIO()
+                with redirect_stdout(output):
+                    result = filter_init_kwargs(
+                        Explicit, {"z": "secret-value", "accepted": 7, "a": 99}
+                    )
+                self.assertEqual(result, {"accepted": 7})
+                self.assertEqual(output.getvalue(), "")
+                if level == "errors":
+                    self.assertFalse(path.exists())
+                else:
+                    lines = path.read_text().splitlines()
+                    self.assertEqual(len(lines), 1 if level == "debug" else 2)
+                    self.assertIn("event=model_config_keys_ignored", lines[-1])
+                    self.assertIn("architecture='Explicit'", lines[-1])
+                    self.assertIn("dropped_keys=('a', 'z')", lines[-1])
+                    self.assertNotIn("secret-value", lines[-1])
+                    self.assertNotIn("99", lines[-1].split("dropped_keys=", 1)[1])
+
     def test_disabled_by_default(self) -> None:
         self.assertFalse(debug_log.enabled("ui"))
 
@@ -413,10 +445,7 @@ class DebugLogTests(unittest.TestCase):
                 "download",
                 "request_failed",
                 level="error",
-                error=(
-                    "Authorization: Bearer top-secret; "
-                    "password=hunter2 api_key='private-key'"
-                ),
+                error=("Authorization: Bearer top-secret; password=hunter2 api_key='private-key'"),
             )
 
             diagnostic = log_path.read_text(encoding="utf-8")
@@ -433,7 +462,10 @@ class DebugLogTests(unittest.TestCase):
             "Bearer standalone-secret"
         )
         for include_sensitive in (False, True):
-            with self.subTest(include_sensitive=include_sensitive), tempfile.TemporaryDirectory() as tmp:
+            with (
+                self.subTest(include_sensitive=include_sensitive),
+                tempfile.TemporaryDirectory() as tmp,
+            ):
                 log_path = Path(tmp) / "uvr.log"
                 debug_log.configure(
                     level="errors",
@@ -464,7 +496,10 @@ class DebugLogTests(unittest.TestCase):
             "headers={X-Custom: private-value, X-Trace: also-private}"
         )
         for include_sensitive in (False, True):
-            with self.subTest(include_sensitive=include_sensitive), tempfile.TemporaryDirectory() as tmp:
+            with (
+                self.subTest(include_sensitive=include_sensitive),
+                tempfile.TemporaryDirectory() as tmp,
+            ):
                 log_path = Path(tmp) / "uvr.log"
                 debug_log.configure(
                     level="errors",
@@ -495,12 +530,14 @@ class DebugLogTests(unittest.TestCase):
         credential_texts = (
             "{'Cookie': 'session=abc', 'headers': {'X-Private': 'secret'}}",
             '{"Cookie": "session=xyz", "headers": {"X-Private": "hidden"}}',
-            "{'headers': {'nested': {'first': 'hidden-one'}, "
-            "'X-Private': 'hidden-two'}}",
+            "{'headers': {'nested': {'first': 'hidden-one'}, 'X-Private': 'hidden-two'}}",
             "{'headers': HeaderDump('constructor-one', 'constructor-two')}",
         )
         for include_sensitive in (False, True):
-            with self.subTest(include_sensitive=include_sensitive), tempfile.TemporaryDirectory() as tmp:
+            with (
+                self.subTest(include_sensitive=include_sensitive),
+                tempfile.TemporaryDirectory() as tmp,
+            ):
                 log_path = Path(tmp) / "uvr.log"
                 debug_log.configure(
                     level="errors",
@@ -689,10 +726,7 @@ class DebugLogTests(unittest.TestCase):
                         item=item,
                     )
 
-            workers = [
-                threading.Thread(target=write_events, args=(index,))
-                for index in range(8)
-            ]
+            workers = [threading.Thread(target=write_events, args=(index,)) for index in range(8)]
             for worker in workers:
                 worker.start()
             for worker in workers:
@@ -720,9 +754,11 @@ class DebugLogTests(unittest.TestCase):
         self.addCleanup(setattr, sys, "excepthook", original_excepthook)
         self.addCleanup(setattr, threading, "excepthook", original_thread_hook)
 
-        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(
-            debug_log, "_ORIGINAL_SHOWWARNING"
-        ), mock.patch.object(debug_log, "_ORIGINAL_EXCEPTHOOK"):
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.object(debug_log, "_ORIGINAL_SHOWWARNING"),
+            mock.patch.object(debug_log, "_ORIGINAL_EXCEPTHOOK"),
+        ):
             log_path = Path(tmp) / "uvr.log"
             debug_log.configure(level="debug", log_file=str(log_path))
             debug_log.install_runtime_hooks()
@@ -750,16 +786,13 @@ class DebugLogTests(unittest.TestCase):
         fake_app.run.return_value = 0
         fake_app._did_activate = True
 
-        with mock.patch.object(application.Settings, "load", return_value=settings), mock.patch(
-            "core.debug_log.configure_from_settings"
-        ) as configure_from_settings, mock.patch(
-            "core.debug_log.install_runtime_hooks"
-        ) as install_runtime_hooks, mock.patch(
-            "core.debug_log.log_event"
-        ) as log_event, mock.patch.object(
-            application, "UVRApplication", return_value=fake_app
-        ), mock.patch(
-            "ui.shutdown.finalize_process_exit"
+        with (
+            mock.patch.object(application.Settings, "load", return_value=settings),
+            mock.patch("core.debug_log.configure_from_settings") as configure_from_settings,
+            mock.patch("core.debug_log.install_runtime_hooks") as install_runtime_hooks,
+            mock.patch("core.debug_log.log_event") as log_event,
+            mock.patch.object(application, "UVRApplication", return_value=fake_app),
+            mock.patch("ui.shutdown.finalize_process_exit"),
         ):
             self.assertEqual(application.main(["uvr"]), 0)
 
@@ -768,30 +801,36 @@ class DebugLogTests(unittest.TestCase):
         names = [call.args[1] for call in log_event.call_args_list]
         self.assertEqual(names, ["application_started", "application_exited"])
 
-    def test_gui_runtime_hooks_install_before_failure_prone_startup_work(self) -> None:
+    def test_gui_runtime_hooks_install_before_running_app(self) -> None:
         from ui import application
 
         order: list[str] = []
-        with mock.patch(
-            "core.debug_log.configure_bootstrap",
-            side_effect=lambda: order.append("bootstrap"),
-        ), mock.patch(
-            "core.debug_log.install_runtime_hooks",
-            side_effect=lambda: order.append("hooks"),
-        ), mock.patch(
-            "core.torch_checkpoint.ensure_demucs_import_aliases",
-            side_effect=lambda: (
-                order.append("aliases"),
-                (_ for _ in ()).throw(RuntimeError("alias setup failed")),
-            )[1],
-        ):
-            with self.assertRaisesRegex(RuntimeError, "alias setup failed"):
-                application.main(["uvr"])
+        fake_app = mock.Mock()
 
-        self.assertEqual(order, ["bootstrap", "hooks", "aliases"])
+        def run(*_args: object) -> int:
+            order.append("run")
+            return 0
+
+        fake_app.run.side_effect = run
+        fake_app._did_activate = True
+        with (
+            mock.patch(
+                "core.debug_log.configure_bootstrap",
+                side_effect=lambda: order.append("bootstrap"),
+            ),
+            mock.patch(
+                "core.debug_log.install_runtime_hooks",
+                side_effect=lambda: order.append("hooks"),
+            ),
+            mock.patch.object(application, "UVRApplication", return_value=fake_app),
+            mock.patch("ui.shutdown.finalize_process_exit"),
+        ):
+            self.assertEqual(application.main(["uvr"]), 0)
+
+        self.assertEqual(order, ["bootstrap", "hooks", "run"])
 
     def test_ui_error_log_records_error_at_default_threshold(self) -> None:
-        from ui.errorlog import log_error
+        from core.error_log import log_error
 
         with tempfile.TemporaryDirectory() as tmp:
             log_path = Path(tmp) / "uvr.log"

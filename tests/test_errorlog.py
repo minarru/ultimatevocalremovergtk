@@ -19,6 +19,47 @@ class ErrorLogTests(unittest.TestCase):
     def setUp(self) -> None:
         set_error_log("")
 
+    def test_sink_coalesces_worker_updates_and_ignores_closed_delivery(self):
+        import threading
+        from unittest.mock import patch
+
+        from gi.repository import Gtk
+
+        from ui.errorlog import ErrorLogViewSink
+
+        buffer = Gtk.TextBuffer()
+        changes = []
+        buffer.connect("changed", lambda *_: changes.append(True))
+        pending = []
+        with patch(
+            "ui.errorlog.GLib.idle_add",
+            side_effect=lambda f, *a: pending.append((f, a)) or len(pending),
+        ):
+            sink = ErrorLogViewSink(buffer)
+            self.addCleanup(sink.close)
+            changes.clear()
+
+            def produce():
+                for value in range(100):
+                    set_error_log(str(value))
+
+            worker = threading.Thread(target=produce)
+            worker.start()
+            worker.join()
+            self.assertEqual(len(pending), 1)
+            callback, args = pending.pop()
+            callback(*args)
+            self.assertEqual(
+                buffer.get_text(buffer.get_start_iter(), buffer.get_end_iter(), False), "99"
+            )
+            # Replacing existing text emits deletion and insertion changes.
+            self.assertEqual(len(changes), 2)
+            set_error_log("late")
+            sink.close()
+            callback, args = pending.pop()
+            callback(*args)
+            self.assertEqual(len(changes), 2)
+
     def test_log_error_stores_formatted_text(self) -> None:
         from core.error_context import clear_run_error_context
 
@@ -106,6 +147,100 @@ class ErrorLogTests(unittest.TestCase):
         )
         height = _summary_viewport_height(summary, width_px=520)
         self.assertLessEqual(height, _ERROR_SUMMARY_MAX_HEIGHT)
+
+
+class ErrorLogViewLifetimeTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        import gi
+
+        gi.require_version('Gtk', '4.0')
+        gi.require_version('Adw', '1')
+        from gi.repository import Gtk
+
+        Gtk.init()
+        from tests.private_gtk import require_private_gtk
+
+        require_private_gtk()
+
+    def test_direct_console_entry_initializes_adwaita_in_fresh_process(self) -> None:
+        import subprocess
+        import sys
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import gi; gi.require_version('Gtk', '4.0'); "
+                "gi.require_version('Adw', '1'); from gi.repository import Gtk; "
+                "Gtk.init(); from ui import errorlog; "
+                "errorlog.set_error_log('fresh process report'); "
+                "window = errorlog.open_error_log(None); "
+                "buffer = errorlog._ERROR_LOG_BUFFER; "
+                "assert buffer is not None; "
+                "assert buffer.get_text(buffer.get_start_iter(), "
+                "buffer.get_end_iter(), True) == 'fresh process report'; "
+                "window.close()",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_worker_update_close_and_reopen_dispose_queued_sink(self) -> None:
+        import gc
+        import threading
+        import time
+        import weakref
+
+        from gi.repository import GLib, Gtk
+
+        from core.error_log import append_error_log
+        from ui import errorlog
+
+        def buffer_text(buffer: Gtk.TextBuffer) -> str:
+            return buffer.get_text(buffer.get_start_iter(), buffer.get_end_iter(), True)
+
+        set_error_log('seed')
+        parent = Gtk.Window()
+        window = errorlog.open_error_log(parent)
+        self.addCleanup(parent.close)
+        self.addCleanup(
+            lambda: errorlog._ERROR_LOG_WINDOW.close() if errorlog._ERROR_LOG_WINDOW else None
+        )
+        old_buffer = errorlog._ERROR_LOG_BUFFER
+        assert old_buffer is not None
+        old_buffer_ref = weakref.ref(old_buffer)
+        old_sink = weakref.ref(errorlog._ERROR_LOG_SINK)
+        worker = threading.Thread(target=append_error_log, args=('worker',))
+        worker.start()
+        worker.join(5)
+        self.assertFalse(worker.is_alive())
+        deadline = time.monotonic() + 5
+        context = GLib.MainContext.default()
+        while 'worker' not in buffer_text(old_buffer) and time.monotonic() < deadline:
+            context.iteration(False)
+        self.assertIn('worker', buffer_text(old_buffer))
+        # Schedule, then close before main-loop delivery. Old idles cannot own widgets.
+        append_error_log('queued')
+        window.close()
+        self.assertIsNone(errorlog._ERROR_LOG_SINK)
+        gc.collect()
+        self.assertIsNone(old_sink())
+        reopened = errorlog.open_error_log(parent)
+        self.assertIsNot(reopened, window)
+        new_buffer = errorlog._ERROR_LOG_BUFFER
+        assert new_buffer is not None
+        self.assertEqual(buffer_text(new_buffer), get_error_log())
+        while context.pending():
+            context.iteration(False)
+        self.assertNotIn('queued', buffer_text(old_buffer))
+        self.assertIn('queued', buffer_text(new_buffer))
+        reopened.close()
+        del old_buffer, window
+        gc.collect()
+        self.assertIsNone(old_buffer_ref())
 
 
 if __name__ == "__main__":

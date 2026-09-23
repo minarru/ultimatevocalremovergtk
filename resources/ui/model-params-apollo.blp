@@ -1,0 +1,25 @@
+using Gtk 4.0;
+using Adw 1;
+
+Adw.Dialog dialog {
+  content-width: 440;
+  follows-content-size: true;
+}
+
+Gtk.Box content {
+  orientation: vertical;
+  margin-top: 12;
+  margin-bottom: 12;
+  margin-start: 12;
+  margin-end: 12;
+
+  Adw.PreferencesPage {
+    Adw.PreferencesGroup group {
+      description: "This model's parameters could not be detected automatically.";
+
+      Adw.ComboRow config_row {
+        title: "Model configuration";
+      }
+    }
+  }
+}

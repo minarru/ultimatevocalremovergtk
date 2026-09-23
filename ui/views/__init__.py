@@ -6,7 +6,12 @@ modules (e.g. ensemble, audio tools) and decorate their classes with
 ``@register_method_view`` to appear in the window's view switcher.
 """
 
+from importlib import import_module as _import_module
+
 from .base import METHOD_VIEWS, MethodView, register_method_view
-from . import vr, mdx, demucs  # noqa: F401 - import order sets the view-switcher order
+
+# Import order sets the view-switcher order.
+for _module in ("vr", "mdx", "demucs"):
+    _import_module(f".{_module}", __name__)
 
 __all__ = ["METHOD_VIEWS", "MethodView", "register_method_view"]

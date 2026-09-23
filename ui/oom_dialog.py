@@ -77,9 +77,7 @@ def present_oom_choice_dialog(
         dialog.add_response(OOM_CHOICE_RETRY, "Retry with smaller segment")
         dialog.set_response_appearance(OOM_CHOICE_RETRY, Adw.ResponseAppearance.SUGGESTED)
     dialog.set_response_appearance(OOM_CHOICE_STOP, Adw.ResponseAppearance.DESTRUCTIVE)
-    dialog.set_default_response(
-        OOM_CHOICE_RETRY if request.can_retry else OOM_CHOICE_STOP
-    )
+    dialog.set_default_response(OOM_CHOICE_RETRY if request.can_retry else OOM_CHOICE_STOP)
     dialog.set_close_response(OOM_CHOICE_STOP)
 
     settled = {"done": False}
@@ -91,11 +89,16 @@ def present_oom_choice_dialog(
         on_choice(choice)
 
     def on_response(_dlg: Adw.AlertDialog, response: str) -> None:
-        choice = response if response in (
-            OOM_CHOICE_EXPORT,
-            OOM_CHOICE_STOP,
-            OOM_CHOICE_RETRY,
-        ) else OOM_CHOICE_STOP
+        choice = (
+            response
+            if response
+            in (
+                OOM_CHOICE_EXPORT,
+                OOM_CHOICE_STOP,
+                OOM_CHOICE_RETRY,
+            )
+            else OOM_CHOICE_STOP
+        )
         finish(choice)
 
     def on_closed(_dlg: Adw.AlertDialog) -> None:

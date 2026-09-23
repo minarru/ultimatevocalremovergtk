@@ -33,9 +33,7 @@ def add_bench_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--a-set", action="append", default=[], metavar="PATH=VALUE")
     parser.add_argument("--b-set", action="append", default=[], metavar="PATH=VALUE")
     parser.add_argument("--stems", help=STEMS_HELP)
-    parser.add_argument(
-        "--keep-outputs", choices=("always", "failure", "never"), default="always"
-    )
+    parser.add_argument("--keep-outputs", choices=("always", "failure", "never"), default="always")
     manifest = parser.add_mutually_exclusive_group()
     manifest.add_argument("--manifest", action="store_true")
     manifest.add_argument("--manifest-out")
@@ -110,9 +108,13 @@ def cmd_bench(args: argparse.Namespace) -> int:
     profile_a = args.a_profile or args.profile
     profile_b = args.b_profile or args.profile
     if not (args.a_model or args.model or (profile_a and profile_a != "gui")):
-        return fail(args, "benchmark leg A requires an explicit model or non-GUI profile", exit_code=2)
+        return fail(
+            args, "benchmark leg A requires an explicit model or non-GUI profile", exit_code=2
+        )
     if not (args.b_model or args.model or (profile_b and profile_b != "gui")):
-        return fail(args, "benchmark leg B requires an explicit model or non-GUI profile", exit_code=2)
+        return fail(
+            args, "benchmark leg B requires an explicit model or non-GUI profile", exit_code=2
+        )
     try:
         env_a = _child_env(args.a_env)
         env_b = _child_env(args.b_env)
@@ -128,7 +130,9 @@ def cmd_bench(args: argparse.Namespace) -> int:
         interrupted = code_a == 130 or code_b == 130
         return fail(
             args,
-            "benchmark validation was interrupted" if interrupted else "benchmark validation failed before leg A",
+            "benchmark validation was interrupted"
+            if interrupted
+            else "benchmark validation failed before leg A",
             exit_code=130 if interrupted else 2,
             extra={"a": check_a, "b": check_b},
         )
@@ -141,11 +145,21 @@ def cmd_bench(args: argparse.Namespace) -> int:
     code_a, result_a, wall_a = _run_child(_leg_argv(args, "a", dir_a, dry_run=False), env_a)
     if code_a:
         _cleanup_outputs(args, root, succeeded=False)
-        return fail(args, f"benchmark leg A failed with exit code {code_a}", exit_code=130 if code_a == 130 else 1, extra={"a": result_a})
+        return fail(
+            args,
+            f"benchmark leg A failed with exit code {code_a}",
+            exit_code=130 if code_a == 130 else 1,
+            extra={"a": result_a},
+        )
     code_b, result_b, wall_b = _run_child(_leg_argv(args, "b", dir_b, dry_run=False), env_b)
     if code_b:
         _cleanup_outputs(args, root, succeeded=False)
-        return fail(args, f"benchmark leg B failed with exit code {code_b}", exit_code=130 if code_b == 130 else 1, extra={"b": result_b})
+        return fail(
+            args,
+            f"benchmark leg B failed with exit code {code_b}",
+            exit_code=130 if code_b == 130 else 1,
+            extra={"b": result_b},
+        )
     comparison = compare_stem_dirs(dir_a, dir_b)
     payload: dict[str, Any] = {
         "ok": True,
@@ -165,7 +179,12 @@ def cmd_bench(args: argparse.Namespace) -> int:
         os.makedirs(os.path.dirname(os.path.abspath(manifest_path)) or ".", exist_ok=True)
         tmp = f"{manifest_path}.tmp"
         with open(tmp, "w", encoding="utf-8") as handle:
-            json.dump({"schema_version": 1, "job_id": ensure_job_id(args), **payload}, handle, indent=2, sort_keys=True)
+            json.dump(
+                {"schema_version": 1, "job_id": ensure_job_id(args), **payload},
+                handle,
+                indent=2,
+                sort_keys=True,
+            )
             handle.write("\n")
         os.replace(tmp, manifest_path)
         payload["manifest"] = os.path.abspath(manifest_path)

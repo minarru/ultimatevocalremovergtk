@@ -4,15 +4,15 @@ from collections.abc import Sequence
 from typing import cast
 
 import torch
-from torch import Tensor, nn
 import torch.nn.functional as F
+from torch import Tensor, nn
+
 from . import layers_new as layers
 
 DilationPairs = Sequence[int | tuple[int, int]]
 
 
 class BaseNet(nn.Module):
-
     def __init__(
         self,
         nin: int,
@@ -53,8 +53,8 @@ class BaseNet(nn.Module):
 
         return h
 
-class CascadedNet(nn.Module):
 
+class CascadedNet(nn.Module):
     def __init__(
         self,
         n_fft: int,
@@ -69,19 +69,21 @@ class CascadedNet(nn.Module):
         self.offset = 64
         nout = 64 if nn_arch_size == 218409 else nout
 
-        #print(nout, nout_lstm, n_fft)
+        # print(nout, nout_lstm, n_fft)
 
         self.stg1_low_band_net = nn.Sequential(
             BaseNet(2, nout // 2, self.nin_lstm // 2, nout_lstm),
-            layers.Conv2DBNActiv(nout // 2, nout // 4, 1, 1, 0)
+            layers.Conv2DBNActiv(nout // 2, nout // 4, 1, 1, 0),
         )
         self.stg1_high_band_net = BaseNet(2, nout // 4, self.nin_lstm // 2, nout_lstm // 2)
 
         self.stg2_low_band_net = nn.Sequential(
             BaseNet(nout // 4 + 2, nout, self.nin_lstm // 2, nout_lstm),
-            layers.Conv2DBNActiv(nout, nout // 2, 1, 1, 0)
+            layers.Conv2DBNActiv(nout, nout // 2, 1, 1, 0),
         )
-        self.stg2_high_band_net = BaseNet(nout // 4 + 2, nout // 2, self.nin_lstm // 2, nout_lstm // 2)
+        self.stg2_high_band_net = BaseNet(
+            nout // 4 + 2, nout // 2, self.nin_lstm // 2, nout_lstm // 2
+        )
 
         self.stg3_full_band_net = BaseNet(3 * nout // 4 + 2, nout, self.nin_lstm, nout_lstm)
 
@@ -89,7 +91,7 @@ class CascadedNet(nn.Module):
         self.aux_out = nn.Conv2d(3 * nout // 4, 2, 1, bias=False)
 
     def forward(self, x: Tensor) -> Tensor | tuple[Tensor, Tensor]:
-        x = x[:, :, :self.max_bin]
+        x = x[:, :, : self.max_bin]
 
         bandw = x.size()[2] // 2
         l1_in = x[:, :, :bandw]
@@ -108,20 +110,12 @@ class CascadedNet(nn.Module):
         f3 = self.stg3_full_band_net(f3_in)
 
         mask = torch.sigmoid(self.out(f3))
-        mask = F.pad(
-            input=mask,
-            pad=(0, 0, 0, self.output_bin - mask.size()[2]),
-            mode='replicate'
-        )
+        mask = F.pad(input=mask, pad=(0, 0, 0, self.output_bin - mask.size()[2]), mode='replicate')
 
         if self.training:
             aux = torch.cat([aux1, aux2], dim=1)
             aux = torch.sigmoid(self.aux_out(aux))
-            aux = F.pad(
-                input=aux,
-                pad=(0, 0, 0, self.output_bin - aux.size()[2]),
-                mode='replicate'
-            )
+            aux = F.pad(input=aux, pad=(0, 0, 0, self.output_bin - aux.size()[2]), mode='replicate')
             return mask, aux
         else:
             return mask
@@ -131,7 +125,7 @@ class CascadedNet(nn.Module):
 
         if self.offset > 0:
             end = -self.offset
-            mask = mask[:, :, :, self.offset:end]
+            mask = mask[:, :, :, self.offset : end]
             assert mask.size()[3] > 0
 
         return mask
@@ -142,7 +136,7 @@ class CascadedNet(nn.Module):
 
         if self.offset > 0:
             end = -self.offset
-            pred_mag = pred_mag[:, :, :, self.offset:end]
+            pred_mag = pred_mag[:, :, :, self.offset : end]
             assert pred_mag.size()[3] > 0
 
         return pred_mag

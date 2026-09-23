@@ -17,12 +17,12 @@ import soundfile as sf
 from bundled.constants import (
     DONE,
     FLAC,
-    INFERENCE_STEP_DEVERBING,
     SAVING_STEM,
 )
 from core.audio_io import save_format
 from core.debug_log import log_event
 from core.model_stem_manifest import load_bundled_stem_semantics
+from core.processing_phase import ProcessingPhase
 from core.stem_roles import StemRoleId
 from core.stems import (
     StemBucket,
@@ -35,6 +35,7 @@ from core.stems import (
 )
 from ml import spec_utils
 
+from .phase import report_phase
 from .vr_utils import vr_denoiser
 
 _VOCAL_SPLIT_PAIR_ROLES = frozenset(("vocal.lead", "vocal.backing"))
@@ -78,6 +79,14 @@ def _reviewed_output_route(role_value: str) -> StemRoute | None:
     )
 
 
+def _buffers_output(sep: Any) -> bool:
+    return bool(getattr(sep, "capture_stems_only", False)) or (
+        sep.is_ensemble_mode
+        and not sep.is_vocal_split_model
+        and not getattr(sep, "is_save_all_outputs_ensemble", False)
+    )
+
+
 def _save_audio_file(
     sep: Any,
     path: str,
@@ -91,18 +100,15 @@ def _save_audio_file(
     # skip disk when the caller asked to capture stems only, or when
     # this is an ensemble member that should not keep every output.
     capture_only = bool(getattr(sep, "capture_stems_only", False))
-    ensemble_buffer = (
-        sep.is_ensemble_mode
-        and not sep.is_vocal_split_model
-        and not getattr(sep, "is_save_all_outputs_ensemble", False)
-    )
+    buffered = _buffers_output(sep)
+    report_phase(sep, ProcessingPhase.BUFFERING if buffered else ProcessingPhase.SAVING)
     if buffer_stem_name and (capture_only or sep.is_ensemble_mode):
         paths = getattr(sep, "_ensemble_stem_paths", None)
         if paths is None:
             paths = {}
             sep._ensemble_stem_paths = paths
         paths[buffer_stem_name] = path
-    if capture_only or ensemble_buffer:
+    if buffered:
         if buffer_stem_name:
             # Route callers pass the stable filename tag. Legacy/non-route
             # sidecars pass their own already-presented capture name.
@@ -171,7 +177,8 @@ def _deverb_vocals(
     buffer_stem_name: str | None,
     is_not_ensemble: bool,
 ) -> None:
-    sep.write_to_console(INFERENCE_STEP_DEVERBING, base_text="")
+    report_phase(sep, ProcessingPhase.DEVERBING)
+    sep.write_to_console("Removing reverb...")
     stem_source_deverbed, stem_source_2 = vr_denoiser(
         stem_source,
         sep.device,
@@ -181,6 +188,7 @@ def _deverb_vocals(
         on_batch=sep.deverb_progress_callback(),
         check_run_control=sep.check_run_control,
     )
+    sep.write_to_console(DONE, base_text="")
     _save_audio_file(
         sep,
         stem_path.replace(".wav", "_deverbed.wav"),
@@ -223,8 +231,6 @@ def _save_with_message(
         )
     )
 
-    sep.write_to_console(f"{SAVING_STEM[0]}{stem_name}{SAVING_STEM[1]}")
-
     if is_deverb and is_not_ensemble:
         _deverb_vocals(
             sep,
@@ -235,6 +241,10 @@ def _save_with_message(
             is_not_ensemble=is_not_ensemble,
         )
 
+    if _buffers_output(sep):
+        sep.write_to_console(f"Collecting {stem_name}...")
+    else:
+        sep.write_to_console(f"{SAVING_STEM[0]}{stem_name}{SAVING_STEM[1]}")
     _save_audio_file(
         sep,
         stem_path,

@@ -32,9 +32,7 @@ def describe_setting(path: str) -> SettingDescriptor:
     defaults = Settings.defaults()
     section_name, field_name = path.split(".", 1)
     section = getattr(defaults, section_name)
-    dataclass_field = next(
-        item for item in dataclasses.fields(section) if item.name == field_name
-    )
+    dataclass_field = next(item for item in dataclasses.fields(section) if item.name == field_name)
     value = getattr(section, field_name)
     value_type = type(value)
     allowed: tuple[Any, ...] | None = None

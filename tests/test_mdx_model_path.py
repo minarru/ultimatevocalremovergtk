@@ -6,6 +6,7 @@ from core import paths
 from core.model_config import ModelConfig
 from core.model_repository import ModelRepository
 from core.settings import Settings
+from tests.model_config_fixtures import model_config_shell
 
 
 class MdxModelPathTests(unittest.TestCase):
@@ -39,7 +40,7 @@ class MdxModelPathTests(unittest.TestCase):
             def mdx_catalogue_display_index(self):
                 return {}
 
-        model_data = object.__new__(ModelConfig)
+        model_data = model_config_shell()
         model_data.repo = _FakeRepo()
         model_data.model_name = "Some Friendly Name"
         model_data.is_mdx_ckpt = False

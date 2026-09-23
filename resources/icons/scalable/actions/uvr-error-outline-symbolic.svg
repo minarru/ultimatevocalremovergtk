@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   viewBox="0 0 16 16"
+   preserveAspectRatio="xMidYMid meet"
+   width="16"
+   height="16"
+   version="1.1"
+   id="svg1"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <defs
+     id="defs1" />
+  <!-- GNOME Icon Development Kit: icons/cross.svg; static outline export, 2026-09-10. CC0-1.0. -->
+  <title
+     id="title1">cross</title>
+  <path
+     style="baseline-shift:baseline;display:inline;overflow:visible;vector-effect:none;fill:#2e3436;stroke-linecap:round;stroke-linejoin:round;enable-background:accumulate;stop-color:#000000;stop-opacity:1;opacity:1"
+     d="M 13,2 A 1,1 0 0 0 12.292969,2.2929688 L 8,6.5859375 3.7070313,2.2929688 a 1,1 0 0 0 -1.4140625,0 1,1 0 0 0 0,1.4140625 L 6.5859375,8 2.2929688,12.292969 a 1,1 0 0 0 0,1.414062 1,1 0 0 0 1.4140625,0 L 8,9.4140625 12.292969,13.707031 a 1,1 0 0 0 1.414062,0 1,1 0 0 0 0,-1.414062 L 9.4140625,8 13.707031,3.7070313 a 1,1 0 0 0 0,-1.4140625 A 1,1 0 0 0 13,2 Z"
+     id="path0" />
+  <metadata
+     id="metadata1">
+    <rdf:RDF>
+      <Work>
+        <license
+           rdf:resource="https://creativecommons.org/publicdomain/zero/1.0/" />
+        <dc:subject>
+          <rdf:Bag>
+            <rdf:li>process-stop x cross</rdf:li>
+          </rdf:Bag>
+        </dc:subject>
+        <dc:creator>
+          <Agent>
+            <dc:title>Jakub Steiner</dc:title>
+          </Agent>
+        </dc:creator>
+      </Work>
+    </rdf:RDF>
+  </metadata>
+</svg>

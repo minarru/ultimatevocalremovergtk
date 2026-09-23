@@ -1,0 +1,329 @@
+"""Terminal run transitions through a constructed window and its real GTK host."""
+
+from __future__ import annotations
+
+import copy
+import os
+import tempfile
+import time
+import unittest
+from pathlib import Path
+from typing import Any
+from unittest import mock
+
+
+@unittest.skipUnless(
+    os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"),
+    "GTK widget construction needs a display",
+)
+class RunTerminalUiTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        import gi
+
+        gi.require_version("Gtk", "4.0")
+        gi.require_version("Adw", "1")
+        from gi.repository import Adw
+
+        from tests.private_gtk import require_private_gtk
+
+        require_private_gtk()
+        cls.app = Adw.Application(application_id="org.uvr.test.run-terminal")
+        cls.app.register()
+
+    def setUp(self) -> None:
+        from core.access_policy import access_policy
+        from core.settings import Settings
+        from ui.window import MainWindow
+
+        scratch = self.enterContext(tempfile.TemporaryDirectory())
+        settings = Settings.defaults()
+        settings.path = str(Path(scratch) / "settings.json")
+        settings.process.input_paths = []
+        settings.process.export_path = scratch
+        self.enterContext(access_policy(allow_network=False, allow_metadata_writes=False))
+        self.enterContext(mock.patch("ui.context.Settings.load", return_value=settings))
+        self.window: Any = MainWindow(application=self.app)
+        self.addCleanup(self.window.set_application, None)
+        self.addCleanup(self.window._unsubscribe_model_events)
+        self.addCleanup(self.window.log_panel.stop_progress_pulse)
+        self.addCleanup(self.window.log_panel._cancel_done_collapse)
+        self.addCleanup(self.window.set_visible, False)
+        self.window.present()
+        from gi.repository import GLib
+
+        deadline = time.monotonic() + 5
+        while not self.window.get_mapped():
+            self.assertLess(time.monotonic(), deadline, "window did not map")
+            GLib.MainContext.default().iteration(False)
+        # Do not seed this field: the missing constructor initialization was
+        # the cause of the real completion failure.
+        self.assertIsNone(self.window._deferred_model_refresh)
+        self.controller = self.window._run_controller
+        self.target = mock.Mock(run_label="Separation", error_key="fixture")
+        self.target.start_blocked_reason.return_value = None
+        self.window._run_target = self.target
+        self.complete_toast = self.enterContext(
+            mock.patch.object(self.controller, "_show_complete_toast")
+        )
+        for method in (
+            "_send_completion_notification",
+            "_send_failure_notification",
+            "_schedule_release_inference_memory",
+            "_report_error",
+        ):
+            self.enterContext(mock.patch.object(self.controller, method))
+
+    def test_blocked_start_is_dimmed_and_click_explains_reason(self) -> None:
+        self.target.start_blocked_reason.return_value = "Choose a model"
+        self.controller.refresh_start_readiness()
+        button = self.window.start_button
+        self.assertTrue(button.get_sensitive())
+        self.assertTrue(button.has_css_class("dim-label"))
+        with (
+            mock.patch.object(self.window, "toast") as toast,
+            mock.patch.object(self.controller, "_begin_preflight") as begin,
+        ):
+            button.emit("clicked")
+            toast.assert_called_once_with("Choose a model")
+            begin.assert_not_called()
+        self.target.start_blocked_reason.return_value = None
+        self.controller.refresh_start_readiness()
+        self.assertFalse(button.has_css_class("dim-label"))
+
+    def test_inspector_mock_error_log_preserves_existing_errors_and_run_state(self):
+        from ui import errorlog
+
+        errorlog.set_error_log("Existing report")
+        self.addCleanup(errorlog.set_error_log, "")
+        action = self.window.lookup_action("mock_error_log")
+        self.assertIsNotNone(action)
+        with mock.patch("ui.errorlog.open_error_log") as open_log:
+            action.activate(None)
+        self.assertTrue(errorlog.get_error_log().startswith("Existing report"))
+        self.assertIn("SYNTHETIC TEST ERROR", errorlog.get_error_log())
+        self.assertGreater(len(errorlog.get_error_log().splitlines()), 50)
+        open_log.assert_called_once_with(self.window)
+        self.assertFalse(self.controller.is_running())
+        self.assertIsNone(self.controller._operation_id)
+
+    def _begin(self) -> None:
+        settings = copy.deepcopy(self.window.settings)
+        self.controller._host.bind_run_settings(settings)
+        self.window._audio_tools_page.bind_run_settings(settings)
+        self.controller.begin_run(self.target)
+        self.assertTrue(self.window.stop_button.get_sensitive())
+        self.assertFalse(self.window.start_button.get_sensitive())
+        self.assertTrue(all(not p.get_sensitive() for p in self.window._options_pages))
+
+    def test_start_preserves_log_state_unless_auto_open_is_enabled(self):
+        panel = self.window.log_panel
+        for auto_open, initially_open, expected_open in (
+            (False, False, False),
+            (False, True, True),
+            (True, False, True),
+            (True, True, True),
+        ):
+            with self.subTest(auto_open=auto_open, initially_open=initially_open):
+                self.window.settings.ui.auto_expand_log = auto_open
+                panel.set_expanded(initially_open)
+                self._begin()
+                self.assertEqual(panel.get_expanded(), expected_open)
+                self.controller._on_stopped()
+
+    def _finish(self, outcome: str) -> None:
+        if outcome == "complete":
+            self.controller._on_complete()
+        elif outcome == "stopped":
+            self.controller._on_stopped()
+        elif outcome == "error":
+            self.controller._on_error(RuntimeError("fixture failure"))
+        else:
+            self.controller.fail_to_start("Unable to start fixture", RuntimeError("launch"))
+
+    def _check_terminal(self, outcome: str, reason: str | None, *, deferred: bool) -> None:
+        self._begin()
+        if deferred:
+            self.window._refresh_models(source="terminal_test")
+            self.assertEqual(self.window._deferred_model_refresh, "terminal_test")
+
+        readiness_states = []
+
+        def readiness() -> str | None:
+            # Every readiness evaluation during unlocking, including one from
+            # deferred model refresh, must see restored idle state.
+            readiness_states.append(
+                (
+                    self.controller._running_target is None,
+                    self.window.context.runner.settings is self.window.settings,
+                    self.window._audio_tools_page.runner.settings is self.window.settings,
+                )
+            )
+            return reason
+
+        with mock.patch.object(self.target, "start_blocked_reason", side_effect=readiness) as check:
+            with mock.patch.object(
+                self.window, "_apply_model_refresh", wraps=self.window._apply_model_refresh
+            ) as refresh:
+                self._finish(outcome)
+                if deferred:
+                    refresh.assert_called_once_with(source="terminal_test")
+                else:
+                    refresh.assert_not_called()
+            self.assertGreater(check.call_count, 0)
+        self.assertTrue(all(state == (True, True, True) for state in readiness_states))
+        self.assertIsNone(self.window._deferred_model_refresh)
+        self.assertIsNone(self.controller._running_target)
+        self.assertFalse(self.controller.is_running())
+        self.assertFalse(self.window.stop_button.get_sensitive())
+        self.assertTrue(self.window.start_button.get_sensitive())
+        self.assertEqual(self.window.start_button.has_css_class("dim-label"), reason is not None)
+        self.assertTrue(all(p.get_sensitive() for p in self.window._options_pages))
+        for name in ("settings", "view_inputs", "download"):
+            self.assertTrue(self.window.lookup_action(name).get_enabled())
+        self.assertEqual(self.window.start_button.get_tooltip_text(), reason or "Start processing")
+        status = self.window.log_panel._progress_status
+        if outcome == "complete":
+            self.assertEqual(status, "Done")
+            self.complete_toast.assert_called_once()
+        else:
+            self.assertNotEqual(status, "Done")
+            self.complete_toast.assert_not_called()
+            if outcome == "error":
+                self.assertEqual(
+                    self.window.log_panel._progress_label.get_text(), "Processing failed"
+                )
+                self.assertFalse(self.window.log_panel._progress_revealer.get_reveal_child())
+        self.target.start_blocked_reason.return_value = None
+        self.controller.refresh_start_readiness()
+        self.assertTrue(self.window.start_button.get_sensitive())
+        self._begin()
+        self.controller._on_stopped()
+
+    def test_terminal_outcomes_restore_ready_and_blocked_controls(self) -> None:
+        for outcome in ("complete", "stopped", "error", "fail_to_start"):
+            for reason in (None, "Choose an input file"):
+                with self.subTest(outcome=outcome, reason=reason):
+                    self.complete_toast.reset_mock()
+                    self._check_terminal(outcome, reason, deferred=False)
+
+    def test_terminal_outcomes_apply_deferred_refresh_after_restoring_settings(self) -> None:
+        for outcome in ("complete", "stopped", "error", "fail_to_start"):
+            for reason in (None, "Choose a model"):
+                with self.subTest(outcome=outcome, reason=reason):
+                    self.complete_toast.reset_mock()
+                    self._check_terminal(outcome, reason, deferred=True)
+
+    def test_choice_labels_restore_live_progress(self) -> None:
+        self._begin()
+        panel = self.window.log_panel
+        panel.set_progress_text("File 2 of 3", title="Separating audio")
+        previous = panel._progress_label.get_text()
+        with mock.patch("ui.run_control.Adw.AlertDialog"):
+            self.controller._present_stop_confirm()
+        self.assertEqual(panel._progress_label.get_text(), "Stop this run?")
+        self.controller._resume_after_dialog_cancel(self.target)
+        self.assertEqual(panel._progress_label.get_text(), previous)
+        self.assertEqual(panel._detail_label.get_text(), "File 2 of 3")
+        request = mock.Mock()
+        with mock.patch("ui.oom_dialog.present_oom_choice_dialog") as present:
+            self.controller._on_oom_choice(request)
+        self.assertEqual(panel._progress_label.get_text(), "Waiting for your choice")
+        self.assertEqual(panel._detail_label.get_text(), "GPU memory exhausted")
+        present.call_args.kwargs["on_choice"]("retry")
+        self.assertEqual(panel._progress_label.get_text(), previous)
+        request.respond.assert_called_once_with("retry")
+
+    def test_requested_stop_stays_locked_until_worker_reports_stopped(self) -> None:
+        self._begin()
+        with mock.patch.object(self.controller.shutdown, "schedule_inference_cleanup"):
+            self.controller._confirm_stop(self.target)
+        self.target.stop.assert_called_once()
+        self.assertIs(self.controller._running_target, self.target)
+        self.assertTrue(self.controller.is_running())
+        self.window._refresh_models(source="stopping_test")
+        self.assertEqual(self.window._deferred_model_refresh, "stopping_test")
+        self.assertFalse(self.window.start_button.get_sensitive())
+        self.assertFalse(self.window.stop_button.get_sensitive())
+        self.assertTrue(all(not p.get_sensitive() for p in self.window._options_pages))
+        self.assertEqual(self.window.log_panel._progress_title, "Stopping…")
+        self.assertEqual(
+            self.window.log_panel._detail_label.get_text(), "Waiting for the worker to finish"
+        )
+        self.controller.refresh_start_readiness()
+        self.assertFalse(self.window.start_button.get_sensitive())
+        self.controller._on_stopped()
+        self.assertIsNone(self.controller._running_target)
+        self.assertTrue(self.window.start_button.get_sensitive())
+        self.assertFalse(self.window.stop_button.get_sensitive())
+        self.assertTrue(all(p.get_sensitive() for p in self.window._options_pages))
+        self.complete_toast.assert_not_called()
+
+    def test_forced_stop_cleanup_restores_controls_without_worker_callback(self) -> None:
+        from tests.test_run_lifecycle import Scheduler
+
+        self._begin()
+        self.target.worker_is_running.return_value = True
+        lifecycle = self.controller.shutdown
+        # Timer IDs and their cancellation must share the fake scheduler.
+        # A bare timeout_add mock becomes integer 1 in GLib.source_remove,
+        # deleting the X11 display event source for every later GTK test.
+        lifecycle.scheduler = Scheduler()
+        with mock.patch.object(lifecycle, "release") as release:
+            self.controller._confirm_stop(self.target)
+            lifecycle.cleanup_attempts = 79
+            self.assertFalse(lifecycle.poll_inference_cleanup())
+            release.assert_called_once()
+            self.assertTrue(release.call_args.kwargs["force_if_alive"])
+            self.assertFalse(self.window.start_button.get_sensitive())
+            self.assertTrue(self.controller.is_running())
+            # A forced KThread exit can omit the normal stopped callback.
+            # The coordinator must recover only after cleanup and exit.
+            self.target.worker_is_running.return_value = False
+            release.call_args.kwargs["on_done"]()
+        self.assertFalse(self.controller.is_running())
+        self.assertIsNone(self.controller._running_target)
+        self.assertIsNone(lifecycle.cleanup_target)
+        self.assertTrue(self.window.start_button.get_sensitive())
+        self.assertFalse(self.window.stop_button.get_sensitive())
+        self.assertTrue(all(p.get_sensitive() for p in self.window._options_pages))
+        self.assertIs(self.window.context.runner.settings, self.window.settings)
+        self.assertEqual(self.window.log_panel._progress_status, "")
+        self.complete_toast.assert_not_called()
+
+    def test_stop_timeout_keeps_real_controls_locked_then_recovers_on_terminal(self):
+        from tests.test_run_lifecycle import Scheduler
+
+        self._begin()
+        scheduler = Scheduler()
+        self.controller.shutdown.scheduler = scheduler
+        self.controller._confirm_stop(self.target)
+        deadline = scheduler.callbacks[scheduler.calls.index(10000)]
+        dialog = mock.Mock()
+        with mock.patch('ui.run_control.Adw.AlertDialog', return_value=dialog):
+            deadline()
+        self.assertFalse(self.window.start_button.get_sensitive())
+        self.assertFalse(self.window.stop_button.get_sensitive())
+        self.assertTrue(all(not p.get_sensitive() for p in self.window._options_pages))
+        self.assertIs(self.controller.running_target, self.target)
+        self.controller._on_stopped()
+        dialog.force_close.assert_called_once_with()
+        self.assertIsNone(self.controller.running_target)
+        self.assertTrue(self.window.start_button.get_sensitive())
+        self.assertFalse(self.window.stop_button.get_sensitive())
+        self.assertTrue(all(p.get_sensitive() for p in self.window._options_pages))
+
+    def test_blocked_start_is_dimmed_with_visible_reason(self):
+        panel = self.window.log_panel
+        self.target.start_blocked_reason.return_value = 'Choose an input file'
+        self.controller.refresh_start_readiness()
+        self.assertTrue(self.window.start_button.get_sensitive())
+        self.assertTrue(self.window.start_button.has_css_class("dim-label"))
+        self.assertEqual(panel._progress_label.get_text(), 'Choose an input file')
+        self.assertTrue(panel._progress_label.get_visible())
+        self.target.start_blocked_reason.return_value = None
+        self.controller.refresh_start_readiness()
+        self.assertTrue(self.window.start_button.get_sensitive())
+        with mock.patch.object(self.controller, '_begin_preflight') as begin:
+            self.window.start_button.emit('clicked')
+            begin.assert_called_once_with(self.target)

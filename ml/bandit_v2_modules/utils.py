@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from abc import abstractmethod
-from typing import Any, Callable, List, Tuple
+from typing import Any, Callable
 
 import numpy as np
 import torch
@@ -76,7 +76,9 @@ class BandsplitSpecification:
 
         return index
 
-    def get_band_specs_with_bandwidth(self, start_index: Any, end_index: Any, bandwidth_hz: Any) -> Any:
+    def get_band_specs_with_bandwidth(
+        self, start_index: Any, end_index: Any, bandwidth_hz: Any
+    ) -> Any:
         band_specs = []
         lower = start_index
 
@@ -337,7 +339,9 @@ class MelBandsplitSpecification(PerceptualBandsplitSpecification):
         )
 
 
-def musical_filterbank(n_bands: Any, fs: Any, f_min: Any, f_max: Any, n_freqs: Any, scale: Any="constant") -> Any:
+def musical_filterbank(
+    n_bands: Any, fs: Any, f_min: Any, f_max: Any, n_freqs: Any, scale: Any = "constant"
+) -> Any:
     nfft = 2 * (n_freqs - 1)
     df = fs / nfft
     # init freqs
@@ -530,9 +534,7 @@ if __name__ == "__main__":
         mbs = bands(nfft=2048, fs=44100).get_band_specs()
 
         for i, (f_min, f_max) in enumerate(mbs):
-            band_defs.append(
-                {"band": band_name, "band_index": i, "f_min": f_min, "f_max": f_max}
-            )
+            band_defs.append({"band": band_name, "band_index": i, "f_min": f_min, "f_max": f_max})
 
     df = pd.DataFrame(band_defs)
     df.to_csv("vox7bands.csv", index=False)

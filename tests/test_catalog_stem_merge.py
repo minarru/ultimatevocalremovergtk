@@ -313,7 +313,7 @@ class CatalogStemMergeTests(unittest.TestCase):
         self.assertEqual(meta.stems, ["Bass", "Other"])
         self.assertEqual(meta.target_instrument, "Bass")
         self.assertEqual(meta.catalogue_evidence_status, CatalogueEvidenceState.READY)
-        self.assertEqual(meta.stem_semantics.status, "raw")
+        self.assertEqual(meta.stem_semantics.status, "reviewed")
         self.assertIn("mdx:mbr_guitar_becruily", meta.catalogue_evidence_warning)
         self.assertIn("mismatch", meta.catalogue_evidence_warning)
 
@@ -379,7 +379,7 @@ class CatalogStemMergeTests(unittest.TestCase):
         self.assertEqual(meta.catalogue_evidence_status, CatalogueEvidenceState.READY)
         self.assertIn("digest-drift", meta.catalogue_evidence_warning)
 
-    def test_live_training_field_drift_is_raw_before_target_only_projection(self) -> None:
+    def test_live_training_field_drift_retains_review_beside_warning(self) -> None:
         label = "Mel-Band Roformer Instrumental by Becruily [mbr_guitar_becruily]"
         hit = StemCacheHit(
             stems=("Guitar", "Piano"),
@@ -405,7 +405,7 @@ class CatalogStemMergeTests(unittest.TestCase):
         meta = merged.meta[label]
         self.assertEqual(meta.stems, ["Guitar", "Piano"])
         self.assertEqual(meta.target_instrument, "Guitar")
-        self.assertEqual(meta.stem_semantics.status, "raw")
+        self.assertEqual(meta.stem_semantics.status, "reviewed")
         self.assertIn("catalogue-evidence-mismatch", meta.catalogue_evidence_warning)
         self.assertIn("training.instruments", meta.catalogue_evidence_warning)
 
@@ -639,9 +639,9 @@ class SemanticProjectionTests(unittest.TestCase):
                 "mdx:bs_neo_inst_beta",
                 ("vocals", "other"),
                 StemProcessingContext.FULL_MIX,
-                "raw",
-                None,
-                (),
+                "reviewed",
+                "mix.instrumental",
+                ("vocal.vocals", "mix.instrumental"),
             ),
             (
                 "normal karaoke",

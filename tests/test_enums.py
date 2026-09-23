@@ -96,9 +96,7 @@ class EnumSettingsRoundTripTests(unittest.TestCase):
         self.assertEqual(json.loads(json.dumps(payload)), payload)
 
     def test_compound_ensemble_type_remains_a_string(self):
-        settings = Settings.from_json_dict(
-            {"ensemble": {"type": f"{MAX_SPEC}/{MIN_SPEC}"}}
-        )
+        settings = Settings.from_json_dict({"ensemble": {"type": f"{MAX_SPEC}/{MIN_SPEC}"}})
         self.assertIs(type(settings.ensemble.type), str)
 
     def test_flat_bridge_preserves_enum_field_types(self):

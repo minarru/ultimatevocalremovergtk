@@ -1,9 +1,13 @@
-#LINKS
-DOWNLOAD_CHECKS = "https://raw.githubusercontent.com/TRvlvr/application_data/main/filelists/download_checks.json"
+# LINKS
+DOWNLOAD_CHECKS = (
+    "https://raw.githubusercontent.com/TRvlvr/application_data/main/filelists/download_checks.json"
+)
 
 MDX_MODEL_DATA_LINK = "https://raw.githubusercontent.com/TRvlvr/application_data/main/mdx_model_data/model_data_new.json"
 
-MDX23_CONFIG_CHECKS = "https://raw.githubusercontent.com/TRvlvr/application_data/main/mdx_model_data/mdx_c_configs/"
+MDX23_CONFIG_CHECKS = (
+    "https://raw.githubusercontent.com/TRvlvr/application_data/main/mdx_model_data/mdx_c_configs/"
+)
 
 VR_MODEL_DATA_LINK = "https://raw.githubusercontent.com/TRvlvr/application_data/main/vr_model_data/model_data_new.json"
 
@@ -41,12 +45,10 @@ DONATE_LINK_BMAC = "https://www.buymeacoffee.com/uvr5"
 
 DONATE_LINK_PATREON = "https://www.patreon.com/uvr"
 
-#DOWNLOAD REPOS
+# DOWNLOAD REPOS
 NORMAL_REPO = "https://github.com/TRvlvr/model_repo/releases/download/all_public_uvr_models/"
 
-ADDITIONAL_MODEL_REPO = (
-    "https://github.com/Anjok0109/ai_magic/releases/download/v5/"
-)
+ADDITIONAL_MODEL_REPO = "https://github.com/Anjok0109/ai_magic/releases/download/v5/"
 
 FORK_RELEASE_JSON_URL = (
     "https://raw.githubusercontent.com/minarru/ultimatevocalremovergtk/main/packaging/release.json"

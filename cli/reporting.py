@@ -106,10 +106,7 @@ def _emit_human_result(payload: dict[str, Any]) -> None:
             succeeded = sum(item.get("status") == "success" for item in results)
             failed = sum(item.get("status") == "failed" for item in results)
             skipped = sum(item.get("status") == "skipped" for item in results)
-            print(
-                f"inputs={len(results)} succeeded={succeeded} "
-                f"failed={failed} skipped={skipped}"
-            )
+            print(f"inputs={len(results)} succeeded={succeeded} failed={failed} skipped={skipped}")
         for item in results:
             if item.get("status") == "failed":
                 print(f"error[{item.get('input')}]={item.get('error')}", file=sys.stderr)
@@ -133,6 +130,7 @@ def make_progress_printer(
     if getattr(args, "quiet", False):
         return None
     if report_mode(args) == "jsonl":
+
         def jsonl_progress(fraction: float, **meta: Any) -> None:
             emit_event(
                 args,
@@ -191,8 +189,7 @@ def warn_validation(args: Any, warnings: Any) -> None:
         print(f"  {item}", file=sys.stderr)
     if not all("uvr models" in item for item in items):
         print(
-            "  run 'uvr models list' or 'uvr models catalog' for canonical "
-            "family:basename IDs",
+            "  run 'uvr models list' or 'uvr models catalog' for canonical family:basename IDs",
             file=sys.stderr,
         )
 

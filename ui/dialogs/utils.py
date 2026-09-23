@@ -1,12 +1,14 @@
 """Shared helpers for modal ``Adw.Dialog`` presentation."""
-import typing
 
+import typing
 from collections.abc import Callable
 from typing import Any
 
 from gi.repository import Adw, GLib, Gtk
-from ..widget_state import fetch, stash
+
 from ..protocols import WindowSizing
+from ..template import load_builder, object_from_builder
+from ..widget_state import fetch, stash
 
 
 class CollectInvalid(Exception):
@@ -87,7 +89,9 @@ def parent_window_width(parent: WindowSizing | None, *, fallback: int = 440) -> 
     return fallback
 
 
-def configure_dialog_width(dialog: Adw.Dialog, parent: Gtk.Window | None, *, fallback: int = 440) -> None:
+def configure_dialog_width(
+    dialog: Adw.Dialog, parent: Gtk.Window | None, *, fallback: int = 440
+) -> None:
     """Pin dialog content width to ``parent`` instead of shrinking to natural size."""
     dialog.set_content_width(parent_window_width(parent, fallback=fallback))
     dialog.set_follows_content_size(False)
@@ -101,9 +105,8 @@ def fill_dialog_width(widget: Gtk.Widget) -> None:
 
 def set_dialog_content(dialog: Adw.Dialog, content: Gtk.Widget) -> None:
     """Assign dialog body; an inner ``HeaderBar`` supplies the title and close button."""
-    toolbar = Adw.ToolbarView()
-    header = Adw.HeaderBar()
-    toolbar.add_top_bar(header)
+    builder = load_builder("dialog-content")
+    toolbar = object_from_builder(builder, "toolbar", Adw.ToolbarView)
     toolbar.set_content(content)
     dialog.set_child(toolbar)
 
@@ -116,15 +119,11 @@ def set_form_dialog_content(
     save_label: str = "Save",
 ) -> Gtk.Button:
     """Assign dialog body and return its Save button for stateful forms."""
-    toolbar = Adw.ToolbarView()
-    header = Adw.HeaderBar()
-
-    save = Gtk.Button(label=save_label)
-    save.add_css_class("suggested-action")
+    builder = load_builder("form-dialog-content")
+    toolbar = object_from_builder(builder, "toolbar", Adw.ToolbarView)
+    save = object_from_builder(builder, "save", Gtk.Button)
+    save.set_label(save_label)
     save.connect("clicked", lambda *_: on_save())
-    header.pack_end(save)
-
-    toolbar.add_top_bar(header)
     toolbar.set_content(content)
     dialog.set_child(toolbar)
     return save
@@ -182,7 +181,9 @@ def run_blocking_dialog(
                     if callable(parent_toast):
                         parent_toast(toast)
                     else:
-                        window_toast = getattr(parent, "toast", None) if parent is not None else None
+                        window_toast = (
+                            getattr(parent, "toast", None) if parent is not None else None
+                        )
                         if callable(window_toast):
                             window_toast(exc.message)
                 return

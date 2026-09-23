@@ -1,9 +1,9 @@
 """Sheet applicability: banners on inactive tabs, badges on ensemble tabs."""
 
 from __future__ import annotations
-import typing
 
 import os
+import typing
 import unittest
 
 from bundled.constants import ENSEMBLE_PARTITION, MDX_ARCH_TYPE, VR_ARCH_PM, VR_ARCH_TYPE
@@ -29,7 +29,7 @@ class SheetApplicabilityTests(unittest.TestCase):
         cls._app = Adw.Application(application_id="org.uvr.test.sheet-applicability")
         cls._app.register()
 
-    def _sheet(self, on_switch_method: typing.Any=None):
+    def _sheet(self, on_switch_method: typing.Any = None):
         from ui.model_options.sheet import ModelOptionsSheet
         from ui.window import MainWindow
 
@@ -113,9 +113,7 @@ class SheetApplicabilityTests(unittest.TestCase):
             selected_models=[],
         )
         for stack_name in ("vr", "mdx", "demucs"):
-            self.assertEqual(
-                sheet._tab_stack_pages[stack_name].get_badge_number(), 0, stack_name
-            )
+            self.assertEqual(sheet._tab_stack_pages[stack_name].get_badge_number(), 0, stack_name)
 
     def test_activating_the_banner_calls_back_with_the_stack_name(self):
         switched = []
@@ -134,9 +132,8 @@ class SheetApplicabilityTests(unittest.TestCase):
         handler, must actually flip the main window's active architecture --
         not just invoke a callback that happens to be a no-op stand-in."""
         from ui.model_options.sheet import ModelOptionsSheet
-        from ui.window import MainWindow
-
         from ui.widgets.rows import set_combo_value
+        from ui.window import MainWindow
 
         window = MainWindow()
         self.addCleanup(window.set_application, None)

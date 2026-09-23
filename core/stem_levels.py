@@ -1,8 +1,8 @@
 """Post-separation stem level helpers (match mix / prevent PCM clipping)."""
 
 from __future__ import annotations
-import typing
 
+import typing
 from typing import Dict, List, Mapping, MutableMapping, Optional, Tuple
 
 import numpy as np

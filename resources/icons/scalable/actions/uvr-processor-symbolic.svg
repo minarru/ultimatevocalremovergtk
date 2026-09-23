@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   viewBox="0 0 16 16"
+   preserveAspectRatio="xMidYMid meet"
+   width="16"
+   height="16"
+   version="1.1"
+   id="svg1"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <defs
+     id="defs1" />
+  <!-- GNOME Icon Development Kit: icons/processor.svg; static outline export, 2026-09-10. CC0-1.0. -->
+  <title
+     id="title1">processor</title>
+  <path
+     style="baseline-shift:baseline;display:inline;overflow:visible;vector-effect:none;fill:#2e3436;stroke-linecap:round;stroke-linejoin:round;enable-background:accumulate;stop-color:#000000;stop-opacity:1;opacity:1"
+     d="M 5,2 C 3.3552972,2 2,3.3552972 2,5 v 6 c 0,1.644703 1.3552971,3 3,3 h 6 c 1.644703,0 3,-1.355297 3,-3 V 5 C 14,3.3552971 12.644703,2 11,2 Z m 0,2 h 6 c 0.571297,0 1,0.4287028 1,1 v 6 c 0,0.571297 -0.428703,1 -1,1 H 5 C 4.4287028,12 4,11.571297 4,11 V 5 C 4,4.4287027 4.4287027,4 5,4 Z"
+     id="border" />
+  <path
+     style="baseline-shift:baseline;display:inline;overflow:visible;vector-effect:none;fill:#2e3436;stroke-linejoin:round;enable-background:accumulate;stop-color:#000000;stop-opacity:1;opacity:1"
+     d="M 5,0 V 3 H 6 V 0 Z M 7,0 V 3 H 8 V 0 Z m 2,0 v 3 h 1 V 0 Z m 4,5 v 1 h 3 V 5 Z M 0,6 V 7 H 3 V 6 Z m 13,1 v 1 h 3 V 7 Z M 0,8 V 9 H 3 V 8 Z m 13,1 v 1 h 3 V 9 Z M 0,10 v 1 h 3 v -1 z m 6,3 v 3 h 1 v -3 z m 2,0 v 3 h 1 v -3 z m 2,0 v 3 h 1 v -3 z"
+     id="pins" />
+  <path
+     style="baseline-shift:baseline;display:inline;overflow:visible;vector-effect:none;fill:#2e3436;stroke-linecap:round;stroke-linejoin:round;enable-background:accumulate;stop-color:#000000;stop-opacity:1;opacity:1"
+     d="M 5.5,5 A 0.50005,0.50005 0 0 0 5,5.5 v 5 A 0.50005,0.50005 0 0 0 5.5,11 h 5 A 0.50005,0.50005 0 0 0 11,10.5 v -5 A 0.50005,0.50005 0 0 0 10.5,5 Z M 6,6 h 4 v 4 H 6 Z"
+     id="middle" />
+  <metadata
+     id="metadata1">
+    <rdf:RDF>
+      <Work>
+        <license
+           rdf:resource="https://creativecommons.org/publicdomain/zero/1.0/" />
+        <dc:subject>
+          <rdf:Bag>
+            <rdf:li>cpu chip computer component silicon processor</rdf:li>
+          </rdf:Bag>
+        </dc:subject>
+        <dc:creator>
+          <Agent>
+            <dc:title>Jakub Steiner</dc:title>
+          </Agent>
+        </dc:creator>
+      </Work>
+    </rdf:RDF>
+  </metadata>
+</svg>

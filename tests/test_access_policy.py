@@ -31,6 +31,7 @@ class AccessPolicyTests(unittest.TestCase):
 
     def test_mdx_c_network_sets_access_policy(self) -> None:
         from core.mdx_config_fetch import mdx_c_network
+
         with mdx_c_network(False):
             policy = current_access_policy()
             self.assertFalse(policy.allow_network)
@@ -40,6 +41,7 @@ class AccessPolicyTests(unittest.TestCase):
         from types import SimpleNamespace
 
         from core.mdx_c_registry import load_mdx_catalog_index
+
         with patch("core.catalog_sources.merged_catalogues") as merged:
             merged.return_value = SimpleNamespace(meta={})
             load_mdx_catalog_index()
@@ -49,6 +51,7 @@ class AccessPolicyTests(unittest.TestCase):
         from types import SimpleNamespace
 
         from core.mdx_c_registry import load_mdx_catalog_index
+
         with access_policy(allow_network=False, allow_metadata_writes=False):
             with patch("core.catalog_sources.merged_catalogues") as merged:
                 merged.return_value = SimpleNamespace(meta={})

@@ -19,14 +19,14 @@ class AccessPolicy:
 
     def __post_init__(self) -> None:
         if self.allow_cache_writes is None:
-            object.__setattr__(
-                self, "allow_cache_writes", self.allow_metadata_writes
-            )
+            object.__setattr__(self, "allow_cache_writes", self.allow_metadata_writes)
 
+
+_DEFAULT_POLICY = AccessPolicy(allow_network=True, allow_metadata_writes=True)
 
 _CURRENT = contextvars.ContextVar(
     "uvr_access_policy",
-    default=AccessPolicy(allow_network=True, allow_metadata_writes=True),
+    default=_DEFAULT_POLICY,
 )
 
 

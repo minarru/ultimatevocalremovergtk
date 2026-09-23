@@ -1,10 +1,10 @@
 """JobRunner separator lifecycle."""
-import typing
-import types
 
+import types
+import typing
 import unittest
-from unittest import mock
 from types import SimpleNamespace
+from unittest import mock
 
 from core.job_runner import JobRunner
 from core.separator_run import run_separator
@@ -18,7 +18,7 @@ class JobRunnerSeperatorTests(unittest.TestCase):
         module_any = typing.cast(typing.Any, module)
 
         class ExportPlan:
-            def __init__(self, sources: typing.Any=None) -> None:
+            def __init__(self, sources: typing.Any = None) -> None:
                 self.sources = sources or {}
 
         module_any.ExportPlan = ExportPlan
@@ -121,7 +121,7 @@ class JobRunnerSeperatorTests(unittest.TestCase):
         created: list = []
 
         class _DeferredThread:
-            def __init__(self, target: typing.Any=None, args: typing.Any=()):
+            def __init__(self, target: typing.Any = None, args: typing.Any = ()):
                 self._target = target
                 self._args = args
                 created.append(self)

@@ -9,6 +9,7 @@ from bundled.constants import (
     BASS_STEM,
     DRUM_STEM,
     INST_STEM,
+    MDX_ARCH_TYPE,
     OTHER_STEM,
     VOCAL_PAIR,
 )
@@ -200,14 +201,21 @@ class StemRouteTests(unittest.TestCase):
         deduped = _dedupe_routes(duplicated)
         self.assertEqual(deduped[1].complement_of, StemRoleId("mix.instrumental"))
 
-    def test_unknown_or_signature_mismatched_id_stays_raw_and_isolated(self) -> None:
+    def test_unknown_id_stays_raw_and_mismatch_retains_review(self) -> None:
         class Unknown(self._ReviewedReversePrimaryModel):
             canonical_id = "mdx:unreviewed-model"
 
         class Mismatched(self._ReviewedReversePrimaryModel):
             demucs_source_list = ["Vocals", "Instrumental", "Residual"]
 
-        for model in (Unknown(), Mismatched()):
+        model = Mismatched()
+        routes = model_stem_routes(model)
+        self.assertTrue(all(isinstance(route.role, StemRoleId) for route in routes))
+        semantics = getattr(model, "stem_semantics", None)
+        assert isinstance(semantics, ModelStemSemantics)
+        self.assertTrue(semantics.runtime_error)
+
+        for model in (Unknown(),):
             with self.subTest(model=type(model).__name__):
                 routes = model_stem_routes(model)
                 self.assertTrue(all(isinstance(route.role, StemLiteral) for route in routes))
@@ -457,7 +465,7 @@ class StemsModuleBoundaryTests(unittest.TestCase):
         source = (Path(__file__).resolve().parents[1] / "core" / "stems.py").read_text(
             encoding="utf-8"
         )
-        self.assertIn("resolve_catalogue_stem_semantics", source)
+        self.assertIn("reconcile_stem_roles", source)
 
     def test_semantics_does_not_reexport_stem_labels(self) -> None:
         source = (
@@ -496,6 +504,7 @@ class RunExportRoutesTests(unittest.TestCase):
         from types import SimpleNamespace
 
         values: dict[str, object] = dict(
+            process_method=MDX_ARCH_TYPE,
             available_stem_routes=(),
             selected_stem_routes=(),
             is_vocal_split_model=False,
@@ -666,19 +675,14 @@ class RunExportRoutesTests(unittest.TestCase):
                     explicit,
                 )
 
-    def test_model_config_snapshots_route_selection_provenance(self) -> None:
-        from unittest.mock import MagicMock
+    def test_model_config_keeps_route_selection_provenance_live(self) -> None:
+        from tests.test_model_option_parity import partial_model
 
-        from core.model_config.config import ModelConfig
-
-        model = MagicMock()
-        model.available_stem_routes = ()
-        model.selected_stem_routes = ()
+        model = partial_model()
         model.selected_stem_routes_explicit = True
-
-        ModelConfig._sync_option_groups(model)  # type: ignore[arg-type]
-
         self.assertIs(model.stem_routing.selected_routes_explicit, True)
+        model.stem_routing.selected_routes_explicit = False
+        self.assertIs(model.selected_stem_routes_explicit, False)
 
     def test_giant_default_false_route_is_not_materialized_by_final_mode_focus(self) -> None:
         from core.model_stem_manifest import resolve_model_stem_semantics
@@ -908,6 +912,15 @@ class RoutesMatchingStemsTests(unittest.TestCase):
         self.assertEqual(
             [route.native.raw if route.native else "" for route in matched],
             ["bass", "drums"],
+        )
+
+    def test_exact_native_keys_win_over_aliases_and_do_not_fall_through_on_duplicates(self):
+        from tests.stem_control_cases import KARAOKE_THREE, manifest_routes
+
+        routes = manifest_routes(KARAOKE_THREE)
+        selected = routes_matching_stems(routes, ["backing_vocal", "backing_vocal", "instrumental"])
+        self.assertEqual(
+            [route.concept for route in selected], ["vocal.backing", "mix.instrumental"]
         )
 
     def test_skips_derived_routes(self) -> None:

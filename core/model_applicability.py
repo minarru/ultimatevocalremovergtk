@@ -6,10 +6,10 @@ from collections.abc import Sequence
 
 from bundled.constants import DEMUCS_ARCH_TYPE, MDX_ARCH_TYPE, VR_ARCH_PM, VR_ARCH_TYPE
 
-from .model_identity import FAMILY_BY_ARCH, ModelId
-
 ARCH_TO_STACK = {
-    VR_ARCH_PM: "vr", VR_ARCH_TYPE: "vr", MDX_ARCH_TYPE: "mdx",
+    VR_ARCH_PM: "vr",
+    VR_ARCH_TYPE: "vr",
+    MDX_ARCH_TYPE: "mdx",
     DEMUCS_ARCH_TYPE: "demucs",
 }
 
@@ -47,4 +47,3 @@ def applicable_stack_names(
     if context == "ensemble":
         return {name for name, count in member_arch_counts(selected_models).items() if count}
     return set()
-
