@@ -1,4 +1,15 @@
-Most Recent Changes (v1.3.0 — Linux GTK4 port):
+Most Recent Changes (v1.4.0 — Linux GTK4 port):
+
+~ Upgraded the inference stack to PyTorch 2.14 and ONNX Runtime 1.30 on CUDA 13, and librosa to 1.0. Run ./install_packages.sh (with --cuda for NVIDIA GPUs) after updating.
+~ Audio input now uses a shared SoundFile/FFmpeg decoder. Files with minor damage are repaired: the unreadable parts are replaced with silence so the rest stays in sync, and the run console says how much audio was affected.
+~ The computer no longer suspends while a separation, ensemble, or Audio Tools run is in progress.
+~ The console warns when GPU conversion is on but an MDX-Net model is running on the CPU, and says whether ONNX Runtime lacks GPU support or could not load its CUDA libraries.
+~ Installed models downloaded from a duplicate catalogue source now show their outputs in the model picker instead of "Output details unavailable".
+~ Fixed "Prevent export clipping" scaling down 32- and 64-bit float WAV exports, which can store peaks above full scale.
+~ Greatly reduced memory use when decoding and exporting long files: long-file chunking no longer copies the input, chunked stems stay 32-bit, FLAC export streams in blocks, and MP3/Opus are encoded by FFmpeg directly. pydub is no longer required.
+~ Failed exports no longer leave partial output files behind.
+
+Previous Release (v1.3.0 — Linux GTK4 port):
 
 ~ Redesigned Separation, Ensemble, Preferences, and the processing log with clearer stem choices, responsive controls, explicit processing phases, and improved run recovery.
 ~ Reduced startup work and deferred engine warmup until after the first frame, including when the window is already idle.

@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Sequence
 
 PROTECTED_DIRECTORIES = (
+    ".superpowers",
     "docs/superpowers/plans",
     "docs/superpowers/specs",
 )

@@ -54,4 +54,3 @@ Three model-maintenance command entry points under `scripts/`, plus `model_tool_
 - Script artifacts publish through `core.json_store.write_text_atomic` / `write_json_atomic`:
   a failed write must not truncate a checked-in document, and the sweep parent treats an
   unreadable child `result.json` as a classified job failure rather than crashing.
-
