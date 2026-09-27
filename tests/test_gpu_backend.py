@@ -4,7 +4,7 @@ import typing
 import unittest
 from unittest import mock
 
-from core.gpu_backend import resolve_inference_backend
+from core.gpu_backend import onnx_cpu_fallback_warning, resolve_inference_backend
 
 
 class GpuBackendTests(unittest.TestCase):
@@ -54,6 +54,45 @@ class GpuBackendTests(unittest.TestCase):
         )
         self.assertEqual(backend.backend_name, "mps")
         self.assertEqual(backend.torch_device, "mps")
+
+
+class OnnxCpuFallbackWarningTests(unittest.TestCase):
+    def test_cpu_only_wheel_suggests_cuda_install(self):
+        warning = onnx_cpu_fallback_warning(
+            ["CUDAExecutionProvider", "CPUExecutionProvider"],
+            ["CPUExecutionProvider"],
+            available=["AzureExecutionProvider", "CPUExecutionProvider"],
+        )
+        assert warning is not None
+        self.assertIn("CPU", warning)
+        self.assertIn("--cuda", warning)
+
+    def test_installed_provider_that_failed_to_load_points_at_libraries(self):
+        warning = onnx_cpu_fallback_warning(
+            ["CUDAExecutionProvider", "CPUExecutionProvider"],
+            ["CPUExecutionProvider"],
+            available=["CUDAExecutionProvider", "CPUExecutionProvider"],
+        )
+        assert warning is not None
+        self.assertIn("CPU", warning)
+        self.assertIn("libraries", warning)
+        self.assertNotIn("--cuda", warning)
+
+    def test_silent_when_cuda_is_active(self):
+        self.assertIsNone(
+            onnx_cpu_fallback_warning(
+                ["CUDAExecutionProvider", "CPUExecutionProvider"],
+                ["CUDAExecutionProvider", "CPUExecutionProvider"],
+            )
+        )
+
+    def test_silent_when_cpu_was_requested(self):
+        self.assertIsNone(
+            onnx_cpu_fallback_warning(["CPUExecutionProvider"], ["CPUExecutionProvider"])
+        )
+
+    def test_silent_for_empty_request(self):
+        self.assertIsNone(onnx_cpu_fallback_warning([], ["CPUExecutionProvider"]))
 
 
 if __name__ == "__main__":

@@ -20,10 +20,25 @@ __all__ = [
     "clear_torch_cache",
     "directml_available",
     "list_gpu_devices",
+    "onnx_cpu_fallback_warning",
     "resolve_inference_backend",
 ]
 
 _CPU_PROVIDERS = ["CPUExecutionProvider"]
+_CPU_PROVIDER = "CPUExecutionProvider"
+
+_ONNX_CPU_FALLBACK_PREFIX = (
+    "Warning: GPU conversion is on, but ONNX Runtime could not use {provider} "
+    "and is running this model on the CPU, which is much slower. "
+)
+ONNX_PROVIDER_NOT_INSTALLED_HINT = (
+    "The installed onnxruntime package has no GPU support; run "
+    "`./install_packages.sh --cuda` to install onnxruntime-gpu.\n"
+)
+ONNX_PROVIDER_LOAD_FAILED_HINT = (
+    "onnxruntime-gpu is installed but its GPU libraries failed to load; "
+    "start the app from a terminal to see which library ONNX Runtime could not find.\n"
+)
 
 
 @dataclass(frozen=True)
@@ -206,6 +221,30 @@ def clear_torch_cache(*, is_macos: bool = False, backend_name: str = "cpu") -> N
         ipc_collect = getattr(torch.cuda, "ipc_collect", None)
         if callable(ipc_collect):
             ipc_collect()
+
+
+def onnx_cpu_fallback_warning(
+    requested: Sequence[str],
+    active: Sequence[str],
+    available: Sequence[str] = (),
+) -> str | None:
+    """Return a console warning when ONNX Runtime dropped the requested GPU provider.
+
+    ONNX Runtime falls back to the CPU without raising when a GPU provider is
+    missing (CPU-only ``onnxruntime`` wheel) or fails to load (CUDA libraries
+    not found), so compare what the session reports against what was asked for.
+    ``available`` is ``onnxruntime.get_available_providers()`` and tells the two
+    causes apart.
+    """
+    preferred = requested[0] if requested else _CPU_PROVIDER
+    if preferred == _CPU_PROVIDER or preferred in active:
+        return None
+    hint = (
+        ONNX_PROVIDER_LOAD_FAILED_HINT
+        if preferred in available
+        else ONNX_PROVIDER_NOT_INSTALLED_HINT
+    )
+    return _ONNX_CPU_FALLBACK_PREFIX.format(provider=preferred) + hint
 
 
 def available_onnx_providers() -> Sequence[str]:

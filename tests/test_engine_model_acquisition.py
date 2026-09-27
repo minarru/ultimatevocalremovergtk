@@ -384,7 +384,7 @@ class AcquisitionKeyIntegrationTests(unittest.TestCase):
         native_sources = np.zeros((4, 2, 8))
         engine.demix_demucs = lambda mix: native_sources
         engine.start_inference_console_write = lambda: events.append(('start',))
-        engine.running_inference_console_write = lambda is_no_write=False: events.append(
+        engine.running_inference_console_write = lambda is_no_write=False, notice="": events.append(
             ('running',)
         )
         engine.write_to_console = lambda *args, **kwargs: events.append(('console',))

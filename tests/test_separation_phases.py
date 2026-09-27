@@ -109,6 +109,38 @@ class SeparationPhaseTests(unittest.TestCase):
                 self.assertEqual(phases[-1], infer)
                 self.assertEqual(messages[-1][1], infer)
 
+    def test_load_notice_follows_loading_done_and_precedes_inference(self):
+        from bundled.constants import DONE, INFERENCE_STEP_1
+
+        messages: list[str] = []
+        sep = SimpleNamespace(
+            process_data=SimpleNamespace(report_phase=lambda _phase: None),
+            is_secondary_model=False,
+            is_pre_proc_model=False,
+            is_vocal_split_model=False,
+            write_to_console=lambda text, **kwargs: messages.append(text),
+            set_progress_bar=lambda _: None,
+        )
+        SeperateAttributes.running_inference_console_write(
+            cast(SeperateAttributes, sep), notice="Warning: running on CPU\n"
+        )
+        self.assertEqual(messages, [DONE, "Warning: running on CPU\n", INFERENCE_STEP_1])
+
+    def test_no_notice_leaves_console_unchanged(self):
+        from bundled.constants import DONE, INFERENCE_STEP_1
+
+        messages: list[str] = []
+        sep = SimpleNamespace(
+            process_data=SimpleNamespace(report_phase=lambda _phase: None),
+            is_secondary_model=False,
+            is_pre_proc_model=False,
+            is_vocal_split_model=False,
+            write_to_console=lambda text, **kwargs: messages.append(text),
+            set_progress_bar=lambda _: None,
+        )
+        SeperateAttributes.running_inference_console_write(cast(SeperateAttributes, sep))
+        self.assertEqual(messages, [DONE, INFERENCE_STEP_1])
+
     def test_buffered_stems_are_collected_not_reported_as_disk_writes(self):
         for capture, ensemble in ((True, False), (False, True), (False, False)):
             with self.subTest(capture=capture, ensemble=ensemble):
