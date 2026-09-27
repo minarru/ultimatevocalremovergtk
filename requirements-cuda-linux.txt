@@ -11,7 +11,7 @@ onnxruntime-gpu==1.30.0
 
 # Torch 2.14 pins CUDA toolkit 13.0.3 and its component versions.
 # Do not independently bump those pins to the newest CUDA release.
-# Keep the CUDA 12 libraries below for the ONNX Runtime GPU preload path.
+# ONNX Runtime GPU 1.30 also uses CUDA 13; no CUDA 12 overlay is needed.
 cuda-bindings==13.4.1
 cuda-pathfinder==1.8.1
 cuda-toolkit==13.0.3.0
@@ -30,9 +30,3 @@ nvidia-nccl-cu13==2.30.7
 nvidia-nvjitlink==13.4.52
 nvidia-nvshmem-cu13==3.4.5
 nvidia-nvtx==13.0.85
-nvidia-cublas-cu12==12.9.2.10
-nvidia-cuda-nvrtc-cu12==12.9.86
-nvidia-cuda-runtime-cu12==12.9.79
-nvidia-cufft-cu12==11.4.1.4
-nvidia-curand-cu12==10.3.10.19
-nvidia-nvjitlink-cu12==12.9.86
