@@ -11,7 +11,8 @@ altgraph==0.17.5
 # OmegaConf 2.3.1 requires ANTLR 4.9.*.
 antlr4-python3-runtime==4.9.3
 attrs==26.1.0
-audioread==3.1.0
+# pydub still uses the stdlib audioop API, removed in Python 3.13.
+audioop-lts==0.2.2; python_version >= "3.13"
 # Roformer (BS-Roformer / Mel-Band Roformer) architecture deps. Vendored in
 # ml/{attend,bs_roformer,mel_band_roformer}.py; einops/librosa/packaging are
 # already pinned above. beartype and rotary-embedding-torch (below) are the
@@ -39,7 +40,7 @@ joblib==1.6.0
 julius==0.2.8
 kthread==0.2.3
 lazy-loader==0.5
-librosa==0.11.0
+librosa==1.0.0
 lightning-utilities==0.15.3
 llvmlite==0.49.0
 markupsafe==3.0.3
