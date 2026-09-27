@@ -18,6 +18,13 @@ updates:
     exclude-paths:
       - "vendor/**"
       - "models/**"
+    # These installed consumers require the older dependency series. Revisit
+    # these exclusions when upgrading OmegaConf or SymPy, respectively.
+    ignore:
+      - dependency-name: "antlr4-python3-runtime"
+        versions: [">=4.10"]
+      - dependency-name: "mpmath"
+        versions: [">=1.4"]
     groups:
       # Review the numerical/GPU stack together, including major updates.
       # Grouping does not prove CUDA, Python-wheel, or model compatibility;
@@ -41,6 +48,10 @@ updates:
           - "ml-dtypes"
           - "protobuf"
           - "sympy"
+          - "mpmath"
+          - "setuptools"
+          - "omegaconf"
+          - "antlr4-python3-runtime"
           - "networkx"
       # Match explicit names: plain requirements files do not reliably identify
       # development dependencies. Keep the stubs' separate --no-deps install.
