@@ -284,6 +284,50 @@ class SubprocessDecodeTests(unittest.TestCase):
                 total_timeout=True,
             )
 
+    def test_ffmpeg_pcm_is_wrapped_without_copying(self):
+        from core.audio_decode import AudioMetadata
+
+        interleaved = np.arange(12, dtype='<f4')  # 6 stereo frames, L/R interleaved
+        captured = bytearray(interleaved.tobytes())
+        with (
+            mock.patch('core.audio_decode._ffprobe', return_value=AudioMetadata(48000, 2)),
+            mock.patch('core.audio_decode.resolve_ffmpeg', return_value='ffmpeg'),
+            mock.patch('core.audio_decode._capture', return_value=captured),
+        ):
+            data, rate = load_audio('test.m4a', force_ffmpeg=True)
+
+        self.assertEqual(rate, 48000)
+        self.assertEqual(data.dtype, np.float32)
+        np.testing.assert_array_equal(data, interleaved.reshape(-1, 2).T)
+        # A copy of a full track doubles peak memory; the samples must be a
+        # writable view over the buffer the subprocess output was read into.
+        self.assertTrue(np.shares_memory(data, np.frombuffer(captured, dtype=np.uint8)))
+        self.assertTrue(data.flags.writeable)
+
+    def test_ffmpeg_mono_is_a_writable_view(self):
+        from core.audio_decode import AudioMetadata
+
+        captured = bytearray(np.arange(4, dtype='<f4').tobytes())
+        with (
+            mock.patch('core.audio_decode._ffprobe', return_value=AudioMetadata(48000, 1)),
+            mock.patch('core.audio_decode.resolve_ffmpeg', return_value='ffmpeg'),
+            mock.patch('core.audio_decode._capture', return_value=captured),
+        ):
+            data, _rate = load_audio('test.m4a', force_ffmpeg=True)
+
+        self.assertEqual(data.shape, (4,))
+        self.assertTrue(np.shares_memory(data, np.frombuffer(captured, dtype=np.uint8)))
+        self.assertTrue(data.flags.writeable)
+
+    def test_capture_returns_the_read_buffer(self):
+        import sys
+
+        from core.audio_decode import _capture
+
+        output = _capture([sys.executable, '-c', 'print("pcm", end="")'], timeout=5)
+        self.assertIsInstance(output, bytearray)
+        self.assertEqual(output, b'pcm')
+
     def test_unknown_duration_stays_unknown(self):
         from core.audio_decode import _ffprobe
 
