@@ -100,16 +100,24 @@ def scale_to_peak_limit(audio: np.ndarray, *, peak_limit: float = 1.0) -> Tuple[
     return scale_audio(audio, gain), gain
 
 
+_FLOAT_WAV_TYPES = frozenset({"FLOAT", "DOUBLE", "32-bit Float", "64-bit Float"})
+
+
 def export_format_can_clip(
     save_format: str,
     wav_type_set: str,
 ) -> bool:
-    """True when the configured export format cannot store peaks above 1.0."""
+    """True when the configured export format cannot store peaks above 1.0.
+
+    ``wav_type_set`` is normally the libsndfile subtype from
+    ``resolve_wav_type_set`` ("FLOAT", "DOUBLE", "PCM_24"); the settings labels
+    are accepted as well.
+    """
     fmt = (save_format or "").upper()
     if fmt in {"FLAC", "MP3", "OPUS"}:
         return True
     if fmt == "WAV":
-        return wav_type_set not in {"32-bit Float", "64-bit Float"}
+        return wav_type_set not in _FLOAT_WAV_TYPES
     return True
 
 
