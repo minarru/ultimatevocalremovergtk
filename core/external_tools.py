@@ -10,7 +10,6 @@ from typing import Optional, Protocol, cast
 from .paths import BASE_PATH
 
 __all__ = [
-    "configure_pydub_ffmpeg",
     "external_tools_status",
     "log_external_tools_once",
     "resolve_ffmpeg",
@@ -76,20 +75,6 @@ def resolve_rubberband() -> Optional[str]:
     if bundled:
         return bundled
     return shutil.which("rubberband")
-
-
-def configure_pydub_ffmpeg() -> Optional[str]:
-    """Point pydub at ffmpeg when found; return the path or None."""
-    path = resolve_ffmpeg()
-    if not path:
-        return None
-    try:
-        import pydub
-
-        pydub.AudioSegment.converter = path
-    except Exception:
-        return None
-    return path
 
 
 def external_tools_status() -> dict[str, Optional[str]]:

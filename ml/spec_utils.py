@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import io
 import math
 import platform
 import traceback
@@ -11,7 +10,6 @@ import librosa
 import numpy as np
 import soundfile as sf
 import torch
-from core.audio_decode import load_audio as decode_audio
 from scipy.signal import correlate, hilbert
 
 from bundled.constants import (
@@ -26,6 +24,8 @@ from bundled.constants import (
     MIN_SPEC,
     SOFT_SPEC,
 )
+from core.audio_decode import load_audio as decode_audio
+from core.debug_log import debug
 
 from . import pyrb
 
@@ -156,16 +156,6 @@ def auto_transpose(audio_array: np.ndarray) -> np.ndarray:
     return audio_array
 
 
-def write_array_to_mem(audio_data: np.ndarray | Any, subtype: str) -> io.BytesIO | Any:
-    if isinstance(audio_data, np.ndarray):
-        audio_buffer = io.BytesIO()
-        sf.write(audio_buffer, audio_data, 44100, subtype=subtype, format='WAV')
-        audio_buffer.seek(0)
-        return audio_buffer
-    else:
-        return audio_data
-
-
 def spectrogram_to_image(spec: np.ndarray, mode: str = 'magnitude') -> np.ndarray:
     if mode == 'magnitude':
         if np.iscomplexobj(spec):
@@ -255,7 +245,7 @@ def merge_artifacts(
         error_name = f'{type(e).__name__}'
         traceback_text = ''.join(traceback.format_tb(e.__traceback__))
         message = f'{error_name}: "{e}"\n{traceback_text}"'
-        print('Post Process Failed: ', message)
+        debug("audio", f"post process failed: {message}")
 
     return mask
 
@@ -994,7 +984,7 @@ def adjust_leading_silence(
         ref_silence_end_p = (ref_silence_end / 44100) * 1000
         target_silence_end_p = (target_silence_end / 44100) * 1000
         silence_difference_p = ref_silence_end_p - target_silence_end_p
-        print("silence_difference: ", silence_difference_p)
+        debug("audio", f"silence_difference: {silence_difference_p}")
     except Exception:
         pass
 

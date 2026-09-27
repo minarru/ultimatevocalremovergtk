@@ -1,12 +1,19 @@
 """Shared audio export helpers for separation and audio tools."""
 
 import os
+import subprocess
+import tempfile
 from pathlib import Path
 
 from bundled.constants import WAV
 
+from .external_tools import resolve_ffmpeg
 from .settings import Settings
 from .settings.coerce import enum_value
+
+# Frames per block when re-encoding a WAV to FLAC; float64 stereo is 1 MB.
+_EXPORT_BLOCK_FRAMES = 1 << 16
+_STDERR_TAIL_LINES = 3
 
 
 class AudioExportError(RuntimeError):
@@ -25,7 +32,7 @@ def resolve_wav_type_set(settings: Settings) -> str:
 
 
 def flac_export_parameters(flac_bit_set: str) -> list[str]:
-    """Return ffmpeg ``-sample_fmt`` parameters for FLAC export via pydub."""
+    """Return ffmpeg ``-sample_fmt`` parameters for FLAC export via ffmpeg."""
     if flac_bit_set == "24-bit":
         return ["-sample_fmt", "s24"]
     return ["-sample_fmt", "s16"]
@@ -50,12 +57,85 @@ def replace_audio_suffix(path: str, new_suffix: str) -> str:
 
 
 def opus_export_parameters() -> list[str]:
-    """Return ffmpeg parameters for Opus export via pydub.
+    """Return ffmpeg parameters for Opus export.
 
     Opus cannot encode 44.1 kHz; ``-ar 48000`` makes the resample explicit.
-    ``-vbr on`` is libopus's default; the pydub ``bitrate`` is a target.
+    ``-vbr on`` is libopus's default; the ``-b:a`` bitrate is a target.
     """
     return ["-application", "audio", "-vbr", "on", "-ar", "48000"]
+
+
+def _temporary_sibling(path: str) -> str:
+    """A unique temporary path next to ``path``, renamed into place on success."""
+    directory, name = os.path.split(path)
+    handle, temporary = tempfile.mkstemp(
+        dir=directory or ".", prefix=f".{name}.", suffix=Path(path).suffix
+    )
+    os.close(handle)
+    return temporary
+
+
+def _remove_quietly(path: str) -> None:
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+
+
+def _stream_flac(audio_path: str, flac_bit_set: str) -> str:
+    """Re-encode a WAV as FLAC block by block instead of loading it whole.
+
+    Blocks are float64, exactly what the previous whole-file ``sf.read`` used,
+    so libsndfile's PCM conversion (and the output) is unchanged.
+    """
+    import soundfile as sf
+
+    flac_path = replace_audio_suffix(audio_path, ".flac")
+    temporary = _temporary_sibling(flac_path)
+    try:
+        with sf.SoundFile(audio_path) as source:
+            with sf.SoundFile(
+                temporary,
+                "w",
+                samplerate=source.samplerate,
+                channels=source.channels,
+                format="FLAC",
+                subtype=flac_subtype(flac_bit_set),
+            ) as destination:
+                for block in source.blocks(blocksize=_EXPORT_BLOCK_FRAMES, dtype="float64"):
+                    destination.write(block)
+        os.replace(temporary, flac_path)
+    except BaseException:
+        _remove_quietly(temporary)
+        raise
+    return flac_path
+
+
+def _ffmpeg_encode(
+    executable: str, audio_path: str, output_path: str, container: str, arguments: list[str]
+) -> None:
+    """Encode the WAV straight to ``output_path``.
+
+    Arguments keep the order of the pydub export this replaces, which loaded
+    the whole WAV into memory and wrote it to a second temporary WAV before
+    running the same ffmpeg command.
+    """
+    temporary = _temporary_sibling(output_path)
+    command = [executable, "-nostdin", "-y", "-v", "error", "-f", "wav", "-i", audio_path]
+    command += [*arguments, "-f", container, temporary]
+    try:
+        completed = subprocess.run(command, stdin=subprocess.DEVNULL, capture_output=True)
+        if completed.returncode:
+            lines = completed.stderr.decode("utf-8", errors="replace").strip().splitlines()
+            detail = "\n".join(lines[-_STDERR_TAIL_LINES:])
+            raise AudioExportError(
+                f"ffmpeg exited with status {completed.returncode} while writing "
+                f"{os.path.basename(output_path)!r}: {detail}"
+            )
+        os.replace(temporary, output_path)
+    except BaseException:
+        _remove_quietly(temporary)
+        raise
 
 
 def save_format(
@@ -65,11 +145,12 @@ def save_format(
     flac_bit_set: str = "16-bit",
     opus_bit_set: str = "192k",
 ) -> str:
-    """Torch-free port of ``separate.save_format``.
+    """Convert an exported WAV to the configured format and remove the WAV.
 
-    FLAC prefers a direct libsndfile rewrite; MP3 and Opus still go through
-    ``pydub`` so bitrate strings stay exact. Intermediate WAV is removed on
-    success.
+    FLAC is re-encoded block by block with libsndfile; MP3, Opus and the FLAC
+    fallback run ffmpeg directly on the WAV. Outputs are written to a temporary
+    sibling and renamed, so a failed export never leaves a partial file, and
+    the WAV is removed only on success.
     """
     from bundled.constants import FLAC, MP3, OPUS
 
@@ -84,93 +165,56 @@ def save_format(
 
     from .debug_log import debug
 
+    output_path: str | None = None
     if save_format_sel == FLAC and audio_path.lower().endswith(".wav"):
         try:
-            import soundfile as sf
-
-            data, samplerate = sf.read(audio_path, always_2d=False)
-            flac_path = replace_audio_suffix(audio_path, ".flac")
-            sf.write(
-                flac_path,
-                data,
-                samplerate,
-                format="FLAC",
-                subtype=flac_subtype(flac_bit_set),
-            )
-            if not os.path.isfile(flac_path):
-                raise AudioExportError(f"FLAC export was not created: {flac_path}")
-            try:
-                os.remove(audio_path)
-            except OSError as exc:
-                debug(
-                    "audio",
-                    f"export cleanup failed file={os.path.basename(audio_path)} "
-                    f"error={type(exc).__name__}: {exc}",
-                )
-            return flac_path
-        except Exception as exc:  # fall through to pydub
+            output_path = _stream_flac(audio_path, flac_bit_set)
+        except Exception as exc:  # fall through to ffmpeg
             debug(
                 "audio",
                 f"direct flac export failed file={os.path.basename(audio_path)} "
-                f"error={type(exc).__name__}: {exc}; falling back to pydub",
+                f"error={type(exc).__name__}: {exc}; falling back to ffmpeg",
             )
 
-    from pydub import AudioSegment
+    if output_path is None:
+        executable = resolve_ffmpeg()
+        if not executable:
+            message = (
+                f"Audio export failed for {os.path.basename(audio_path)!r}: "
+                f"ffmpeg is required for {save_format_sel}"
+            )
+            debug("audio", message)
+            raise AudioExportError(message)
 
-    from .external_tools import configure_pydub_ffmpeg
-
-    if configure_pydub_ffmpeg() is None:
-        message = (
-            f"Audio export failed for {os.path.basename(audio_path)!r}: "
-            f"ffmpeg is required for {save_format_sel}"
-        )
-        debug("audio", message)
-        raise AudioExportError(message)
-
-    try:
-        audio_segment = AudioSegment.from_wav(audio_path)
-    except Exception as exc:  # surfaced via missing output file
-        message = (
-            f"Audio export failed while reading {os.path.basename(audio_path)!r}: "
-            f"{type(exc).__name__}: {exc}"
-        )
-        debug("audio", message)
-        raise AudioExportError(message) from exc
-
-    suffixes = {FLAC: ".flac", MP3: ".mp3", OPUS: ".opus"}
-    output_path = replace_audio_suffix(audio_path, suffixes[save_format_sel])
-    try:
         if save_format_sel == FLAC:
-            audio_segment.export(
-                output_path,
-                format="flac",
-                parameters=flac_export_parameters(flac_bit_set),
-            )
+            container, attempts = "flac", [flac_export_parameters(flac_bit_set)]
         elif save_format_sel == MP3:
+            # Fall back to ffmpeg's default MP3 encoder like UVR.
+            container = "mp3"
+            attempts = [
+                ["-acodec", "libmp3lame", "-b:a", mp3_bit_set],
+                ["-b:a", mp3_bit_set],
+            ]
+        else:
+            container = "opus"
+            attempts = [
+                ["-acodec", "libopus", "-b:a", str(enum_value(opus_bit_set))]
+                + opus_export_parameters()
+            ]
+        suffixes = {FLAC: ".flac", MP3: ".mp3", OPUS: ".opus"}
+        output_path = replace_audio_suffix(audio_path, suffixes[save_format_sel])
+        for index, arguments in enumerate(attempts):
             try:
-                audio_segment.export(
-                    output_path,
-                    format="mp3",
-                    bitrate=mp3_bit_set,
-                    codec="libmp3lame",
+                _ffmpeg_encode(executable, audio_path, output_path, container, arguments)
+                break
+            except (AudioExportError, OSError) as exc:
+                message = (
+                    f"Audio export failed for {os.path.basename(audio_path)!r} as "
+                    f"{save_format_sel}: {exc}"
                 )
-            except Exception:  # fall back to default codec like UVR
-                audio_segment.export(output_path, format="mp3", bitrate=mp3_bit_set)
-        elif save_format_sel == OPUS:
-            audio_segment.export(
-                output_path,
-                format="opus",
-                bitrate=enum_value(opus_bit_set),
-                codec="libopus",
-                parameters=opus_export_parameters(),
-            )
-    except Exception as exc:  # surfaced via missing output file
-        message = (
-            f"Audio export failed for {os.path.basename(audio_path)!r} as {save_format_sel}: "
-            f"{type(exc).__name__}: {exc}"
-        )
-        debug("audio", message)
-        raise AudioExportError(message) from exc
+                debug("audio", message)
+                if index == len(attempts) - 1:
+                    raise AudioExportError(message) from exc
 
     if not os.path.isfile(output_path):
         raise AudioExportError(f"Converted audio export was not created: {output_path}")
