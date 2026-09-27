@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import re
+from dataclasses import dataclass
 from typing import Any, Dict, Mapping, Optional, Tuple
 from urllib.parse import parse_qsl, unquote, urlencode, urlsplit, urlunsplit
 
@@ -169,6 +170,20 @@ def _checkpoint_name_matches_url(model: object) -> bool:
     return name.casefold() == remote_name.casefold()
 
 
+@dataclass(frozen=True)
+class CatalogueDuplicate:
+    """A dropped row and the kept row it provably duplicates.
+
+    ``evidence`` names the exact key both rows share, strongest first:
+    ``sha256`` (same content), ``rehost`` (reviewed copy of the kept
+    checkpoint), ``url`` (same download) or ``checkpoint`` (same checkpoint
+    filename, ignoring case). A shared normalized label alone never counts.
+    """
+
+    kept: str
+    evidence: str
+
+
 def dedupe_download_catalogue(
     catalogue: Mapping[str, Any],
     *,
@@ -190,13 +205,38 @@ def dedupe_download_catalogue(
     dropped before they claim any key, and a rehost collides on the upstream
     checkpoint name it copies.
     """
+    return _dedupe(catalogue, demucs_bags=demucs_bags, content_ids=content_ids)[0]
+
+
+def find_catalogue_duplicates(
+    catalogue: Mapping[str, Any],
+    *,
+    content_ids: Optional[Mapping[str, str]] = None,
+) -> Tuple[Dict[str, Any], Dict[str, CatalogueDuplicate]]:
+    """Deduplicate a VR / MDX-family catalogue and explain the dropped rows.
+
+    Returns the rows :func:`dedupe_download_catalogue` keeps, plus each dropped
+    row whose exact keys (content, rehost, URL, checkpoint name) all belong to
+    one kept row. Rows dropped for a shared label alone, withdrawn rows and
+    rows whose keys point at different kept rows are left out.
+    """
+    return _dedupe(catalogue, demucs_bags=False, content_ids=content_ids)
+
+
+def _dedupe(
+    catalogue: Mapping[str, Any],
+    *,
+    demucs_bags: bool,
+    content_ids: Optional[Mapping[str, str]],
+) -> Tuple[Dict[str, Any], Dict[str, CatalogueDuplicate]]:
     from .checkpoint_identities import load_checkpoint_identities
 
     identities = load_checkpoint_identities()
     kept: Dict[str, Any] = {}
-    seen_ckpts: set[str] = set()
-    seen_urls: set[str] = set()
-    seen_content: set[str] = set()
+    # Each key maps to the kept label that claimed it.
+    seen_ckpts: Dict[str, str] = {}
+    seen_urls: Dict[str, str] = {}
+    seen_content: Dict[str, str] = {}
     seen_labels: set[str] = set()
     seen_bags: set[Tuple[Tuple[str, str], ...]] = set()
     ids = content_ids or {}
@@ -244,11 +284,11 @@ def dedupe_download_catalogue(
             if content_id and content_id in seen_content:
                 continue
             if ckpt:
-                seen_ckpts.add(ckpt.casefold())
+                seen_ckpts[ckpt.casefold()] = label
             if url:
-                seen_urls.add(url)
+                seen_urls[url] = label
             if content_id:
-                seen_content.add(content_id)
+                seen_content[content_id] = label
 
         kept[label] = model
         if norm:
@@ -258,4 +298,25 @@ def dedupe_download_catalogue(
             if signature is not None:
                 seen_bags.add(signature)
 
-    return kept
+    duplicates: Dict[str, CatalogueDuplicate] = {}
+    if demucs_bags:
+        return kept, duplicates
+    for label, model in catalogue.items():
+        url = primary_checkpoint_url(model)
+        if label in kept or url in identities.withdrawn:
+            continue
+        rehost = identities.rehosts.get(url or "")
+        name = primary_checkpoint_name(model)
+        content_id = _lookup_content_id(url, ids)
+        # The same checks as the pass above, in order of evidence strength.
+        candidates = [
+            ("sha256", seen_content.get(content_id) if content_id else None),
+            ("rehost", seen_ckpts.get(rehost.casefold()) if rehost else None),
+            ("url", seen_urls.get(url) if url else None),
+            ("checkpoint", seen_ckpts.get(name.casefold()) if name and not rehost else None),
+        ]
+        found = [(evidence, owner) for evidence, owner in candidates if owner is not None]
+        if found and len({owner for _evidence, owner in found}) == 1:
+            evidence, owner = found[0]
+            duplicates[label] = CatalogueDuplicate(owner, evidence)
+    return kept, duplicates
