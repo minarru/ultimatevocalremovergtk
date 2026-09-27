@@ -1095,7 +1095,7 @@ class ErrorDetailTests(unittest.TestCase):
 class SpawnChildProcessGroupTests(unittest.TestCase):
     """Fix round 1: a timed-out child must have its whole process group
     killed, not just the immediate process, since it can shell out to
-    grandchildren (ffmpeg via pydub, rubberband via ml/pyrb.py) that would
+    grandchildren (ffmpeg for export, rubberband via ml/pyrb.py) that would
     otherwise survive as orphans. A revert to ``subprocess.run`` +
     ``proc.kill()``/timeout-only-kills-the-child would still return
     ``(None, None, True)`` on timeout, so that alone can't discriminate the

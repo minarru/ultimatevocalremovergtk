@@ -96,7 +96,7 @@ class AudioToolPhaseTests(unittest.TestCase):
                     self.observed.append(('write', self.phases[-1]))
 
                 with (
-                    patch.object(spec_utils.librosa, 'load', side_effect=read),
+                    patch.object(spec_utils, 'decode_audio', side_effect=read),
                     patch.object(spec_utils.pyrb, dsp, side_effect=process),
                     patch.object(spec_utils.sf, 'write', side_effect=write),
                     patch.object(tool, '_save_format'),
@@ -199,7 +199,7 @@ class AudioToolPhaseTests(unittest.TestCase):
             return waves[0]
 
         with (
-            patch.object(spec_utils.librosa, "load", side_effect=read),
+            patch.object(spec_utils, "decode_audio", side_effect=read),
             patch.object(spec_utils, "ensemble_wav", side_effect=combine),
             patch.object(
                 spec_utils.sf,
@@ -260,7 +260,7 @@ class AudioToolPhaseTests(unittest.TestCase):
         with (
             patch("core.audio_tools.snapshot_worker_file"),
             patch("core.audio_tools._release_inference_resources"),
-            patch.object(spec_utils.librosa, "load", return_value=(np.ones((2, 32)), 44100)),
+            patch.object(spec_utils, "decode_audio", return_value=(np.ones((2, 32)), 44100)),
             patch.object(spec_utils.pyrb, "pitch_shift", side_effect=process),
             patch.object(spec_utils.sf, "write") as write,
         ):

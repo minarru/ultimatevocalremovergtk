@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import tempfile
 from typing import Callable, List, Optional, Sequence
 
 from . import paths
@@ -16,8 +17,8 @@ FallbackCallback = Callable[[str, Exception], None]
 def _clip_cache_path(source: str, duration: int) -> str:
     base = os.path.basename(source)
     digest = hashlib.md5(f"{source}:{duration}".encode(), usedforsecurity=False).hexdigest()[:12]
-    stem, ext = os.path.splitext(base)
-    return os.path.join(paths.SAMPLE_CLIP_PATH, f"{stem}_{duration}s_{digest}{ext or '.wav'}")
+    stem, _ext = os.path.splitext(base)
+    return os.path.join(paths.SAMPLE_CLIP_PATH, f"{stem}_{duration}s_v2_{digest}.wav")
 
 
 def prepare_input_paths(
@@ -53,16 +54,20 @@ def prepare_input_paths(
         debug(
             "model", f"sample clip generating file={os.path.basename(path)!r} duration={duration}s"
         )
+        temporary_path: str | None = None
         try:
-            import librosa
             import soundfile as sf
 
-            audio, sr = librosa.load(path, mono=False, sr=None, duration=duration)
-            sample_rate = int(sr)
-            if audio.ndim == 1:
-                sf.write(clip_path, audio, sample_rate)
-            else:
-                sf.write(clip_path, audio.T, sample_rate)
+            from .audio_decode import load_audio
+
+            audio, sr = load_audio(path, duration=duration)
+            with tempfile.NamedTemporaryFile(
+                dir=paths.SAMPLE_CLIP_PATH, prefix=".sample-", suffix=".wav", delete=False
+            ) as temporary:
+                temporary_path = temporary.name
+            sf.write(temporary_path, audio.T, int(sr), format="WAV", subtype="FLOAT")
+            os.replace(temporary_path, clip_path)
+            temporary_path = None
             prepared.append(clip_path)
         except Exception as exc:  # reported via on_fallback
             debug(
@@ -73,4 +78,10 @@ def prepare_input_paths(
             if on_fallback is not None:
                 on_fallback(path, exc)
             prepared.append(path)
+        finally:
+            if temporary_path is not None:
+                try:
+                    os.unlink(temporary_path)
+                except FileNotFoundError:
+                    pass
     return prepared

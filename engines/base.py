@@ -314,8 +314,10 @@ class SeperateAttributes(EngineLegacyOptions):
         local = save_progress_local_step(index, total)
         self.set_progress_bar(local)
 
-    def running_inference_console_write(self, is_no_write: bool = False) -> None:
+    def running_inference_console_write(self, is_no_write: bool = False, notice: str = "") -> None:
         self.write_to_console(DONE, base_text='') if not is_no_write else None
+        # A notice raised while loading follows the "Loading model... Done!" line.
+        self.write_to_console(notice) if notice else None
         self.set_progress_bar(0.05) if not is_no_write else None
 
         if self.is_secondary_model and not self.is_pre_proc_model and not self.is_vocal_split_model:

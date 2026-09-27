@@ -728,7 +728,7 @@ def spawn_child(*, spec: Dict[str, Any], job_dir: str, env: Dict[str, str], time
     The child is started as its own process-group leader (``start_new_session
     =True``) so that on a timeout we can kill its whole group, not just the
     immediate process. The child shells out to grandchildren of its own —
-    pydub's ffmpeg for FLAC/MP3 export, rubberband via ``ml/pyrb.py`` — and a
+    ffmpeg for FLAC/MP3/Opus export, rubberband via ``ml/pyrb.py`` — and a
     bare ``proc.kill()`` only signals the direct child, leaving those
     grandchildren to run on as orphans holding memory and file handles.
     """

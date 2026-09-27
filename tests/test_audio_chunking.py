@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unittest
+from collections.abc import Callable
 
 import numpy as np
 
@@ -125,6 +126,76 @@ class ConcatStemsTests(unittest.TestCase):
         parts = [np.ones((2, 10)), np.ones((2, 10)), np.ones((2, 10))]
         with self.assertRaises(ValueError):
             concat_stems(parts, overlap_samples=[5])
+
+
+def _reference_concat(parts: list[np.ndarray], overlaps: list[int]) -> np.ndarray:
+    """The original join: pairwise concatenation with a float64 linear crossfade."""
+    result = parts[0].astype(np.float64)
+    for right, ov in zip(parts[1:], overlaps, strict=True):
+        ov = min(ov, result.shape[1], right.shape[1])
+        fade_out = np.linspace(1.0, 0.0, ov, dtype=np.float64)
+        mixed = result[:, -ov:] * fade_out + right[:, :ov] * (1.0 - fade_out)
+        result = np.concatenate([result[:, :-ov], mixed, right[:, ov:]], axis=1)
+    return result
+
+
+def _traced_peak_bytes(fn: Callable[[], object]) -> int:
+    import tracemalloc
+
+    tracemalloc.start()
+    try:
+        fn()
+        return tracemalloc.get_traced_memory()[1]
+    finally:
+        tracemalloc.stop()
+
+
+class ChunkMemoryTests(unittest.TestCase):
+    def setUp(self) -> None:
+        rng = np.random.default_rng(0)
+        self.mix = rng.standard_normal((2, 23 * 1000)).astype(np.float32)
+
+    def _chunks(self):
+        return slice_mix(self.mix, sample_rate=1000, chunk_seconds=5, overlap_seconds=1)
+
+    def test_chunks_are_views_of_the_mix(self) -> None:
+        chunks = self._chunks()
+        self.assertGreater(len(chunks), 1)
+        for start, end, chunk in chunks:
+            self.assertTrue(np.shares_memory(chunk, self.mix))
+            np.testing.assert_array_equal(chunk, self.mix[:, start:end])
+
+    def test_concat_matches_the_reference_crossfade_exactly_for_float64(self) -> None:
+        chunks = self._chunks()
+        parts = [chunk.astype(np.float64) * (i + 1) for i, (_s, _e, chunk) in enumerate(chunks)]
+        overlaps = overlaps_for_chunks(chunks)
+        np.testing.assert_array_equal(
+            concat_stems(parts, overlap_samples=overlaps), _reference_concat(parts, overlaps)
+        )
+
+    def test_concat_keeps_float32_parts_float32(self) -> None:
+        chunks = self._chunks()
+        parts = [chunk * (i + 1) for i, (_s, _e, chunk) in enumerate(chunks)]
+        overlaps = overlaps_for_chunks(chunks)
+        joined = concat_stems(parts, overlap_samples=overlaps)
+        self.assertEqual(joined.dtype, np.float32)
+        np.testing.assert_allclose(joined, _reference_concat(parts, overlaps), rtol=0, atol=1e-5)
+
+    def test_concat_allocates_about_one_output(self) -> None:
+        from unittest import mock
+
+        chunks = self._chunks()
+        parts = [np.ascontiguousarray(chunk) for _s, _e, chunk in chunks]
+        overlaps = overlaps_for_chunks(chunks)
+        block = 256
+        with mock.patch("core.audio_chunking._FADE_BLOCK", block):
+            peak = _traced_peak_bytes(lambda: concat_stems(parts, overlap_samples=overlaps))
+        # The joined float32 stem, the float64 fade ramp and a few bounded
+        # blend blocks, instead of re-copying the accumulated (float64) stem
+        # at every join and allocating whole-window temporaries.
+        ramp = max(overlaps) * 8
+        block_temps = 8 * self.mix.shape[0] * block * 8
+        self.assertLess(peak, self.mix.nbytes + ramp + block_temps)
 
 
 if __name__ == "__main__":

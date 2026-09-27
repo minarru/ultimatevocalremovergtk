@@ -303,7 +303,7 @@ class Apollo(BaseModel):
         # 80 bands
         bandwidth = int(self.win / 160)
         self.band_width = [bandwidth] * 79
-        self.band_width.append(self.enc_dim - np.sum(self.band_width))
+        self.band_width.append(self.enc_dim - sum(self.band_width))
         self.nband = len(self.band_width)
         # print(self.band_width, self.nband)
 

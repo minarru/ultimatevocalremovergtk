@@ -7,7 +7,7 @@ splitting audio into vocals, instrumental, drums, bass, and other stems. It is
 based on [Ultimate Vocal Remover v5.6](https://github.com/Anjok07/ultimatevocalremovergui)
 and also provides a headless `uvr` command-line interface.
 
-**GTK release v1.3.0** · [Source](https://github.com/minarru/ultimatevocalremovergtk) ·
+**GTK release v1.4.0** · [Source](https://github.com/minarru/ultimatevocalremovergtk) ·
 [Releases](https://github.com/minarru/ultimatevocalremovergtk/releases) ·
 [Report an issue](https://github.com/minarru/ultimatevocalremovergtk/issues)
 
@@ -200,6 +200,7 @@ running version with the current GitHub release metadata.
 | FFmpeg errors on non-WAV files | Install `ffmpeg` and confirm it is on `PATH` |
 | Time Stretch or Change Pitch unavailable | Install `rubberband-cli` |
 | No models in a picker | Open Download Center and install a supported model for that method |
+| Console warns that an MDX-Net model is running on the CPU | Run `./install_packages.sh --cuda` to install `onnxruntime-gpu`; if it is already installed, start the app from a terminal to see which CUDA library ONNX Runtime could not load |
 | Processing fails | Open **Error Log** or press `Ctrl+E`; enable Debug or Trace under **Preferences → General → Diagnostics** when more detail is needed |
 
 The full troubleshooting and diagnostic reference is in

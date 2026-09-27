@@ -37,5 +37,36 @@ class NormalizeAmplificationTests(unittest.TestCase):
         self.assertAlmostEqual(float(np.abs(out).max()), 1.0, places=6)
 
 
+class NormalizeMemoryAndOutputTests(unittest.TestCase):
+    def test_peak_is_found_without_a_temporary_copy(self) -> None:
+        import tracemalloc
+
+        wave = np.random.default_rng(0).standard_normal((2, 200_000)).astype(np.float32) * 0.1
+        tracemalloc.start()
+        try:
+            out = normalize(wave, is_normalize=True, min_peak=0.0)  # already below 1.0
+            peak = tracemalloc.get_traced_memory()[1]
+        finally:
+            tracemalloc.stop()
+        self.assertIs(out, wave)
+        self.assertLess(peak, wave.nbytes * 0.05)
+
+    def test_negative_peak_is_limited(self) -> None:
+        wave = np.array([[0.5, -2.0]], dtype=np.float32)
+        out = normalize(wave, is_normalize=True)
+        np.testing.assert_allclose(out, [[0.25, -1.0]])
+        self.assertEqual(out.dtype, np.float32)
+
+    def test_limiting_does_not_write_to_stdout(self) -> None:
+        # The CLI's --json mode prints one JSON document on stdout.
+        import contextlib
+        import io
+
+        captured = io.StringIO()
+        with contextlib.redirect_stdout(captured):
+            normalize(np.array([[1.5, -2.0]], dtype=np.float32), is_normalize=True)
+        self.assertEqual(captured.getvalue(), "")
+
+
 if __name__ == "__main__":
     unittest.main()

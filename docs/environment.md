@@ -175,8 +175,28 @@ merging, refresh, caching, and deduplication behavior.
 
 | Variable | Purpose |
 |----------|---------|
-| `UVR_FFMPEG` | Path to `ffmpeg` when not on `PATH` |
+| `UVR_FFMPEG` | Explicit path to `ffmpeg` |
+| `UVR_FFPROBE` | Explicit path to `ffprobe` |
 | `UVR_RUBBERBAND` | Path to `rubberband` when not on `PATH` |
+
+Audio input uses the shared `core.audio_decode` service: SoundFile reads native-rate
+float32 samples first; unsupported formats use FFmpeg and ffprobe. Install both
+executables for compressed/container formats such as AAC/M4A. ffprobe resolution
+checks `UVR_FFPROBE`, a sibling of the resolved FFmpeg executable, bundled tools,
+then `PATH`. FFmpeg checks `UVR_FFMPEG`, bundled tools, then `PATH`.
+
+The fallback selects the first audio stream and preserves its channels and sample
+rate as float32 PCM. It does not downmix, clip or normalize; individual engines
+retain their channel restrictions. Requested resampling still uses librosa.
+Metadata queries read headers only; readability fallback decodes at most three
+seconds. Unknown duration stays unknown. Metadata has a ten-second timeout;
+decoding times out after thirty seconds without output, not after thirty seconds
+of total runtime. Decoder errors reject partial output.
+
+Sample mode caches versioned float32 WAV clips, regardless of the input format,
+and atomically publishes completed clips. Failure retains the reported fallback
+to the original input. Older sample-cache filenames are not reused.
+
 
 ---
 
