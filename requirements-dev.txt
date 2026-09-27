@@ -5,7 +5,7 @@ basedpyright==1.40.1
 
 # Fast local linting and formatting. Local-only policy.
 # Keep ruff.toml required-version synchronized.
-ruff==0.16.7
+ruff==0.16.8
 
 # GTK/Adw types live in requirements-stubs.txt — they must be installed with
 # --no-deps, so they cannot be listed here.
