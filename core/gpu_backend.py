@@ -182,9 +182,8 @@ def resolve_inference_backend(
     if torch.cuda.is_available():
         from engines.amp_runtime import configure_cuda_inference
 
-        from .cuda_runtime_fix import preload_onnxruntime_gpu
-
-        preload_onnxruntime_gpu()
+        # onnxruntime-gpu needs no library preload: torch and ORT share the
+        # CUDA 13 wheels, and importing torch (above) already loaded them.
         configure_cuda_inference(device_set)
         providers: List[str] = ["CUDAExecutionProvider", "CPUExecutionProvider"]
         return _log_backend(
