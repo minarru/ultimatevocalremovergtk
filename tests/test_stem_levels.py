@@ -69,6 +69,27 @@ class FormatClipTests(unittest.TestCase):
         self.assertTrue(export_format_can_clip("MP3", "320k"))
         self.assertTrue(export_format_can_clip("OPUS", "192k"))
 
+    def test_resolved_export_subtypes_match_the_settings_choice(self):
+        # Engines pass the libsndfile subtype from resolve_wav_type_set
+        # ("FLOAT", "DOUBLE", "PCM_24"), not the settings label.
+        from core.audio_io import resolve_wav_type_set
+        from core.settings import Settings
+        from core.types.enums import SaveFormat
+        from core.types.settings_enums import WavType
+
+        for wav_type, can_clip in (
+            (WavType.FLOAT_32, False),
+            (WavType.FLOAT_64, False),
+            (WavType.PCM_24, True),
+            (WavType.PCM_16, True),
+        ):
+            settings = Settings.defaults()
+            settings.process.save_format = SaveFormat.WAV
+            settings.process.wav_type = wav_type
+            with self.subTest(wav_type=wav_type):
+                resolved = resolve_wav_type_set(settings)
+                self.assertEqual(export_format_can_clip("WAV", resolved), can_clip)
+
 
 if __name__ == "__main__":
     unittest.main()
