@@ -38,8 +38,8 @@ finish-args:
   # The matching org.freedesktop.Platform.GL.nvidia-<driver> extension is pulled
   # automatically with --device=dri and supplies the HOST-matching libcuda.so /
   # NVIDIA userspace libs into the sandbox. The CUDA *toolkit* libs themselves
-  # come from the nvidia-*-cu12 / -cu13 wheels (bundled or first-run installed);
-  # core/cuda_runtime_fix.py still ctypes-preloads the cu12 set.
+  # come from the CUDA 13 nvidia-* wheels (bundled or first-run installed),
+  # which torch loads and onnxruntime-gpu then reuses.
   # --device=all exposes /dev/nvidia*; narrow if your flatpak supports it.
   - --device=all
 
@@ -99,7 +99,7 @@ modules:
   # Python dependencies.
   #
   # OPTION A (reproducible, offline): include the generated pinned-wheel module.
-  # WARNING: this is several GB (torch + onnxruntime + nvidia-*-cu12/cu13).
+  # WARNING: this is several GB (torch + onnxruntime + CUDA 13 nvidia-* wheels).
   # - python3-requirements.json   # TODO: generate via flatpak-pip-generator
   #
   # OPTION B (slim, deferred): install NOTHING heavy here. The GTK UI boots
