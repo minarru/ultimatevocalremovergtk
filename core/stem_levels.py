@@ -9,25 +9,49 @@ import numpy as np
 
 _GAIN_EPS = 1e-12
 _GAIN_REPORT_TOL = 1e-3
+# Samples per block when accumulating float32 stems in float64.
+_DOT_BLOCK = 1 << 16
 
 
-def _as_float_array(audio: typing.Any) -> np.ndarray:
-    return np.asarray(audio, dtype=np.float64)
+def peak_amplitude(audio: typing.Any) -> float:
+    """Largest absolute sample value, without allocating ``abs(audio)``."""
+    arr = np.asarray(audio)
+    if not arr.size:
+        return 0.0
+    return float(max(arr.max(), -arr.min()))
+
+
+def _dot64(a: np.ndarray, b: np.ndarray) -> float:
+    """``dot(a, b)`` accumulated in float64 over bounded blocks.
+
+    A float32 BLAS dot accumulates in float32; converting whole stems to
+    float64 instead would copy each of them at double size.
+    """
+    total = 0.0
+    for start in range(0, a.shape[-1], _DOT_BLOCK):
+        end = start + _DOT_BLOCK
+        total += float(
+            np.vdot(
+                a[..., start:end].astype(np.float64, copy=False),
+                b[..., start:end].astype(np.float64, copy=False),
+            )
+        )
+    return total
 
 
 def match_gain_to_mix(summed: np.ndarray, mix: np.ndarray) -> float:
     """Least-squares gain ``g`` minimizing ``||g * summed - mix||``."""
-    summed_a = _as_float_array(summed)
-    mix_a = _as_float_array(mix)
+    summed_a = np.asarray(summed)
+    mix_a = np.asarray(mix)
     n = min(summed_a.shape[-1], mix_a.shape[-1])
     if n <= 0:
         return 1.0
     summed_a = summed_a[..., :n]
     mix_a = mix_a[..., :n]
-    denom = float(np.dot(summed_a.ravel(), summed_a.ravel()))
+    denom = _dot64(summed_a, summed_a)
     if denom <= _GAIN_EPS:
         return 1.0
-    return float(np.dot(summed_a.ravel(), mix_a.ravel()) / denom)
+    return _dot64(summed_a, mix_a) / denom
 
 
 def peak_limit_gain(audio_arrays: Mapping[str, np.ndarray], *, peak_limit: float = 1.0) -> float:
@@ -36,9 +60,7 @@ def peak_limit_gain(audio_arrays: Mapping[str, np.ndarray], *, peak_limit: float
         return 1.0
     peak = 0.0
     for audio in audio_arrays.values():
-        arr = _as_float_array(audio)
-        if arr.size:
-            peak = max(peak, float(np.max(np.abs(arr))))
+        peak = max(peak, peak_amplitude(audio))
     if peak <= peak_limit or peak <= _GAIN_EPS:
         return 1.0
     return float(peak_limit / peak)
@@ -47,7 +69,11 @@ def peak_limit_gain(audio_arrays: Mapping[str, np.ndarray], *, peak_limit: float
 def scale_audio(audio: np.ndarray, gain: float) -> np.ndarray:
     if abs(gain - 1.0) <= _GAIN_EPS:
         return audio
-    return np.asarray(audio, dtype=np.float64) * gain
+    arr = np.asarray(audio)
+    if not np.issubdtype(arr.dtype, np.floating):
+        arr = arr.astype(np.float64)
+    # Keep float32 stems float32; a float64 result doubles every stem.
+    return arr * arr.dtype.type(gain)
 
 
 def apply_stem_level_options(
