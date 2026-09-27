@@ -45,6 +45,7 @@ from .protocols import RunHost, RunReadiness, RunTarget
 from .run_error_context import RunErrorContext
 from .run_lifecycle import RunShutdownCoordinator
 from .run_progress import RunProgressPresenter
+from .sleep_inhibit import SleepInhibitor
 
 if TYPE_CHECKING:
     from core.job_callbacks import JobCallbacks
@@ -60,6 +61,7 @@ _PROGRESS_STARTING = "Starting…"
 _PROGRESS_IMPORTING = "Importing engines…"
 _PROGRESS_LOADING_ENGINES = "Loading engines…"
 _PROGRESS_DONE = "Done"
+_SLEEP_INHIBIT_REASON = "{label} in progress"
 _PROGRESS_EPSILON = 0.001
 _PROGRESS_UI_MIN_INTERVAL = 0.1  # ~10 Hz UI updates during inference
 _EXIT_CLEANUP_TIMEOUT_MS = 10_000
@@ -95,6 +97,7 @@ class RunController:
         self._operation_id: Optional[str] = None
         self._operation_started_at = 0.0
         self.progress = RunProgressPresenter()
+        self._sleep_inhibitor = SleepInhibitor(host.get_application, lambda: host.dialog_parent)
         self._stop_confirm_dialog: Optional[Adw.AlertDialog] = None
         self._shutdown_dialog: Optional[Adw.AlertDialog] = None
         self._oom_dialog: Optional[Adw.AlertDialog] = None
@@ -1072,8 +1075,11 @@ class RunController:
     def _set_running(self, running: bool) -> None:
         # Clear the run before action/model refresh; Stop sensitivity alone is
         # not lifecycle state (it is also disabled while stopping).
-        if not running:
+        if running:
+            self._sleep_inhibitor.acquire(_SLEEP_INHIBIT_REASON.format(label=self._run_label))
+        else:
             self._running_target = None
+            self._sleep_inhibitor.release()
         self._host.enable_stop(running)
         self._set_options_sensitive(not running)
         self._set_edit_actions_sensitive(not running)
