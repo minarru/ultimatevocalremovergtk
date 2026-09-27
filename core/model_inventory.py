@@ -571,8 +571,18 @@ def _installed_demucs_bags(
     return bags, members
 
 
-def _merge_installed(repo: Any, records: list[ModelRecord]) -> list[ModelRecord]:
+def _merge_installed(
+    repo: Any,
+    records: list[ModelRecord],
+    snapshot: Any | None = None,
+) -> list[ModelRecord]:
     result = list(records)
+    published = {
+        (record.family, record.catalogue_entry.selection)
+        for record in records
+        if record.catalogue_entry is not None
+    }
+    aliases = getattr(snapshot, "checkpoint_aliases", None) or {}
     by_primary = {
         _artifact_key(record.family, record.artifacts.primary_filename): index
         for index, record in enumerate(result)
@@ -641,6 +651,7 @@ def _merge_installed(repo: Any, records: list[ModelRecord]) -> list[ModelRecord]
                     )
                 else:
                     record = _installed_record(repo, family, filename, files)
+                    record = _link_retired_duplicate(record, family, filename, aliases, published)
             except ValueError as exc:
                 # Same rule as the catalogue rows: one unrepresentable filename
                 # on disk (a leading ``~``, say) drops that model, it does not
@@ -655,6 +666,28 @@ def _merge_installed(repo: Any, records: list[ModelRecord]) -> list[ModelRecord]
             if record is not None:
                 result.append(record)
     return result
+
+
+def _link_retired_duplicate(
+    record: ModelRecord | None,
+    family: str,
+    filename: str,
+    aliases: Mapping[str, Mapping[str, str]],
+    published: set[tuple[str, str]],
+) -> ModelRecord | None:
+    """Link a copy downloaded under a deduplicated row's filename to its kept entry.
+
+    The installed record keeps its own ``family:basename`` identity and files;
+    only the catalogue association (metadata, outputs, purpose) is shared.
+    The alias comes from exact deduplication evidence, never from labels.
+    """
+    if record is None or record.catalogue_entry is not None:
+        return record
+    family_aliases = aliases.get(family)
+    selection = family_aliases.get(filename) if isinstance(family_aliases, Mapping) else None
+    if not selection or (family, selection) not in published:
+        return record
+    return replace(record, catalogue_entry=CatalogueRef(family, selection))
 
 
 def _apply_bundled_demucs(
@@ -822,7 +855,20 @@ def _exact_catalogue_selection(
         return None
     if matches:
         return matches[0]
-    return record.catalogue_entry.selection if record.catalogue_entry is not None else ""
+    if record.catalogue_entry is None or _is_duplicate_link(snapshot, record):
+        # An installed copy of a deduplicated row shares the kept entry's
+        # metadata, not its label: naming stays with the copy's own evidence.
+        return ""
+    return record.catalogue_entry.selection
+
+
+def _is_duplicate_link(snapshot: Any, record: ModelRecord) -> bool:
+    """Whether ``record``'s catalogue entry came only from a dedupe alias."""
+    aliases = getattr(snapshot, "checkpoint_aliases", None)
+    family_aliases = aliases.get(record.family) if isinstance(aliases, Mapping) else None
+    if not isinstance(family_aliases, Mapping) or record.catalogue_entry is None:
+        return False
+    return family_aliases.get(record.artifacts.primary_filename) == record.catalogue_entry.selection
 
 
 def _record_display(
@@ -1033,7 +1079,7 @@ def build_identity_index(
     published_records = _catalogue_records(snapshot) if snapshot is not None else []
     published_index = _published_catalogue_selection_index(published_records)
     records = published_records
-    records = _merge_installed(repo, records)
+    records = _merge_installed(repo, records, snapshot)
     records = _apply_bundled_demucs(records, bundled_demucs_specs)
     records = _apply_registered_demucs(records, registered_demucs)
     records = _enrich_record_displays(repo, records, snapshot, published_index=published_index)
