@@ -68,8 +68,12 @@ def _local_path(source: AudioSource) -> Iterator[str]:
 
 def _capture(
     command: list[str], *, timeout: float, total_timeout: bool = False, reject_stderr: bool = False
-) -> bytes:
-    """Drain both pipes; keep only a bounded diagnostic tail and reap on every exit."""
+) -> bytearray:
+    """Drain both pipes; keep only a bounded diagnostic tail and reap on every exit.
+
+    Returns the read buffer itself: decoded PCM for a long track is hundreds of
+    megabytes, and callers wrap it in place rather than copying it.
+    """
     process = subprocess.Popen(
         command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE
     )
@@ -109,7 +113,7 @@ def _capture(
             raise RuntimeError(
                 f'Audio tool reported decoding errors: {errors.decode("utf-8", errors="replace")}'
             )
-        return bytes(output)
+        return output
     finally:
         if process.poll() is None:
             process.kill()
@@ -217,9 +221,10 @@ def _decode_ffmpeg(source: AudioSource, duration: float | None) -> tuple[NDArray
         pcm = _capture(command, timeout=_STDOUT_TIMEOUT, reject_stderr=True)
     if not pcm or len(pcm) % (4 * info.channels):
         raise ValueError('Empty or incomplete audio PCM data')
-    data = (
-        np.frombuffer(pcm, dtype='<f4').astype(np.float32, copy=True).reshape(-1, info.channels).T
-    )
+    # A view over the mutable capture buffer is already writable, so the samples
+    # are never copied; astype only copies on a big-endian host.
+    data = np.frombuffer(pcm, dtype='<f4').astype(np.float32, copy=False)
+    data = data.reshape(-1, info.channels).T
     if duration is not None:
         data = data[:, : int(duration * info.sample_rate)]
     return (data[0] if info.channels == 1 else data), info.sample_rate
