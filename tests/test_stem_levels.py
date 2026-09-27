@@ -1,4 +1,5 @@
 import unittest
+from collections.abc import Callable
 
 import numpy as np
 
@@ -68,6 +69,68 @@ class FormatClipTests(unittest.TestCase):
         self.assertTrue(export_format_can_clip("FLAC", "PCM_16"))
         self.assertTrue(export_format_can_clip("MP3", "320k"))
         self.assertTrue(export_format_can_clip("OPUS", "192k"))
+
+    def test_resolved_export_subtypes_match_the_settings_choice(self):
+        # Engines pass the libsndfile subtype from resolve_wav_type_set
+        # ("FLOAT", "DOUBLE", "PCM_24"), not the settings label.
+        from core.audio_io import resolve_wav_type_set
+        from core.settings import Settings
+        from core.types.enums import SaveFormat
+        from core.types.settings_enums import WavType
+
+        for wav_type, can_clip in (
+            (WavType.FLOAT_32, False),
+            (WavType.FLOAT_64, False),
+            (WavType.PCM_24, True),
+            (WavType.PCM_16, True),
+        ):
+            settings = Settings.defaults()
+            settings.process.save_format = SaveFormat.WAV
+            settings.process.wav_type = wav_type
+            with self.subTest(wav_type=wav_type):
+                resolved = resolve_wav_type_set(settings)
+                self.assertEqual(export_format_can_clip("WAV", resolved), can_clip)
+
+
+def _traced_peak_bytes(fn: Callable[[], object]) -> int:
+    import tracemalloc
+
+    tracemalloc.start()
+    try:
+        fn()
+        return tracemalloc.get_traced_memory()[1]
+    finally:
+        tracemalloc.stop()
+
+
+class LevelMemoryTests(unittest.TestCase):
+    def setUp(self) -> None:
+        rng = np.random.default_rng(0)
+        self.stem = (rng.standard_normal((2, 1_000_000)) * 0.1).astype(np.float32)
+        self.stem[1, 1234] = -4.0  # the peak is negative
+
+    def test_peak_gain_reads_the_stem_without_copies(self) -> None:
+        gain = peak_limit_gain({"a": self.stem, "b": self.stem * 0.5})
+        self.assertAlmostEqual(gain, 0.25, places=7)
+        stems = {"a": self.stem}
+        peak = _traced_peak_bytes(lambda: peak_limit_gain(stems))
+        self.assertLess(peak, self.stem.nbytes * 0.05)
+
+    def test_scaling_keeps_float32(self) -> None:
+        out, gain = scale_to_peak_limit(self.stem)
+        self.assertEqual(out.dtype, np.float32)
+        self.assertAlmostEqual(gain, 0.25, places=7)
+        np.testing.assert_allclose(out, self.stem.astype(np.float64) * 0.25, rtol=1e-6)
+
+    def test_mix_gain_matches_float64_least_squares_in_bounded_memory(self) -> None:
+        rng = np.random.default_rng(1)
+        mix = (self.stem * 0.8 + rng.standard_normal(self.stem.shape) * 0.01).astype(np.float32)
+        s64, m64 = self.stem.astype(np.float64).ravel(), mix.astype(np.float64).ravel()
+        expected = float(np.dot(s64, m64) / np.dot(s64, s64))
+        self.assertAlmostEqual(match_gain_to_mix(self.stem, mix), expected, places=10)
+        peak = _traced_peak_bytes(lambda: match_gain_to_mix(self.stem, mix))
+        # Bounded float64 blocks, not float64 copies of both arrays (4x a stem).
+        self.assertLess(peak, self.stem.nbytes / 2)
 
 
 if __name__ == "__main__":

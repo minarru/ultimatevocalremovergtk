@@ -125,9 +125,12 @@ def normalize(wave: np.ndarray, is_normalize: bool = False, min_peak: float = 0.
     When ``min_peak`` is in (0, 1] and the (post-limit) peak is below it, scale up
     so the peak equals ``min_peak``. ``min_peak`` of 0 disables amplification.
     """
-    maxv = float(np.abs(wave).max()) if getattr(wave, "size", 0) else 0.0
+    from core.stem_levels import peak_amplitude
+
+    maxv = peak_amplitude(wave)
     if maxv > 1.0 and is_normalize:
-        print("Above clipping threshold.")
+        # Not print(): the CLI's --json mode owns stdout.
+        debug("audio", f"normalize: peak {maxv:.3f} above clipping threshold")
         wave = wave / maxv
         maxv = 1.0
     try:

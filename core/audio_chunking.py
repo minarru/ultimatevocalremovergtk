@@ -7,6 +7,7 @@ from typing import List, Sequence, Tuple, Union
 import numpy as np
 
 DEFAULT_SAMPLE_RATE = 44100
+_FADE_BLOCK = 1 << 16
 
 
 def clamp_overlap_seconds(chunk_seconds: float, overlap_seconds: float) -> float:
@@ -103,7 +104,9 @@ def slice_mix(
 
     Returns a list of ``(start_sample, end_sample, chunk_array)``. When
     ``chunk_seconds`` is ``<= 0`` or the mix fits in one chunk, returns a single
-    entry covering the full mix (no copy when possible).
+    entry covering the full mix. Chunks are views of the mix, not copies: the
+    run loop keeps the decoded mix alive for the whole file, and engines treat
+    their input as read-only (unchunked runs already share one mix across models).
     """
     audio = np.asarray(mix)
     if audio.ndim == 1:
@@ -121,7 +124,7 @@ def slice_mix(
     if len(bounds) == 1:
         start, end = bounds[0]
         return [(start, end, audio)]
-    return [(start, end, np.array(audio[:, start:end], copy=True)) for start, end in bounds]
+    return [(start, end, audio[:, start:end]) for start, end in bounds]
 
 
 def concat_stems(
@@ -151,24 +154,33 @@ def concat_stems(
         if len(overlaps) != len(arrays) - 1:
             raise ValueError("overlap_samples sequence must have len(parts) - 1 entries")
 
-    result = arrays[0]
-    for nxt, ov in zip(arrays[1:], overlaps, strict=True):
-        result = _crossfade_join(result, nxt, ov)
-    return result
-
-
-def _crossfade_join(left: np.ndarray, right: np.ndarray, overlap: int) -> np.ndarray:
-    if overlap <= 0 or left.shape[1] == 0 or right.shape[1] == 0:
-        return np.concatenate([left, right], axis=1)
-
-    ov = min(overlap, left.shape[1], right.shape[1])
-    if ov <= 0:
-        return np.concatenate([left, right], axis=1)
-
-    fade_out = np.linspace(1.0, 0.0, ov, dtype=np.float64)
-    fade_in = 1.0 - fade_out
-    mixed = left[:, -ov:] * fade_out + right[:, :ov] * fade_in
-    return np.concatenate([left[:, :-ov], mixed, right[:, ov:]], axis=1)
+    # Fill one output of the parts' own dtype. Joining pairwise re-copied the
+    # whole accumulated stem at every join, and the float64 fade promoted
+    # float32 stems to float64; the fade itself still runs in float64.
+    lengths = [part.shape[1] for part in arrays]
+    effective: list[int] = []
+    joined = lengths[0]
+    for length, ov in zip(lengths[1:], overlaps, strict=True):
+        eff = min(ov, joined, length) if ov > 0 else 0
+        effective.append(eff)
+        joined += length - eff
+    out = np.empty((arrays[0].shape[0], joined), dtype=np.result_type(*arrays))
+    out[:, : lengths[0]] = arrays[0]
+    pos = lengths[0]
+    for part, ov in zip(arrays[1:], effective, strict=True):
+        if ov:
+            # The final join can overlap by most of a chunk (slice_mix pulls the
+            # last window back to the end), so blend in bounded blocks.
+            fade_out = np.linspace(1.0, 0.0, ov, dtype=np.float64)
+            for start in range(0, ov, _FADE_BLOCK):
+                end = min(ov, start + _FADE_BLOCK)
+                fade = fade_out[start:end]
+                region = out[:, pos - ov + start : pos - ov + end]
+                region[...] = region * fade + part[:, start:end] * (1.0 - fade)
+        tail = part.shape[1] - ov
+        out[:, pos : pos + tail] = part[:, ov:]
+        pos += tail
+    return out
 
 
 def overlaps_for_chunks(chunks: Sequence[Tuple[int, int, np.ndarray]]) -> List[int]:
