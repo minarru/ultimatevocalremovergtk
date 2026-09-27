@@ -14,6 +14,7 @@ __all__ = [
     "external_tools_status",
     "log_external_tools_once",
     "resolve_ffmpeg",
+    "resolve_ffprobe",
     "resolve_rubberband",
 ]
 
@@ -51,6 +52,21 @@ def resolve_ffmpeg() -> Optional[str]:
     return shutil.which("ffmpeg")
 
 
+def resolve_ffprobe() -> Optional[str]:
+    """Resolve ffprobe from override, ffmpeg sibling, bundle, then PATH."""
+    override = os.environ.get("UVR_FFPROBE", "").strip()
+    if override and os.path.isfile(override):
+        return override
+    ffmpeg = resolve_ffmpeg()
+    if ffmpeg:
+        sibling = os.path.join(
+            os.path.dirname(ffmpeg), "ffprobe" + (".exe" if os.name == "nt" else "")
+        )
+        if os.path.isfile(sibling) and (os.name == "nt" or os.access(sibling, os.X_OK)):
+            return sibling
+    return _bundled_tool("ffprobe") or shutil.which("ffprobe")
+
+
 def resolve_rubberband() -> Optional[str]:
     """Return path to rubberband CLI or None when not found."""
     env = os.environ.get("UVR_RUBBERBAND", "").strip()
@@ -80,6 +96,7 @@ def external_tools_status() -> dict[str, Optional[str]]:
     """Return resolved paths for dependency diagnostics."""
     return {
         "ffmpeg": resolve_ffmpeg(),
+        "ffprobe": resolve_ffprobe(),
         "rubberband": resolve_rubberband(),
     }
 

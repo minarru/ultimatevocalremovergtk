@@ -1,74 +1,89 @@
-import os
-import sys
+"""Sample clips preserve decoded precision and publish only complete WAV files."""
+
 import tempfile
 import unittest
-from unittest.mock import MagicMock, patch
+from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
+import soundfile as sf
 
-from core.sample_mode import prepare_input_paths
+from core.sample_mode import _clip_cache_path, prepare_input_paths
 from core.settings import Settings
 
 
 class SampleModeTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.source = self.root / 'input.flac'
+        self.cache = self.root / 'clips'
+        self.audio = np.column_stack((np.linspace(-0.2, 0.3, 16000), np.zeros(16000)))
+        sf.write(self.source, self.audio, 8000, subtype='PCM_24')
+        self.settings = Settings.from_flat(
+            {'model_sample_mode': True, 'model_sample_mode_duration': 1}
+        )
+        self.paths = patch('core.sample_mode.paths.SAMPLE_CLIP_PATH', str(self.cache))
+        self.paths.start()
+        self.addCleanup(self.paths.stop)
+
     def test_disabled_returns_original_paths(self):
-        settings = Settings.from_flat({"model_sample_mode": False})
-        paths = ["/tmp/song.wav"]
-        self.assertEqual(prepare_input_paths(settings, paths), paths)
+        self.settings.process.sample_mode = False
+        self.assertEqual(prepare_input_paths(self.settings, [str(self.source)]), [str(self.source)])
+        self.assertFalse(self.cache.exists())
 
-    def test_enabled_uses_clip_when_generation_succeeds(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            source = os.path.join(tmp, "input.wav")
-            with open(source, "wb") as handle:
-                handle.write(b"wav")
+    def test_clip_is_float_wav_with_native_rate_channels_and_duration(self):
+        [clip] = prepare_input_paths(self.settings, [str(self.source)])
+        info = sf.info(clip)
+        self.assertEqual(Path(clip).suffix, '.wav')
+        self.assertEqual((info.format, info.subtype), ('WAV', 'FLOAT'))
+        self.assertEqual((info.frames, info.samplerate, info.channels), (8000, 8000, 2))
+        expected, _ = sf.read(self.source, frames=8000, dtype='float32')
+        actual, _ = sf.read(clip, dtype='float32')
+        np.testing.assert_array_equal(actual, expected)
+        self.assertEqual(list(self.cache.iterdir()), [Path(clip)])
 
-            settings = Settings.from_flat(
-                {
-                    "model_sample_mode": True,
-                    "model_sample_mode_duration": 5,
-                }
+    def test_cached_clip_is_reused_without_decoding(self):
+        clips = prepare_input_paths(self.settings, [str(self.source)])
+        with patch('soundfile.SoundFile', side_effect=AssertionError('decoded cached input')):
+            self.assertEqual(prepare_input_paths(self.settings, [str(self.source)]), clips)
+
+    def test_cache_name_is_versioned_and_independent_of_input_extension(self):
+        clip = _clip_cache_path('/tmp/music.m4a', 5)
+        self.assertTrue(clip.endswith('.wav'))
+        self.assertIn('v2', Path(clip).name)
+
+    def test_partial_write_is_removed_and_fallback_reported(self):
+        failures = []
+
+        def fail_write(path: str, *args: object, **kwargs: object) -> None:
+            Path(path).write_bytes(b'partial')
+            raise OSError('disk full')
+
+        with patch('soundfile.write', side_effect=fail_write):
+            paths = prepare_input_paths(
+                self.settings, [str(self.source)], on_fallback=lambda p, e: failures.append((p, e))
             )
+        self.assertEqual(paths, [str(self.source)])
+        self.assertEqual(len(failures), 1)
+        self.assertIsInstance(failures[0][1], OSError)
+        self.assertEqual(list(self.cache.iterdir()), [])
 
-            mock_librosa = MagicMock()
-            mock_librosa.load.return_value = (np.zeros(44100), 44100)
-            mock_sf = MagicMock()
-
-            with patch("core.sample_mode.paths.SAMPLE_CLIP_PATH", tmp):
-                with patch.dict(sys.modules, {"librosa": mock_librosa, "soundfile": mock_sf}):
-                    result = prepare_input_paths(settings, [source])
-            self.assertEqual(len(result), 1)
-            self.assertNotEqual(result[0], source)
-            mock_sf.write.assert_called_once()
-
-    def test_clip_failure_reports_fallback_and_keeps_full_file(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            source = os.path.join(tmp, "input.wav")
-            with open(source, "wb") as handle:
-                handle.write(b"wav")
-
-            settings = Settings.from_flat(
-                {
-                    "model_sample_mode": True,
-                    "model_sample_mode_duration": 5,
-                }
+    def test_failed_publication_removes_temporary_clip(self):
+        failures = []
+        with patch('core.sample_mode.os.replace', side_effect=OSError('rename failed')):
+            paths = prepare_input_paths(
+                self.settings, [str(self.source)], on_fallback=lambda p, e: failures.append(e)
             )
-            reported: list[tuple[str, Exception]] = []
+        self.assertEqual(paths, [str(self.source)])
+        self.assertEqual(len(failures), 1)
+        self.assertEqual(list(self.cache.iterdir()), [])
 
-            mock_librosa = MagicMock()
-            mock_librosa.load.side_effect = RuntimeError("decode failed")
-
-            with patch("core.sample_mode.paths.SAMPLE_CLIP_PATH", tmp):
-                with patch.dict(sys.modules, {"librosa": mock_librosa, "soundfile": MagicMock()}):
-                    result = prepare_input_paths(
-                        settings,
-                        [source],
-                        on_fallback=lambda path, exc: reported.append((path, exc)),
-                    )
-            self.assertEqual(result, [source])
-            self.assertEqual(len(reported), 1)
-            self.assertEqual(reported[0][0], source)
-            self.assertIsInstance(reported[0][1], RuntimeError)
+    def test_missing_source_is_preserved(self):
+        missing = str(self.root / 'missing.wav')
+        self.assertEqual(prepare_input_paths(self.settings, [missing]), [missing])
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     unittest.main()

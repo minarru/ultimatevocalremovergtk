@@ -2,9 +2,8 @@
 
 import typing
 
-import audioread
-import librosa
 import numpy as np
+from core.audio_decode import load_audio
 from scipy import signal
 
 from core.debug_log import trace_phase
@@ -56,7 +55,7 @@ def prepare_mix(mix: typing.Any):
             return _as_channel_first(mix)
 
         audio_path = mix
-        mix, _sr = librosa.load(mix, mono=False, sr=44100)
+        mix, _sr = load_audio(mix, sr=44100)
 
         if isinstance(audio_path, str):
             if not np.any(mix) and audio_path.endswith('.mp3'):
@@ -67,10 +66,7 @@ def prepare_mix(mix: typing.Any):
 
 def rerun_mp3(audio_file: typing.Any, sample_rate: typing.Any = 44100):
 
-    with audioread.audio_open(audio_file) as f:
-        track_length = int(f.duration)
-
-    return librosa.load(audio_file, duration=track_length, mono=False, sr=sample_rate)[0]
+    return load_audio(audio_file, sr=sample_rate, force_ffmpeg=True)[0]
 
 
 def pitch_shift(mix: typing.Any):

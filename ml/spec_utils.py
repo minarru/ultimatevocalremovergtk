@@ -7,11 +7,11 @@ import traceback
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any, Literal, cast
 
-import audioread
 import librosa
 import numpy as np
 import soundfile as sf
 import torch
+from core.audio_decode import load_audio as decode_audio
 from scipy.signal import correlate, hilbert
 
 from bundled.constants import (
@@ -754,7 +754,7 @@ def _load_ensemble_waves(
                 wave = wave.T
             samplerate = 44100
         else:
-            wave, samplerate = librosa.load(str(audio_input[i]), mono=False, sr=44100)
+            wave, samplerate = decode_audio(str(audio_input[i]), sr=44100)
         wavs_.append(wave)
     return wavs_, int(samplerate)
 
@@ -1086,7 +1086,7 @@ def augment_audio(
 
     if on_phase is not None:
         on_phase("reading")
-    wav, sr = librosa.load(audio_file, sr=44100, mono=False)
+    wav, sr = decode_audio(audio_file, sr=44100)
 
     if wav.ndim == 1:
         wav = np.asfortranarray([wav, wav])
@@ -1286,17 +1286,8 @@ def align_audio(
     if on_phase is not None:
         on_phase("reading")
 
-    if file1.endswith(".mp3") and is_macos:
-        length1 = rerun_mp3(file1)
-        wav1, sr1 = librosa.load(file1, duration=length1, sr=44100, mono=False)
-    else:
-        wav1, sr1 = librosa.load(file1, sr=44100, mono=False)
-
-    if file2.endswith(".mp3") and is_macos:
-        length2 = rerun_mp3(file2)
-        wav2, _sr2 = librosa.load(file2, duration=length2, sr=44100, mono=False)
-    else:
-        wav2, _sr2 = librosa.load(file2, sr=44100, mono=False)
+    wav1, sr1 = decode_audio(file1, sr=44100)
+    wav2, _sr2 = decode_audio(file2, sr=44100)
 
     if on_phase is not None:
         on_phase("processing")
@@ -1320,8 +1311,8 @@ def align_audio(
     if is_match_silence:
         wav2 = adjust_leading_silence(wav2, wav1)
 
-    wav1_length = int(librosa.get_duration(y=wav1, sr=44100))
-    wav2_length = int(librosa.get_duration(y=wav2, sr=44100))
+    wav1_length = int(wav1.shape[-1] / 44100)
+    wav2_length = int(wav2.shape[-1] / 44100)
 
     if not is_mono:
         wav1 = wav1.transpose()
@@ -1666,16 +1657,9 @@ def align_audio_test(wav1: np.ndarray, wav2: np.ndarray, sr1: int = 44100) -> np
 
 
 def load_audio(audio_file: str) -> np.ndarray:
-    wav, _sr = librosa.load(audio_file, sr=44100, mono=False)
+    wav, _sr = decode_audio(audio_file, sr=44100)
 
     if wav.ndim == 1:
         wav = np.asfortranarray([wav, wav])
 
     return wav
-
-
-def rerun_mp3(audio_file: str) -> int:
-    with audioread.audio_open(audio_file) as f:
-        track_length = int(f.duration)
-
-    return track_length

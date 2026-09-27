@@ -9,9 +9,9 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-import librosa
 import numpy as np
 import torch
+from core.audio_decode import load_audio as decode_audio
 
 import ml.apollo_model_data as models
 from core.processing_phase import ProcessingPhase
@@ -21,7 +21,7 @@ from .model_weight_cache import ModelWeightCache, materialize_module, weight_cac
 
 
 def load_audio(file_path: str | Path) -> tuple[torch.Tensor, int]:
-    audio, samplerate = librosa.load(file_path, mono=False, sr=44100)
+    audio, samplerate = decode_audio(file_path, sr=44100)
     return torch.from_numpy(audio), int(samplerate)
 
 

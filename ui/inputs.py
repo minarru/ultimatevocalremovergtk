@@ -72,8 +72,7 @@ def _fmt_duration(seconds: float) -> str:
 def inspect_audio(path: str):
     """Return ``(is_valid, info)`` for ``path`` (duration / format / validity).
 
-    Tries ``soundfile`` (rich metadata), then stdlib ``wave`` for WAV, then
-    ``librosa`` (UVR's own verification path). All imports are lazy so the dialog
+    Uses the shared SoundFile/FFmpeg metadata and bounded readability probe. All imports are lazy so the dialog
     can be constructed without the ML/audio stack present.
     """
     result = probe_audio(path)
