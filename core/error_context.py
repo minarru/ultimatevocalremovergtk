@@ -140,51 +140,20 @@ def probe_audio_file(path: str) -> Dict[str, Any]:
         return info
 
     try:
-        import soundfile as sf
+        from .audio_decode import read_audio_metadata
 
-        meta = sf.info(path)
+        meta = read_audio_metadata(path)
         info.update(
             valid=True,
-            sample_rate=int(meta.samplerate) if meta.samplerate else None,
-            channels=int(meta.channels) if meta.channels else None,
-            frames=int(meta.frames) if meta.frames else None,
-            format=str(meta.format) if meta.format else None,
+            sample_rate=meta.sample_rate,
+            channels=meta.channels,
+            duration_sec=meta.duration_seconds,
+            frames=meta.frames,
+            format=meta.format,
         )
-        if meta.samplerate and meta.frames:
-            info["duration_sec"] = meta.frames / meta.samplerate
-        return info
-    except Exception:
-        pass
-
-    try:
-        import contextlib
-        import wave
-
-        with contextlib.closing(wave.open(path, "r")) as handle:
-            rate = handle.getframerate()
-            frames = handle.getnframes()
-            info.update(
-                valid=True,
-                sample_rate=rate,
-                channels=handle.getnchannels(),
-                frames=frames,
-                format="WAV",
-            )
-            if rate:
-                info["duration_sec"] = frames / float(rate)
-            return info
-    except Exception:
-        pass
-
-    try:
-        import librosa
-
-        duration = librosa.get_duration(path=path)
-        info.update(valid=True, duration_sec=float(duration))
-        return info
-    except Exception as exc:  # surfaced in the error log
+    except Exception as exc:
         info["error"] = f"{type(exc).__name__}: {exc}"
-        return info
+    return info
 
 
 def non_default_setting_lines(settings: Settings) -> List[str]:

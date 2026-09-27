@@ -161,7 +161,9 @@ class ApolloModelData:
                 "feature_dim": model_params.get("feature_dim"),
                 "layer": model_params.get("layer"),
             }
-        except Exception as exc:  # mirrors UVR's print-and-continue
-            print(exc)
+        except Exception as exc:  # mirrors UVR's report-and-continue
+            from .debug_log import debug
+
+            debug("model", f"apollo config read failed: {type(exc).__name__}: {exc}")
 
         return extracted_params, config

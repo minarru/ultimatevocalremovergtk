@@ -12,7 +12,8 @@ from onnx2pytorch import ConvertModel
 import ml.mdxnet as MdxnetSet
 from bundled.constants import *
 from bundled.error_handling import *
-from core.debug_log import trace_phase
+from core.debug_log import log_event, trace_phase
+from core.gpu_backend import onnx_cpu_fallback_warning
 from core.stems import exports_named_stem
 from core.torch_checkpoint import load_torch_checkpoint
 from ml import spec_utils
@@ -96,6 +97,7 @@ class SeperateMDX(SeperateAttributes):
                 )
 
                 cache = get_weight_cache()
+                fallback_warning: str | None = None
                 if self.is_mdx_ckpt:
                     key = weight_cache_key("mdx_ckpt", self.model_path, self.device)
                     self._weight_cache_key = key
@@ -141,6 +143,18 @@ class SeperateMDX(SeperateAttributes):
                                 sess_options=make_ort_session_options(),
                                 providers=self.run_type,
                             )
+                        active_providers = list(self._ort_session.get_providers())
+                        fallback_warning = onnx_cpu_fallback_warning(
+                            self.run_type, active_providers, ort.get_available_providers()
+                        )
+                        if fallback_warning:
+                            log_event(
+                                "model",
+                                "onnx_provider_fallback",
+                                level="warning",
+                                requested=",".join(self.run_type),
+                                active=",".join(active_providers),
+                            )
                         from engines.amp_runtime import build_ort_runner
 
                         self.model_run = build_ort_runner(self._ort_session, self.device)
@@ -151,7 +165,7 @@ class SeperateMDX(SeperateAttributes):
                             self.model_run = ConvertModel(load(self.model_path))
                             self.model_run.to(self.device).eval()
 
-                self.running_inference_console_write()
+                self.running_inference_console_write(notice=fallback_warning or "")
                 mix = prepare_mix(self.audio_file)
 
                 source: Any = self.demix(mix)

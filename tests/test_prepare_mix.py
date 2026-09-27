@@ -33,12 +33,39 @@ class PrepareMixTests(unittest.TestCase):
 
     def test_path_decode_cached_reuse(self) -> None:
         decoded = np.zeros((2, 8), dtype=np.float32)
-        with mock.patch("engines.mix.librosa.load", return_value=(decoded, 44100)) as load:
+        with mock.patch("engines.mix.load_audio", return_value=(decoded, 44100)) as load:
             first = prepare_mix("/tmp/fake.wav")
             second = prepare_mix(first)
         load.assert_called_once()
         np.testing.assert_array_equal(second, first)
         self.assertEqual(second.shape, (2, 8))
+
+
+class SharedDecoderBoundaryTests(unittest.TestCase):
+    def test_silent_mp3_retries_explicit_ffmpeg(self):
+        decoded = np.zeros((2, 8), dtype=np.float32)
+        with mock.patch('engines.mix.load_audio', return_value=(decoded, 44100)) as load:
+            result = prepare_mix('/tmp/silent.mp3')
+        self.assertEqual(
+            load.call_args_list,
+            [
+                mock.call('/tmp/silent.mp3', sr=44100, on_warning=None),
+                mock.call('/tmp/silent.mp3', sr=44100, force_ffmpeg=True, on_warning=None),
+            ],
+        )
+        np.testing.assert_array_equal(result, decoded)
+
+    def test_silent_wav_is_valid_without_retry(self):
+        decoded = np.zeros(8, dtype=np.float32)
+        with mock.patch('engines.mix.load_audio', return_value=(decoded, 44100)) as load:
+            result = prepare_mix('/tmp/silent.wav')
+        load.assert_called_once_with('/tmp/silent.wav', sr=44100, on_warning=None)
+        self.assertEqual(result.shape, (2, 8))
+
+    def test_multichannel_decode_does_not_silently_downmix(self):
+        with mock.patch('engines.mix.load_audio', return_value=(np.zeros((6, 32)), 44100)):
+            with self.assertRaisesRegex(ValueError, 'unsupported mix shape'):
+                prepare_mix('/tmp/surround.wav')
 
 
 if __name__ == "__main__":

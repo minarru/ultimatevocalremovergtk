@@ -104,6 +104,10 @@ class CatalogueSnapshot:
     entry_sources: Mapping[str, Mapping[str, str]] = field(default_factory=dict)
     report: RefreshReport | None = None
     checkpoint_yaml_url_index: Mapping[tuple[str, str], str] = field(default_factory=dict)
+    #: ``family -> {checkpoint filename -> kept selection}`` for rows dropped by
+    #: deduplication on exact evidence, so an installed copy downloaded under a
+    #: retired row's filename still links to its catalogue entry.
+    checkpoint_aliases: Mapping[str, Mapping[str, str]] = field(default_factory=dict)
 
     def download_lists(
         self,
@@ -113,6 +117,23 @@ class CatalogueSnapshot:
 
 def _readonly_catalogue(value: Mapping[str, Any]) -> Mapping[str, Any]:
     return MappingProxyType(dict(value))
+
+
+def _checkpoint_alias_index(
+    catalogue: Mapping[str, Any], duplicates: Mapping[str, Any]
+) -> dict[str, str]:
+    """Map each dropped duplicate's checkpoint filename to its kept selection.
+
+    A filename claimed by duplicates of different kept rows is left out.
+    """
+    from .catalog_dedupe import primary_checkpoint_name
+
+    targets: dict[str, set[str]] = {}
+    for label, duplicate in duplicates.items():
+        name = primary_checkpoint_name(catalogue[label])
+        if name:
+            targets.setdefault(name, set()).add(duplicate.kept)
+    return {name: next(iter(kept)) for name, kept in targets.items() if len(kept) == 1}
 
 
 def build_meta_by_family(
@@ -443,7 +464,7 @@ class CatalogueCoordinator:
         )
 
     def _publish(self, *, report: RefreshReport | None) -> CatalogueSnapshot:
-        from .catalog_dedupe import dedupe_download_catalogue
+        from .catalog_dedupe import dedupe_download_catalogue, find_catalogue_duplicates
         from .catalog_sources import (
             EntryMeta,
             _checkpoint_urls,
@@ -481,6 +502,7 @@ class CatalogueCoordinator:
             _checkpoint_urls=_checkpoint_urls,
             _metadata_alias_index=_metadata_alias_index,
             dedupe_download_catalogue=dedupe_download_catalogue,
+            find_catalogue_duplicates=find_catalogue_duplicates,
         )
         previous = self._latest
         with self._lock:
@@ -508,6 +530,7 @@ class CatalogueCoordinator:
         _checkpoint_urls: Any,
         _metadata_alias_index: Any,
         dedupe_download_catalogue: Any,
+        find_catalogue_duplicates: Any,
     ) -> CatalogueSnapshot:
         upstream = contents.get(SourceId.UPSTREAM)
         politrees = contents.get(SourceId.POLITREES)
@@ -593,10 +616,15 @@ class CatalogueCoordinator:
         from .download_sizes import trusted_content_ids_from_cache
 
         content_ids = trusted_content_ids_from_cache(_checkpoint_urls(vr, mdx, apollo))
-        vr_out = dedupe_download_catalogue(vr, content_ids=content_ids)
-        mdx_out = dedupe_download_catalogue(mdx, content_ids=content_ids)
+        vr_out, vr_duplicates = find_catalogue_duplicates(vr, content_ids=content_ids)
+        mdx_out, mdx_duplicates = find_catalogue_duplicates(mdx, content_ids=content_ids)
         demucs_out = dedupe_download_catalogue(demucs, demucs_bags=True)
-        apollo_out = dedupe_download_catalogue(apollo, content_ids=content_ids)
+        apollo_out, apollo_duplicates = find_catalogue_duplicates(apollo, content_ids=content_ids)
+        checkpoint_aliases = {
+            "vr": _checkpoint_alias_index(vr, vr_duplicates),
+            "mdx": _checkpoint_alias_index(mdx, mdx_duplicates),
+            "apollo": _checkpoint_alias_index(apollo, apollo_duplicates),
+        }
 
         existing = {**vr_out, **mdx_out, **demucs_out, **apollo_out}
         unsupported = unsupported_mvsepless_downloads(
@@ -626,6 +654,9 @@ class CatalogueCoordinator:
             display_index_vr=MappingProxyType(display_vr),
             display_index_mdx=MappingProxyType(display_mdx),
             display_index_demucs=MappingProxyType(display_demucs),
+            checkpoint_aliases=MappingProxyType(
+                {family: MappingProxyType(index) for family, index in checkpoint_aliases.items()}
+            ),
             checkpoint_yaml_index=MappingProxyType(yaml_index),
             entry_sources=MappingProxyType(
                 {

@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-import io
 import math
 import platform
 import traceback
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any, Literal, cast
 
-import audioread
 import librosa
 import numpy as np
 import soundfile as sf
@@ -26,6 +24,8 @@ from bundled.constants import (
     MIN_SPEC,
     SOFT_SPEC,
 )
+from core.audio_decode import load_audio as decode_audio
+from core.debug_log import debug
 
 from . import pyrb
 
@@ -125,9 +125,12 @@ def normalize(wave: np.ndarray, is_normalize: bool = False, min_peak: float = 0.
     When ``min_peak`` is in (0, 1] and the (post-limit) peak is below it, scale up
     so the peak equals ``min_peak``. ``min_peak`` of 0 disables amplification.
     """
-    maxv = float(np.abs(wave).max()) if getattr(wave, "size", 0) else 0.0
+    from core.stem_levels import peak_amplitude
+
+    maxv = peak_amplitude(wave)
     if maxv > 1.0 and is_normalize:
-        print("Above clipping threshold.")
+        # Not print(): the CLI's --json mode owns stdout.
+        debug("audio", f"normalize: peak {maxv:.3f} above clipping threshold")
         wave = wave / maxv
         maxv = 1.0
     try:
@@ -154,16 +157,6 @@ def auto_transpose(audio_array: np.ndarray) -> np.ndarray:
     if audio_array.shape[1] == 2:
         return audio_array.T
     return audio_array
-
-
-def write_array_to_mem(audio_data: np.ndarray | Any, subtype: str) -> io.BytesIO | Any:
-    if isinstance(audio_data, np.ndarray):
-        audio_buffer = io.BytesIO()
-        sf.write(audio_buffer, audio_data, 44100, subtype=subtype, format='WAV')
-        audio_buffer.seek(0)
-        return audio_buffer
-    else:
-        return audio_data
 
 
 def spectrogram_to_image(spec: np.ndarray, mode: str = 'magnitude') -> np.ndarray:
@@ -255,7 +248,7 @@ def merge_artifacts(
         error_name = f'{type(e).__name__}'
         traceback_text = ''.join(traceback.format_tb(e.__traceback__))
         message = f'{error_name}: "{e}"\n{traceback_text}"'
-        print('Post Process Failed: ', message)
+        debug("audio", f"post process failed: {message}")
 
     return mask
 
@@ -754,7 +747,7 @@ def _load_ensemble_waves(
                 wave = wave.T
             samplerate = 44100
         else:
-            wave, samplerate = librosa.load(str(audio_input[i]), mono=False, sr=44100)
+            wave, samplerate = decode_audio(str(audio_input[i]), sr=44100)
         wavs_.append(wave)
     return wavs_, int(samplerate)
 
@@ -994,7 +987,7 @@ def adjust_leading_silence(
         ref_silence_end_p = (ref_silence_end / 44100) * 1000
         target_silence_end_p = (target_silence_end / 44100) * 1000
         silence_difference_p = ref_silence_end_p - target_silence_end_p
-        print("silence_difference: ", silence_difference_p)
+        debug("audio", f"silence_difference: {silence_difference_p}")
     except Exception:
         pass
 
@@ -1086,7 +1079,7 @@ def augment_audio(
 
     if on_phase is not None:
         on_phase("reading")
-    wav, sr = librosa.load(audio_file, sr=44100, mono=False)
+    wav, sr = decode_audio(audio_file, sr=44100)
 
     if wav.ndim == 1:
         wav = np.asfortranarray([wav, wav])
@@ -1286,17 +1279,8 @@ def align_audio(
     if on_phase is not None:
         on_phase("reading")
 
-    if file1.endswith(".mp3") and is_macos:
-        length1 = rerun_mp3(file1)
-        wav1, sr1 = librosa.load(file1, duration=length1, sr=44100, mono=False)
-    else:
-        wav1, sr1 = librosa.load(file1, sr=44100, mono=False)
-
-    if file2.endswith(".mp3") and is_macos:
-        length2 = rerun_mp3(file2)
-        wav2, _sr2 = librosa.load(file2, duration=length2, sr=44100, mono=False)
-    else:
-        wav2, _sr2 = librosa.load(file2, sr=44100, mono=False)
+    wav1, sr1 = decode_audio(file1, sr=44100)
+    wav2, _sr2 = decode_audio(file2, sr=44100)
 
     if on_phase is not None:
         on_phase("processing")
@@ -1320,8 +1304,8 @@ def align_audio(
     if is_match_silence:
         wav2 = adjust_leading_silence(wav2, wav1)
 
-    wav1_length = int(librosa.get_duration(y=wav1, sr=44100))
-    wav2_length = int(librosa.get_duration(y=wav2, sr=44100))
+    wav1_length = int(wav1.shape[-1] / 44100)
+    wav2_length = int(wav2.shape[-1] / 44100)
 
     if not is_mono:
         wav1 = wav1.transpose()
@@ -1666,16 +1650,9 @@ def align_audio_test(wav1: np.ndarray, wav2: np.ndarray, sr1: int = 44100) -> np
 
 
 def load_audio(audio_file: str) -> np.ndarray:
-    wav, _sr = librosa.load(audio_file, sr=44100, mono=False)
+    wav, _sr = decode_audio(audio_file, sr=44100)
 
     if wav.ndim == 1:
         wav = np.asfortranarray([wav, wav])
 
     return wav
-
-
-def rerun_mp3(audio_file: str) -> int:
-    with audioread.audio_open(audio_file) as f:
-        track_length = int(f.duration)
-
-    return track_length

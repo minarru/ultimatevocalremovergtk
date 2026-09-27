@@ -132,6 +132,31 @@ class RunLoopMissingFileTests(unittest.TestCase):
         self.assertEqual(runner.iteration, 1)
 
 
+class RunLoopDecodeNoticeTests(unittest.TestCase):
+    @patch("core.run_loop.snapshot_worker_file")
+    @patch("core.run_loop.run_separator", return_value={})
+    def test_decoder_repair_notice_reaches_the_run_console(
+        self, _run_sep: MagicMock, _snapshot: MagicMock
+    ) -> None:
+        mix = np.zeros((2, 8), dtype=np.float32)
+
+        def load_audio(path: str, *, sr: int, on_warning: Any = None):
+            assert on_warning is not None
+            on_warning("Warning: damaged.m4a contains damaged audio\n")
+            return mix, sr
+
+        callbacks, console = _callbacks()
+        with (
+            patch("engines.mix.load_audio", side_effect=load_audio),
+            tempfile.TemporaryDirectory() as tmp,
+        ):
+            path = os.path.join(tmp, "damaged.m4a")
+            open(path, "wb").close()
+            run_models_on_files(_runner(), [path], callbacks, [_model("m")], hooks=_Hooks())
+
+        self.assertIn("Warning: damaged.m4a contains damaged audio\n", console)
+
+
 class RunLoopLazyDecodeTests(unittest.TestCase):
     @patch("core.run_loop.snapshot_worker_file")
     @patch("core.run_loop.run_separator", return_value={})
@@ -142,7 +167,7 @@ class RunLoopLazyDecodeTests(unittest.TestCase):
         mix = np.zeros((2, 8), dtype=np.float32)
         events: list[str] = []
 
-        def _decode(path: str) -> np.ndarray:
+        def _decode(path: str, on_warning: Any = None) -> np.ndarray:
             events.append(f"decode:{os.path.basename(path)}")
             return mix
 
