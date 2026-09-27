@@ -125,6 +125,8 @@ Tests should observe phases at the actual operation boundary and through dispatc
 
 Push to `origin` (**GitHub**: `minarru/ultimatevocalremovergtk`) only. Prefer `gh pr create` / `gh pr merge` for review. The former Codeberg remote may exist locally as `codeberg` until you remove it after archive.
 
+Root `.superpowers/` scratch files also stay off `main`; the main-branch policy check covers that directory as well as plans and specs.
+
 The **`dev`** branch holds in-progress work that is not ready for `main`. Superpowers
 plans and specs under `docs/superpowers/plans/` and `docs/superpowers/specs/` stay
 on `dev` only: gitignore them on feature branches, `git add -f` them on `dev`, and
