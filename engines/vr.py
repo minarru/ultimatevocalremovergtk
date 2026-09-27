@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 import librosa
 import numpy as np
 import torch
+from core.audio_decode import load_audio
 
 from bundled.constants import *
 from bundled.error_handling import *
@@ -166,11 +167,9 @@ class SeperateVR(SeperateAttributes):
             audio_file = spec_utils.write_array_to_mem(self.audio_file, subtype=self.wav_type_set)
             is_mp3 = audio_file.endswith('.mp3') if isinstance(audio_file, str) else False
             X_wave = {
-                bands_n: librosa.load(
+                bands_n: load_audio(
                     audio_file,
                     sr=bp['sr'],
-                    mono=False,
-                    dtype=np.float32,
                     res_type=wav_resolution,
                 )[0],
             }
