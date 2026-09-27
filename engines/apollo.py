@@ -11,9 +11,9 @@ from typing import Any
 
 import numpy as np
 import torch
-from core.audio_decode import load_audio as decode_audio
 
 import ml.apollo_model_data as models
+from core.audio_decode import load_audio as decode_audio
 from core.processing_phase import ProcessingPhase
 from ml.apollo_inference import restore_audio
 

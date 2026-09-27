@@ -25,6 +25,13 @@ updates:
         versions: [">=4.10"]
       - dependency-name: "mpmath"
         versions: [">=1.4"]
+      # requirements-cuda-linux.txt pins the exact CUDA toolkit, cuDNN, NCCL,
+      # cuSPARSELt and NVSHMEM versions torch declares (torch 2.14 requires
+      # cuda-toolkit==13.0.3). Bumping them without torch leaves NVIDIA
+      # installs on libraries torch was not built against; update them only
+      # together with a torch upgrade.
+      - dependency-name: "cuda-*"
+      - dependency-name: "nvidia-*"
     groups:
       # Review the numerical/GPU stack together, including major updates.
       # Grouping does not prove CUDA, Python-wheel, or model compatibility;
