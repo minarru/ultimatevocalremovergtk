@@ -130,6 +130,54 @@ class AudioDecodeTests(unittest.TestCase):
             load_audio(path, force_ffmpeg=True)
 
     @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "FFmpeg required")
+    def test_single_damaged_packet_is_filled_with_silence_and_keeps_timing(self):
+        import json
+
+        rng = np.random.default_rng(0)
+        source = Path(self.tmp.name) / "long.wav"
+        sf.write(source, (rng.standard_normal((30 * 8000, 2)) * 0.1).astype(np.float32), 8000)
+        path = source.with_suffix(".m4a")
+        subprocess.run(
+            ["ffmpeg", "-nostdin", "-v", "error", "-i", str(source), "-c:a", "aac", str(path)],
+            check=True,
+        )
+        clean, _rate = load_audio(path, force_ffmpeg=True)
+        packets = json.loads(
+            subprocess.run(
+                [
+                    "ffprobe",
+                    "-v",
+                    "error",
+                    "-select_streams",
+                    "a:0",
+                    "-show_packets",
+                    "-show_entries",
+                    "packet=pos,size",
+                    "-of",
+                    "json",
+                    str(path),
+                ],
+                check=True,
+                capture_output=True,
+            ).stdout
+        )["packets"]
+        packet = packets[len(packets) // 2]
+        with path.open("r+b") as audio:
+            audio.seek(int(packet["pos"]))
+            audio.write(b"\x00" + b"\xff" * (int(packet["size"]) - 1))
+
+        notices: list[str] = []
+        repaired, rate = load_audio(path, force_ffmpeg=True, on_warning=notices.append)
+
+        self.assertEqual(rate, 8000)
+        # The unreadable packet is replaced by silence, not dropped, so the
+        # length and everything after the damage stay aligned with the source.
+        self.assertEqual(repaired.shape, clean.shape)
+        np.testing.assert_allclose(repaired[:, -8000:], clean[:, -8000:], atol=1e-3)
+        self.assertEqual(len(notices), 1)
+        self.assertIn("silence", notices[0])
+
+    @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "FFmpeg required")
     def test_first_audio_stream_controls_rate_channels_and_pcm(self):
         second = self.path.with_name("second.wav")
         sf.write(second, np.zeros(16000, dtype=np.float32), 16000)
@@ -327,6 +375,59 @@ class SubprocessDecodeTests(unittest.TestCase):
         output = _capture([sys.executable, '-c', 'print("pcm", end="")'], timeout=5)
         self.assertIsInstance(output, bytearray)
         self.assertEqual(output, b'pcm')
+
+    def _tolerant_decode(self, strict_error: BaseException, unfilled: int, filled: int):
+        """Run the FFmpeg path with a failing strict pass and stubbed retries.
+
+        ``unfilled`` / ``filled`` are the stereo frame counts of the tolerant
+        pass without and with gap filling.
+        """
+        from core.audio_decode import AudioMetadata
+
+        frame = np.zeros(2, dtype="<f4").tobytes()
+        calls: list[list[str]] = []
+
+        def run_tool(command: list[str], **kwargs: Any):
+            calls.append(command)
+            if "-xerror" in command:
+                raise strict_error
+            if any("aresample" in part for part in command):
+                return bytearray(frame * filled), 8 * filled, b"[aac] damaged packet\n"
+            return bytearray(), 8 * unfilled, b"[aac] damaged packet\n"
+
+        notices: list[str] = []
+        with (
+            mock.patch("core.audio_decode._ffprobe", return_value=AudioMetadata(1000, 2)),
+            mock.patch("core.audio_decode.resolve_ffmpeg", return_value="ffmpeg"),
+            mock.patch("core.audio_decode._run_tool", side_effect=run_tool),
+        ):
+            result = load_audio("damaged.m4a", force_ffmpeg=True, on_warning=notices.append)
+        return result, notices, calls
+
+    def test_small_loss_is_accepted_with_a_notice(self):
+        (data, rate), notices, calls = self._tolerant_decode(
+            RuntimeError("decoder error"), unfilled=99_700, filled=100_000
+        )
+        self.assertEqual((data.shape, rate), ((2, 100_000), 1000))
+        self.assertEqual(len(calls), 3)
+        self.assertEqual(len(notices), 1)
+        self.assertIn("300 ms", notices[0])
+
+    def test_loss_above_budget_is_rejected(self):
+        with self.assertRaisesRegex(AudioDecodeError, "too damaged"):
+            self._tolerant_decode(RuntimeError("decoder error"), unfilled=99_000, filled=100_000)
+
+    def test_concealed_errors_without_lost_audio_still_notify(self):
+        (data, _rate), notices, _calls = self._tolerant_decode(
+            RuntimeError("decoder error"), unfilled=100_000, filled=100_000
+        )
+        self.assertEqual(data.shape, (2, 100_000))
+        self.assertEqual(len(notices), 1)
+        self.assertIn("glitches", notices[0])
+
+    def test_timeout_is_not_retried(self):
+        with self.assertRaises(AudioDecodeError):
+            self._tolerant_decode(TimeoutError("no PCM"), unfilled=100_000, filled=100_000)
 
     def test_unknown_duration_stays_unknown(self):
         from core.audio_decode import _ffprobe
