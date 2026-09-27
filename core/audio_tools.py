@@ -10,7 +10,7 @@ those callbacks onto the main loop (see :mod:`ui.dispatch`).
 
 Every heavy dependency (``librosa`` / ``soundfile`` / ``scipy`` via
 ``ml.spec_utils``, ``matchering``, ``pyrubberband`` via ``ml.pyrb``,
-``pydub`` for non-WAV export, ``kthread``) is imported lazily inside the worker
+``kthread``) is imported lazily inside the worker
 so this module - and any view that imports it - stays importable on a bare
 Python (no torch / ML stack) install. Options are read from a
 :class:`~core.settings.Settings` through its flat compatibility accessors.
