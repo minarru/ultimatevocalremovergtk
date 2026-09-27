@@ -49,8 +49,8 @@ class SharedDecoderBoundaryTests(unittest.TestCase):
         self.assertEqual(
             load.call_args_list,
             [
-                mock.call('/tmp/silent.mp3', sr=44100),
-                mock.call('/tmp/silent.mp3', sr=44100, force_ffmpeg=True),
+                mock.call('/tmp/silent.mp3', sr=44100, on_warning=None),
+                mock.call('/tmp/silent.mp3', sr=44100, force_ffmpeg=True, on_warning=None),
             ],
         )
         np.testing.assert_array_equal(result, decoded)
@@ -59,7 +59,7 @@ class SharedDecoderBoundaryTests(unittest.TestCase):
         decoded = np.zeros(8, dtype=np.float32)
         with mock.patch('engines.mix.load_audio', return_value=(decoded, 44100)) as load:
             result = prepare_mix('/tmp/silent.wav')
-        load.assert_called_once_with('/tmp/silent.wav', sr=44100)
+        load.assert_called_once_with('/tmp/silent.wav', sr=44100, on_warning=None)
         self.assertEqual(result.shape, (2, 8))
 
     def test_multichannel_decode_does_not_silently_downmix(self):

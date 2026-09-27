@@ -40,11 +40,13 @@ from .separator_run import run_separator
 from .settings import Settings
 
 
-def _decoded_mix_for_process(audio_file: typing.Any):
+def _decoded_mix_for_process(
+    audio_file: typing.Any, on_warning: typing.Callable[[str], None] | None = None
+):
     """Decode once per track so ensemble / secondary models reuse the same mix."""
     from engines.mix import prepare_mix
 
-    return prepare_mix(audio_file)
+    return prepare_mix(audio_file, on_warning=on_warning)
 
 
 def _progress_detail(
@@ -356,7 +358,7 @@ def run_models_on_files(
 
         audio_file, estimated_chunks = plan
         callbacks.report_phase(ProcessingPhase.READING_AUDIO)
-        decoded_mix = _decoded_mix_for_process(audio_file)
+        decoded_mix = _decoded_mix_for_process(audio_file, callbacks.console)
         chunks = slice_mix(
             decoded_mix,
             chunk_seconds=chunk_seconds,
