@@ -306,8 +306,10 @@ def with_worker_lifecycle(
 
 def _report_input_finished(runner: Any, callbacks: Any, audio_file: str) -> None:
     """Publish the finished input's outputs; runners without the hook stay silent."""
-    report = getattr(runner, "finished_input_report", None)
-    if not callable(report):
+    report: Callable[[str], tuple[str, str, tuple[str, ...]]] | None = getattr(
+        runner, "finished_input_report", None
+    )
+    if report is None:
         return
     source, reference, outputs = report(audio_file)
     callbacks.input_finished((source,), outputs, None, reference=reference)
