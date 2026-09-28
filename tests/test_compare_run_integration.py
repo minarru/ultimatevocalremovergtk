@@ -145,6 +145,16 @@ class RunControllerCompareTests(unittest.TestCase):
         toast = window.toast_overlay.add_toast.call_args.args[0]
         self.assertEqual(toast.get_button_label(), "Compare")
 
+    def test_failed_run_keeps_finished_inputs_comparable(self) -> None:
+        controller, window = _controller()
+        _begin(controller)
+        controller.listening.add(_cset("/a", "/a1"))
+        controller._report_error = mock.Mock()
+        controller._send_failure_notification = mock.Mock()
+        with mock.patch("ui.run_control.playback_unavailable_reason", return_value=None):
+            controller._on_error(RuntimeError("input 2 failed"))
+        window.set_compare_available.assert_called_with(True)
+
     def test_open_compare_presents_one_dialog(self) -> None:
         controller, _ = _controller()
         controller.listening.add(_cset("/a", "/a1"))

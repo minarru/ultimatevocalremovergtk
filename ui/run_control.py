@@ -979,6 +979,8 @@ class RunController:
         self._host.set_pulse(False)
         failed_target = self._running_target or self._host.target
         self._restore_idle_controls()
+        # Inputs that finished before the failure stay comparable from the header.
+        self._host.set_compare_available(self.compare_ready())
         self._host.set_run_result("Processing failed", error=True)
         message = f"Process failed: {exc}"
         self._host.append_console(f"\n{message}\n")
