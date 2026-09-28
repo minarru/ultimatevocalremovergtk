@@ -360,6 +360,9 @@ class MainWindow(Adw.ApplicationWindow):
         install_view_tab_tooltips(self._view_switcher_bar)
         end_box = object_from_builder(builder, "end_box", Gtk.Box)
         end_box.prepend(self._download_queue_indicator.widget)
+        self._compare_button = object_from_builder(builder, "compare_button", Gtk.Button)
+        set_icon_button_a11y(self._compare_button, "Compare stems")
+        self._compare_button.connect("clicked", lambda _b: self._run_controller.open_compare())
         menu_button = object_from_builder(builder, "menu_button", Gtk.MenuButton)
         set_icon_button_a11y(menu_button, MAIN_MENU_HINT)
         menu_button.set_menu_model(self._build_primary_menu())
@@ -1478,3 +1481,7 @@ class MainWindow(Adw.ApplicationWindow):
     def toast(self, message: str) -> None:
         """Show a transient toast (public so the embedded pages can use it)."""
         self.toast_overlay.add_toast(Adw.Toast.new(message))
+
+    def set_compare_available(self, available: bool) -> None:
+        """Show the header Compare button while the last run has tracks to play."""
+        self._compare_button.set_visible(available)
