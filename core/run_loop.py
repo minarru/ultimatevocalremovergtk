@@ -304,6 +304,15 @@ def with_worker_lifecycle(
         _release_inference_resources(runner)
 
 
+def _report_input_finished(runner: Any, callbacks: Any, audio_file: str) -> None:
+    """Publish the finished input's outputs; runners without the hook stay silent."""
+    report = getattr(runner, "finished_input_report", None)
+    if not callable(report):
+        return
+    source, reference, outputs = report(audio_file)
+    callbacks.input_finished((source,), outputs, None, reference=reference)
+
+
 def run_models_on_files(
     runner: Any,
     input_paths: list[str],
@@ -353,6 +362,7 @@ def run_models_on_files(
         if plan is None:
             audio_file = input_paths[file_num - 1]
             callbacks.console("Input file was not found; skipping.\n")
+            callbacks.input_finished((audio_file,), (), None)
             runner.iteration += runner.true_model_count
             continue
 
@@ -472,6 +482,7 @@ def run_models_on_files(
             hooks.after_model(runner, state, current_model)
 
         hooks.after_file(runner, state)
+        _report_input_finished(runner, callbacks, audio_file)
         state.decoded_mix = None
         state.chunks = []
         state.ov_samples = []
