@@ -105,8 +105,57 @@ class PlaybackEngineTests(unittest.TestCase):
         _spin_until(lambda: self.engine.position > 0.1)
         self.engine.select(1)
         self.assertEqual(self.engine.selected, 1)
-        self.assertEqual(self.engine._volumes_for_test(), {0: 0.0, 1: 1.0})
+        # Gains follow a short ramp as audio flows, then settle on one branch.
+        self.assertTrue(
+            _spin_until(lambda: self.engine._volumes_for_test() == {0: 0.0, 1: 1.0}),
+            self.engine._volumes_for_test(),
+        )
         self.assertEqual(self.states, [True])
+
+    def test_switch_ramps_instead_of_stepping(self) -> None:
+        from gi.repository import Gst
+
+        from ui.playback.engine import PlaybackEngine
+
+        pos = os.path.join(self.dir, "pos.wav")
+        neg = os.path.join(self.dir, "neg.wav")
+        sf.write(pos, np.full(44100 * 3, 0.5, dtype=np.float32), 44100)
+        sf.write(neg, np.full(44100 * 3, -0.5, dtype=np.float32), 44100)
+        chunks: list[np.ndarray] = []
+
+        def appsink() -> Any:
+            sink = Gst.ElementFactory.make("appsink")
+            assert sink is not None
+            sink.set_property("sync", True)
+            sink.set_property("emit-signals", True)
+
+            def on_sample(s: Any) -> Any:
+                buf = s.emit("pull-sample").get_buffer()
+                ok, info = buf.map(Gst.MapFlags.READ)
+                if ok:
+                    chunks.append(np.frombuffer(bytes(info.data), dtype=np.float32).copy())
+                    buf.unmap(info)
+                return Gst.FlowReturn.OK
+
+            sink.connect("new-sample", on_sample)
+            return sink
+
+        engine = PlaybackEngine(sink_factory=appsink)
+        self.addCleanup(engine.unload)
+        durations: list[float] = []
+        engine.on_duration = durations.append
+        engine.load([Track("pos", pos), Track("neg", neg)], selected=0)
+        self.assertTrue(_spin_until(lambda: bool(durations)))
+        engine.play()
+        self.assertTrue(_spin_until(lambda: engine.position > 0.5))
+        engine.select(1)
+        self.assertTrue(_spin_until(lambda: engine.position > 1.2))
+        engine.pause()
+
+        samples = np.concatenate(chunks).reshape(-1, 2)[:, 0]
+        settled = samples[4410:]  # skip resampler start-up
+        self.assertLess(float(settled.min()), -0.45, "never switched to the second track")
+        self.assertLess(float(np.abs(np.diff(settled)).max()), 0.05, "switch is a hard step")
 
     def test_missing_file_reports_track_error_and_others_play(self) -> None:
         missing = os.path.join(self.dir, "gone.wav")

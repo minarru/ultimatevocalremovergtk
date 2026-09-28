@@ -33,6 +33,9 @@ _REQUIRED_FACTORIES = (
 )
 _POSITION_INTERVAL_MS = 100
 _DEFAULT_RATE = 44100
+# Crossfade length for a track switch: long enough to remove the step (click),
+# short enough to still hear the two tracks at the same moment.
+_RAMP_NS = 5_000_000
 _SECOND = 1_000_000_000
 
 
@@ -44,6 +47,7 @@ def playback_unavailable_reason() -> str | None:
 
         gi.require_version("Gst", "1.0")
         gi.require_version("GstPbutils", "1.0")
+        gi.require_version("GstController", "1.0")
         from gi.repository import Gst, GstPbutils  # noqa: F401
     except (ImportError, ValueError) as exc:
         reason = f"GStreamer is not installed ({exc})"
@@ -60,6 +64,28 @@ def playback_unavailable_reason() -> str | None:
         log_event("playback", "unavailable", reason=reason)
         return reason
     return None
+
+
+class _ControlSource(Protocol):
+    def set(self, timestamp: int, value: float) -> bool: ...
+    def unset_all(self) -> None: ...
+
+
+def _bind_linear_control(volume: Gst.Element) -> _ControlSource:
+    """Drive ``volume``'s gain from a linear control source.
+
+    PyGObject-stubs ships no ``GstController`` module, so it is loaded untyped
+    here and exposed only through the narrow :class:`_ControlSource` protocol.
+    """
+    import importlib
+
+    controller = importlib.import_module("gi.repository.GstController")
+    control = controller.InterpolationControlSource.new()
+    control.set_property("mode", controller.InterpolationMode.LINEAR)
+    volume.add_control_binding(
+        controller.DirectControlBinding.new_absolute(volume, "volume", control)
+    )
+    return control
 
 
 class PlaybackControls(Protocol):
@@ -120,6 +146,8 @@ class PlaybackEngine:
         self._pending_seek: float | None = None
         self._duration = 0.0
         self._timer: int | None = None
+        self._controls: dict[int, _ControlSource] = {}
+        self._edge_ns: int | None = None
 
     # -- state ---------------------------------------------------------------
 
@@ -230,7 +258,12 @@ class PlaybackEngine:
             caps.link(volume)
             volume.link(mixer)
             decode.connect("pad-added", self._on_pad_added, convert)
+            control = _bind_linear_control(volume)
+            volume_sink = volume.get_static_pad("sink")
+            if volume_sink is not None:
+                volume_sink.add_probe(Gst.PadProbeType.BUFFER, self._on_branch_buffer)
             self._volumes[index] = volume
+            self._controls[index] = control
 
         self._pipeline = pipeline
         self._selected = selected if selected in self._volumes else min(self._volumes)
@@ -292,6 +325,7 @@ class PlaybackEngine:
         from gi.repository import Gst
 
         self._at_end = False
+        self._reset_ramps()
         self._pipeline.seek_simple(
             Gst.Format.TIME,
             Gst.SeekFlags.FLUSH | Gst.SeekFlags.ACCURATE,
@@ -300,10 +334,18 @@ class PlaybackEngine:
         self.on_position(target)
 
     def select(self, index: int) -> None:
-        if index not in self._volumes:
+        if index not in self._volumes or index == self._selected:
             return
-        self._selected = index
-        self._apply_volumes()
+        previous, self._selected = self._selected, index
+        edge = self._edge_ns
+        if edge is None:
+            self._apply_volumes()
+            return
+        # Ramp from the next unprocessed sample, so no buffer steps between gains.
+        for i, control in self._controls.items():
+            control.unset_all()
+            control.set(edge, 1.0 if i == previous else 0.0)
+            control.set(edge + _RAMP_NS, 1.0 if i == index else 0.0)
 
     def unload(self) -> None:
         self._stop_timer()
@@ -316,6 +358,8 @@ class PlaybackEngine:
 
             pipeline.set_state(Gst.State.NULL)
         self._volumes = {}
+        self._controls = {}
+        self._edge_ns = None
         self._prerolled = False
         self._pending_seek = None
         self._duration = 0.0
@@ -325,6 +369,24 @@ class PlaybackEngine:
             self.on_state(False)
 
     # -- internals -----------------------------------------------------------
+
+    def _on_branch_buffer(self, _pad: Gst.Pad, info: Gst.PadProbeInfo) -> Gst.PadProbeReturn:
+        # Streaming thread: remember how far the branches have been fed.
+        from gi.repository import Gst
+
+        buffer = info.get_buffer()
+        if buffer is not None and buffer.pts != Gst.CLOCK_TIME_NONE:
+            duration = buffer.duration if buffer.duration != Gst.CLOCK_TIME_NONE else 0
+            end = buffer.pts + duration
+            if self._edge_ns is None or end > self._edge_ns:
+                self._edge_ns = end
+        return Gst.PadProbeReturn.OK
+
+    def _reset_ramps(self) -> None:
+        self._edge_ns = None
+        for control in self._controls.values():
+            control.unset_all()
+        self._apply_volumes()
 
     def _apply_volumes(self) -> None:
         for index, volume in self._volumes.items():
