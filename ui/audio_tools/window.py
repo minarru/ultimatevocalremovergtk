@@ -907,6 +907,7 @@ class AudioToolsPage:
             backend_name,
             model_hash_table=self.context.repo.model_hash_table,
             on_unrecognized=handler,
+            persistent_hash_table=self.context.repo.persistent_model_hash_table(),
         )
         if not model_data.is_model_status:
             self._toast(APOLLO_MODEL_FAIL_TEXT.strip())
