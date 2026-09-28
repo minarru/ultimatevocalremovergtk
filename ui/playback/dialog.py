@@ -63,9 +63,11 @@ class CompareDialog:
         self.folder_button.connect("clicked", self._on_open_folder)
         self.dialog.connect("closed", self._on_dialog_closed)
 
-        keys = Gtk.EventControllerKey()
-        keys.connect("key-pressed", lambda _c, keyval, _code, _state: self.handle_key(keyval))
-        self.dialog.add_controller(keys)
+        # Capture phase: a focused radio or button would otherwise consume Space first.
+        self._keys = Gtk.EventControllerKey()
+        self._keys.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        self._keys.connect("key-pressed", lambda _c, keyval, _code, _state: self.handle_key(keyval))
+        self.dialog.add_controller(self._keys)
 
         engine.on_position = self._on_position
         engine.on_duration = self._on_duration
@@ -135,9 +137,13 @@ class CompareDialog:
             self._checks.append(check)
         selected = 1 if len(cset.tracks) > 1 else 0
         self._checks[selected].set_active(True)
-        self._building = False
         self.play_button.set_sensitive(True)
         self._engine.load(cset.tracks, selected=selected, position=position)
+        # The engine falls back to another track when the default one fails to load.
+        actual = self._engine.selected
+        if 0 <= actual < len(self._checks):
+            self._checks[actual].set_active(True)
+        self._building = False
 
     def _select(self, index: int) -> None:
         if not self._checks[index].get_active():

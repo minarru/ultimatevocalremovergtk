@@ -157,6 +157,13 @@ class CompareDialogTests(unittest.TestCase):
         self.assertEqual(engine.calls[-1], ("play",))
         self.assertFalse(dialog.handle_key(Gdk.KEY_9))
 
+    def test_shortcuts_are_captured_before_focused_children(self) -> None:
+        from gi.repository import Gtk
+
+        # A focused radio or button would otherwise swallow Space before the dialog.
+        dialog, _ = self._dialog(_set("song", "Vocals"))
+        self.assertEqual(dialog._keys.get_propagation_phase(), Gtk.PropagationPhase.CAPTURE)
+
     def test_arrow_keys_seek_five_seconds(self) -> None:
         from gi.repository import Gdk
 
@@ -172,6 +179,23 @@ class CompareDialogTests(unittest.TestCase):
         engine.on_track_error(2, "Could not determine type of stream")
         self.assertFalse(dialog.rows[2].get_sensitive())
         self.assertIn("Could not determine", dialog.rows[2].get_tooltip_text() or "")
+
+    def test_radio_follows_engine_when_default_track_fails(self) -> None:
+        from ui.playback.dialog import CompareDialog
+
+        class FailingVocalsEngine(FakeEngine):
+            def load(
+                self, tracks: Sequence[Track], *, selected: int = 0, position: float = 0.0
+            ) -> None:
+                super().load(tracks, selected=selected, position=position)
+                self.on_track_error(1, "gone")
+                self._selected = 0
+
+        engine = FailingVocalsEngine()
+        dialog = CompareDialog([_set("song", "Vocals", "Instrumental")], engine)
+        self.assertEqual([c.get_active() for c in dialog._checks], [True, False, False])
+        self.assertFalse(dialog.rows[1].get_sensitive())
+        self.assertNotIn(("select", 0), engine.calls)
 
     def test_engine_error_disables_transport_and_toasts(self) -> None:
         from ui.playback.dialog import CompareDialog
