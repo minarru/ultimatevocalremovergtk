@@ -75,7 +75,7 @@ system dependencies yourself and then run `./install_packages.sh` without
 sudo apt update
 sudo apt install -y ffmpeg python3-venv python3-pip python3-gi gir1.2-gtk-4.0 \
     gir1.2-adw-1 libglib2.0-bin libsndfile1 rubberband-cli \
-    gir1.2-gstreamer-1.0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good
+    gir1.2-gstreamer-1.0 gir1.2-gst-plugins-base-1.0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good
 ```
 
 </details>
@@ -105,7 +105,7 @@ sudo pacman -Syu --needed ffmpeg python-pip python-virtualenv python-gobject gtk
 
 ```bash
 sudo zypper install -y ffmpeg python3-pip python3-gobject gtk4 libadwaita libsndfile1 rubberband \
-    typelib-1_0-Gst-1_0 gstreamer-plugins-base gstreamer-plugins-good
+    typelib-1_0-Gst-1_0 typelib-1_0-GstPbutils-1_0 gstreamer-plugins-base gstreamer-plugins-good
 ```
 
 </details>
@@ -203,7 +203,7 @@ running version with the current GitHub release metadata.
 | `gi` or GTK import errors | Install your distro's GTK4, libadwaita, and Python GObject packages, then recreate `.venv` with `./install_packages.sh` |
 | FFmpeg errors on non-WAV files | Install `ffmpeg` and confirm it is on `PATH` |
 | Time Stretch or Change Pitch unavailable | Install `rubberband-cli` |
-| No **Compare** button after a run | Install GStreamer's GI bindings plus base and good plugins (for example `gir1.2-gstreamer-1.0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good`) and restart the app |
+| No **Compare** button after a run | Install GStreamer's GI bindings plus base and good plugins (for example `gir1.2-gstreamer-1.0 gir1.2-gst-plugins-base-1.0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good`) and restart the app |
 | No models in a picker | Open Download Center and install a supported model for that method |
 | Console warns that an MDX-Net model is running on the CPU | Run `./install_packages.sh --cuda` to install `onnxruntime-gpu`; if it is already installed, start the app from a terminal to see which CUDA library ONNX Runtime could not load |
 | Processing fails | Open **Error Log** or press `Ctrl+E`; enable Debug or Trace under **Preferences → General → Diagnostics** when more detail is needed |

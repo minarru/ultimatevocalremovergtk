@@ -217,10 +217,10 @@ Diagnostics use `core/debug_log.py` named events (`playback.load`,
 ## Dependencies and packaging
 
 - Runtime (optional): the GStreamer GI typelib plus base and good plugins.
-  - Debian/Ubuntu/Mint: `gir1.2-gstreamer-1.0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good`
+  - Debian/Ubuntu/Mint: `gir1.2-gstreamer-1.0 gir1.2-gst-plugins-base-1.0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good`
   - Fedora: `gstreamer1 gstreamer1-plugins-base gstreamer1-plugins-good`
   - Arch family: `gstreamer gst-plugins-base gst-plugins-good`
-  - openSUSE: `typelib-1_0-Gst-1_0 gstreamer-plugins-base gstreamer-plugins-good`
+  - openSUSE: `typelib-1_0-Gst-1_0 typelib-1_0-GstPbutils-1_0 gstreamer-plugins-base gstreamer-plugins-good`
 - Added to the README distro blocks and `install_packages.sh --system-deps`.
 - No new Python packages. `PyGObject-stubs` already ships `Gst.pyi`, so the
   engine is type-checked under basedpyright; no `Any` shims.

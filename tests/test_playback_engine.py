@@ -164,6 +164,13 @@ class PlaybackEngineTests(unittest.TestCase):
 
 
 class AvailabilityTests(unittest.TestCase):
+    @unittest.skipUnless(
+        os.environ.get("UVR_REQUIRE_GSTREAMER"), "set UVR_REQUIRE_GSTREAMER=1 to require playback"
+    )
+    def test_required_gstreamer_is_available(self) -> None:
+        # CI sets this so a missing typelib/plugin fails instead of skipping the engine tests.
+        self.assertIsNone(playback_unavailable_reason())
+
     def test_import_does_not_load_gstreamer(self) -> None:
         import subprocess
         import sys
