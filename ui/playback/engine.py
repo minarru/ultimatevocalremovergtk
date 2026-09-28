@@ -154,9 +154,14 @@ class PlaybackEngine:
     # -- loading -------------------------------------------------------------
 
     def load(self, tracks: Sequence[Track], *, selected: int = 0, position: float = 0.0) -> None:
+        self.unload()
+        # Initialises GStreamer (cached) — callers must not have to do it first.
+        reason = playback_unavailable_reason()
+        if reason is not None:
+            self._fail(reason)
+            return
         from gi.repository import Gst, GstPbutils
 
-        self.unload()
         discoverer = GstPbutils.Discoverer.new(int(self._discover_timeout * _SECOND))
         playable: list[tuple[int, str]] = []
         rates: list[int] = []

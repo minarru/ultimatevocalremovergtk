@@ -174,6 +174,29 @@ class AvailabilityTests(unittest.TestCase):
         ).stdout.strip()
         self.assertEqual(out, "False")
 
+    @unittest.skipIf(_REASON is not None, f"GStreamer playback unavailable: {_REASON}")
+    def test_engine_initialises_gstreamer_itself(self) -> None:
+        import subprocess
+        import sys
+
+        code = (
+            "import os, tempfile, numpy as np, soundfile as sf\n"
+            "from core.listening import Track\n"
+            "from ui.playback.engine import PlaybackEngine\n"
+            "d = tempfile.mkdtemp(); p = os.path.join(d, 't.wav')\n"
+            "sf.write(p, np.zeros(4410, dtype='float32'), 44100)\n"
+            "def sink():\n"
+            "    from gi.repository import Gst\n"
+            "    return Gst.ElementFactory.make('fakesink')\n"
+            "e = PlaybackEngine(sink_factory=sink); errs = []\n"
+            "e.on_track_error = lambda i, m: errs.append(m); e.on_error = errs.append\n"
+            "e.load([Track('t', p)]); print(e.loaded, errs); e.unload()\n"
+        )
+        out = subprocess.run(
+            [sys.executable, "-c", code], capture_output=True, text=True, check=True
+        ).stdout.strip()
+        self.assertEqual(out, "True []")
+
     def test_reason_is_cached(self) -> None:
         self.assertIs(playback_unavailable_reason(), playback_unavailable_reason())
 
