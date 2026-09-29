@@ -27,9 +27,9 @@ switching tracks is sample-accurate and click-free.
 
 ### Out of scope for v1
 
-Waveform display, A/B loop points, loudness matching between stems, comparing
+A/B loop points, loudness matching between stems, comparing
 across runs, previewing inputs before a run, opening an arbitrary folder of
-stems.
+stems. (Waveform display was added afterwards; see the addendum at the end.)
 
 ## Architecture
 
@@ -273,3 +273,214 @@ Changed:
 - `README.md` (distro blocks + troubleshooting row), `install_packages.sh`,
   `.github/workflows/test.yml`
 - `docs/tracked-issues.md` (new product-gap row, updated on completion)
+
+## Addendum: per-stem waveforms
+
+**Date:** 2026-09-29
+**Status:** approved in brainstorming, awaiting spec review
+
+### Goal
+
+Show every track's waveform in its row so bleed and artefacts are visible as
+well as audible, and let the waveforms replace the seek slider.
+
+### Decisions (from brainstorming)
+
+| Question | Decision |
+|---|---|
+| Layout | A waveform strip under each track row; one playhead shared by all rows |
+| Seeking | Click or drag on any waveform seeks; the seek `Gtk.Scale` is removed |
+| Track switching | Unchanged: radio button or `1`–`9`. A waveform click never switches tracks |
+| Amplitude | Shared absolute linear scale: 0 dBFS fills the row height in every row; no per-row normalisation |
+| Peak source | New `core/waveform.py` over `core/audio_decode`, run on a worker thread |
+
+Rejected peak sources: decoding with GStreamer (`appsink` / `level`) in
+`ui/playback` adds a second Gst decode path that can only be tested under Gst;
+computing peaks while the run writes outputs slows every run and misses the
+reference track.
+
+### Core: peak extraction — `core/waveform.py`
+
+Pure numpy; no GTK, no GStreamer.
+
+```python
+@dataclass(frozen=True)
+class Peaks:
+    duration: float                 # seconds
+    mins: NDArray[np.float32]       # per bucket, in [-1, 1]
+    maxs: NDArray[np.float32]       # per bucket, in [-1, 1]
+
+class WaveformCancelled(Exception): ...
+
+def compute_peaks(
+    path: str, *, buckets: int = 2048, cancel: threading.Event | None = None
+) -> Peaks
+```
+
+- Bucket count is `min(buckets, frames)`; each bucket covers an equal share of
+  the file's frames. Channels fold to the per-bucket extreme (min of mins, max
+  of maxs), so a stereo file is one envelope.
+- Values are raw sample values, clipped to [-1, 1]. Nothing is normalised;
+  the widget scales every row by the same full scale.
+- SoundFile-readable files whose frame count is known stream in blocks of
+  65 536 frames, so memory stays bounded. Anything else (FFmpeg-only formats,
+  unknown length) goes through `core.audio_decode.load_audio` once and is
+  reduced in one pass. The fallback therefore uses the same decoder the
+  models used.
+- `cancel` is checked between blocks (and before the fallback decode); a set
+  event raises `WaveformCancelled`.
+- Decode failures raise `core.audio_decode.AudioDecodeError`. An empty file
+  raises the same error.
+
+### UI: peak loading — `ui/playback/waveforms.py`
+
+GTK-free apart from main-loop delivery, which is injected.
+
+```python
+class PeakCache:                    # owned by ListeningSession
+    def get(self, path: str) -> Peaks | None
+    def put(self, path: str, peaks: Peaks) -> None
+    def clear(self) -> None
+
+class WaveformLoader:
+    def __init__(self, cache: PeakCache, *,
+                 compute=compute_peaks, dispatch=idle_on_main) -> None
+    def load(self, paths: Sequence[str], first: int,
+             on_peaks: Callable[[int, Peaks | None], None]) -> None
+    def cancel(self) -> None
+```
+
+- The cache key is `(abspath, st_mtime_ns, st_size)`. `ListeningSession`
+  owns one `PeakCache` and clears it in `clear()`. Closing and reopening the
+  dialog, or switching inputs, therefore never decodes the same file twice
+  within a run's session.
+- `load` cancels any previous job, bumps a generation counter, and serves cache
+  hits at once (still through `dispatch`, so callbacks are always on the main
+  loop). Misses go to one daemon thread that computes the tracks one at a
+  time, starting with index `first` (the audible track) and then in display
+  order.
+- Each result goes through `dispatch`. The main-loop side drops it when its
+  generation is no longer current. A failure delivers `None` and logs
+  `log_event("playback", "waveform_error", path=…, error=…)`. Cancellation
+  delivers nothing.
+- `cancel()` sets the job's event and bumps the generation. It does not join
+  the thread; a cancelled worker exits at its next block boundary.
+
+### UI: waveform widget — `ui/widgets/waveform.py`
+
+A `Gtk.DrawingArea` drawn with cairo, following
+`ui/widgets/progress_ring.py`.
+
+```python
+class WaveformView(Gtk.DrawingArea):
+    def set_peaks(self, peaks: Peaks | None) -> None      # None = placeholder
+    def set_timeline(self, duration: float) -> None       # shared axis length
+    def set_position(self, seconds: float) -> None
+    def set_active(self, active: bool) -> None            # audible track?
+    on_seek: Callable[[float], None]
+
+def x_to_seconds(x: float, width: float, duration: float) -> float
+def seconds_to_x(seconds: float, width: float, duration: float) -> float
+```
+
+- Height request is 40 px; it expands horizontally.
+- **Time axis:** x spans `timeline` (the set's longest duration, from the
+  engine's `on_duration`), not the track's own duration. A shorter track's
+  envelope ends early and stays aligned with the shared playhead. Until a
+  timeline is known the track's own duration is used.
+- **Drawing:** for each pixel column, take the min/max over the buckets that
+  fall in it and draw a vertical line centred on the row's midline, scaled so
+  that ±1.0 reaches the top and bottom edges. Columns past the track's end are
+  empty.
+- **Colour:** everything is drawn from `widget.get_color()` (GTK 4.10+), so
+  light, dark and high-contrast themes need no code. `set_active(True)` adds
+  libadwaita's `accent` style class, which makes that colour the accent colour
+  on every supported libadwaita (Ubuntu 24.04 ships 1.5, which predates
+  `StyleManager.get_accent_color_rgba`). Inactive rows draw the foreground at
+  reduced alpha. The
+  already-played part (left of the playhead) is drawn at full strength, the
+  rest at lower strength. The playhead is a 1 px foreground line.
+- **Placeholder:** with no peaks (loading or failed), a faint 1 px midline.
+- **Seeking:** a `Gtk.GestureClick` seeks on press, and a `Gtk.GestureDrag`
+  seeks continuously while dragging. Both call `on_seek(x_to_seconds(...))`,
+  clamped to `[0, timeline]`, and claim the event sequence so the row's radio
+  is not activated.
+- `x_to_seconds` / `seconds_to_x` are module functions so the mapping is
+  testable without a display.
+
+### UI: dialog changes — `ui/playback/dialog.py`, `compare-stems-dialog.blp`
+
+- `CompareDialog.__init__` gains `waveforms: WaveformLoader | None = None`.
+  With `None` no waveforms are built, so tests that don't care stay as they
+  are. `RunController.open_compare` passes
+  `WaveformLoader(self.listening.peak_cache)`.
+- Each row becomes a `Gtk.ListBoxRow` whose child is a vertical box:
+  - a header line with the radio `Gtk.CheckButton`, the title label and, for
+    the reference, a dim "Reference" caption;
+  - a `WaveformView` under it, aligned to the title's left edge.
+
+  The row stays activatable (activating it toggles the radio), sensitivity and
+  tooltips on track errors stay as they are, and `self.rows` keeps one entry
+  per track.
+- Blueprint: the `seek_scale` is removed. The transport is play/pause, elapsed
+  label, an expanding spacer and the total label. `content-width` grows from
+  480 to 560. The footer hint text is unchanged.
+- Engine callbacks: `_on_position` updates the elapsed label and calls
+  `set_position` on every waveform. `_on_duration` updates the total label and
+  calls `set_timeline` on every waveform. Changing the selection (check
+  toggled, `1`–`9`, or the engine falling back after a load failure) calls
+  `set_active` so exactly the audible row is accented.
+- `WaveformView.on_seek` goes to `engine.seek`. Left/Right keep seeking by 5 s.
+  With the slider gone these keys are the keyboard route to seeking.
+- `_show_set` calls `waveforms.load([t.path for t in tracks], first=selected,
+  on_peaks=...)` after building the rows. Closing the dialog (both `close()`
+  and the `closed` signal) calls `waveforms.cancel()` before
+  `engine.unload()`.
+
+### Error handling
+
+| Situation | Behaviour |
+|---|---|
+| A track's peaks fail to decode | Its waveform keeps the placeholder midline; playback unaffected; logged once as `playback.waveform_error` |
+| Peaks arrive after the input was switched or the dialog closed | Dropped by generation check |
+| Track fails in the engine but decodes for peaks | Row insensitive as before; waveform still drawn (dimmed by insensitivity) |
+| Output file changed on disk after peaks were cached | Cache key includes mtime and size, so it is recomputed |
+
+### Testing
+
+1. **`tests/test_waveform.py`** (core, no GTK): a 1 kHz sine at 0.5 amplitude
+   gives maxs ≈ 0.5 and mins ≈ −0.5 (no normalisation); silence gives zeros;
+   a stereo file with one silent channel folds to the loud channel; bucket
+   count clamps to frame count for tiny files; a set cancel event raises
+   `WaveformCancelled`; a corrupt file raises `AudioDecodeError`; an
+   FFmpeg-only path (patched SoundFile failure) still produces peaks through
+   `load_audio`.
+2. **`tests/test_waveform_loader.py`** (no GTK; `dispatch` runs inline or is
+   queued by the test): the first index is computed first; cache hits skip
+   `compute`; a changed mtime misses; `cancel()` suppresses delivery; results
+   from an older generation are dropped after a second `load`; a compute error
+   delivers `None`.
+3. **Widget mapping**: `x_to_seconds` / `seconds_to_x` round-trip, clamp
+   outside `[0, width]`, and handle `duration == 0`.
+4. **Dialog** (extends `tests/test_compare_dialog.py`, fake engine and a fake
+   loader): one `WaveformView` per row; delivered peaks reach the right row;
+   `on_seek` from a waveform calls `engine.seek` and not `engine.select`;
+   `on_position` / `on_duration` reach every waveform; exactly the selected
+   row is active after `1`–`9` and after an engine fallback; switching input
+   calls `load` again; closing calls `cancel` before `unload`; the seek scale
+   no longer exists. Existing seek-scale assertions are updated accordingly.
+5. **Session**: `ListeningSession.clear()` clears its `PeakCache`.
+
+### Files
+
+New:
+- `core/waveform.py`
+- `ui/playback/waveforms.py`
+- `ui/widgets/waveform.py`
+- `tests/test_waveform.py`, `tests/test_waveform_loader.py`
+
+Changed:
+- `ui/playback/dialog.py`, `ui/playback/session.py`, `ui/run_control.py`
+- `resources/ui/compare-stems-dialog.blp` (+ compiled resource bundle)
+- `tests/test_compare_dialog.py`, `tests/test_compare_run_integration.py`
+- `docs/tracked-issues.md` if it lists waveform display as a gap
