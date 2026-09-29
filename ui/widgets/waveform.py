@@ -59,8 +59,13 @@ def _noop(_seconds: float) -> None:
 
 
 class WaveformView(Gtk.DrawingArea):
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, track: str = "") -> None:
+        # An image, not a slider: it is not focusable, and the dialog's Left/Right
+        # keys are the keyboard route to seeking.
+        super().__init__(accessible_role=Gtk.AccessibleRole.IMG)
+        self.set_focusable(False)
+        if track:
+            self.update_property([Gtk.AccessibleProperty.LABEL], [f"{track} waveform"])
         self.on_seek: Callable[[float], None] = _noop
         self._peaks: Peaks | None = None
         self._timeline = 0.0

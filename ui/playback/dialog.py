@@ -165,7 +165,7 @@ class CompareDialog:
             caption.add_css_class("dim-label")
             caption.add_css_class("caption")
             details.append(caption)
-        waveform = WaveformView()
+        waveform = WaveformView(track.label)
         waveform.set_margin_top(4)
         waveform.set_position(position)
         waveform.on_seek = lambda seconds: self._engine.seek(seconds)

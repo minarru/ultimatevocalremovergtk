@@ -86,6 +86,20 @@ class WaveformViewTests(unittest.TestCase):
 
         Adw.init()
 
+    def test_is_a_labelled_unfocusable_image(self) -> None:
+        from unittest import mock
+
+        from gi.repository import Gtk
+
+        from ui.widgets.waveform import WaveformView
+
+        # GTK has no getter for accessible properties, so spy on the setter.
+        with mock.patch.object(WaveformView, "update_property") as update:
+            view = WaveformView("Vocals")
+        update.assert_any_call([Gtk.AccessibleProperty.LABEL], ["Vocals waveform"])
+        self.assertEqual(view.get_accessible_role(), Gtk.AccessibleRole.IMG)
+        self.assertFalse(view.get_focusable())
+
     def test_seek_at_maps_x_on_the_timeline(self) -> None:
         from ui.widgets.waveform import WaveformView
 

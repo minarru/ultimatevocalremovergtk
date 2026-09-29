@@ -258,6 +258,22 @@ class CompareDialogTests(unittest.TestCase):
         minimum, _natural, _min_base, _nat_base = content.measure(Gtk.Orientation.VERTICAL, 560)
         self.assertLess(minimum, 600)
 
+    def test_waveforms_are_named_after_their_tracks(self) -> None:
+        from unittest import mock
+
+        from gi.repository import Gtk
+
+        from ui.widgets.waveform import WaveformView
+
+        with mock.patch.object(WaveformView, "update_property") as update:
+            self._dialog(_set("song", "Vocals"))
+        labels = [
+            c.args[1][0]
+            for c in update.call_args_list
+            if c.args[0] == [Gtk.AccessibleProperty.LABEL]
+        ]
+        self.assertEqual(labels, [f"{REFERENCE_LABEL} waveform", "Vocals waveform"])
+
     def test_one_waveform_per_row(self) -> None:
         dialog, _ = self._dialog(_set("song", "Vocals", "Instrumental"))
         self.assertEqual(len(dialog.waveforms), len(dialog.rows))
