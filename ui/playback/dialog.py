@@ -2,17 +2,23 @@
 
 from __future__ import annotations
 
-from typing import Callable, Sequence
+from typing import TYPE_CHECKING, Callable, Sequence
 
 from gi.repository import Adw, Gdk, Gtk
 
-from core.listening import ComparisonSet
+from core.listening import ComparisonSet, Track
 
 from ..dialogs.utils import present_modal_dialog
 from ..files import open_folder_in_file_manager
 from ..gtk_narrow import root_window
 from ..template import load_builder, object_from_builder
+from ..widgets.waveform import WaveformView
 from .engine import PlaybackControls
+
+if TYPE_CHECKING:
+    from core.waveform import Peaks
+
+    from .waveforms import PeakLoading
 
 _SEEK_STEP = 5.0
 _PLAY_ICON = "media-playback-start-symbolic"
@@ -32,12 +38,14 @@ class CompareDialog:
         sets: Sequence[ComparisonSet],
         engine: PlaybackControls,
         *,
+        waveforms: PeakLoading | None = None,
         output_dir: str = "",
         on_toast: Callable[[str], None] | None = None,
         on_closed: Callable[[], None] | None = None,
     ) -> None:
         self._sets = list(sets)
         self._engine = engine
+        self._peak_loader = waveforms
         self._output_dir = output_dir
         self._on_toast = on_toast
         self._on_closed = on_closed
@@ -50,15 +58,16 @@ class CompareDialog:
         self._track_list = object_from_builder(builder, "track_list", Gtk.ListBox)
         self.play_button = object_from_builder(builder, "play_button", Gtk.Button)
         self._elapsed = object_from_builder(builder, "elapsed_label", Gtk.Label)
-        self.seek_scale = object_from_builder(builder, "seek_scale", Gtk.Scale)
         self._total = object_from_builder(builder, "total_label", Gtk.Label)
         self.folder_button = object_from_builder(builder, "folder_button", Gtk.Button)
-        self.rows: list[Adw.ActionRow] = []
+        self.rows: list[Gtk.ListBoxRow] = []
+        self.titles: list[Gtk.Label] = []
+        self.waveforms: list[WaveformView] = []
         self._checks: list[Gtk.CheckButton] = []
 
         self.play_button.update_property([Gtk.AccessibleProperty.LABEL], ["Play"])
         self.play_button.connect("clicked", lambda _b: self._engine.toggle())
-        self.seek_scale.connect("change-value", self._on_change_value)
+        self._track_list.connect("row-activated", self._on_row_activated)
         self.folder_button.set_visible(bool(output_dir))
         self.folder_button.connect("clicked", self._on_open_folder)
         self.dialog.connect("closed", self._on_dialog_closed)
@@ -90,6 +99,7 @@ class CompareDialog:
         present_modal_dialog(self.dialog, parent)
 
     def close(self) -> None:
+        self._cancel_peaks()
         self.dialog.force_close()
         self._engine.unload()
 
@@ -113,28 +123,21 @@ class CompareDialog:
 
     def _show_set(self, index: int, *, position: float) -> None:
         cset = self._sets[index]
+        self._cancel_peaks()
         self._building = True
         for row in self.rows:
             self._track_list.remove(row)
         self.rows = []
+        self.titles = []
+        self.waveforms = []
         self._checks = []
         group: Gtk.CheckButton | None = None
-        for track in cset.tracks:
-            row = Adw.ActionRow(title=track.label)
-            if track.is_reference:
-                row.set_subtitle("Reference")
-            check = Gtk.CheckButton()
-            if group is not None:
-                check.set_group(group)
-            else:
+        for row_index, track in enumerate(cset.tracks):
+            check = self._add_row(track, row_index, position)
+            if group is None:
                 group = check
-            row.add_prefix(check)
-            row.set_activatable_widget(check)
-            row_index = len(self.rows)
-            check.connect("toggled", self._on_check_toggled, row_index)
-            self._track_list.append(row)
-            self.rows.append(row)
-            self._checks.append(check)
+            else:
+                check.set_group(group)
         selected = 1 if len(cset.tracks) > 1 else 0
         self._checks[selected].set_active(True)
         self.play_button.set_sensitive(True)
@@ -144,6 +147,46 @@ class CompareDialog:
         if 0 <= actual < len(self._checks):
             self._checks[actual].set_active(True)
         self._building = False
+        if self._peak_loader is not None:
+            self._peak_loader.load(
+                [track.path for track in cset.tracks], self._engine.selected, self._on_peaks
+            )
+
+    def _add_row(self, track: Track, index: int, position: float) -> Gtk.CheckButton:
+        check = Gtk.CheckButton(valign=Gtk.Align.START)
+        check.update_property([Gtk.AccessibleProperty.LABEL], [track.label])
+        check.connect("toggled", self._on_check_toggled, index)
+
+        details = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2, hexpand=True)
+        title = Gtk.Label(label=track.label, xalign=0)
+        details.append(title)
+        if track.is_reference:
+            caption = Gtk.Label(label="Reference", xalign=0)
+            caption.add_css_class("dim-label")
+            caption.add_css_class("caption")
+            details.append(caption)
+        waveform = WaveformView()
+        waveform.set_margin_top(4)
+        waveform.set_position(position)
+        waveform.on_seek = lambda seconds: self._engine.seek(seconds)
+        details.append(waveform)
+
+        line = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        line.set_margin_top(8)
+        line.set_margin_bottom(8)
+        line.set_margin_start(12)
+        line.set_margin_end(12)
+        line.append(check)
+        line.append(details)
+        row = Gtk.ListBoxRow()
+        row.set_child(line)
+        self._track_list.append(row)
+
+        self.rows.append(row)
+        self.titles.append(title)
+        self.waveforms.append(waveform)
+        self._checks.append(check)
+        return check
 
     def _select(self, index: int) -> None:
         if not self._checks[index].get_active():
@@ -151,22 +194,30 @@ class CompareDialog:
         else:
             self._engine.select(index)
 
+    def _cancel_peaks(self) -> None:
+        if self._peak_loader is not None:
+            self._peak_loader.cancel()
+
     # -- signal handlers -------------------------------------------------------
 
     def _on_check_toggled(self, check: Gtk.CheckButton, index: int) -> None:
+        if not check.get_active():
+            return
+        for row_index, waveform in enumerate(self.waveforms):
+            waveform.set_active(row_index == index)
         # Rows are rebuilt before ``load``; the engine gets the selection from it.
-        if check.get_active() and not self._building:
+        if not self._building:
             self._engine.select(index)
+
+    def _on_row_activated(self, _list: Gtk.ListBox, row: Gtk.ListBoxRow) -> None:
+        if row in self.rows and row.get_sensitive():
+            self._select(self.rows.index(row))
 
     def _on_input_changed(self, dropdown: Gtk.DropDown, _pspec: object) -> None:
         position = self._engine.position
         if self._engine.playing:
             self._engine.pause()
         self._show_set(dropdown.get_selected(), position=position)
-
-    def _on_change_value(self, _scale: Gtk.Scale, _scroll: Gtk.ScrollType, value: float) -> bool:
-        self._engine.seek(value)
-        return False
 
     def _on_open_folder(self, _button: Gtk.Button) -> None:
         window = self._parent or root_window(self.dialog)
@@ -175,19 +226,26 @@ class CompareDialog:
         open_folder_in_file_manager(window, self._output_dir, on_error=self._toast)
 
     def _on_dialog_closed(self, _dialog: Adw.Dialog) -> None:
+        self._cancel_peaks()
         self._engine.unload()
         if self._on_closed is not None:
             self._on_closed()
 
+    def _on_peaks(self, index: int, peaks: Peaks | None) -> None:
+        if 0 <= index < len(self.waveforms):
+            self.waveforms[index].set_peaks(peaks)
+
     # -- engine callbacks ------------------------------------------------------
 
     def _on_position(self, seconds: float) -> None:
-        self.seek_scale.set_value(seconds)
         self._elapsed.set_label(_mmss(seconds))
+        for waveform in self.waveforms:
+            waveform.set_position(seconds)
 
     def _on_duration(self, seconds: float) -> None:
-        self.seek_scale.get_adjustment().set_upper(max(seconds, 1.0))
         self._total.set_label(_mmss(seconds))
+        for waveform in self.waveforms:
+            waveform.set_timeline(seconds)
 
     def _on_state(self, playing: bool) -> None:
         self.play_button.set_icon_name(_PAUSE_ICON if playing else _PLAY_ICON)

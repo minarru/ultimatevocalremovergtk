@@ -6,7 +6,10 @@ import os
 import unittest
 from typing import Any, Callable, Sequence
 
+import numpy as np
+
 from core.listening import REFERENCE_LABEL, ComparisonSet, Track
+from core.waveform import Peaks
 
 
 def _noop(*_a: object) -> None:
@@ -78,6 +81,21 @@ class FakeEngine:
         self._loaded = False
 
 
+class FakeLoader:
+    def __init__(self, calls: list[tuple[Any, ...]]) -> None:
+        self.calls = calls
+        self.on_peaks: Callable[[int, Peaks | None], None] | None = None
+
+    def load(
+        self, paths: Sequence[str], first: int, on_peaks: Callable[[int, Peaks | None], None]
+    ) -> None:
+        self.calls.append(("peaks.load", tuple(paths), first))
+        self.on_peaks = on_peaks
+
+    def cancel(self) -> None:
+        self.calls.append(("peaks.cancel",))
+
+
 def _set(name: str, *labels: str) -> ComparisonSet:
     src = f"/in/{name}.wav"
     tracks = [Track(REFERENCE_LABEL, src, None, True)]
@@ -100,13 +118,20 @@ class CompareDialogTests(unittest.TestCase):
 
         Adw.init()
 
-    def _dialog(self, *sets: ComparisonSet, output_dir: str = "") -> tuple[Any, FakeEngine]:
+    def _dialog(
+        self, *sets: ComparisonSet, output_dir: str = "", loader: bool = False
+    ) -> tuple[Any, FakeEngine]:
         from ui.playback.dialog import CompareDialog
 
         engine = FakeEngine()
         closed: list[bool] = []
+        self.loader = FakeLoader(engine.calls) if loader else None
         dialog = CompareDialog(
-            list(sets), engine, output_dir=output_dir, on_closed=lambda: closed.append(True)
+            list(sets),
+            engine,
+            waveforms=self.loader,
+            output_dir=output_dir,
+            on_closed=lambda: closed.append(True),
         )
         self.closed = closed
         return dialog, engine
@@ -123,7 +148,7 @@ class CompareDialogTests(unittest.TestCase):
             ),
         )
         self.assertEqual(
-            [r.get_title() for r in dialog.rows], [REFERENCE_LABEL, "Vocals", "Instrumental"]
+            [t.get_label() for t in dialog.titles], [REFERENCE_LABEL, "Vocals", "Instrumental"]
         )
 
     def test_dropdown_hidden_for_single_input(self) -> None:
@@ -144,7 +169,9 @@ class CompareDialogTests(unittest.TestCase):
 
     def test_row_activation_selects_track(self) -> None:
         dialog, engine = self._dialog(_set("song", "Vocals", "Instrumental"))
-        dialog.rows[2].activate()
+        # What GTK emits when a row is clicked or activated by keyboard; calling
+        # ``activate()`` on a row of an unpresented dialog trips a focus assertion.
+        dialog._track_list.emit("row-activated", dialog.rows[2])
         self.assertEqual(engine.calls[-1], ("select", 2))
 
     def test_number_keys_select_and_space_toggles(self) -> None:
@@ -196,6 +223,7 @@ class CompareDialogTests(unittest.TestCase):
         self.assertEqual([c.get_active() for c in dialog._checks], [True, False, False])
         self.assertFalse(dialog.rows[1].get_sensitive())
         self.assertNotIn(("select", 0), engine.calls)
+        self.assertEqual([w.active for w in dialog.waveforms], [True, False, False])
 
     def test_engine_error_disables_transport_and_toasts(self) -> None:
         from ui.playback.dialog import CompareDialog
@@ -207,12 +235,72 @@ class CompareDialogTests(unittest.TestCase):
         self.assertFalse(dialog.play_button.get_sensitive())
         self.assertEqual(toasts, ["Couldn't start playback. No audio sink"])
 
-    def test_duration_and_position_update_labels_and_scale(self) -> None:
+    def test_duration_and_position_update_labels_and_waveforms(self) -> None:
         dialog, engine = self._dialog(_set("song", "Vocals"))
         engine.on_duration(225.0)
         engine.on_position(83.0)
-        self.assertEqual(dialog.seek_scale.get_adjustment().get_upper(), 225.0)
-        self.assertEqual(dialog.seek_scale.get_value(), 83.0)
+        self.assertEqual(dialog._total.get_label(), "3:45")
+        self.assertEqual(dialog._elapsed.get_label(), "1:23")
+        self.assertEqual([w.timeline for w in dialog.waveforms], [225.0, 225.0])
+        self.assertEqual([w.position for w in dialog.waveforms], [83.0, 83.0])
+
+    def test_seek_slider_is_gone(self) -> None:
+        dialog, _ = self._dialog(_set("song", "Vocals"))
+        self.assertFalse(hasattr(dialog, "seek_scale"))
+
+    def test_one_waveform_per_row(self) -> None:
+        dialog, _ = self._dialog(_set("song", "Vocals", "Instrumental"))
+        self.assertEqual(len(dialog.waveforms), len(dialog.rows))
+
+    def test_waveform_seek_seeks_without_switching(self) -> None:
+        dialog, engine = self._dialog(_set("song", "Vocals", "Instrumental"))
+        engine.calls.clear()
+        dialog.waveforms[0].set_timeline(100.0)
+        dialog.waveforms[0].seek_at(50, 200)
+        self.assertEqual(engine.calls, [("seek", 25.0)])
+
+    def test_active_waveform_follows_selection(self) -> None:
+        from gi.repository import Gdk
+
+        dialog, _ = self._dialog(_set("song", "Vocals", "Instrumental"))
+        self.assertEqual([w.active for w in dialog.waveforms], [False, True, False])
+        dialog.handle_key(Gdk.KEY_3)
+        self.assertEqual([w.active for w in dialog.waveforms], [False, False, True])
+
+    def test_peaks_load_for_the_set_audible_first(self) -> None:
+        dialog, engine = self._dialog(_set("song", "Vocals", "Instrumental"), loader=True)
+        load = [c for c in engine.calls if c[0] == "peaks.load"]
+        self.assertEqual(
+            load,
+            [
+                (
+                    "peaks.load",
+                    ("/in/song.wav", "/out/song (Vocals).wav", "/out/song (Instrumental).wav"),
+                    1,
+                )
+            ],
+        )
+        peaks = Peaks(1.0, np.zeros(4, dtype=np.float32), np.zeros(4, dtype=np.float32))
+        assert self.loader is not None and self.loader.on_peaks is not None
+        self.loader.on_peaks(2, peaks)
+        self.assertIs(dialog.waveforms[2].peaks, peaks)
+        self.assertIsNone(dialog.waveforms[1].peaks)
+
+    def test_switching_input_reloads_peaks(self) -> None:
+        dialog, engine = self._dialog(
+            _set("a", "Vocals"), _set("b", "Vocals", "Drums"), loader=True
+        )
+        dialog.input_dropdown.set_selected(1)
+        loads = [c for c in engine.calls if c[0] == "peaks.load"]
+        self.assertEqual(len(loads), 2)
+        self.assertEqual(loads[-1][1][0], "/in/b.wav")
+        self.assertEqual(len(dialog.waveforms), 3)
+
+    def test_close_cancels_peaks_before_unload(self) -> None:
+        dialog, engine = self._dialog(_set("song", "Vocals"), loader=True)
+        engine.calls.clear()
+        dialog.dialog.emit("closed")
+        self.assertEqual(engine.calls, [("peaks.cancel",), ("unload",)])
 
     def test_play_button_icon_follows_state(self) -> None:
         dialog, engine = self._dialog(_set("song", "Vocals"))

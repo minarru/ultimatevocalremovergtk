@@ -3,7 +3,7 @@ using Adw 1;
 
 Adw.Dialog dialog {
   title: "Compare stems";
-  content-width: 480;
+  content-width: 560;
   child: Adw.ToolbarView {
     [top]
     Adw.HeaderBar {}
@@ -33,17 +33,10 @@ Adw.Dialog dialog {
           label: "0:00";
           styles ["numeric", "dim-label"]
         }
-        Gtk.Scale seek_scale {
-          hexpand: true;
-          draw-value: false;
-          adjustment: Gtk.Adjustment {
-            lower: 0;
-            upper: 1;
-            step-increment: 5;
-          };
-        }
         Gtk.Label total_label {
           label: "0:00";
+          hexpand: true;
+          xalign: 1;
           styles ["numeric", "dim-label"]
         }
       }

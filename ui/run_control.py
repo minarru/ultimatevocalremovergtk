@@ -1036,10 +1036,12 @@ class RunController:
             return
         from .playback.dialog import CompareDialog
         from .playback.engine import PlaybackEngine
+        from .playback.waveforms import WaveformLoader
 
         self._compare_dialog = CompareDialog(
             self.listening.sets(),
             PlaybackEngine(),
+            waveforms=WaveformLoader(self.listening.peak_cache),
             output_dir=self._run_output_dir,
             on_toast=self._host.toast,
             on_closed=self._on_compare_closed,

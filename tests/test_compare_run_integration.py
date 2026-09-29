@@ -168,6 +168,8 @@ class RunControllerCompareTests(unittest.TestCase):
         dialog_cls.assert_called_once()
         self.assertIs(dialog_cls.call_args.args[1], engine_cls.return_value)
         dialog_cls.return_value.present.assert_called()
+        loader = dialog_cls.call_args.kwargs["waveforms"]
+        self.assertIs(loader.cache, controller.listening.peak_cache)
 
 
 if __name__ == "__main__":
