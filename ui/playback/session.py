@@ -4,13 +4,17 @@ from __future__ import annotations
 
 from core.listening import ComparisonSet
 
+from .waveforms import PeakCache
+
 
 class ListeningSession:
     def __init__(self) -> None:
         self._sets: dict[str, ComparisonSet] = {}
+        self.peak_cache = PeakCache()
 
     def clear(self) -> None:
         self._sets.clear()
+        self.peak_cache.clear()
 
     def add(self, cset: ComparisonSet) -> None:
         self._sets[cset.source] = cset
