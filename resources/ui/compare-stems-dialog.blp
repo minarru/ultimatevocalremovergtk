@@ -17,9 +17,15 @@ Adw.Dialog dialog {
       Gtk.DropDown input_dropdown {
         visible: false;
       }
-      Gtk.ListBox track_list {
-        selection-mode: none;
-        styles ["boxed-list"]
+      // Rows with waveforms are tall: long sets scroll instead of outgrowing the screen.
+      Gtk.ScrolledWindow {
+        hscrollbar-policy: never;
+        propagate-natural-height: true;
+        max-content-height: 440;
+        child: Gtk.ListBox track_list {
+          selection-mode: none;
+          styles ["boxed-list"]
+        };
       }
       Gtk.Box {
         orientation: horizontal;

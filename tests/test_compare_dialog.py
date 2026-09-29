@@ -248,6 +248,16 @@ class CompareDialogTests(unittest.TestCase):
         dialog, _ = self._dialog(_set("song", "Vocals"))
         self.assertFalse(hasattr(dialog, "seek_scale"))
 
+    def test_many_tracks_scroll_instead_of_growing(self) -> None:
+        from gi.repository import Gtk
+
+        # A 6-stem Demucs run plus the reference must still fit a 768 px screen.
+        dialog, _ = self._dialog(_set("song", *(f"Stem {n}" for n in range(1, 10))))
+        content = dialog.dialog.get_child()
+        assert content is not None
+        minimum, _natural, _min_base, _nat_base = content.measure(Gtk.Orientation.VERTICAL, 560)
+        self.assertLess(minimum, 600)
+
     def test_one_waveform_per_row(self) -> None:
         dialog, _ = self._dialog(_set("song", "Vocals", "Instrumental"))
         self.assertEqual(len(dialog.waveforms), len(dialog.rows))
