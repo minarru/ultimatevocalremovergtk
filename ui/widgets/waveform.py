@@ -146,11 +146,30 @@ class WaveformView(Gtk.DrawingArea):
         middle = height / 2
         timeline = self.timeline
         peaks = self._peaks
-        if peaks is None or timeline <= 0:
+        if peaks is None:
             cr.set_source_rgba(red, green, blue, alpha * _PLACEHOLDER_ALPHA)
             cr.rectangle(0, middle - 0.5, width, 1)
             cr.fill()
+        elif timeline > 0:
+            self._draw_envelope(cr, peaks, width, middle, timeline, (red, green, blue, alpha))
+        if timeline <= 0:
             return
+        # One playhead across every row, loaded or not.
+        playhead = min(seconds_to_x(self._position, width, timeline), max(width - 1, 0))
+        cr.set_source_rgba(red, green, blue, alpha)
+        cr.rectangle(playhead, 0, 1, height)
+        cr.fill()
+
+    def _draw_envelope(
+        self,
+        cr: Any,
+        peaks: Peaks,
+        width: int,
+        middle: float,
+        timeline: float,
+        rgba: tuple[float, float, float, float],
+    ) -> None:
+        red, green, blue, alpha = rgba
         lows, highs = column_extents(peaks, width, timeline)
         columns = len(highs)
         played = min(int(seconds_to_x(self._position, width, timeline)), columns)
@@ -164,10 +183,6 @@ class WaveformView(Gtk.DrawingArea):
                 cr.rectangle(column, middle - high * middle, 1, max((high - low) * middle, 1.0))
             cr.set_source_rgba(red, green, blue, strength * share)
             cr.fill()
-        playhead = min(seconds_to_x(self._position, width, timeline), max(width - 1, 0))
-        cr.set_source_rgba(red, green, blue, alpha)
-        cr.rectangle(playhead, 0, 1, height)
-        cr.fill()
 
 
 __all__ = [

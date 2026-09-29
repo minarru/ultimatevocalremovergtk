@@ -140,6 +140,21 @@ class WaveformViewTests(unittest.TestCase):
         view.set_active(False)
         self.assertNotIn("accent", view.get_css_classes())
 
+    def test_rows_without_peaks_still_draw_the_playhead(self) -> None:
+        import cairo
+
+        from ui.widgets.waveform import WaveformView
+
+        view = WaveformView()
+        view.set_timeline(10.0)
+        view.set_position(5.0)
+        surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, 200, 40)
+        view._draw(view, cairo.Context(surface), 200, 40)
+        surface.flush()
+        pixels = np.ndarray((40, 200, 4), dtype=np.uint8, buffer=surface.get_data())
+        top = pixels[0, :, 3]
+        self.assertEqual(np.flatnonzero(top).tolist(), [100])  # only the playhead reaches the top
+
     def test_draws_peaks_and_placeholder(self) -> None:
         import cairo
 
