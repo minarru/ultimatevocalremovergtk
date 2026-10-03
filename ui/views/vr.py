@@ -47,15 +47,16 @@ class VRView(MethodView):
             hint=WINDOW_SIZE_HELP,
             row=self._layout_object("window_size_row", Adw.ActionRow),
         )
-        self.add_option_scale(
+        self.add_option_spin(
             group,
             "aggression_setting",
             None,
-            lower=0,
-            upper=max(VR_AGGRESSION),
-            step=1,
+            0,
+            max(VR_AGGRESSION),
+            1,
+            digits=0,
             hint=AGGRESSION_SETTING_HELP,
-            row=self._layout_object("aggression_setting_row", Adw.ActionRow),
+            row=self._layout_object("aggression_setting_row", Adw.SpinRow),
         )
 
     def build_advanced(self, group: typing.Any):

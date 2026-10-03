@@ -61,22 +61,19 @@ from ..option_summaries import (
 )
 from ..settings_bind import get_flat, set_flat, setting_for_combo
 from ..template import load_builder, object_from_builder
-from ..widget_state import fetch, stash
+from ..widget_state import fetch
 from ..widgets.lazy_populate import LazyPopulator
 from ..widgets.output_stems import OutputStemsSection
 from ..widgets.rows import (
     configure_combo_row,
     configure_discrete_scale_row,
-    configure_numeric_scale_row,
     configure_switch_row,
     get_combo_value,
-    get_scale_row_float,
     get_scale_row_value,
     make_combo_row,
     make_switch_row,
     set_combo_tag_values,
     set_combo_value,
-    set_scale_row_float,
     set_scale_row_value,
     use_wrapping_list,
 )
@@ -667,40 +664,23 @@ class MethodView:
         key: typing.Any,
         title: typing.Any,
         *,
-        values: typing.Any = None,
-        lower: Optional[float] = None,
-        upper: Optional[float] = None,
-        step: float = 1,
-        digits: typing.Any = 0,
+        values: typing.Any,
         subtitle: typing.Any = None,
         hint: typing.Any = None,
-        store_float: typing.Any = False,
         row: Optional[Adw.ActionRow] = None,
     ):
-        """Add a constrained slider row bound to settings ``key``."""
-        from ..widgets.rows import (
-            make_discrete_scale_row,
-            make_numeric_scale_row,
-            set_scale_default_mark,
-        )
+        """Add a slider row choosing one of ``values`` for settings ``key``.
 
-        if values is not None:
-            if row is None:
-                row = make_discrete_scale_row(title, values, subtitle)
-                self._add_row(group, row)
-            else:
-                configure_discrete_scale_row(row, values)
+        Sliders pick from a preset ladder; free numbers use
+        :meth:`add_option_spin`.
+        """
+        from ..widgets.rows import make_discrete_scale_row, set_scale_default_mark
+
+        if row is None:
+            row = make_discrete_scale_row(title, values, subtitle)
+            self._add_row(group, row)
         else:
-            if lower is None or upper is None:
-                raise ValueError("lower and upper are required when values is None")
-            if row is None:
-                row = make_numeric_scale_row(
-                    title, lower, upper, step=step, digits=digits, subtitle=subtitle
-                )
-                self._add_row(group, row)
-            else:
-                configure_numeric_scale_row(row, lower, upper, step=step, digits=digits)
-        stash(row, "_uvr_store_float", store_float)
+            configure_discrete_scale_row(row, values)
         default_value = _DEFAULT_SETTINGS.get(key)
         if default_value is not None:
             set_scale_default_mark(row, default_value)
@@ -742,16 +722,38 @@ class MethodView:
         digits: typing.Any = 2,
         subtitle: typing.Any = None,
         hint: typing.Any = None,
+        *,
+        row: Optional[Adw.SpinRow] = None,
     ):
-        """Add a spin row bound to a numeric settings ``key`` (stored as float)."""
-        adjustment = Gtk.Adjustment(lower=lower, upper=upper, step_increment=step)
-        row = Adw.SpinRow(title=title, adjustment=adjustment, digits=digits)
+        """Add a spin row bound to numeric settings ``key``.
+
+        Free numbers use spin rows; sliders are for picking from a preset ladder.
+        With ``digits=0`` the value is stored as an int, otherwise as a float.
+        """
+        adjustment = Gtk.Adjustment(
+            lower=lower,
+            upper=upper,
+            step_increment=step,
+            page_increment=max(step, (upper - lower) / 10),
+        )
+        if row is None:
+            row = Adw.SpinRow(title=title, adjustment=adjustment, digits=digits)
+            self._add_row(group, row)
+        else:
+            row.set_adjustment(adjustment)
+            row.set_digits(digits)
         if subtitle:
             row.set_subtitle(subtitle)
         row.connect("notify::value", lambda *_a, k=key, r=row: self._on_option_spin(k, r))
-        self._add_row(group, row)
         self._spin_rows[key] = row
         return self._hint(row, hint)
+
+    @staticmethod
+    def _spin_setting(row: Adw.SpinRow) -> int | float:
+        digits = row.get_digits()
+        if digits == 0:
+            return int(round(row.get_value()))
+        return round(row.get_value(), digits)
 
     def _on_option_combo(self, key: typing.Any, row: typing.Any) -> None:
         if self._loading:
@@ -762,10 +764,7 @@ class MethodView:
     def _on_option_scale(self, key: typing.Any, row: typing.Any) -> None:
         if self._loading:
             return
-        if fetch(row, "_uvr_store_float", False):
-            set_flat(self.settings, key, round(get_scale_row_float(row), 2))
-        else:
-            set_flat(self.settings, key, get_scale_row_value(row))
+        set_flat(self.settings, key, get_scale_row_value(row))
         self._touch_settings()
 
     def _on_option_switch(self, key: typing.Any, row: typing.Any) -> None:
@@ -777,26 +776,16 @@ class MethodView:
     def _on_option_spin(self, key: typing.Any, row: typing.Any) -> None:
         if self._loading:
             return
-        set_flat(self.settings, key, round(row.get_value(), 2))
+        set_flat(self.settings, key, self._spin_setting(row))
         self._touch_settings()
 
     def _load_scales(self) -> None:
         for key, row in self._scale_rows.items():
-            value = setting_for_combo(key, get_flat(self.settings, key))
-            if fetch(row, "_uvr_store_float", False):
-                try:
-                    set_scale_row_float(row, float(value))
-                except (TypeError, ValueError):
-                    pass
-            else:
-                set_scale_row_value(row, value)
+            set_scale_row_value(row, setting_for_combo(key, get_flat(self.settings, key)))
 
     def _save_scales(self) -> None:
         for key, row in self._scale_rows.items():
-            if fetch(row, "_uvr_store_float", False):
-                set_flat(self.settings, key, round(get_scale_row_float(row), 2))
-            else:
-                set_flat(self.settings, key, get_scale_row_value(row))
+            set_flat(self.settings, key, get_scale_row_value(row))
 
     def _load_switches(self) -> None:
         for key, row in self._switch_rows.items():
@@ -815,7 +804,7 @@ class MethodView:
 
     def _save_spins(self) -> None:
         for key, row in self._spin_rows.items():
-            set_flat(self.settings, key, round(row.get_value(), 2))
+            set_flat(self.settings, key, self._spin_setting(row))
 
     # -- Subclass hooks ---------------------------------------------------------
 
@@ -847,34 +836,6 @@ class MethodView:
         hint: typing.Any = None,
     ):
         return self.add_option_combo(self.advanced_group, key, title, values, subtitle, hint=hint)
-
-    def add_advanced_scale(
-        self,
-        key: typing.Any,
-        title: typing.Any,
-        *,
-        values: typing.Any = None,
-        lower: typing.Any = None,
-        upper: typing.Any = None,
-        step: typing.Any = 1,
-        digits: typing.Any = 0,
-        subtitle: typing.Any = None,
-        hint: typing.Any = None,
-        store_float: typing.Any = False,
-    ):
-        return self.add_option_scale(
-            self.advanced_group,
-            key,
-            title,
-            values=values,
-            lower=lower,
-            upper=upper,
-            step=step,
-            digits=digits,
-            subtitle=subtitle,
-            hint=hint,
-            store_float=store_float,
-        )
 
     def add_advanced_switch(
         self,
@@ -1171,21 +1132,20 @@ class MethodView:
                     warning_row=self._layout_object(f"secondary_{slot}_warning_row", Adw.ActionRow),
                 )
                 combo.set_title(pair_label)
-                scale = self.add_option_scale(
+                influence = self.add_option_spin(
                     self.secondary_expander,
                     scale_key,
                     None,
-                    lower=0.01,
-                    upper=0.99,
-                    step=0.01,
+                    0.01,
+                    0.99,
+                    0.01,
                     digits=2,
                     hint=SECONDARY_MODEL_SCALE_HELP,
-                    store_float=True,
-                    row=self._layout_object(f"secondary_{slot}_scale_row", Adw.ActionRow),
+                    row=self._layout_object(f"secondary_{slot}_scale_row", Adw.SpinRow),
                 )
-                scale.set_title(f"{pair_label} influence")
-                dependents.extend((combo, scale))
-                self._secondary_slot_rows[slot] = [combo, scale]
+                influence.set_title(f"{pair_label} influence")
+                dependents.extend((combo, influence))
+                self._secondary_slot_rows[slot] = [combo, influence]
             self._bind_switch_dependents(activate, dependents)
 
         # Demucs pre-process model.

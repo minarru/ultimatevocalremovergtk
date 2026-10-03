@@ -173,9 +173,8 @@ class ExpanderSummaryTests(unittest.TestCase):
         )
         self.assertIn("14_SP-UVR-4B-44100-2", view.secondary_expander.get_subtitle())
 
-    def test_dragging_the_influence_scale_updates_the_subtitle_live(self):
+    def test_editing_the_influence_updates_the_subtitle_live(self):
         from bundled.constants import CHOOSE_MODEL
-        from ui.widgets.rows import set_scale_row_float
 
         window = self._window()
         view = window._views_by_stack["mdx"]
@@ -186,8 +185,8 @@ class ExpanderSummaryTests(unittest.TestCase):
         view.load()
         self.assertIn("(0.90)", view.secondary_expander.get_subtitle())
 
-        scale_row = view._scale_rows["mdx_voc_inst_secondary_model_scale"]
-        set_scale_row_float(scale_row, 0.5)  # real slider signal
+        influence_row = view._spin_rows["mdx_voc_inst_secondary_model_scale"]
+        influence_row.set_value(0.5)  # real spin row signal
 
         self.assertEqual(window.settings.get("mdx_voc_inst_secondary_model_scale"), 0.5)
         self.assertIn("(0.50)", view.secondary_expander.get_subtitle())
