@@ -372,5 +372,44 @@ class AudioToolsLayoutTests(unittest.TestCase):
             self.assertEqual(window.settings.process.input_paths, [audio.name])
 
 
+@unittest.skipUnless(
+    os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"),
+    "GTK widget construction needs a display",
+)
+class NarrowLayoutTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        import gi
+
+        gi.require_version("Gtk", "4.0")
+        gi.require_version("Adw", "1")
+        from gi.repository import Adw
+
+        cls._app = Adw.Application(application_id="org.uvr.test.page-layout-narrow")
+        cls._app.register()
+
+    def test_narrow_layout_keeps_rule_order(self) -> None:
+        from gi.repository import Gtk
+
+        from ui.widgets.columns import set_columns_narrow
+        from ui.window import MainWindow
+
+        window = MainWindow()
+        self.addCleanup(window.set_application, None)
+        pages = {
+            "separation": window,
+            "ensemble": window._ensemble_page,
+            "audio tools": window._audio_tools_page,
+        }
+        for name, page in pages.items():
+            with self.subTest(page=name):
+                box = window._columns_box if page is window else page.columns_box
+                set_columns_narrow(box, True)
+                self.assertEqual(box.get_orientation(), Gtk.Orientation.VERTICAL)
+                order = column_titles(page._col_start) + column_titles(page._col_end)
+                self.assertEqual(order[0], "Input")
+                self.assertEqual(order[-2:], ["Output", "Processing"])
+
+
 if __name__ == "__main__":
     unittest.main()
