@@ -304,6 +304,7 @@ class _FakeMemberPicker:
         *,
         placeholder: str = "",
         placeholder_description: str = "",
+        placeholder_icon: str | None = None,
     ) -> dict[str, _FakeCheck]:
         self.records = list(records)
         self.placeholder = placeholder
@@ -715,6 +716,7 @@ class EnsembleMemberDialogTests(unittest.TestCase):
         empty = page._member_picker.get("empty", Adw.StatusPage)
         self.assertEqual(empty.get_title(), "Could not list models")
         self.assertEqual(empty.get_description(), "See Error Log for details")
+        self.assertEqual(empty.get_icon_name(), "dialog-warning-symbolic")
         self.assertEqual(page._model_checks, {})
 
     def test_trigger_row_has_no_edit_button(self) -> None:

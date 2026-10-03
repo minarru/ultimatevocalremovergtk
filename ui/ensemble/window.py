@@ -1335,15 +1335,13 @@ class EnsemblePage:
             record.id: (record.display, ARCH_BY_FAMILY[record.family])
             for record in projection.records
         }
+        load_error = projection.placeholder == "Could not list models"
         self._model_checks = self._member_picker.set_members(
             projection.records,
             projection.selected_ids,
             placeholder=projection.placeholder,
-            placeholder_description=(
-                "See Error Log for details"
-                if projection.placeholder == "Could not list models"
-                else ""
-            ),
+            placeholder_description="See Error Log for details" if load_error else "",
+            placeholder_icon="dialog-warning-symbolic" if load_error else None,
         )
 
     def _reconcile_member_list(self, preselected: List[typing.Any]) -> None:

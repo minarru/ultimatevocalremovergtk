@@ -463,9 +463,11 @@ class MemberPickerUiTests(unittest.TestCase):
             (),
             placeholder='Could not list models',
             placeholder_description='See Error Log for details',
+            placeholder_icon='dialog-warning-symbolic',
         )
         empty = self.picker.get('empty', Adw.StatusPage)
         self.assertTrue(empty.get_visible())
+        self.assertEqual(empty.get_icon_name(), 'dialog-warning-symbolic')
         self.assertFalse(self.picker.list.get_visible())
         self.assertEqual(empty.get_title(), 'Could not list models')
         self.assertEqual(empty.get_description(), 'See Error Log for details')
@@ -475,7 +477,11 @@ class MemberPickerUiTests(unittest.TestCase):
         self.picker.search.set_text('nothing matches')
         self.picker._refresh()
         self.assertEqual(empty.get_title(), 'No matching models')
+        self.assertEqual(empty.get_icon_name(), 'system-search-symbolic')
         self.assertTrue(self.picker.get('empty_reset', Gtk.Button).get_visible())
+        # A placeholder without its own icon shows none rather than search.
+        self.picker.set_members((), (), placeholder='No compatible models found')
+        self.assertIsNone(empty.get_icon_name())
 
     def test_members_details_toggle(self):
         from gi.repository import Gtk

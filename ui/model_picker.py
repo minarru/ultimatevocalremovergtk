@@ -102,10 +102,10 @@ class ModelPicker:
         self._row_order: dict[Gtk.ListBoxRow, int] = {}
         self._projection_inputs: tuple[object, object, object] | None = None
         self._member_records: tuple[ModelRecord, ...] = ()
-        self._placeholder = ('', '')
+        self._placeholder: tuple[str, str, str | None] = ('', '', None)
         self._status: str | None = None
         empty = self.get('empty', Adw.StatusPage)
-        self._empty_text = (empty.get_title(), empty.get_description() or '')
+        self._empty_text = (empty.get_title(), empty.get_description() or '', empty.get_icon_name())
         self.dialog.set_title(config.title)
         self.search.set_placeholder_text(config.search_placeholder)
         self.list.set_filter_func(lambda row: row in self._row_order)
@@ -209,6 +209,7 @@ class ModelPicker:
         *,
         placeholder: str = '',
         placeholder_description: str = '',
+        placeholder_icon: str | None = None,
     ) -> dict[str, Gtk.CheckButton]:
         """List ``records`` as checkable rows and return their checks in order.
 
@@ -216,7 +217,7 @@ class ModelPicker:
         reaches the page's ``toggled`` callback.
         """
         self._member_records = tuple(records)
-        self._placeholder = (placeholder, placeholder_description)
+        self._placeholder = (placeholder, placeholder_description, placeholder_icon)
         self.refresh_models()
         checks: dict[str, Gtk.CheckButton] = {}
         for record in records:
@@ -393,12 +394,14 @@ class ModelPicker:
     def _sync_empty(self, has_rows: bool) -> None:
         empty = self.get('empty', Adw.StatusPage)
         empty.set_visible(not has_rows)
-        title, description = self._placeholder
+        title, description, icon = self._placeholder
         placeholder = not self.models and bool(title)
         if not placeholder:
-            title, description = self._empty_text
+            title, description, icon = self._empty_text
         empty.set_title(title)
         empty.set_description(description or None)
+        # A page placeholder is not a search miss; it brings its own icon or none.
+        empty.set_icon_name(icon)
         self.get('empty_reset', Gtk.Button).set_visible(not placeholder)
 
     def _create_row(self, model_id: str) -> _PickerRow:
