@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import os
 import unittest
+from collections.abc import Iterator
 from dataclasses import replace
-from unittest.mock import Mock, patch
+from typing import Any
+from unittest.mock import Mock, call, patch
 
 from tests.test_model_picker_state import record
 
@@ -253,3 +255,245 @@ class ModelPickerUiTests(unittest.TestCase):
             setattr(controller, field, True)
             self.assertFalse(controller.can_edit_configuration(), field)
             setattr(controller, field, previous)
+
+
+def _descendants(widget: Any) -> Iterator[Any]:
+    yield widget
+    child = widget.get_first_child()
+    while child is not None:
+        yield from _descendants(child)
+        child = child.get_next_sibling()
+
+
+@unittest.skipUnless(
+    os.environ.get('WAYLAND_DISPLAY') or os.environ.get('DISPLAY'), 'GTK needs a display'
+)
+class PickerConfigTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from tests.private_gtk import require_private_gtk
+
+        require_private_gtk()
+        import gi
+
+        gi.require_version('Gtk', '4.0')
+        gi.require_version('Adw', '1')
+
+    def _picker(self, **kwargs: Any) -> Any:
+        from core.model_repository import ModelRepository
+        from ui.model_picker import ModelPicker
+
+        inventory = patch(
+            'core.model_identity.ModelIdentityService.records',
+            return_value=(record('vocals a'),),
+        )
+        inventory.start()
+        self.addCleanup(inventory.stop)
+        return ModelPicker(ModelRepository(), lambda: '', Mock(), Mock(), **kwargs)
+
+    def test_default_config_is_separation(self):
+        from gi.repository import Gtk
+
+        picker = self._picker()
+        self.assertEqual(picker.dialog.get_title(), 'Choose Model')
+        self.assertTrue(picker.get('purpose_tabs', Gtk.Box).get_visible())
+        self.assertEqual(picker.search.get_placeholder_text(), 'Search installed models')
+        self.assertFalse(picker.get('select_all', Gtk.Button).get_visible())
+        self.assertFalse(picker.get('clear', Gtk.Button).get_visible())
+
+    def test_config_title_and_hidden_tabs(self):
+        from gi.repository import Gtk
+
+        from ui.model_picker import PickerConfig
+
+        picker = self._picker(
+            config=PickerConfig(
+                title='Member Models', purposes=(), search_placeholder='Search compatible models'
+            )
+        )
+        self.assertEqual(picker.dialog.get_title(), 'Member Models')
+        self.assertEqual(picker.search.get_placeholder_text(), 'Search compatible models')
+        self.assertFalse(picker.get('purpose_tabs', Gtk.Box).get_visible())
+        self.assertFalse(picker.compact.get_visible())
+        picker.reset()
+        self.assertEqual(picker.filters.purpose, 'all')
+        # Narrow breakpoints must not reveal the compact purpose dropdown.
+        from gi.repository import Adw, GLib
+
+        parent = Adw.Window(default_width=480, default_height=700)
+        parent.present()
+        self.addCleanup(parent.set_visible, False)
+        picker.present(parent)
+        context = GLib.MainContext.default()
+        deadline = GLib.get_monotonic_time() + 3_000_000
+        while picker.dialog.get_current_breakpoint() is None:
+            self.assertLess(GLib.get_monotonic_time(), deadline, 'no breakpoint applied')
+            context.iteration(False)
+        self.assertFalse(picker.compact.get_visible())
+        self.assertFalse(picker.get('purpose_tabs', Gtk.Box).get_visible())
+
+
+@unittest.skipUnless(
+    os.environ.get('WAYLAND_DISPLAY') or os.environ.get('DISPLAY'), 'GTK needs a display'
+)
+class MemberPickerUiTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from tests.private_gtk import require_private_gtk
+
+        require_private_gtk()
+        import gi
+
+        gi.require_version('Gtk', '4.0')
+        gi.require_version('Adw', '1')
+        from gi.repository import Adw
+
+        cls.app = Adw.Application(application_id='org.uvr.test.member-picker')
+        cls.app.register()
+
+    def setUp(self):
+        from core.model_repository import ModelRepository
+        from ui.model_picker import MemberCallbacks, ModelPicker, PickerConfig
+
+        self.a = record('alpha')
+        self.b = record('bravo')
+        self.c = record('charlie')
+        # The installed inventory holds a model the page did not offer.
+        self.inventory = patch(
+            'core.model_identity.ModelIdentityService.records',
+            return_value=(self.a, self.b, self.c, record('outsider')),
+        )
+        self.inventory.start()
+        self.addCleanup(self.inventory.stop)
+        self.toggled = Mock()
+        self.set_visible_active = Mock()
+        self.more = Mock()
+        self.picker = ModelPicker(
+            ModelRepository(),
+            lambda: '',
+            Mock(return_value=False),
+            self.more,
+            config=PickerConfig(title='Member Models', purposes=()),
+            members=MemberCallbacks(self.toggled, self.set_visible_active),
+        )
+
+    def test_members_reuse_checks_and_block_handlers(self):
+        first = self.picker.set_members([self.a, self.b], {'vr:alpha'})
+        self.assertEqual(list(first), ['vr:alpha', 'vr:bravo'])
+        self.assertTrue(first['vr:alpha'].get_active())
+        self.assertFalse(first['vr:bravo'].get_active())
+        second = self.picker.set_members([self.a, self.b], {'vr:bravo'})
+        for model_id in first:
+            self.assertIs(second[model_id], first[model_id])
+        self.assertFalse(second['vr:alpha'].get_active())
+        self.assertTrue(second['vr:bravo'].get_active())
+        self.toggled.assert_not_called()
+        second['vr:alpha'].set_active(True)
+        self.toggled.assert_called_once_with(second['vr:alpha'])
+
+    def test_members_rows_come_only_from_set_members(self):
+        self.picker.set_members([self.a, self.b], ())
+        self.assertEqual(set(self.picker.rows), {'vr:alpha', 'vr:bravo'})
+        self.picker.refresh_models()
+        self.assertEqual(set(self.picker.rows), {'vr:alpha', 'vr:bravo'})
+        dropped = self.picker.set_members([self.a], ())
+        self.assertEqual(list(dropped), ['vr:alpha'])
+        self.assertEqual(list(self.picker.rows), ['vr:alpha'])
+
+    def test_member_rows_name_their_architecture(self):
+        from dataclasses import replace
+
+        shared_mdx = replace(record('shared'), id='mdx:shared', family='mdx')
+        self.picker.set_members([record('shared'), shared_mdx], ())
+        subtitles = {
+            model_id: row.get_subtitle() or '' for model_id, row in self.picker.rows.items()
+        }
+        self.assertTrue(subtitles['vr:shared'].startswith('VR'))
+        self.assertTrue(subtitles['mdx:shared'].startswith('MDX-Net'))
+
+    def test_members_visible_ids_follow_search_and_sort(self):
+        self.picker.set_members([self.c, self.a, self.b], ())
+        self.assertEqual(self.picker.visible_ids(), ['vr:alpha', 'vr:bravo', 'vr:charlie'])
+        self.picker.search.set_text('br')
+        self.picker._refresh()
+        self.assertEqual(self.picker.visible_ids(), ['vr:bravo'])
+        self.picker.reset()
+        self.picker._reverse()
+        self.assertEqual(self.picker.visible_ids(), ['vr:charlie', 'vr:bravo', 'vr:alpha'])
+
+    def test_members_select_all_and_clear_delegate(self):
+        from gi.repository import Gtk
+
+        self.picker.set_members([self.a], ())
+        select_all = self.picker.get('select_all', Gtk.Button)
+        clear = self.picker.get('clear', Gtk.Button)
+        self.assertTrue(select_all.get_visible())
+        self.assertTrue(clear.get_visible())
+        select_all.emit('clicked')
+        clear.emit('clicked')
+        self.assertEqual(
+            self.set_visible_active.call_args_list,
+            [call(True), call(False)],
+        )
+
+    def test_members_status_text_is_kept_across_refresh(self):
+        from gi.repository import Gtk
+
+        self.picker.set_members([self.a, self.b], ())
+        self.picker.set_status('Select at least 2 models')
+        self.picker._refresh()
+        self.assertEqual(
+            self.picker.get('count', Gtk.Label).get_label(), 'Select at least 2 models'
+        )
+
+    def test_members_placeholder_shows_status_page(self):
+        from gi.repository import Adw, Gtk
+
+        self.picker.set_members(
+            (),
+            (),
+            placeholder='Could not list models',
+            placeholder_description='See Error Log for details',
+        )
+        empty = self.picker.get('empty', Adw.StatusPage)
+        self.assertTrue(empty.get_visible())
+        self.assertFalse(self.picker.list.get_visible())
+        self.assertEqual(empty.get_title(), 'Could not list models')
+        self.assertEqual(empty.get_description(), 'See Error Log for details')
+        self.assertFalse(self.picker.get('empty_reset', Gtk.Button).get_visible())
+        # Real rows bring back the search-miss wording.
+        self.picker.set_members([self.a], ())
+        self.picker.search.set_text('nothing matches')
+        self.picker._refresh()
+        self.assertEqual(empty.get_title(), 'No matching models')
+        self.assertTrue(self.picker.get('empty_reset', Gtk.Button).get_visible())
+
+    def test_members_details_toggle(self):
+        from gi.repository import Gtk
+
+        checks = self.picker.set_members([self.a, self.b], {'vr:alpha'})
+        button = self.picker.get('choose_detail', Gtk.Button)
+        model = next(m for m in self.picker.models if m.id == 'vr:alpha')
+        self.picker.show_details(model)
+        self.assertEqual(button.get_label(), 'Remove from Ensemble')
+        self.assertTrue(button.get_sensitive())
+        button.emit('clicked')
+        self.assertFalse(checks['vr:alpha'].get_active())
+        self.assertEqual(button.get_label(), 'Add to Ensemble')
+        other = next(m for m in self.picker.models if m.id == 'vr:bravo')
+        self.picker.show_details(other)
+        self.assertEqual(button.get_label(), 'Add to Ensemble')
+        button.emit('clicked')
+        self.assertTrue(checks['vr:bravo'].get_active())
+        self.assertEqual(self.toggled.call_count, 2)
+
+    def test_members_row_activation_toggles_check(self):
+        from gi.repository import Gtk
+
+        checks = self.picker.set_members([self.a], ())
+        row = self.picker.rows['vr:alpha']
+        check = next(w for w in _descendants(row) if isinstance(w, Gtk.CheckButton))
+        self.assertIs(check, checks['vr:alpha'])
+        row.activate()
+        self.assertTrue(checks['vr:alpha'].get_active())
+        self.toggled.assert_called_once_with(checks['vr:alpha'])
