@@ -159,6 +159,7 @@ class EnsemblePageDesignTests(unittest.TestCase):
     def test_output_settings_live_together_and_inactive_edits_do_not_persist(self):
         page = self.page
         self.assertTrue(page.format_row.is_ancestor(page.stems_group))
+        self.assertTrue(page.output_row.is_ancestor(page.stems_group))
         self.assertTrue(page.save_all_row.is_ancestor(page.stems_group))
         page.settings.ensemble.main_stem = "mode.multi_stem"
         page._rebuild_stem_only_toggles()

@@ -10,18 +10,6 @@ Gtk.Box page {
   }
 }
 
-Adw.PreferencesGroup files_group {
-  title: "Files";
-
-  [header-suffix]
-  Gtk.Button view_inputs_button {
-    icon-name: "view-list-symbolic";
-    valign: center;
-    action-name: "win.view_inputs";
-    styles ["flat"]
-  }
-}
-
 Adw.PreferencesGroup ensemble_group {
   title: "Ensemble";
 
@@ -94,53 +82,20 @@ Adw.PreferencesGroup combination_group {
   }
 }
 
-Adw.PreferencesGroup stems_group {
-  title: "Output";
-}
+// Python adds this after Member models in the Ensemble group.
+Adw.ActionRow member_options_row {
+  title: "Member model options";
+  subtitle: "Batch size, secondary models, and more";
+  activatable: true;
 
-Adw.PreferencesGroup processing_group {
-  title: "Processing";
-}
-
-Adw.SwitchRow gpu_row {
-  title: "GPU conversion";
-
-  [prefix]
+  [suffix]
   Gtk.Image {
-    icon-name: "uvr-pci-card-symbolic";
-  }
-}
-
-Adw.SwitchRow autocast_row {
-  title: "FP16 autocast";
-  subtitle: "Faster VR/MDX/Roformer on modern NVIDIA GPUs";
-}
-
-Adw.SwitchRow sample_row {
-  title: "Sample mode";
-
-  [prefix]
-  Gtk.Image {
-    icon-name: "uvr-stopwatch-symbolic";
+    icon-name: "go-next-symbolic";
   }
 }
 
 Adw.ExpanderRow advanced_row {
   title: "Advanced settings";
-
-  Adw.ActionRow member_options_row {
-    title: "Member model options";
-    subtitle: "Batch size, secondary models, and more";
-    activatable: true;
-
-    [suffix]
-    Gtk.Image {
-      icon-name: "go-next-symbolic";
-    }
-  }
-
-
-
 
   Adw.SwitchRow append_name_row {
     title: "Append ensemble name to output";

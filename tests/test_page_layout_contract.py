@@ -156,5 +156,92 @@ class SeparationLayoutTests(unittest.TestCase):
         self.assertEqual(window.settings.process.vocal_splitter, stored)
 
 
+def expander_rows(expander: Any) -> list[Any]:
+    """Rows inside an ``Adw.ExpanderRow``'s revealer, in display order."""
+    from gi.repository import Gtk
+
+    def find_revealer(widget: Any) -> Any:
+        if isinstance(widget, Gtk.Revealer):
+            return widget
+        child = widget.get_first_child()
+        while child is not None:
+            found = find_revealer(child)
+            if found is not None:
+                return found
+            child = child.get_next_sibling()
+        return None
+
+    revealer = find_revealer(expander)
+    return [] if revealer is None else _order(revealer)
+
+
+@unittest.skipUnless(
+    os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"),
+    "GTK widget construction needs a display",
+)
+class EnsembleLayoutTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        import gi
+
+        gi.require_version("Gtk", "4.0")
+        gi.require_version("Adw", "1")
+        from gi.repository import Adw
+
+        cls._app = Adw.Application(application_id="org.uvr.test.page-layout-ensemble")
+        cls._app.register()
+
+    def _page(self) -> Any:
+        from ui.window import MainWindow
+
+        window = MainWindow()
+        self.addCleanup(window.set_application, None)
+        return window._ensemble_page
+
+    def test_columns_follow_the_rule(self) -> None:
+        page = self._page()
+        self.assertEqual(column_titles(page._col_start), ["Input", "Ensemble", "Combination"])
+        self.assertEqual(column_titles(page._col_end), ["Output", "Processing"])
+
+    def test_ensemble_group_hosts_member_options_and_vocal_splitter(self) -> None:
+        page = self._page()
+        group = page.ensemble_group
+        self.assertTrue(contains(group, page.member_options_row))
+        self.assertTrue(contains(group, page.vocal_split_row))
+        self.assertEqual(
+            _order(group)[-3:],
+            [page.models_trigger_row, page.member_options_row, page.vocal_split_row],
+        )
+
+    def test_output_group_order(self) -> None:
+        page = self._page()
+        self.assertIs(page.stems_group, page._page_groups.output_group)
+        self.assertEqual(
+            _order(page.stems_group),
+            [*page.output_stems.rows, page.format_row, page.output_row, page.save_all_row],
+        )
+
+    def test_processing_hosts_the_advanced_expander(self) -> None:
+        from gi.repository import Adw
+
+        page = self._page()
+        processing = page._page_groups.processing_group
+        advanced = page._layout_object("advanced_row", Adw.ExpanderRow)
+        self.assertEqual(
+            _order(processing),
+            [page.gpu_row, page.autocast_row, page.sample_row, advanced],
+        )
+        self.assertEqual(expander_rows(advanced), [page.append_name_row, page.wav_ensemble_row])
+
+    def test_combination_group_has_no_summary_description(self) -> None:
+        from gi.repository import Adw
+
+        page = self._page()
+        page._update_models_summary()
+        page._refresh_ensemble_type_values()
+        group = page._layout_object("combination_group", Adw.PreferencesGroup)
+        self.assertIn(group.get_description(), ("", None))
+
+
 if __name__ == "__main__":
     unittest.main()

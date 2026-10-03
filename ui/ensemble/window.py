@@ -35,6 +35,7 @@ if TYPE_CHECKING:
 
     from .member_projection import MemberProjection
 
+import os
 import typing
 from typing import Dict, List, Optional
 
@@ -48,15 +49,10 @@ from bundled.constants import (
     ENSEMBLE_MAIN_STEM_HELP,
     ENSEMBLE_MODE,
     ENSEMBLE_TYPE_HELP,
-    INPUT_FOLDER_ENTRY_HELP,
     IS_APPEND_ENSEMBLE_NAME_HELP,
-    IS_AUTOCAST_HELP,
-    IS_GPU_CONVERSION_HELP,
     IS_SAVE_ALL_OUTPUTS_ENSEMBLE_HELP,
     IS_WAV_ENSEMBLE_HELP,
     MAX_MIN,
-    MODEL_SAMPLE_MODE_HELP,
-    OUTPUT_FOLDER_ENTRY_HELP,
     SAVE_STEM_ONLY_HELP,
 )
 from core import (
@@ -68,7 +64,6 @@ from core.ensemble_algorithms import (
     PAIR_CONSISTENT_PRESET,
     algorithm_blurb,
     algorithm_row_titles,
-    ensemble_options_summary,
     ensemble_preset_options,
     format_ensemble_type,
     model_row_matches_query,
@@ -113,27 +108,21 @@ from ..help_text import (
     ENSEMBLE_SAVE_BUTTON_HINT,
     ENSEMBLE_SAVED_PRESET_HINT,
     RUN_WORKLOAD_HINT,
-    VIEW_INPUTS_BUTTON_HINT,
 )
 from ..hints import set_icon_button_a11y, set_tooltip
 from ..markup import set_row_subtitle, set_row_title
 from ..protocols import FormatEdit, VocalSplitEdit
 from ..settings_bind import set_flat
 from ..shared_settings import (
-    SAMPLE_MODE_TITLE,
     SharedSettingsSession,
-    apply_shared_file_options,
     gpu_autocast_subtitle,
     gpu_dependent_enabled,
-    sample_mode_subtitle,
-    shared_settings_bindings,
 )
 from ..template import load_builder, object_from_builder
 from ..widget_state import fetch, stash
 from ..widgets.columns import build_columns_box, wrap_options_scroller
-from ..widgets.file_chooser import InputFilesRow, OutputFolderRow
-from ..widgets.format_row import OutputFormatRow
 from ..widgets.output_stems import OutputStemsSection
+from ..widgets.page_groups import PageGroupCallbacks, PageGroups, build_page_groups
 from ..widgets.rows import (
     configure_combo_row,
     get_combo_value,
@@ -226,24 +215,22 @@ class EnsemblePage:
         self._pair_repick_warning = ""
         self._layout_builder = load_builder("ensemble-page")
 
-        # Distribute the groups across the shared two-column layout. The member
-        # model checklist now lives in a modal dialog opened from a compact
-        # trigger row inside "Ensemble options", so the left column carries the
-        # Files and Ensemble panels while the shorter stem/output/advanced
-        # groups balance the right column.
-        files_group = self._build_files_group()
+        # Shared column rule: left = Input, then the page's own Ensemble and
+        # Combination groups; right = Output, then Processing.
+        self._page_groups = self._build_page_groups()
         ensemble_group = self._build_ensemble_group()
-        stems_group = self._build_stems_group()
-        output_group = self._build_output_group()
+        self._build_output_group()
+        self._build_processing_group()
         self._install_shared_session()
 
+        groups = self._page_groups
         self.columns_box, self._col_start, self._col_end = build_columns_box(
             left_groups=(
-                files_group,
+                groups.input_group,
                 ensemble_group,
                 self._layout_object("combination_group", Adw.PreferencesGroup),
             ),
-            right_groups=(stems_group, output_group),
+            right_groups=(groups.output_group, groups.processing_group),
         )
 
         # Saved-configuration warnings carry details beyond Start readiness.
@@ -258,21 +245,37 @@ class EnsemblePage:
     def _layout_object(self, name: str, kind: type[LayoutObjectT]) -> LayoutObjectT:
         return object_from_builder(self._layout_builder, name, kind)
 
-    def _build_files_group(self) -> Adw.PreferencesGroup:
-        group = self._layout_object("files_group", Adw.PreferencesGroup)
-        view_inputs_button = self._layout_object("view_inputs_button", Gtk.Button)
-        set_icon_button_a11y(view_inputs_button, VIEW_INPUTS_BUTTON_HINT)
-        self.input_row = InputFilesRow(
-            self._on_inputs_changed,
-            on_toast=self.window.toast,
-            accept_any_getter=lambda: bool(self.settings.process.accept_any_input),
+    def _build_page_groups(self) -> PageGroups:
+        groups = build_page_groups(
+            PageGroupCallbacks(
+                on_inputs_changed=self._on_inputs_changed,
+                on_output_changed=self._on_output_changed,
+                on_format_changed=self._on_format_changed,
+                toast=self.window.toast,
+                hint=set_tooltip,
+                accept_any_getter=lambda: bool(self.settings.process.accept_any_input),
+                initial_folder_getter=lambda: (
+                    os.path.dirname(self.settings.process.input_paths[0])
+                    if self.settings.process.input_paths
+                    else None
+                ),
+                sample_duration=self.settings.process.sample_mode_duration,
+                on_gpu_changed=self._on_gpu_changed,
+                on_autocast_changed=self._on_autocast_changed,
+                on_sample_changed=self._on_sample_changed,
+            ),
+            processing=("gpu", "autocast", "sample"),
         )
-        set_tooltip(self.input_row, INPUT_FOLDER_ENTRY_HELP)
-        self.output_row = OutputFolderRow(self._on_output_changed, on_toast=self.window.toast)
-        set_tooltip(self.output_row, OUTPUT_FOLDER_ENTRY_HELP)
-        group.add(self.input_row)
-        group.add(self.output_row)
-        return group
+        assert groups.gpu_row is not None
+        assert groups.autocast_row is not None
+        assert groups.sample_row is not None
+        self.input_row = groups.input_row
+        self.output_row = groups.output_row
+        self.format_row = groups.format_row
+        self.gpu_row = groups.gpu_row
+        self.autocast_row = groups.autocast_row
+        self.sample_row = groups.sample_row
+        return groups
 
     def _build_ensemble_group(self) -> Adw.PreferencesGroup:
         group = self._layout_object("ensemble_group", Adw.PreferencesGroup)
@@ -307,9 +310,16 @@ class EnsemblePage:
             "clicked", self._open_models_dialog
         )
 
+        # Member model options and the vocal splitter sit under Member models,
+        # mirroring Separation's Model group.
         self.member_options_row = self._layout_object("member_options_row", Adw.ActionRow)
         set_tooltip(self.member_options_row, ENSEMBLE_MEMBER_MODEL_OPTIONS_HINT)
         self.member_options_row.connect("activated", self._open_member_model_options)
+        group.add(self.member_options_row)
+        self.vocal_split_row = VocalSplitRow(
+            self.context.repo, self._on_vocal_split_changed, hints=_RowTooltipHints()
+        )
+        group.add(self.vocal_split_row)
 
         self._layout_object("blend_options_row", Adw.ActionRow).connect(
             "activated", self._open_blend_options
@@ -387,54 +397,25 @@ class EnsemblePage:
                 return
             for name, value in values.items():
                 setattr(self.settings.ensemble, name, value)
-            self._update_ensemble_options_summary()
 
         show_blend_dialog(self.window, self.settings, members, apply)
 
-    def _build_stems_group(self) -> Adw.PreferencesGroup:
-        group = self._layout_object("stems_group", Adw.PreferencesGroup)
+    def _build_output_group(self) -> None:
+        group = self._page_groups.output_group
         self.save_stems = SaveStemsSection(
             settings=self.settings,
             on_changed=self._on_save_stems_changed,
         )
-        self.output_stems = OutputStemsSection(self.save_stems, group)
+        self.output_stems = OutputStemsSection(self.save_stems, None)
+        self._page_groups.set_output_lead(self.output_stems.rows)
         self.ensemble_stem_controls = EnsembleStemControls(self.settings)
         set_tooltip(group, SAVE_STEM_ONLY_HELP)
         # The output group remains available before member models are chosen.
         self.stems_group = group
-        return group
-
-    def _build_output_group(self) -> Adw.PreferencesGroup:
-        group = self._layout_object("processing_group", Adw.PreferencesGroup)
-
-        self.format_row = OutputFormatRow(self._on_format_changed)
-        self.stems_group.add(self.format_row)
-
-        self.gpu_row = self._layout_object("gpu_row", Adw.SwitchRow)
-        set_tooltip(self.gpu_row, IS_GPU_CONVERSION_HELP)
-        self.gpu_row.connect("notify::active", self._on_gpu_changed)
-        group.add(self.gpu_row)
-
-        self.autocast_row = self._layout_object("autocast_row", Adw.SwitchRow)
-        set_tooltip(self.autocast_row, IS_AUTOCAST_HELP)
-        self.autocast_row.connect("notify::active", self._on_autocast_changed)
-        group.add(self.autocast_row)
-
-        duration = self.settings.process.sample_mode_duration
-        self.sample_row = self._layout_object("sample_row", Adw.SwitchRow)
-        self.sample_row.set_title(SAMPLE_MODE_TITLE)
-        self.sample_row.set_subtitle(sample_mode_subtitle(duration))
-        set_tooltip(self.sample_row, MODEL_SAMPLE_MODE_HELP)
-        self.sample_row.connect("notify::active", self._on_sample_changed)
-        group.add(self.sample_row)
-
-        # Advanced toggles live in Processing (titled group) instead of a
-        # title-less PreferencesGroup wrapping a lone expander.
-        expander = self._layout_object("advanced_row", Adw.ExpanderRow)
 
         self.save_all_row = self._layout_object("save_all_row", Adw.SwitchRow)
         set_tooltip(self.save_all_row, IS_SAVE_ALL_OUTPUTS_ENSEMBLE_HELP)
-        self.stems_group.add(self.save_all_row)
+        self._page_groups.add_output_tail(self.save_all_row)
         self.save_all_row.connect(
             "notify::active",
             lambda *_a: self._set_bool(
@@ -443,6 +424,10 @@ class EnsemblePage:
                 refresh_stems=True,
             ),
         )
+
+    def _build_processing_group(self) -> None:
+        # Advanced toggles follow the shared GPU / FP16 / sample-mode switches.
+        expander = self._layout_object("advanced_row", Adw.ExpanderRow)
         self.append_name_row = self._layout_object("append_name_row", Adw.SwitchRow)
         set_tooltip(self.append_name_row, IS_APPEND_ENSEMBLE_NAME_HELP)
         self.append_name_row.connect(
@@ -458,14 +443,7 @@ class EnsemblePage:
             "notify::active",
             lambda *_a: self._set_bool("is_wav_ensemble", self.wav_ensemble_row.get_active()),
         )
-        group.add(expander)
-
-        self.vocal_split_row = VocalSplitRow(
-            self.context.repo, self._on_vocal_split_changed, hints=_RowTooltipHints()
-        )
-        group.add(self.vocal_split_row)
-
-        return group
+        self._page_groups.add_processing(expander)
 
     # -- Settings load / persist ------------------------------------------------
 
@@ -510,28 +488,12 @@ class EnsemblePage:
     def _install_shared_session(self) -> None:
         self._shared_session = SharedSettingsSession(
             self.settings,
-            shared_settings_bindings(
-                input_row=self.input_row,
-                output_row=self.output_row,
-                format_row=self.format_row,
-                gpu_row=self.gpu_row,
-                autocast_row=self.autocast_row,
-                sample_row=self.sample_row,
-                vocal_row=self.vocal_split_row,
-            ),
+            self._page_groups.bindings(vocal_row=self.vocal_split_row),
             can_commit=lambda: self.window.content_stack.get_visible_child_name() == "ensemble",
         )
 
     def _apply_shared_widgets(self) -> None:
-        apply_shared_file_options(
-            self.settings,
-            input_row=self.input_row,
-            output_row=self.output_row,
-            format_row=self.format_row,
-            gpu_row=self.gpu_row,
-            autocast_row=self.autocast_row,
-            sample_row=self.sample_row,
-        )
+        self._page_groups.apply(self.settings)
         self.vocal_split_row.apply_from_settings(self.settings)
 
     def _sync_shared_from_settings(self) -> None:
@@ -1199,7 +1161,6 @@ class EnsemblePage:
         self._apply_algorithm_row_presentation()
         self._update_algo_sensitivity()
         self._update_wav_ensemble_subtitle()
-        self._update_ensemble_options_summary()
 
     def _on_main_stem_changed(self, *_args: typing.Any) -> None:
         if self._loading:
@@ -1216,7 +1177,6 @@ class EnsemblePage:
         # toggles resolve export-semantics hints from _selected_model_tags(),
         # which otherwise still reflects the previous stem pair's checklist.
         self._reconcile_member_list(self._model_members_for_rebuild())
-        self._update_ensemble_options_summary()
 
     def _on_preset_changed(self, *_args: typing.Any) -> None:
         if self._loading or self._syncing_preset:
@@ -1233,7 +1193,6 @@ class EnsemblePage:
                 finally:
                     self._syncing_preset = False
             self._update_algorithm_visibility()
-            self._update_ensemble_options_summary()
             return
         if pair is None:
             self._update_algorithm_visibility()
@@ -1256,7 +1215,6 @@ class EnsemblePage:
         self._apply_algorithm_row_presentation()
         self._update_algo_sensitivity()
         self._update_wav_ensemble_subtitle()
-        self._update_ensemble_options_summary()
 
     def _on_derive_complement_changed(self, *_args: typing.Any) -> None:
         if self._loading or self._syncing_preset:
@@ -1296,7 +1254,6 @@ class EnsemblePage:
             finally:
                 self._syncing_preset = False
         self._update_wav_ensemble_subtitle()
-        self._update_ensemble_options_summary()
 
     def _update_algorithm_visibility(self) -> None:
         custom = get_combo_value(self.preset_row) == CUSTOM_PRESET
@@ -1334,39 +1291,6 @@ class EnsemblePage:
         else:
             uses_chunk = CHUNK_MIN in (primary, secondary)
         set_row_subtitle(row, wav_ensemble_subtitle(uses_chunk_min=uses_chunk))
-
-    def _update_ensemble_options_summary(self) -> None:
-        group = (
-            self._layout_object("combination_group", Adw.PreferencesGroup)
-            if hasattr(self, "_layout_builder")
-            else getattr(self, "ensemble_group", None)
-        )
-        if group is None:
-            return
-        pair = self._ensemble_pair()
-        multi = is_stem_mode(pair)
-        pair_primary, pair_secondary = self._ensemble_stem_pair()
-        stacked = getattr(self, "_pair_consistent_stacked_label", None)
-        leftover = getattr(self, "_pair_consistent_leftover_label", None)
-        lock_leftover = bool(getattr(self, "_lock_leftover_algo", False))
-        describe_mix = bool(
-            getattr(self, "_describe_mix_residual", False) or lock_leftover or leftover
-        )
-        primary, secondary = parse_ensemble_type(self.settings.ensemble.type or MAX_MIN)
-        group.set_description(
-            ensemble_options_summary(
-                stem_chosen=self._stem_pair_chosen(),
-                main_stem=self._ensemble_pair_label(),
-                primary_stem=stacked if describe_mix and stacked else pair_primary,
-                secondary_stem=pair_secondary,
-                primary_algo=primary,
-                secondary_algo=secondary,
-                model_count=len(self._effective_selected_models()),
-                multi_stem=multi,
-                derive_complement_from_mix=describe_mix,
-                leftover_label=leftover,
-            )
-        )
 
     # -- Model multi-select list ------------------------------------------------
 
@@ -1567,7 +1491,6 @@ class EnsemblePage:
             )
         self._apply_algorithm_row_presentation()
         self._update_member_models_sensitivity()
-        self._update_ensemble_options_summary()
         self._update_ensemble_banner()
 
     def _models_row_visible(self, row: Gtk.ListBoxRow) -> bool:
