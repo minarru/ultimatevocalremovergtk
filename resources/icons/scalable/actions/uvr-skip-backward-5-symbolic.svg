@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   viewBox="0 0 16 16"
+   width="16"
+   height="16"
+   version="1.1"
+   id="svg1"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <!-- GNOME Icon Development Kit: arrow-left-10-symbolic with the "10" redrawn as "5"; static outline export, 2026-10-03. CC0-1.0. -->
+  <title
+     id="title1">skip-backward-5</title>
+  <defs
+     id="defs1"
+     fill="#2e3436"
+     stroke="none"
+     class="foreground foreground-fill" />
+  <path
+     style="fill:#2e3436;stroke-linecap:round;stroke-linejoin:round"
+     d="M 11.007812 0.009765625 A 1 1 0 0 0 10.300781 0.30273438 L 6.3007812 4.3027344 A 1.0001 1.0001 0 0 0 6.3007812 5.7167969 L 10.300781 9.7167969 A 1 1 0 0 0 11.714844 9.7167969 A 1 1 0 0 0 11.714844 8.3027344 L 9.4121094 6 L 12 6 C 13.116414 6 14 6.8835859 14 8 L 14 10.011719 C 14 11.128133 13.116414 12.011719 12 12.011719 A 1 1 0 0 0 11 13.011719 A 1 1 0 0 0 12 14.011719 C 14.197294 14.011719 16 12.209013 16 10.011719 L 16 8 C 16 5.8027056 14.197294 4 12 4 L 9.4316406 4 L 11.714844 1.7167969 A 1 1 0 0 0 11.714844 0.30273438 A 1 1 0 0 0 11.007812 0.009765625 z M 2 8 A 1.0001 1.0001 0 0 0 1 9 L 1 11.5 A 1.0001 1.0001 0 0 0 2 12.5 L 3.75 12.5 C 4.083333 12.5 4.2060593 12.58899 4.3144531 12.710938 C 4.4228469 12.83288 4.5 13.034722 4.5 13.25 C 4.5 13.465278 4.4228469 13.667119 4.3144531 13.789062 C 4.2060593 13.911005 4.083333 14 3.75 14 L 2 14 A 1 1 0 0 0 1 15 A 1 1 0 0 0 2 16 L 3.75 16 C 4.5833332 16 5.3356076 15.651494 5.8105469 15.117188 C 6.2854861 14.58288 6.5 13.909722 6.5 13.25 C 6.5 12.590278 6.2854861 11.917119 5.8105469 11.382812 C 5.3356076 10.848505 4.5833332 10.5 3.75 10.5 L 3 10.5 L 3 10 L 6 10 A 1 1 0 0 0 7 9 A 1 1 0 0 0 6 8 L 2 8 z "
+     id="left" />
+  <metadata
+     id="metadata1">
+    <rdf:RDF>
+      <Work>
+        <license
+           rdf:resource="https://creativecommons.org/publicdomain/zero/1.0/" />
+        <dc:subject>
+          <rdf:Bag>
+            <rdf:li>arrow left 5 skip media skip-backward-5</rdf:li>
+          </rdf:Bag>
+        </dc:subject>
+        <dc:creator>
+          <Agent>
+            <dc:title>Jakub Steiner</dc:title>
+          </Agent>
+        </dc:creator>
+      </Work>
+    </rdf:RDF>
+  </metadata>
+</svg>

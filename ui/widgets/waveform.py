@@ -1,6 +1,7 @@
 """Waveform strip for one track: shared time axis, playhead, click or drag to seek.
 
-Heights use one absolute scale (±1.0 fills the row), so rows compare honestly.
+The envelope is drawn as mirrored, round-capped bars separated by gaps. Heights
+use one absolute scale (±1.0 fills the row), so rows compare honestly.
 Colours come from the widget's CSS colour; the audible row carries libadwaita's
 ``accent`` class, which turns that colour into the accent colour.
 """
@@ -17,9 +18,13 @@ if TYPE_CHECKING:
 
     from core.waveform import Peaks
 
-WAVEFORM_HEIGHT = 40
+WAVEFORM_HEIGHT = 44
+BAR_WIDTH = 2
+BAR_GAP = 1
+BAR_PITCH = BAR_WIDTH + BAR_GAP
+PLAYHEAD_WIDTH = 2
 _INACTIVE_ALPHA = 0.55
-_UNPLAYED_ALPHA = 0.45
+_UNPLAYED_ALPHA = 0.4
 _PLACEHOLDER_ALPHA = 0.25
 
 
@@ -54,6 +59,21 @@ def column_extents(
     return np.minimum.reduceat(peaks.mins, starts), np.maximum.reduceat(peaks.maxs, starts)
 
 
+def bar_levels(peaks: Peaks, width: int, timeline: float) -> NDArray[np.float32]:
+    """Per-bar mirrored amplitude for bars at ``x = i * BAR_PITCH`` across ``width``.
+
+    Each bar covers exactly its own pitch of the shared time axis, so a bar sits
+    under the playhead at the moment it plays; the last bar needs no trailing gap.
+    """
+    import numpy as np
+
+    bars = (width + BAR_GAP) // BAR_PITCH
+    if bars <= 0 or timeline <= 0:
+        return np.zeros(0, dtype=np.float32)
+    lows, highs = column_extents(peaks, bars, timeline * bars * BAR_PITCH / width)
+    return np.maximum(highs, -lows)
+
+
 def _noop(_seconds: float) -> None:
     return None
 
@@ -71,6 +91,12 @@ class WaveformView(Gtk.DrawingArea):
         self._timeline = 0.0
         self._position = 0.0
         self._active = False
+        # Pixel column of the last playhead a redraw was queued for.
+        self._playhead_column: int | None = None
+        # Bar levels depend only on the peaks, width and axis, not the playhead.
+        self._levels_peaks: Peaks | None = None
+        self._levels_key: tuple[int, float] = (0, 0.0)
+        self._levels: NDArray[np.float32] | None = None
         self.set_content_height(WAVEFORM_HEIGHT)
         self.set_hexpand(True)
         self.set_draw_func(self._draw)
@@ -109,6 +135,13 @@ class WaveformView(Gtk.DrawingArea):
 
     def set_position(self, seconds: float) -> None:
         self._position = seconds
+        # Position ticks arrive far faster than the playhead crosses a pixel.
+        width = self.get_width()
+        if width > 0 and self.timeline > 0:
+            column = int(seconds_to_x(seconds, width, self.timeline))
+            if column == self._playhead_column:
+                return
+            self._playhead_column = column
         self.queue_draw()
 
     def set_active(self, active: bool) -> None:
@@ -141,6 +174,8 @@ class WaveformView(Gtk.DrawingArea):
     def _draw(
         self, _area: Gtk.DrawingArea, cr: Any, width: int, height: int, *_data: object
     ) -> None:
+        import cairo
+
         color = self.get_color()
         red, green, blue, alpha = color.red, color.green, color.blue, color.alpha
         middle = height / 2
@@ -151,16 +186,27 @@ class WaveformView(Gtk.DrawingArea):
             cr.rectangle(0, middle - 0.5, width, 1)
             cr.fill()
         elif timeline > 0:
-            self._draw_envelope(cr, peaks, width, middle, timeline, (red, green, blue, alpha))
+            cr.set_line_width(BAR_WIDTH)
+            cr.set_line_cap(cairo.LINE_CAP_ROUND)
+            self._draw_bars(cr, peaks, width, middle, timeline, (red, green, blue, alpha))
         if timeline <= 0:
             return
         # One playhead across every row, loaded or not.
-        playhead = min(seconds_to_x(self._position, width, timeline), max(width - 1, 0))
+        half = PLAYHEAD_WIDTH / 2
+        playhead = min(max(seconds_to_x(self._position, width, timeline), half), width - half)
         cr.set_source_rgba(red, green, blue, alpha)
-        cr.rectangle(playhead, 0, 1, height)
+        cr.rectangle(round(playhead - half), 0, PLAYHEAD_WIDTH, height)
         cr.fill()
 
-    def _draw_envelope(
+    def _bar_levels(self, peaks: Peaks, width: int, timeline: float) -> NDArray[np.float32]:
+        key = (width, timeline)
+        if self._levels is None or peaks is not self._levels_peaks or key != self._levels_key:
+            self._levels = bar_levels(peaks, width, timeline)
+            self._levels_peaks = peaks
+            self._levels_key = key
+        return self._levels
+
+    def _draw_bars(
         self,
         cr: Any,
         peaks: Peaks,
@@ -170,24 +216,33 @@ class WaveformView(Gtk.DrawingArea):
         rgba: tuple[float, float, float, float],
     ) -> None:
         red, green, blue, alpha = rgba
-        lows, highs = column_extents(peaks, width, timeline)
-        columns = len(highs)
-        played = min(int(seconds_to_x(self._position, width, timeline)), columns)
+        levels = self._bar_levels(peaks, width, timeline)
+        bars = len(levels)
+        # A bar counts as played once the playhead reaches its centre.
+        playhead = seconds_to_x(self._position, width, timeline)
+        played = min(max(int((playhead - BAR_WIDTH / 2) // BAR_PITCH) + 1, 0), bars)
         strength = alpha * (1.0 if self._active else _INACTIVE_ALPHA)
-        for first, last, share in ((0, played, 1.0), (played, columns, _UNPLAYED_ALPHA)):
+        # Round caps add half the line width at each end; silence stays a dot.
+        cap = BAR_WIDTH / 2
+        for first, last, share in ((0, played, 1.0), (played, bars, _UNPLAYED_ALPHA)):
             if first >= last:
                 continue
-            for column in range(first, last):
-                high = float(highs[column])
-                low = float(lows[column])
-                cr.rectangle(column, middle - high * middle, 1, max((high - low) * middle, 1.0))
+            for bar in range(first, last):
+                x = bar * BAR_PITCH + cap
+                reach = max(float(levels[bar]) * middle - cap, 0.0)
+                cr.move_to(x, middle - reach)
+                cr.line_to(x, middle + reach)
             cr.set_source_rgba(red, green, blue, strength * share)
-            cr.fill()
+            cr.stroke()
 
 
 __all__ = [
+    "BAR_GAP",
+    "BAR_PITCH",
+    "BAR_WIDTH",
     "WAVEFORM_HEIGHT",
     "WaveformView",
+    "bar_levels",
     "column_extents",
     "seconds_to_x",
     "x_to_seconds",

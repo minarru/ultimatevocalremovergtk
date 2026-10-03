@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import unittest
+from typing import Any
 
 import numpy as np
 
@@ -69,6 +70,45 @@ class ColumnExtentsTests(unittest.TestCase):
         self.assertEqual(highs.size, 2)
         np.testing.assert_allclose(highs, [0.2, 0.4])
         self.assertEqual(lows.size, 2)
+
+
+def _flat(level: float, buckets: int = 10, duration: float = 2.0) -> Peaks:
+    levels = np.full(buckets, level, dtype=np.float32)
+    return Peaks(duration, -levels, levels)
+
+
+class BarLevelsTests(unittest.TestCase):
+    def test_one_bar_per_pitch(self) -> None:
+        from ui.widgets.waveform import BAR_PITCH, bar_levels
+
+        levels = bar_levels(_ramp(), 4 * BAR_PITCH, 2.0)
+        np.testing.assert_allclose(levels, [0.1, 0.2, 0.3, 0.4], rtol=1e-6)
+
+    def test_last_bar_needs_no_trailing_gap(self) -> None:
+        from ui.widgets.waveform import BAR_GAP, BAR_PITCH, bar_levels
+
+        self.assertEqual(bar_levels(_ramp(), 4 * BAR_PITCH - BAR_GAP, 2.0).size, 4)
+        self.assertEqual(bar_levels(_ramp(), 4 * BAR_PITCH - BAR_GAP - 1, 2.0).size, 3)
+
+    def test_bars_mirror_the_larger_side(self) -> None:
+        from ui.widgets.waveform import BAR_PITCH, bar_levels
+
+        peaks = Peaks(
+            1.0, np.array([-0.5, -0.1], dtype=np.float32), np.array([0.2, 0.3], dtype=np.float32)
+        )
+        np.testing.assert_allclose(bar_levels(peaks, 2 * BAR_PITCH, 1.0), [0.5, 0.3], rtol=1e-6)
+
+    def test_bars_sit_on_the_shared_axis(self) -> None:
+        from ui.widgets.waveform import BAR_PITCH, bar_levels
+
+        # A 2 s track on a 4 s axis fills only the left half of the bars.
+        self.assertEqual(bar_levels(_ramp(), 4 * BAR_PITCH, 4.0).size, 2)
+
+    def test_degenerate_inputs_are_empty(self) -> None:
+        from ui.widgets.waveform import bar_levels
+
+        for width, timeline in ((0, 2.0), (1, 2.0), (100, 0.0)):
+            self.assertEqual(bar_levels(_ramp(), width, timeline).size, 0)
 
 
 @unittest.skipUnless(
@@ -153,7 +193,93 @@ class WaveformViewTests(unittest.TestCase):
         surface.flush()
         pixels = np.ndarray((40, 200, 4), dtype=np.uint8, buffer=surface.get_data())
         top = pixels[0, :, 3]
-        self.assertEqual(np.flatnonzero(top).tolist(), [100])  # only the playhead reaches the top
+        # Only the 2 px playhead, centred on x = 100, reaches the top.
+        self.assertEqual(np.flatnonzero(top).tolist(), [99, 100])
+
+    def test_repeated_draws_reuse_column_extents(self) -> None:
+        from unittest import mock
+
+        import cairo
+
+        from ui.widgets import waveform
+        from ui.widgets.waveform import WaveformView
+
+        view = WaveformView()
+        view.set_peaks(_ramp())
+        with mock.patch.object(
+            waveform, "column_extents", wraps=waveform.column_extents
+        ) as extents:
+            for width, position in ((200, 0.5), (200, 1.0), (300, 1.0)):
+                view.set_position(position)
+                surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, width, 40)
+                view._draw(view, cairo.Context(surface), width, 40)
+        # The playhead moved between the first two draws; only the width change recomputes.
+        self.assertEqual(extents.call_count, 2)
+
+    def test_subpixel_position_change_skips_redraw(self) -> None:
+        from unittest import mock
+
+        from ui.widgets.waveform import WaveformView
+
+        view = WaveformView()
+        view.set_timeline(100.0)
+        view.get_width = lambda: 200  # 2 px per second once allocated
+        view.queue_draw = mock.Mock()
+        view.set_position(10.0)
+        self.assertEqual(view.queue_draw.call_count, 1)
+        view.set_position(10.2)  # still pixel 20
+        self.assertEqual(view.queue_draw.call_count, 1)
+        self.assertEqual(view.position, 10.2)
+        view.set_position(10.6)  # pixel 21
+        self.assertEqual(view.queue_draw.call_count, 2)
+
+    def _render(self, view: Any, width: int = 30, height: int = 40) -> Any:
+        import cairo
+
+        surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, width, height)
+        view._draw(view, cairo.Context(surface), width, height)
+        surface.flush()
+        return np.ndarray((height, width, 4), dtype=np.uint8, buffer=surface.get_data())
+
+    def test_bars_are_separated_by_gaps(self) -> None:
+        from ui.widgets.waveform import WaveformView
+
+        view = WaveformView()
+        view.set_peaks(_flat(0.5))
+        view.set_position(2.0)  # playhead parked at the right edge
+        alpha = self._render(view)[20, :, 3]
+        self.assertTrue(alpha[0] and alpha[1] and alpha[3] and alpha[4])
+        self.assertEqual((int(alpha[2]), int(alpha[5])), (0, 0))
+
+    def test_bars_are_mirrored_about_the_midline(self) -> None:
+        from ui.widgets.waveform import WaveformView
+
+        view = WaveformView()
+        view.set_peaks(_flat(0.5))
+        view.set_position(2.0)
+        column = self._render(view)[:, 0, 3]
+        np.testing.assert_array_equal(column[:20], column[20:][::-1])
+        self.assertGreater(int(column[12]), 0)  # half of the 20 px half-height
+        self.assertEqual(int(column[5]), 0)
+
+    def test_silent_bars_stay_visible(self) -> None:
+        from ui.widgets.waveform import WaveformView
+
+        view = WaveformView()
+        view.set_peaks(_flat(0.0))
+        view.set_position(2.0)
+        self.assertGreater(int(self._render(view)[20, 0, 3]), 0)
+
+    def test_played_bars_are_stronger_than_unplayed(self) -> None:
+        from ui.widgets.waveform import WaveformView
+
+        view = WaveformView()
+        view.set_peaks(_flat(0.5))
+        view.set_active(True)
+        view.set_position(1.0)  # playhead at x = 15
+        alpha = self._render(view)[20, :, 3]
+        self.assertGreater(int(alpha[0]), int(alpha[24]))
+        self.assertGreater(int(alpha[24]), 0)
 
     def test_draws_peaks_and_placeholder(self) -> None:
         import cairo

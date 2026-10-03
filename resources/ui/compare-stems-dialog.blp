@@ -4,61 +4,226 @@ using Adw 1;
 Adw.Dialog dialog {
   title: "Compare stems";
   content-width: 560;
+
   child: Adw.ToolbarView {
     [top]
-    Adw.HeaderBar {}
-    content: Gtk.Box {
-      orientation: vertical;
-      spacing: 12;
-      margin-top: 6;
-      margin-bottom: 12;
-      margin-start: 12;
-      margin-end: 12;
-      Gtk.DropDown input_dropdown {
-        visible: false;
+    Adw.HeaderBar {
+      [start]
+      Gtk.Button folder_button {
+        icon-name: "folder-open-symbolic";
+        tooltip-text: "Open output folder";
+
+        accessibility {
+          label: "Open output folder";
+        }
       }
-      // Rows with waveforms are tall: long sets scroll instead of outgrowing the screen.
-      Gtk.ScrolledWindow {
-        hscrollbar-policy: never;
-        propagate-natural-height: true;
-        max-content-height: 440;
-        child: Gtk.ListBox track_list {
-          selection-mode: none;
-          styles ["boxed-list"]
+
+      // One input names the song under the title; several swap in a picker.
+      title-widget: Gtk.Box {
+        Adw.WindowTitle window_title {
+          title: "Compare stems";
+        }
+
+        Gtk.DropDown input_dropdown {
+          visible: false;
+          tooltip-text: "Input file";
+
+          styles [
+            "flat",
+          ]
+        }
+      };
+
+      [end]
+      Gtk.MenuButton {
+        icon-name: "input-keyboard-symbolic";
+        tooltip-text: "Keyboard shortcuts";
+
+        accessibility {
+          label: "Keyboard shortcuts";
+        }
+
+        popover: Gtk.Popover {
+          child: Gtk.Grid {
+            row-spacing: 8;
+            column-spacing: 12;
+            margin-top: 6;
+            margin-bottom: 6;
+            margin-start: 6;
+            margin-end: 6;
+
+            Gtk.Label {
+              label: "Space";
+              halign: end;
+
+              layout {
+                column: 0;
+                row: 0;
+              }
+
+              styles [
+                "uvr-keycap",
+              ]
+            }
+
+            Gtk.Label {
+              label: "Play or pause";
+              xalign: 0;
+
+              layout {
+                column: 1;
+                row: 0;
+              }
+            }
+
+            Gtk.Label {
+              label: "1 – 9";
+              halign: end;
+
+              layout {
+                column: 0;
+                row: 1;
+              }
+
+              styles [
+                "uvr-keycap",
+              ]
+            }
+
+            Gtk.Label {
+              label: "Switch track";
+              xalign: 0;
+
+              layout {
+                column: 1;
+                row: 1;
+              }
+            }
+
+            Gtk.Label {
+              label: "← →";
+              halign: end;
+
+              layout {
+                column: 0;
+                row: 2;
+              }
+
+              styles [
+                "uvr-keycap",
+              ]
+            }
+
+            Gtk.Label {
+              label: "Back or forward 5 s";
+              xalign: 0;
+
+              layout {
+                column: 1;
+                row: 2;
+              }
+            }
+          };
         };
       }
-      Gtk.Box {
-        orientation: horizontal;
-        spacing: 12;
-        Gtk.Button play_button {
-          icon-name: "media-playback-start-symbolic";
-          valign: center;
-          styles ["circular"]
-        }
-        Gtk.Label elapsed_label {
-          label: "0:00";
-          styles ["numeric", "dim-label"]
-        }
-        Gtk.Label total_label {
-          label: "0:00";
-          hexpand: true;
-          xalign: 1;
-          styles ["numeric", "dim-label"]
-        }
-      }
-      Gtk.Box {
-        orientation: horizontal;
-        spacing: 12;
-        Gtk.Label {
-          label: "Space play · 1–9 switch · ← → 5 s";
-          hexpand: true;
-          xalign: 0;
-          styles ["dim-label", "caption"]
-        }
-        Gtk.Button folder_button {
-          label: "Open folder";
-        }
-      }
+    }
+
+    // Rows with waveforms are tall: long sets scroll instead of outgrowing the screen.
+    content: Gtk.ScrolledWindow {
+      hscrollbar-policy: never;
+      propagate-natural-height: true;
+      max-content-height: 480;
+
+      child: Gtk.ListBox track_list {
+        selection-mode: none;
+        margin-top: 6;
+        margin-bottom: 6;
+        margin-start: 12;
+        margin-end: 12;
+
+        styles [
+          "boxed-list",
+        ]
+      };
     };
+
+    // The transport stays put while a long set scrolls above it.
+    [bottom]
+    Gtk.Box {
+      orientation: horizontal;
+      spacing: 12;
+      halign: center;
+      margin-top: 6;
+      margin-bottom: 12;
+
+      Gtk.Label elapsed_label {
+        label: "0:00";
+        width-chars: 5;
+        xalign: 1;
+
+        styles [
+          "numeric",
+          "dim-label",
+        ]
+      }
+
+      Gtk.Button back_button {
+        icon-name: "uvr-skip-backward-5-symbolic";
+        tooltip-text: "Back 5 seconds";
+        valign: center;
+
+        accessibility {
+          label: "Back 5 seconds";
+        }
+
+        styles [
+          "circular",
+          "flat",
+        ]
+      }
+
+      Gtk.Button play_button {
+        icon-name: "media-playback-start-symbolic";
+        width-request: 48;
+        height-request: 48;
+        valign: center;
+
+        accessibility {
+          label: "Play";
+        }
+
+        styles [
+          "circular",
+          "suggested-action",
+          "uvr-transport-play",
+        ]
+      }
+
+      Gtk.Button forward_button {
+        icon-name: "uvr-skip-forward-5-symbolic";
+        tooltip-text: "Forward 5 seconds";
+        valign: center;
+
+        accessibility {
+          label: "Forward 5 seconds";
+        }
+
+        styles [
+          "circular",
+          "flat",
+        ]
+      }
+
+      Gtk.Label total_label {
+        label: "0:00";
+        width-chars: 5;
+        xalign: 0;
+
+        styles [
+          "numeric",
+          "dim-label",
+        ]
+      }
+    }
   };
 }

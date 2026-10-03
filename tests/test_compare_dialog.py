@@ -151,6 +151,40 @@ class CompareDialogTests(unittest.TestCase):
             [t.get_label() for t in dialog.titles], [REFERENCE_LABEL, "Vocals", "Instrumental"]
         )
 
+    def test_single_input_names_the_song_in_the_header(self) -> None:
+        dialog, _ = self._dialog(_set("song", "Vocals"))
+        self.assertTrue(dialog.window_title.get_visible())
+        self.assertEqual(dialog.window_title.get_subtitle(), "song.wav")
+
+    def test_several_inputs_put_the_picker_in_the_header(self) -> None:
+        dialog, _ = self._dialog(_set("a", "Vocals"), _set("b", "Vocals"))
+        self.assertTrue(dialog.input_dropdown.get_visible())
+        self.assertFalse(dialog.window_title.get_visible())
+
+    def test_skip_buttons_seek_five_seconds(self) -> None:
+        dialog, engine = self._dialog(_set("song", "Vocals"))
+        engine._position = 10.0
+        dialog.forward_button.emit("clicked")
+        self.assertEqual(engine.calls[-1], ("seek", 15.0))
+        dialog.back_button.emit("clicked")
+        self.assertEqual(engine.calls[-1], ("seek", 10.0))
+
+    def test_audible_row_is_highlighted(self) -> None:
+        from gi.repository import Gdk
+
+        dialog, _ = self._dialog(_set("song", "Vocals", "Instrumental"))
+        active = [r.has_css_class("uvr-compare-active") for r in dialog.rows]
+        self.assertEqual(active, [False, True, False])
+        dialog.handle_key(Gdk.KEY_3)
+        active = [r.has_css_class("uvr-compare-active") for r in dialog.rows]
+        self.assertEqual(active, [False, False, True])
+
+    def test_rows_show_their_number_key(self) -> None:
+        dialog, _ = self._dialog(_set("song", *(f"Stem {n}" for n in range(1, 10))))
+        self.assertEqual(len(dialog.rows), 10)
+        # Only 1–9 have keys; the tenth row gets no hint.
+        self.assertEqual([h.get_label() for h in dialog.key_hints], [str(n) for n in range(1, 10)])
+
     def test_dropdown_hidden_for_single_input(self) -> None:
         dialog, _ = self._dialog(_set("song", "Vocals"))
         self.assertFalse(dialog.input_dropdown.get_visible())
@@ -311,6 +345,40 @@ class CompareDialogTests(unittest.TestCase):
         self.loader.on_peaks(2, peaks)
         self.assertIs(dialog.waveforms[2].peaks, peaks)
         self.assertIsNone(dialog.waveforms[1].peaks)
+
+    def _deliver(self, index: int, duration: float) -> None:
+        peaks = Peaks(duration, np.zeros(4, dtype=np.float32), np.zeros(4, dtype=np.float32))
+        assert self.loader is not None and self.loader.on_peaks is not None
+        self.loader.on_peaks(index, peaks)
+
+    def test_timeline_falls_back_to_longest_peaks(self) -> None:
+        dialog, _ = self._dialog(_set("song", "Vocals", "Instrumental"), loader=True)
+        self._deliver(2, 6.0)
+        self._deliver(0, 8.0)
+        self._deliver(1, 7.0)
+        self.assertEqual([w.timeline for w in dialog.waveforms], [8.0, 8.0, 8.0])
+        self.assertEqual(dialog._total.get_label(), "0:08")
+
+    def test_engine_duration_wins_over_peaks(self) -> None:
+        dialog, engine = self._dialog(_set("song", "Vocals"), loader=True)
+        engine.on_duration(9.5)
+        self._deliver(0, 8.0)
+        self.assertEqual([w.timeline for w in dialog.waveforms], [9.5, 9.5])
+
+    def test_failed_engine_duration_keeps_peak_timeline(self) -> None:
+        dialog, engine = self._dialog(_set("song", "Vocals"), loader=True)
+        self._deliver(0, 8.0)
+        engine.on_duration(0.0)
+        self.assertEqual([w.timeline for w in dialog.waveforms], [8.0, 8.0])
+        self.assertEqual(dialog._total.get_label(), "0:08")
+
+    def test_switching_input_resets_timeline(self) -> None:
+        dialog, engine = self._dialog(_set("a", "Vocals"), _set("b", "Vocals"), loader=True)
+        engine.on_duration(9.5)
+        self._deliver(0, 9.5)
+        dialog.input_dropdown.set_selected(1)
+        self._deliver(1, 3.0)
+        self.assertEqual([w.timeline for w in dialog.waveforms], [3.0, 3.0])
 
     def test_switching_input_reloads_peaks(self) -> None:
         dialog, engine = self._dialog(

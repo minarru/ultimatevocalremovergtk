@@ -1,6 +1,7 @@
 from typing import Any
 
 FORMAT_ARGB32: int
+LINE_CAP_ROUND: int
 
 class ImageSurface:
     def __init__(self, format: int, width: int, height: int) -> None: ...
