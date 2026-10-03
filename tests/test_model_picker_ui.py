@@ -292,7 +292,7 @@ class PickerConfigTests(unittest.TestCase):
         return ModelPicker(ModelRepository(), lambda: '', Mock(), Mock(), **kwargs)
 
     def test_default_config_is_separation(self):
-        from gi.repository import Gtk
+        from gi.repository import Adw, Gtk
 
         picker = self._picker()
         self.assertEqual(picker.dialog.get_title(), 'Choose Model')
@@ -300,9 +300,10 @@ class PickerConfigTests(unittest.TestCase):
         self.assertEqual(picker.search.get_placeholder_text(), 'Search installed models')
         self.assertFalse(picker.get('select_all', Gtk.Button).get_visible())
         self.assertFalse(picker.get('clear', Gtk.Button).get_visible())
+        self.assertFalse(picker.get('header_title', Adw.WindowTitle).get_visible())
 
     def test_config_title_and_hidden_tabs(self):
-        from gi.repository import Gtk
+        from gi.repository import Adw, Gtk
 
         from ui.model_picker import PickerConfig
 
@@ -315,10 +316,14 @@ class PickerConfigTests(unittest.TestCase):
         self.assertEqual(picker.search.get_placeholder_text(), 'Search compatible models')
         self.assertFalse(picker.get('purpose_tabs', Gtk.Box).get_visible())
         self.assertFalse(picker.compact.get_visible())
+        # Without tabs the header names the dialog instead.
+        header_title = picker.get('header_title', Adw.WindowTitle)
+        self.assertTrue(header_title.get_visible())
+        self.assertEqual(header_title.get_title(), 'Member Models')
         picker.reset()
         self.assertEqual(picker.filters.purpose, 'all')
         # Narrow breakpoints must not reveal the compact purpose dropdown.
-        from gi.repository import Adw, GLib
+        from gi.repository import GLib
 
         parent = Adw.Window(default_width=480, default_height=700)
         parent.present()

@@ -130,7 +130,11 @@ class ModelPicker:
         if self.buttons:
             self.buttons[0].set_active(True)
         else:
+            # Without tabs the header names the dialog instead.
             tabs.set_visible(False)
+            header_title = self.get('header_title', Adw.WindowTitle)
+            header_title.set_title(config.title)
+            header_title.set_visible(True)
         for widget in (self.architecture, self.sort, self.compact):
             widget.connect('notify::selected', self._dropdown_changed)
         self.search.connect('search-changed', self._refresh)
