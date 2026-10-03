@@ -329,11 +329,14 @@ class PickerConfigTests(unittest.TestCase):
         parent.present()
         self.addCleanup(parent.set_visible, False)
         picker.present(parent)
+        import time
+
         context = GLib.MainContext.default()
-        deadline = GLib.get_monotonic_time() + 3_000_000
+        deadline = time.monotonic() + 3
         while picker.dialog.get_current_breakpoint() is None:
-            self.assertLess(GLib.get_monotonic_time(), deadline, 'no breakpoint applied')
+            self.assertLess(time.monotonic(), deadline, 'no breakpoint applied')
             context.iteration(False)
+            time.sleep(0.005)
         self.assertFalse(picker.compact.get_visible())
         self.assertFalse(picker.get('purpose_tabs', Gtk.Box).get_visible())
 
