@@ -336,7 +336,7 @@ class AudioToolsLayoutTests(unittest.TestCase):
         from gi.repository import Adw
 
         from bundled.constants import APOLLO_RESTORE
-        from ui.audio_tools.window import AUDIO_TOOL_ORDER
+        from ui.audio_tools.window import _TOOL_INPUT_NOTES, AUDIO_TOOL_ORDER
 
         page = self._window()._audio_tools_page
         self.assertFalse(hasattr(page, "testing_row"))
@@ -354,7 +354,9 @@ class AudioToolsLayoutTests(unittest.TestCase):
                     if holder
                     else None
                 )
-                self.assertEqual(page.tool_row.get_subtitle() or "", description or "")
+                notes = _TOOL_INPUT_NOTES
+                expected = ". ".join(filter(None, (description, notes.get(tool))))
+                self.assertEqual(page.tool_row.get_subtitle() or "", expected)
                 self.assertEqual(
                     _order(page._page_groups.output_group), [page.format_row, page.output_row]
                 )
@@ -392,6 +394,7 @@ class AudioToolsLayoutTests(unittest.TestCase):
     def test_dual_tools_show_pairs_row(self) -> None:
         from bundled.constants import MANUAL_ENSEMBLE
         from core.audio_tools import DUAL_INPUT_TOOLS
+        from ui.audio_tools.window import _TOOL_INPUT_NOTES
 
         page = self._window()._audio_tools_page
         input_group = page._page_groups.input_group
@@ -401,11 +404,68 @@ class AudioToolsLayoutTests(unittest.TestCase):
                 self._select(page, tool)
                 self.assertTrue(page.dual_inputs_row.get_visible())
                 self.assertFalse(page.input_row.get_visible())
-                self.assertTrue(input_group.get_description())
+                # The input note sits on the tool picker, not the Input header,
+                # so the Input and Output cards start level.
+                self.assertIn(input_group.get_description(), ("", None))
+                self.assertIn(_TOOL_INPUT_NOTES[tool], page.tool_row.get_subtitle() or "")
         self._select(page, MANUAL_ENSEMBLE)
         self.assertFalse(page.dual_inputs_row.get_visible())
         self.assertTrue(page.input_row.get_visible())
         self.assertIn(input_group.get_description(), ("", None))
+
+    def test_cards_start_level_and_tool_names_fit(self) -> None:
+        import time
+
+        from gi.repository import GLib, Graphene, Gtk
+
+        from tests.gtk_layout_helpers import resize_window
+        from ui.audio_tools.window import AUDIO_TOOL_ORDER
+
+        window = self._window()
+        page = window._audio_tools_page
+        self.addCleanup(window.set_visible, False)
+        resize_window(window, 1280, 900)
+        window.content_stack.set_visible_child_name("audio_tools")
+
+        def settle() -> None:
+            deadline = time.monotonic() + 0.3
+            while time.monotonic() < deadline:
+                GLib.MainContext.default().iteration(False)
+                time.sleep(0.005)
+
+        def top(widget: Any) -> float:
+            ok, point = widget.compute_point(window, Graphene.Point())
+            self.assertTrue(ok)
+            return point.y
+
+        def find(widget: Any, kind: type) -> Any:
+            if isinstance(widget, kind):
+                return widget
+            child = widget.get_first_child()
+            while child is not None:
+                found = find(child, kind)
+                if found is not None:
+                    return found
+                child = child.get_next_sibling()
+            return None
+
+        for tool in AUDIO_TOOL_ORDER:
+            with self.subTest(tool=tool):
+                self._select(page, tool)
+                settle()
+                first_input = (
+                    page.dual_inputs_row if page.dual_inputs_row.get_visible() else page.input_row
+                )
+                # Compare the cards (boxed lists), not rows: expander rows sit
+                # differently inside their card than plain rows.
+                self.assertAlmostEqual(
+                    top(first_input.get_ancestor(Gtk.ListBox)),
+                    top(page.format_row.get_ancestor(Gtk.ListBox)),
+                    delta=1,
+                )
+                value = find(find(page.tool_row, Gtk.ListView), Gtk.Label)
+                natural = value.measure(Gtk.Orientation.HORIZONTAL, -1)[1]
+                self.assertGreaterEqual(value.get_width(), natural, value.get_label())
 
     def test_inputs_edit_after_tool_switch_persists(self) -> None:
         import tempfile

@@ -103,8 +103,11 @@ from ..widgets.rows import (
 )
 from .dual_batch import DualBatchDialog
 
-_MATCH_FILES_DESCRIPTION = "Target is mastered to match the reference track"
-_ALIGN_FILES_DESCRIPTION = "Primary is usually the full mix; secondary is usually the instrumental"
+#: What each two-input tool expects of its inputs, appended to the tool's description.
+_TOOL_INPUT_NOTES = {
+    ALIGN_INPUTS: "File 1 is usually the full mix; File 2 is usually the instrumental",
+    MATCH_INPUTS: "Target is mastered to match the reference track",
+}
 # Full tool list (Time Stretch / Change Pitch are surfaced on all platforms here;
 # UVR hides them on Linux purely because pyrubberband may be unavailable - the
 # backend reports that as a graceful error if the dep is missing).
@@ -626,8 +629,13 @@ class AudioToolsPage:
         if self._tool_slot.rows != rows:
             self._tool_slot.replace(rows)
         holder = self._tool_holders.get(tool)
-        # Each tool's description is the picker's subtitle; Matchering has none.
-        self.tool_row.set_subtitle((holder.get_description() if holder else None) or "")
+        # The picker's subtitle is the tool's description plus, for two-input
+        # tools, what each input should be. Keeping the note off the Input header
+        # lets the Input and Output cards start level.
+        description = holder.get_description() if holder else None
+        self.tool_row.set_subtitle(
+            ". ".join(filter(None, (description, _TOOL_INPUT_NOTES.get(tool))))
+        )
         self.gpu_row.set_visible(tool == APOLLO_RESTORE)
         self._sync_files_visibility(tool)
         self._update_audio_banner()
@@ -640,13 +648,6 @@ class AudioToolsPage:
         dual = tool in DUAL_INPUT_TOOLS
         self.inputs_row.set_visible(not dual)
         self.dual_inputs_row.set_visible(dual)
-        input_group = self._page_groups.input_group
-        if tool == MATCH_INPUTS:
-            input_group.set_description(_MATCH_FILES_DESCRIPTION)
-        elif tool == ALIGN_INPUTS:
-            input_group.set_description(_ALIGN_FILES_DESCRIPTION)
-        else:
-            input_group.set_description(None)
 
     def _update_audio_banner(self) -> None:
         """Retain saved-model details; the log panel owns readiness messages."""
