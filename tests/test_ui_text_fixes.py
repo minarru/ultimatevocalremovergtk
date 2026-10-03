@@ -1,54 +1,48 @@
-"""Locale-aware slider labels and markup-safe About text."""
+"""Slider value labels and markup-safe About text."""
 
 from __future__ import annotations
 
+import os
 import unittest
-from collections.abc import Mapping
 from unittest import mock
 
 
-def _comma_locale(real: Mapping[str, object]) -> dict[str, object]:
-    return {**real, "decimal_point": ",", "thousands_sep": ""}
+@unittest.skipUnless(
+    os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"),
+    "GTK widget construction needs a display",
+)
+class SliderValueLabelTests(unittest.TestCase):
+    """Slider values read with a dot whatever the locale, as stored."""
 
+    @classmethod
+    def setUpClass(cls) -> None:
+        import gi
 
-class SliderValueFormatTests(unittest.TestCase):
-    def test_decimals_follow_the_locale_like_spin_buttons(self) -> None:
+        gi.require_version("Gtk", "4.0")
+        gi.require_version("Adw", "1")
+
+    def _label(self, row: object) -> str:
+        from ui.widget_state import fetch
+
+        return fetch(row, "_uvr_value_label").get_label()
+
+    def test_values_keep_their_dot_in_a_comma_locale(self) -> None:
         import locale
 
-        from ui.widgets.rows import format_slider_value
+        from ui.widgets.rows import (
+            make_discrete_scale_row,
+            make_numeric_scale_row,
+            set_scale_row_value,
+        )
 
-        real = locale.localeconv()
-        with mock.patch("locale.localeconv", return_value=_comma_locale(real)):
-            self.assertEqual(format_slider_value(0.2, 1), "0,2")
-            self.assertEqual(format_slider_value(1.0, 2), "1,00")
-
-    def test_whole_numbers_have_no_separator(self) -> None:
-        from ui.widgets.rows import format_slider_value
-
-        self.assertEqual(format_slider_value(1088.4, 0), "1088")
-        self.assertEqual(format_slider_value(9.6, 0), "10")
-
-
-class DiscreteChoiceLabelTests(unittest.TestCase):
-    def test_decimal_choices_display_in_the_locale(self) -> None:
-        import locale
-
-        from ui.widgets.rows import format_choice_label
-
-        real = locale.localeconv()
-        with mock.patch("locale.localeconv", return_value=_comma_locale(real)):
-            self.assertEqual(format_choice_label("0.2"), "0,2")
-            self.assertEqual(format_choice_label("1.035"), "1,035")
-
-    def test_other_choices_are_shown_as_stored(self) -> None:
-        import locale
-
-        from ui.widgets.rows import format_choice_label
-
-        real = locale.localeconv()
-        with mock.patch("locale.localeconv", return_value=_comma_locale(real)):
-            for value in ("Auto", "Default", "256", "1e-3", "v1.2.3", ""):
-                self.assertEqual(format_choice_label(value), value)
+        comma = {**locale.localeconv(), "decimal_point": ",", "thousands_sep": ""}
+        with mock.patch("locale.localeconv", return_value=comma):
+            choice = make_discrete_scale_row("Threshold", ["0.1", "0.2", "0.3"])
+            set_scale_row_value(choice, "0.2")
+            self.assertEqual(self._label(choice), "0.2")
+            numeric = make_numeric_scale_row("Weight", 0, 1, step=0.05, digits=2)
+            set_scale_row_value(numeric, 0.25)
+            self.assertEqual(self._label(numeric), "0.25")
 
 
 class AboutTextTests(unittest.TestCase):

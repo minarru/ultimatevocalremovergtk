@@ -7,8 +7,6 @@ selected value as the plain string the :class:`~core.settings.Settings`
 expects (mirroring how Tk stores every option as a string).
 """
 
-import locale
-import re
 import typing
 from typing import Iterable, List, Optional, Sequence
 
@@ -294,27 +292,6 @@ def _snap_to_step(value: float, lower: float, step: float) -> float:
     return lower + steps * step
 
 
-def format_slider_value(value: float, digits: int) -> str:
-    """Slider readout in the locale's decimal style, matching ``Gtk.SpinButton``."""
-    if digits <= 0:
-        return str(int(round(value)))
-    return locale.format_string("%.*f", (digits, value))
-
-
-_DECIMAL_CHOICE = re.compile(r"-?\d+\.(\d+)")
-
-
-def format_choice_label(value: str) -> str:
-    """Display text for a discrete slider choice; decimals follow the locale.
-
-    The stored settings string keeps its dot: only the label is localized.
-    """
-    match = _DECIMAL_CHOICE.fullmatch(value)
-    if match is None:
-        return value
-    return locale.format_string("%.*f", (len(match.group(1)), float(value)))
-
-
 def _update_scale_value(row: Adw.ActionRow) -> None:
     """Refresh the value label beside the slider."""
     values = fetch(row, "_uvr_values", None)
@@ -323,9 +300,13 @@ def _update_scale_value(row: Adw.ActionRow) -> None:
     if values:
         index = int(round(scale.get_value()))
         index = max(0, min(len(values) - 1, index))
-        label.set_label(format_choice_label(values[index]))
+        label.set_label(values[index])
         return
-    label.set_label(format_slider_value(scale.get_value(), fetch(row, "_uvr_digits", 0)))
+    digits = fetch(row, "_uvr_digits", 0)
+    if digits:
+        label.set_label(f"{scale.get_value():.{digits}f}")
+    else:
+        label.set_label(str(int(round(scale.get_value()))))
 
 
 def _initialize_scale_row(
