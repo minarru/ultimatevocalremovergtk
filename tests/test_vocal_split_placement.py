@@ -39,13 +39,18 @@ class ProcessingGroupPlacementTests(unittest.TestCase):
         cls._app = Adw.Application(application_id="org.uvr.test.vocal-split-place")
         cls._app.register()
 
-    def test_main_window_processing_group_hosts_the_row(self):
+    def test_main_window_model_side_hosts_the_row(self):
         from ui.widgets.vocal_split_row import VocalSplitRow
         from ui.window import MainWindow
 
         window = MainWindow()
         self.addCleanup(window.set_application, None)
         self.assertIsInstance(window.vocal_split_row, VocalSplitRow)
+        self.assertTrue(window.vocal_split_row.is_ancestor(window._col_start))
+        view = window._current_view
+        assert view is not None
+        self.assertTrue(window.vocal_split_row.is_ancestor(view.group))
+        self.assertFalse(window.vocal_split_row.is_ancestor(window.shared_group))
 
     def test_ensemble_page_processing_group_hosts_the_row(self):
         from ui.ensemble.window import EnsemblePage
