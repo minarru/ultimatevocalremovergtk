@@ -73,6 +73,7 @@ from ..widgets.rows import (
     get_combo_value,
     get_scale_row_value,
     set_combo_value,
+    set_scale_default_mark,
     set_scale_row_value,
 )
 from .utils import (
@@ -173,6 +174,12 @@ def _list_param_files(directory: typing.Any, extension: typing.Any):
 # ---------------------------------------------------------------------------
 
 
+# Slider defaults, also marked on each slider.
+_BALANCE_DEFAULT = 0
+_NOUT_DEFAULT = 32
+_NOUT_LSTM_DEFAULT = 128
+
+
 class _ParamDialog:
     """Modal parameter editor returning the chosen params dict (or ``None``)."""
 
@@ -254,7 +261,10 @@ class _ParamDialog:
             object_from_builder(self._builder, "balance_row", Adw.ActionRow),
             [str(v) for v in BALANCE_VALUES],
         )
-        set_scale_row_value(self.balance_row, str(self.existing.get(IS_BV_MODEL_REBAL, 0)))
+        set_scale_default_mark(self.balance_row, _BALANCE_DEFAULT)
+        set_scale_row_value(
+            self.balance_row, str(self.existing.get(IS_BV_MODEL_REBAL, _BALANCE_DEFAULT))
+        )
 
     def _build_vr(self) -> None:
         self._add_stem_row()
@@ -273,13 +283,17 @@ class _ParamDialog:
             object_from_builder(self._builder, "nout_row", Adw.ActionRow),
             [str(v) for v in NOUT_SEL],
         )
-        set_scale_row_value(self.nout_row, str(self.existing.get("nout", 32)))
+        set_scale_default_mark(self.nout_row, _NOUT_DEFAULT)
+        set_scale_row_value(self.nout_row, str(self.existing.get("nout", _NOUT_DEFAULT)))
         set_tooltip(self.nout_row, VR_MODEL_NOUT_HELP)
         self.nout_lstm_row = configure_discrete_scale_row(
             object_from_builder(self._builder, "nout_lstm_row", Adw.ActionRow),
             [str(v) for v in NOUT_LSTM_SEL],
         )
-        set_scale_row_value(self.nout_lstm_row, str(self.existing.get("nout_lstm", 128)))
+        set_scale_default_mark(self.nout_lstm_row, _NOUT_LSTM_DEFAULT)
+        set_scale_row_value(
+            self.nout_lstm_row, str(self.existing.get("nout_lstm", _NOUT_LSTM_DEFAULT))
+        )
         set_tooltip(self.nout_lstm_row, VR_MODEL_NOUT_LSTM_HELP)
 
         self._add_karaoke_rows()

@@ -44,6 +44,44 @@ class SeparationControlTypeTests(unittest.TestCase):
                 with self.subTest(method=view.method_key, key=key):
                     self.assertTrue(fetch(row, "_uvr_values", None), key)
 
+    def test_every_option_slider_marks_its_default(self) -> None:
+        """The tick sits on the default's ladder value, including None-as-Default."""
+        from core.settings import Settings
+        from ui.settings_bind import setting_for_combo
+        from ui.widget_state import fetch
+
+        defaults = Settings.defaults()
+        window = self._window()
+        for view in window._views:
+            for key, row in view._scale_rows.items():
+                with self.subTest(method=view.method_key, key=key):
+                    expected = str(setting_for_combo(key, defaults.get(key)))
+                    self.assertIn(expected, fetch(row, "_uvr_values"))
+                    self.assertEqual(str(fetch(row, "_uvr_default", None)), expected)
+
+    def test_model_parameter_sliders_mark_their_defaults(self) -> None:
+        from types import SimpleNamespace
+
+        from bundled.constants import VR_ARCH_TYPE
+        from ui.dialogs.model_params import _ParamDialog
+        from ui.widget_state import fetch
+
+        model_data = SimpleNamespace(
+            process_method=VR_ARCH_TYPE,
+            model_path="model.pth",
+            model_name="model",
+            model_display_label="Model",
+            repo=None,
+        )
+        dialog = _ParamDialog(None, None, model_data)
+        for row, expected in (
+            (dialog.balance_row, "0"),
+            (dialog.nout_row, "32"),
+            (dialog.nout_lstm_row, "128"),
+        ):
+            with self.subTest(row=row.get_title()):
+                self.assertEqual(str(fetch(row, "_uvr_default", None)), expected)
+
     def test_free_numbers_are_spin_rows(self) -> None:
         from gi.repository import Adw
 

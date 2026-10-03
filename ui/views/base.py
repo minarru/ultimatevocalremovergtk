@@ -681,7 +681,8 @@ class MethodView:
             self._add_row(group, row)
         else:
             configure_discrete_scale_row(row, values)
-        default_value = _DEFAULT_SETTINGS.get(key)
+        # A None default shows as the ladder's "Default"/"Auto" stop.
+        default_value = setting_for_combo(key, _DEFAULT_SETTINGS.get(key))
         if default_value is not None:
             set_scale_default_mark(row, default_value)
         fetch(row, "_uvr_scale").connect(
