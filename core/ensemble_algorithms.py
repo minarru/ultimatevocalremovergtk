@@ -28,7 +28,7 @@ ENSEMBLE_ALGORITHM_BLURBS: Dict[str, str] = {
     SOFT_SPEC: "Mean/variance magnitude-agreement blend with adjustable strength",
     MAX_MAG_AVG_PHASE: "Max magnitude with circular average phase",
     HYBRID_SPEC: "Adjustable blend of smoothed maximum and minimum selections",
-    CHUNK_MIN: "1-second windows; switches only for a 10% quieter member, with crossfades",
+    CHUNK_MIN: "1-second windows; switches only to a 10% quieter member, crossfaded",
 }
 
 CUSTOM_PRESET = "Custom"

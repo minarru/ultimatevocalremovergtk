@@ -242,6 +242,56 @@ class EnsembleLayoutTests(unittest.TestCase):
         group = page._layout_object("combination_group", Adw.PreferencesGroup)
         self.assertIn(group.get_description(), ("", None))
 
+    def test_algorithm_values_fit_beside_their_descriptions(self) -> None:
+        """A one-line description must leave the combo room for its value.
+
+        The row's height is settled while the description fits on one line,
+        so a long description squeezes the selected value instead of wrapping.
+        """
+        import time
+
+        from gi.repository import GLib, Gtk
+
+        from bundled.constants import ENSEMBLE_ALGORITHMS
+        from tests.gtk_layout_helpers import resize_window
+        from ui.widgets.rows import set_combo_value
+
+        page = self._page()
+        window = page.window
+        self.addCleanup(window.set_visible, False)
+        resize_window(window, 1280, 900)
+        window.content_stack.set_visible_child_name("ensemble")
+        row = page.secondary_algo_row
+        row.set_visible(True)
+
+        def find(widget: Any, kind: type) -> Any:
+            if isinstance(widget, kind):
+                return widget
+            child = widget.get_first_child()
+            while child is not None:
+                found = find(child, kind)
+                if found is not None:
+                    return found
+                child = child.get_next_sibling()
+            return None
+
+        def settle() -> None:
+            context = GLib.MainContext.default()
+            deadline = time.monotonic() + 0.3
+            while time.monotonic() < deadline:
+                context.iteration(False)
+                time.sleep(0.005)
+
+        for algorithm in ENSEMBLE_ALGORITHMS:
+            with self.subTest(algorithm=algorithm):
+                set_combo_value(row, algorithm)
+                page._apply_algorithm_row_presentation()
+                settle()
+                value = find(find(row, Gtk.ListView), Gtk.Label)
+                self.assertGreater(row.get_width(), 0)
+                natural = value.measure(Gtk.Orientation.HORIZONTAL, -1)[1]
+                self.assertGreaterEqual(value.get_width(), natural, value.get_label())
+
 
 #: Each tool's settings holder group in ``audio-tools-page.blp`` (Matchering has none).
 _AUDIO_TOOL_HOLDERS = {
