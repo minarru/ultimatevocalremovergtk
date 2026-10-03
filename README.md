@@ -193,7 +193,7 @@ git pull
 ```
 
 Check [Releases](https://github.com/minarru/ultimatevocalremovergtk/releases)
-for release notes. **Application Version** in the Settings menu compares the
+for release notes. **Check for Updates** in the main menu compares the
 running version with the current GitHub release metadata.
 
 ## Troubleshooting and support

@@ -225,8 +225,8 @@ Adw.SwitchRow apollo_gpu_row {
 }
 
 Adw.SwitchRow normalize_row {
-  title: "Normalize output";
-  subtitle: "Limit peaks to prevent clipping";
+  title: "Limit peaks above full scale";
+  subtitle: "Scale down individual outputs with peaks above 1.0; this does not normalize loudness";
 }
 
 Adw.SpinRow amplification_row {
@@ -237,6 +237,6 @@ Adw.SpinRow amplification_row {
 }
 
 Adw.SwitchRow testing_row {
-  title: "Settings test";
-  subtitle: "Append a timestamp to output names to avoid overwrites";
+  title: "Add timestamp to filenames";
+  subtitle: "Prefix output filenames with the processing timestamp";
 }

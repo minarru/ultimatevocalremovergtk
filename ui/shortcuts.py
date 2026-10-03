@@ -32,7 +32,7 @@ _SECTIONS: List[Tuple[str, List[Tuple[str, str]]]] = [
     (
         "Modes",
         [
-            ("win.ensemble", "Ensemble Mode"),
+            ("win.ensemble", "Ensemble"),
             ("win.audio_tools", "Audio Tools"),
         ],
     ),
@@ -42,7 +42,7 @@ _SECTIONS: List[Tuple[str, List[Tuple[str, str]]]] = [
             ("win.settings", "Settings"),
             ("win.download", "Download Center"),
             ("win.view_inputs", "Verify Inputs"),
-            ("win.model_options", "Model options"),
+            ("win.model_options", "Model Options"),
             ("win.error_log", "Error Log"),
             ("win.updates", "Check for Updates"),
             ("win.about", "About"),
