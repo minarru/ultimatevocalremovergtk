@@ -31,6 +31,20 @@ class OutputStemsTests(unittest.TestCase):
         self.section.persist_to_settings()
         self.output.refresh()
 
+    def test_rows_are_quick_select_then_summary_in_the_host(self):
+        from tests.test_row_slot import _order
+
+        self.assertEqual(len(self.output.rows), 2)
+        self.assertIs(self.output.rows[1], self.output.row)
+        self.assertEqual(_order(self.host), list(self.output.rows))
+
+    def test_without_host_rows_stay_unparented(self):
+        from ui.widgets.output_stems import OutputStemsSection
+
+        output = OutputStemsSection(self.section, None, use_direct_controls=False)
+        for row in output.rows:
+            self.assertIsNone(row.get_parent())
+
     def test_exclusive_edit_updates_summary_and_existing_settings(self):
         from ui.widgets.rows import set_combo_value
 

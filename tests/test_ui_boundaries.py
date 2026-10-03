@@ -20,11 +20,10 @@ def setUpModule() -> None:
 
 class MemberRenderTests(unittest.TestCase):
     def test_real_render_is_read_only_then_action_prunes_and_sorts(self):
-        from gi.repository import Gtk
-
         from core.settings import Settings
         from tests.test_ensemble_member_projection import record
         from ui.ensemble.window import EnsemblePage
+        from ui.model_picker import MemberCallbacks, ModelPicker
 
         page = cast(Any, EnsemblePage.__new__(EnsemblePage))
         page.settings = Settings.defaults()
@@ -32,9 +31,18 @@ class MemberRenderTests(unittest.TestCase):
         page.settings.ensemble.selected_models = ['mdx:b', 'mdx:a', 'mdx:missing']
         original_list = page.settings.ensemble.selected_models
         original = page.settings.to_dict()
-        page.models_listbox = Gtk.ListBox()
         page.context = SimpleNamespace(
-            repo=SimpleNamespace(ensemble_model_list=lambda *_: ['mdx:a', 'mdx:b'])
+            repo=SimpleNamespace(
+                ensemble_model_list=lambda *_: ['mdx:a', 'mdx:b'],
+                catalogue=SimpleNamespace(latest_snapshot=None),
+            )
+        )
+        page._member_picker = ModelPicker(
+            page.context.repo,
+            lambda: '',
+            lambda _model_id: False,
+            lambda: None,
+            members=MemberCallbacks(page._on_model_toggled, lambda _active: None),
         )
         page._ensemble_pair = lambda: 'pair.vocals_instrumental'
         page._update_models_dialog_status = mock.Mock()

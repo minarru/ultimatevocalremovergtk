@@ -117,16 +117,19 @@ install_system_deps() {
         sudo apt-get update
         sudo apt-get install -y ffmpeg python3-venv python3-pip python3-gi \
             gir1.2-gtk-4.0 gir1.2-adw-1 libglib2.0-bin libglib2.0-dev-bin blueprint-compiler \
-            libsndfile1 rubberband-cli
+            libsndfile1 rubberband-cli gir1.2-gstreamer-1.0 gir1.2-gst-plugins-base-1.0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good
     elif command -v dnf >/dev/null 2>&1; then
         sudo dnf install -y ffmpeg python3-pip python3-gobject gtk4 libadwaita \
-            blueprint-compiler libsndfile rubberband
+            blueprint-compiler libsndfile rubberband gstreamer1 gstreamer1-plugins-base \
+            gstreamer1-plugins-good
     elif command -v pacman >/dev/null 2>&1; then
         sudo pacman -Syu --needed ffmpeg python-pip python-virtualenv python-gobject \
-            gtk4 libadwaita glib2 blueprint-compiler libsndfile rubberband
+            gtk4 libadwaita glib2 blueprint-compiler libsndfile rubberband gstreamer \
+            gst-plugins-base gst-plugins-good
     elif command -v zypper >/dev/null 2>&1; then
         sudo zypper install -y ffmpeg python3-pip python3-gobject gtk4 libadwaita \
-            blueprint-compiler libsndfile1 rubberband
+            blueprint-compiler libsndfile1 rubberband typelib-1_0-Gst-1_0 typelib-1_0-GstPbutils-1_0 \
+            gstreamer-plugins-base gstreamer-plugins-good
     else
         echo "Unsupported package manager. Install ffmpeg, Python venv/pip, GTK4," >&2
         echo "libadwaita, PyGObject, blueprint-compiler, libsndfile, and rubberband manually." >&2

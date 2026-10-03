@@ -149,6 +149,9 @@ class MethodView:
     has_preproc: bool = False
     #: Resource-backed Blueprint document owning this method's fixed groups.
     layout_name: str = ""
+    #: Set by the window while this view is active: receives the composed
+    #: Save Stems tooltip so the page's shared Output group can show it.
+    on_output_tooltip: Callable[[str], None] | None = None
 
     def __init__(self, context: typing.Any, on_settings_changed: Callable[[], None]):
         self.context = context
@@ -513,6 +516,8 @@ class MethodView:
         )
         # Re-register so HelpHintManager.refresh() keeps the composed tooltip.
         self.hints.register(self.stem_group, composed)
+        if self.on_output_tooltip is not None:
+            self.on_output_tooltip(composed)
 
     def _touch_settings(self) -> None:
         self._update_stem_group_metadata()

@@ -47,7 +47,7 @@ from .inference_cleanup import (
 from .inference_cleanup import (
     release_inference_memory as _release_inference_resources,
 )
-from .job_plan import PlannedInput, ResolvedJob
+from .job_plan import PlannedInput, PlannedOutput, ResolvedJob
 from .model_config import ModelConfig, assemble_model
 from .model_repository import ModelRepository
 from .process_data import ProcessData
@@ -447,17 +447,7 @@ class JobRunner:
         if box["status"] == "success":
             # CLI exports are still staged here. Check the same rebased directories
             # used by runtime naming, before the frontend promotes them to final paths.
-            output_paths = []
-            for output in planned.outputs:
-                path = output.path
-                if self._run_output_root is not None:
-                    naming = rebase_output_naming(
-                        replace(planned.naming, export_directory=os.path.dirname(path)),
-                        self.settings.process.export_path,
-                        self._run_output_root,
-                    )
-                    path = os.path.join(naming.export_directory, os.path.basename(path))
-                output_paths.append((output, path))
+            output_paths = self._planned_output_paths(planned)
             missing_required = tuple(
                 path
                 for output, path in output_paths
@@ -489,6 +479,41 @@ class JobRunner:
         if self._run_path_map is not None:
             target = self._run_path_map.get(target, target)
         return next(entry for entry in self._run_planned if os.path.abspath(entry.path) == target)
+
+    def _planned_output_paths(self, planned: PlannedInput) -> list[tuple[PlannedOutput, str]]:
+        """Planned outputs paired with the path this run writes them to.
+
+        CLI runs stage exports under ``_run_output_root``; rebase through the same
+        naming helper runtime export uses so both sides agree on the location.
+        """
+        pairs: list[tuple[PlannedOutput, str]] = []
+        for output in planned.outputs:
+            path = output.path
+            if self._run_output_root is not None:
+                naming = rebase_output_naming(
+                    replace(planned.naming, export_directory=os.path.dirname(path)),
+                    self.settings.process.export_path,
+                    self._run_output_root,
+                )
+                path = os.path.join(naming.export_directory, os.path.basename(path))
+            pairs.append((output, path))
+        return pairs
+
+    def finished_input_report(self, audio_file: str) -> tuple[str, str, tuple[str, ...]]:
+        """``(source, reference, outputs)`` for an input the run loop just finished.
+
+        ``source`` is the user's input path, ``reference`` the audio the models read
+        (a sample-mode clip or the input), and ``outputs`` the planned outputs that
+        exist on disk, in plan order. Unplanned runs report no outputs.
+        """
+        reference = os.path.abspath(audio_file)
+        planned = self._planned_input_for_file(audio_file)
+        if planned is None:
+            return reference, reference, ()
+        outputs = tuple(
+            path for _output, path in self._planned_output_paths(planned) if os.path.isfile(path)
+        )
+        return planned.path, reference, outputs
 
     def _naming_for_file(
         self,

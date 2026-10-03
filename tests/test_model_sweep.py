@@ -667,7 +667,9 @@ class RunChildTests(unittest.TestCase):
         from core.settings import Settings
 
         fake_model_data = mock.Mock(is_model_status=True, extracted_params={"ok": True}, config={})
+        persistent_table: dict[str, Any] = {}
         fake_repo = mock.Mock(model_hash_table={})
+        fake_repo.persistent_model_hash_table.return_value = persistent_table
         fake_runner = mock.Mock()
         settings = Settings.defaults()
         settings.audio_tools.apollo_model = "apollo_universal_model.ckpt"
@@ -703,6 +705,7 @@ class RunChildTests(unittest.TestCase):
             "apollo_universal_model.ckpt",
             model_hash_table=fake_repo.model_hash_table,
             on_unrecognized=None,
+            persistent_hash_table=persistent_table,
         )
         runner_cls.assert_called_once_with(
             plan.settings,

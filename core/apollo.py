@@ -22,7 +22,7 @@ recognised on subsequent runs.
 import hashlib
 import json
 import os
-from typing import Callable, List, Optional
+from typing import Any, Callable, List, MutableMapping, Optional
 
 from . import paths
 
@@ -81,11 +81,13 @@ class ApolloModelData:
         model_hash_table: Optional[dict] = None,
         on_unrecognized: Optional[Callable[["ApolloModelData"], Optional[dict]]] = None,
         is_dry_check: bool = False,
+        persistent_hash_table: Optional[MutableMapping[str, Any]] = None,
     ):
         self.is_dry_check = is_dry_check
         self.apollo_model_name = apollo_model
         self._on_unrecognized = on_unrecognized
         self._model_hash_table = model_hash_table if model_hash_table is not None else {}
+        self._persistent_hash_table = persistent_hash_table
         self.extracted_params: Optional[dict] = None
         self.config: Optional[dict] = None
         self.apollo_model_location = os.path.join(paths.APOLLO_MODELS_DIR, apollo_model)
@@ -100,25 +102,35 @@ class ApolloModelData:
         self.is_model_status = bool(self.extracted_params)
 
     def get_model_hash(self):
-        """MD5 of the checkpoint (cached). Mirrors model-config hash lookup."""
-        model_hash = None
-        model_status = True
+        """MD5 of the checkpoint (cached). Mirrors ``ModelConfig.get_model_hash``.
 
-        if os.path.isfile(self.apollo_model_location):
-            cache = self._model_hash_table
-            if cache:
-                for key, value in cache.items():
-                    if self.apollo_model_location == key:
-                        model_hash = value
-                        break
+        ``persistent_hash_table`` is the stat-guarded settings table; the
+        in-memory ``model_hash_table`` is not, so a checkpoint replaced at the
+        same path must be caught by the former before the latter is trusted.
+        """
+        from .model_hash_cache import is_stale, lookup_trusted, remember
 
-            if not model_hash:
-                model_hash = checkpoint_md5(self.apollo_model_location)
-                cache.update({self.apollo_model_location: model_hash})
-        else:
-            model_status = False
+        path = self.apollo_model_location
+        if not os.path.isfile(path):
+            return None, False
 
-        return model_hash, model_status
+        cache = self._model_hash_table
+        persistent = self._persistent_hash_table
+        if persistent is not None:
+            trusted = lookup_trusted(persistent, path)
+            if trusted:
+                cache[path] = trusted
+                return trusted, True
+            if is_stale(persistent, path):
+                cache.pop(path, None)
+
+        model_hash = cache.get(path)
+        if not model_hash:
+            model_hash = checkpoint_md5(path)
+            cache[path] = model_hash
+            if persistent is not None:
+                remember(persistent, path, model_hash)
+        return model_hash, True
 
     def get_model_data(self) -> Optional[dict]:
         model_settings_json = os.path.join(paths.APOLLO_HASH_DIR, f"{self.model_hash}.json")

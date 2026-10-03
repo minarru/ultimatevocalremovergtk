@@ -26,7 +26,8 @@ class JobCallbacks:
     metadata (``local_step``, ``pass_index``, ``pass_total``, ``detail``,
     ``combine_index``, ``combine_total``, ``phase``). ``on_console`` receives text chunks;
     ``on_complete`` fires once on success; ``on_error`` receives the raised
-    exception. ``on_oom_choice`` receives an :class:`OomChoiceRequest` on the
+    exception. ``on_input_finished`` receives ``(paths, generated, error,
+    reference)`` once per finished input unit. ``on_oom_choice`` receives an :class:`OomChoiceRequest` on the
     main loop; the worker blocks until ``request.respond`` is called. The GTK
     layer marshals each of these onto the main loop.
     """
@@ -39,7 +40,7 @@ class JobCallbacks:
     on_oom_choice: Optional[Callable[[OomChoiceRequest], None]] = None
     on_input_start: Optional[Callable[[tuple[str, ...]], None]] = None
     on_input_finished: Optional[
-        Callable[[tuple[str, ...], tuple[str, ...], BaseException | None], None]
+        Callable[[tuple[str, ...], tuple[str, ...], BaseException | None, str | None], None]
     ] = None
     _progress_trace: ProgressTraceSampler = field(
         default_factory=ProgressTraceSampler,
@@ -121,9 +122,15 @@ class JobCallbacks:
         paths: typing.Sequence[str],
         generated: typing.Sequence[str] = (),
         error: BaseException | None = None,
+        reference: str | None = None,
     ) -> None:
+        """Report one finished input unit.
+
+        ``reference`` is the audio the models actually read (a sample-mode clip
+        or the input itself); ``None`` means "the first path in ``paths``".
+        """
         if self.on_input_finished:
-            self.on_input_finished(tuple(paths), tuple(generated), error)
+            self.on_input_finished(tuple(paths), tuple(generated), error, reference)
 
     def console(self, text: str) -> None:
         seq = next_seq()

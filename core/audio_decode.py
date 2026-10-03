@@ -345,6 +345,13 @@ def _decode_ffmpeg(
     return (data[0] if info.channels == 1 else data), info.sample_rate
 
 
+def _seed_peaks(path: str, data: NDArray[np.float32], rate: int) -> None:
+    """Offer the native-rate envelope of a whole decoded file to the waveform view."""
+    from .waveform import offer_peaks, peaks_from_array
+
+    offer_peaks(path, lambda: peaks_from_array(data, rate))
+
+
 def load_audio(
     source: AudioSource,
     *,
@@ -383,6 +390,9 @@ def load_audio(
                     data, rate = _decode_ffmpeg(handle, duration, on_warning)
             if data.size == 0:
                 raise ValueError('Empty audio data')
+            if duration is None and isinstance(handle, str):
+                # dtype='float32' is honoured, as for the return below.
+                _seed_peaks(handle, cast("NDArray[np.float32]", data), rate)
             if sr is not None and sr != rate:
                 import librosa
 

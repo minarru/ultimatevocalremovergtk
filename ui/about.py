@@ -26,6 +26,10 @@ except Exception:  # pragma: no cover
 
 CHANGE_LOG = paths.CHANGE_LOG_PATH
 
+# libadwaita interpolates this into "Other Apps by %s" markup without escaping it,
+# so it must not contain "&" or "<".
+DEVELOPER_NAME = "Anjok07 and Aufr33"
+
 # Upstream AI code authors. Formatted as "Name URL" so libadwaita renders the
 # trailing URL as a clickable link in the credit section.
 _AI_CODE_AUTHORS = [
@@ -116,7 +120,7 @@ def open_about(parent_window: typing.Any):
         comments="A GUI for vocal/instrumental separation using state-of-the-art AI models.",
         website="https://github.com/minarru/ultimatevocalremovergtk",
         issue_url=FORK_ISSUE_URL,
-        developer_name="Anjok07 & Aufr33",
+        developer_name=DEVELOPER_NAME,
         developers=["Anjok07", "Aufr33", "DilanBoskan"],
         copyright="\u00a9 2022 Ultimate Vocal Remover",
     )

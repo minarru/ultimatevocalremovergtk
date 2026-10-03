@@ -12,7 +12,17 @@ import json
 import os
 import threading
 import typing
-from typing import TYPE_CHECKING, AbstractSet, Any, Callable, Dict, List, Optional, Tuple
+from typing import (
+    TYPE_CHECKING,
+    AbstractSet,
+    Any,
+    Callable,
+    Dict,
+    List,
+    MutableMapping,
+    Optional,
+    Tuple,
+)
 
 from bundled.constants import *  # mirrors UVR.py's flat constant namespace
 
@@ -48,7 +58,7 @@ class ModelRepository:
         self.demucs_name_select_MAPPER: dict = {}
         # AppContext seeds this ephemeral cache from trusted persisted entries.
         self.model_hash_table: Dict[str, str] = {}
-        self._model_hash_table_provider: Optional[Callable[[], typing.Mapping[str, Any]]] = None
+        self._model_hash_table_provider: Optional[Callable[[], MutableMapping[str, Any]]] = None
         # Phase 3 hook: later phases set this to a callable that prompts the user
         # for parameters of an unrecognized model. Returning ``None`` (the
         # default) simply marks such models as unavailable.
@@ -104,7 +114,7 @@ class ModelRepository:
         value = digest()
         return value if isinstance(value, str) else ""
 
-    def bind_model_hash_table(self, provider: Callable[[], typing.Mapping[str, Any]]) -> None:
+    def bind_model_hash_table(self, provider: Callable[[], MutableMapping[str, Any]]) -> None:
         """Bind the persisted stat-guarded hash table owned by the caller.
 
         The repository keeps only the flattened trusted projection. Retaining
@@ -116,6 +126,16 @@ class ModelRepository:
             self._rehydrate_model_hash_table()
             self._identity_cache_key = None
             self._identity_cache = None
+
+    def persistent_model_hash_table(self) -> Optional[MutableMapping[str, Any]]:
+        """Return the bound persisted stat-guarded table, or ``None`` if unbound.
+
+        For callers that resolve checkpoints without a :class:`Settings`, such
+        as :class:`core.apollo.ApolloModelData`, so their hashes are verified
+        and remembered the same way :class:`ModelConfig` does it.
+        """
+        provider = self._model_hash_table_provider
+        return provider() if provider is not None else None
 
     def _rehydrate_model_hash_table(self) -> None:
         provider = self._model_hash_table_provider

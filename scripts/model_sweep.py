@@ -696,6 +696,7 @@ def _run_tool(settings: Any, input_path: str, timeout: float, *, repo: Any):
         plan.model.backend_name,
         model_hash_table=repo.model_hash_table,
         on_unrecognized=None,
+        persistent_hash_table=repo.persistent_model_hash_table(),
     )
     if not model_data.is_model_status:
         raise RuntimeError(f"Apollo model not valid: {settings.audio_tools.apollo_model}")
