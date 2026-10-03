@@ -33,6 +33,7 @@ from core.debug_log import (
 )
 from core.processing_phase import ProcessingPhase
 from core.separate_import import engines_imported, warm_status
+from core.waveform import set_peak_sink
 
 from .dispatch import gtk_job_callbacks, idle_on_main, reset_progress_log
 from .files import open_folder_in_file_manager
@@ -506,6 +507,8 @@ class RunController:
         self._ensure_operation()
         self._close_compare_dialog()
         self.listening.clear()
+        # Decodes and lossy exports during the run seed the compare dialog's waveforms.
+        set_peak_sink(self.listening.peak_cache)
         self._host.set_compare_available(False)
         mark_run_start()
         reset_progress_log()
@@ -1146,6 +1149,7 @@ class RunController:
 
     def _restore_idle_controls(self) -> None:
         self.shutdown.cancel_inference_cleanup()
+        set_peak_sink(None)
         self._running_target = None
         for name in ("_stop_confirm_dialog", "_oom_dialog", "_stop_timeout_dialog"):
             dialog = getattr(self, name)

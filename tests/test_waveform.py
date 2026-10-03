@@ -11,8 +11,15 @@ from unittest import mock
 import numpy as np
 import soundfile as sf
 
-from core.audio_decode import AudioDecodeError
-from core.waveform import WaveformCancelled, compute_peaks
+from core.audio_decode import AudioDecodeError, load_audio
+from core.waveform import (
+    Peaks,
+    WaveformCancelled,
+    compute_peaks,
+    offer_peaks,
+    peaks_from_array,
+    set_peak_sink,
+)
 
 _RATE = 8000
 
@@ -114,6 +121,101 @@ class ComputePeaksTests(unittest.TestCase):
         ):
             peaks = compute_peaks("/music/song.aac", buckets=8)
         np.testing.assert_allclose(peaks.maxs, 0.6, atol=0.01)
+
+
+class _RecordingSink:
+    """A ``PeakSink`` that remembers every seed, keyed on the path it was given."""
+
+    def __init__(self) -> None:
+        self.seeded: dict[str, Peaks] = {}
+
+    def get(self, path: str) -> Peaks | None:
+        return self.seeded.get(path)
+
+    def put(self, path: str, peaks: Peaks) -> None:
+        self.seeded[path] = peaks
+
+
+class PeakSeedingTests(unittest.TestCase):
+    def setUp(self) -> None:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.dir = tmp.name
+        self.addCleanup(set_peak_sink, None)
+
+    def _write(self, name: str, data: np.ndarray, rate: int = _RATE) -> str:
+        path = os.path.join(self.dir, name)
+        sf.write(path, data, rate, subtype="FLOAT")
+        return path
+
+    def _install(self) -> _RecordingSink:
+        sink = _RecordingSink()
+        set_peak_sink(sink)
+        return sink
+
+    def assert_same_peaks(self, actual: Peaks, expected: Peaks) -> None:
+        self.assertAlmostEqual(actual.duration, expected.duration)
+        np.testing.assert_array_equal(actual.mins, expected.mins)
+        np.testing.assert_array_equal(actual.maxs, expected.maxs)
+
+    def test_array_peaks_match_file_peaks(self) -> None:
+        rng = np.random.default_rng(3)
+        stereo = (rng.random((10_000, 2), dtype=np.float32) * 1.6 - 0.8).astype(np.float32)
+        path = self._write("noise.wav", stereo)
+        with mock.patch("core.waveform._BLOCK_FRAMES", 1000):
+            from_array = peaks_from_array(stereo.T, _RATE, buckets=7)
+            from_mono = peaks_from_array(stereo[:, 1], _RATE, buckets=7)
+        self.assert_same_peaks(from_array, compute_peaks(path, buckets=7))
+        index = (np.arange(10_000) * 7) // 10_000
+        expected = [stereo[index == b, 1].max() for b in range(7)]
+        np.testing.assert_array_equal(from_mono.maxs, expected)
+
+    def test_empty_array_is_a_decode_error(self) -> None:
+        with self.assertRaises(AudioDecodeError):
+            peaks_from_array(np.zeros((2, 0), dtype=np.float32), _RATE)
+
+    def test_offer_without_sink_never_computes(self) -> None:
+        compute = mock.Mock()
+        offer_peaks("/music/a.wav", compute)
+        compute.assert_not_called()
+
+    def test_offer_hands_peaks_to_sink(self) -> None:
+        sink = self._install()
+        peaks = Peaks(1.0, np.zeros(2, dtype=np.float32), np.zeros(2, dtype=np.float32))
+        offer_peaks("/music/a.wav", lambda: peaks)
+        self.assertIs(sink.seeded["/music/a.wav"], peaks)
+
+    def test_offer_skips_paths_the_sink_already_has(self) -> None:
+        sink = self._install()
+        peaks = Peaks(1.0, np.zeros(2, dtype=np.float32), np.zeros(2, dtype=np.float32))
+        sink.put("/music/a.wav", peaks)
+        compute = mock.Mock()
+        offer_peaks("/music/a.wav", compute)
+        compute.assert_not_called()
+
+    def test_offer_swallows_compute_and_sink_errors(self) -> None:
+        sink = self._install()
+        offer_peaks("/music/a.wav", mock.Mock(side_effect=RuntimeError("boom")))
+        self.assertEqual(sink.seeded, {})
+        failing = mock.Mock(get=mock.Mock(return_value=None), put=mock.Mock(side_effect=OSError))
+        set_peak_sink(failing)
+        peaks = Peaks(1.0, np.zeros(2, dtype=np.float32), np.zeros(2, dtype=np.float32))
+        offer_peaks("/music/a.wav", lambda: peaks)
+        failing.put.assert_called_once_with("/music/a.wav", peaks)
+
+    def test_full_decode_seeds_native_rate_peaks(self) -> None:
+        path = self._write("song.wav", np.stack([_sine(1.0, 0.2), _sine(1.0, 0.7)], axis=1))
+        sink = self._install()
+        load_audio(path, sr=_RATE * 2)  # resampling must not change the seeded envelope
+        self.assert_same_peaks(sink.seeded[path], compute_peaks(path))
+
+    def test_partial_and_stream_decodes_do_not_seed(self) -> None:
+        path = self._write("song.wav", _sine(1.0, 0.5))
+        sink = self._install()
+        load_audio(path, duration=0.5)
+        with open(path, "rb") as handle:
+            load_audio(handle)
+        self.assertEqual(sink.seeded, {})
 
 
 if __name__ == "__main__":

@@ -3,15 +3,20 @@
 Pure numpy over :mod:`core.audio_decode`; no GTK and no GStreamer. Values are raw
 sample values clipped to full scale and never normalised, so every track of a
 comparison shares one amplitude scale.
+
+While a :class:`PeakSink` is installed, full decodes (:func:`load_audio`) and lossy
+exports (:func:`core.audio_io.save_format`) seed it from audio already in hand, so the
+dialog need not decode those files again.
 """
 
 from __future__ import annotations
 
 import threading
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Callable, Protocol, cast
 
 from .audio_decode import AudioDecodeError, load_audio
+from .debug_log import log_event
 
 if TYPE_CHECKING:
     import numpy as np
@@ -30,6 +35,36 @@ class Peaks:
     duration: float
     mins: NDArray[np.float32]
     maxs: NDArray[np.float32]
+
+
+class PeakSink(Protocol):
+    """Where decoded or exported audio seeds its peaks; ``ui.playback.PeakCache`` fits."""
+
+    def get(self, path: str) -> Peaks | None: ...
+    def put(self, path: str, peaks: Peaks) -> None: ...
+
+
+# Process-wide, because the run that seeds it works on its own thread. The UI installs
+# one for the length of a run; the CLI never does, so it pays nothing.
+_peak_sink: PeakSink | None = None
+
+
+def set_peak_sink(sink: PeakSink | None) -> None:
+    global _peak_sink
+    _peak_sink = sink
+
+
+def offer_peaks(path: str, compute: Callable[[], Peaks]) -> None:
+    """Seed ``compute()`` under ``path`` when a sink wants it; never raises."""
+    sink = _peak_sink
+    if sink is None:
+        return
+    try:
+        if sink.get(path) is not None:
+            return
+        sink.put(path, compute())
+    except Exception as exc:
+        log_event("playback", "waveform_seed_error", level="warning", path=path, error=str(exc))
 
 
 def _check(cancel: threading.Event | None) -> None:
@@ -55,8 +90,13 @@ class _Reducer:
         count = block.shape[0]
         if count == 0:
             return
-        lows = block.min(axis=1)
-        highs = block.max(axis=1)
+        # Fold channels column by column: min(axis=1) over a two-wide C-order
+        # block is several times slower than the whole WAV read.
+        lows = block[:, 0].copy()
+        highs = lows.copy()
+        for channel in range(1, block.shape[1]):
+            np.minimum(lows, block[:, channel], out=lows)
+            np.maximum(highs, block[:, channel], out=highs)
         index = (np.arange(self.read, self.read + count, dtype=np.int64) * self.buckets) // (
             self.frames
         )
@@ -111,6 +151,26 @@ def _stream_peaks(path: str, buckets: int, cancel: threading.Event | None) -> Pe
     return reducer.result(rate)
 
 
+def peaks_from_array(
+    data: NDArray[np.float32],
+    rate: int,
+    *,
+    buckets: int = DEFAULT_BUCKETS,
+    cancel: threading.Event | None = None,
+) -> Peaks:
+    """Peaks of decoded audio shaped like :func:`load_audio` returns it, block by block."""
+    by_channel = data.reshape(1, -1) if data.ndim == 1 else data
+    frames = by_channel.shape[1]
+    if frames == 0:
+        raise AudioDecodeError("Cannot decode audio: Empty audio data")
+    reducer = _Reducer(frames, buckets)
+    by_frame = by_channel.T
+    for start in range(0, frames, _BLOCK_FRAMES):
+        _check(cancel)
+        reducer.feed(by_frame[start : start + _BLOCK_FRAMES])
+    return reducer.result(rate)
+
+
 def compute_peaks(
     path: str, *, buckets: int = DEFAULT_BUCKETS, cancel: threading.Event | None = None
 ) -> Peaks:
@@ -123,13 +183,16 @@ def compute_peaks(
         return streamed
     _check(cancel)
     data, rate = load_audio(path)
-    _check(cancel)
-    by_channel = data.reshape(1, -1) if data.ndim == 1 else data
-    if by_channel.shape[1] == 0:
-        raise AudioDecodeError("Cannot decode audio: Empty audio data")
-    reducer = _Reducer(by_channel.shape[1], buckets)
-    reducer.feed(by_channel.T)
-    return reducer.result(rate)
+    return peaks_from_array(data, rate, buckets=buckets, cancel=cancel)
 
 
-__all__ = ["DEFAULT_BUCKETS", "Peaks", "WaveformCancelled", "compute_peaks"]
+__all__ = [
+    "DEFAULT_BUCKETS",
+    "PeakSink",
+    "Peaks",
+    "WaveformCancelled",
+    "compute_peaks",
+    "offer_peaks",
+    "peaks_from_array",
+    "set_peak_sink",
+]
