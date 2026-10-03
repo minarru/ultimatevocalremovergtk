@@ -202,9 +202,6 @@ class EnsemblePage:
         self._syncing_preset = False
         self._custom_algorithms = False
         self._lock_leftover_algo = False
-        self._pair_consistent_leftover_label: str | None = None
-        self._pair_consistent_stacked_label: str | None = None
-        self._describe_mix_residual = False
         self._model_checks: Dict[str, Gtk.CheckButton] = {}
         self._model_row_text: Dict[str, tuple[str, str]] = {}
         self._models_write_gated = False
@@ -739,10 +736,7 @@ class EnsemblePage:
             and not multi
             and plan is not None
         )
-        leftover_label: str | None = None
-        stacked_label: str | None = None
         lock_leftover = False
-        describe_mix = False
         if derive and plan is not None:
             stacked_label = self._role_display(plan.stacked_role)
             leftover_label = self._role_display(plan.leftover_role)
@@ -754,15 +748,11 @@ class EnsemblePage:
                 leftover_label=leftover_label,
             )
             lock_leftover = True
-            describe_mix = True
         else:
             primary_title, secondary_title = algorithm_row_titles(
                 primary_stem, secondary_stem, multi_stem=multi
             )
         self._lock_leftover_algo = lock_leftover
-        self._pair_consistent_leftover_label = leftover_label
-        self._pair_consistent_stacked_label = stacked_label
-        self._describe_mix_residual = describe_mix
         set_row_title(primary_row, primary_title)
         set_row_title(secondary_row, secondary_title)
         self._update_algorithm_visibility()

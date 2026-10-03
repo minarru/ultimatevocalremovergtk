@@ -376,6 +376,8 @@ class MainWindow(Adw.ApplicationWindow):
         # the columns alongside the per-method groups.
         self._groups_builder = load_builder("separation-groups")
         self._page_groups = self._build_page_groups()
+        # The view whose stem rows currently lead the Output group.
+        self._output_view: typing.Any = None
         self.files_group = self._page_groups.input_group
         self.shared_group = self._page_groups.processing_group
         self.method_group = self._build_method_group()
@@ -655,12 +657,6 @@ class MainWindow(Adw.ApplicationWindow):
         self.gpu_row = groups.gpu_row
         self.autocast_row = groups.autocast_row
         self.sample_row = groups.sample_row
-        # Joins the active view's Model group (see ``_populate_columns``).
-        self.vocal_split_row = VocalSplitRow(
-            self.context.repo, self._on_vocal_split_changed, hints=self._hint_manager
-        )
-        self._vocal_row_host: Adw.PreferencesGroup | None = None
-        self._output_view: typing.Any = None
         return groups
 
     def _build_method_group(self) -> Adw.PreferencesGroup:
@@ -767,6 +763,12 @@ class MainWindow(Adw.ApplicationWindow):
         self._model_options_host = group
         self.model_options_row.connect("activated", lambda *_: self._open_model_options())
         set_tooltip(self.model_options_row, MODEL_OPTIONS_ROW_HINT)
+        # Follows the model-options row into the active view's Model group
+        # (see ``_populate_columns``).
+        self.vocal_split_row = VocalSplitRow(
+            self.context.repo, self._on_vocal_split_changed, hints=self._hint_manager
+        )
+        self._vocal_row_host: Adw.PreferencesGroup | None = None
         return group
 
     def _install_actions(self) -> None:
@@ -874,9 +876,11 @@ class MainWindow(Adw.ApplicationWindow):
         return self._current_view or self._views[0]
 
     def _install_shared_session(self) -> None:
-        # Bound through the public row attributes (the same widgets
-        # ``self._page_groups`` built) so the session's inputs stay exactly the
-        # rows the flush/tab-guard contract names.
+        # Deliberately built from the row attributes rather than
+        # ``self._page_groups.bindings()``: tests/test_flush_settings_tab_guard.py
+        # builds ``MainWindow.__new__`` with only these attributes and no
+        # ``_page_groups``. This call must mirror ``PageGroups.bindings()``; any
+        # shared row added there must be added here too.
         self._shared_session = SharedSettingsSession(
             self.settings,
             shared_settings_bindings(

@@ -5,6 +5,11 @@ method's output rows, one tool's settings) while keeping rows that belong
 *below* it in place means removing and re-adding the tail. ``RowSlot`` owns that
 bookkeeping: rows already in the group when the slot is created stay above it,
 the slot's rows come next, and the ``trailing`` rows always come last.
+
+Every row handed to a slot (including ``trailing`` rows) must be a direct
+``Gtk.ListBoxRow`` child of its owning ``Adw.PreferencesGroup``. A row nested
+inside an ``Adw.ExpanderRow`` cannot be moved on its own, and the ordering
+guarantee holds only for list-box rows.
 """
 
 from __future__ import annotations

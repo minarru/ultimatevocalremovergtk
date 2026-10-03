@@ -22,7 +22,6 @@ from core.ensemble_algorithms import (
     SOFT_BLEND_PRESET,
     algorithm_blurb,
     algorithm_row_titles,
-    ensemble_options_summary,
     model_row_matches_query,
     models_selection_status,
     pair_for_preset,
@@ -106,93 +105,7 @@ class FilterAndStatusTests(unittest.TestCase):
         self.assertEqual(models_selection_status(3), "3 models selected")
 
 
-class SummaryAndBlurbTests(unittest.TestCase):
-    def test_incomplete_summary(self) -> None:
-        text = ensemble_options_summary(
-            stem_chosen=False,
-            main_stem="Choose Stem Pair",
-            primary_stem=None,
-            secondary_stem=None,
-            primary_algo=MAX_SPEC,
-            secondary_algo=MIN_SPEC,
-            model_count=0,
-            multi_stem=False,
-        )
-        self.assertIn("stem pair", text.casefold())
-
-    def test_dual_ready_summary(self) -> None:
-        text = ensemble_options_summary(
-            stem_chosen=True,
-            main_stem="Vocals/Instrumental",
-            primary_stem="Vocals",
-            secondary_stem="Instrumental",
-            primary_algo=MAX_SPEC,
-            secondary_algo=MIN_SPEC,
-            model_count=3,
-            multi_stem=False,
-        )
-        self.assertEqual(
-            text,
-            "Vocals ← Max Spec · Instrumental ← Min Spec · 3 models",
-        )
-
-    def test_pair_consistent_summary_uses_mix_residual_not_min_spec(self) -> None:
-        """Flag on must not describe the leftover as an independent Min Spec combine."""
-        text = ensemble_options_summary(
-            stem_chosen=True,
-            main_stem="Vocals/Instrumental",
-            primary_stem="Vocals",
-            secondary_stem="Instrumental",
-            primary_algo=MAX_SPEC,
-            secondary_algo=MIN_SPEC,
-            model_count=2,
-            multi_stem=False,
-            derive_complement_from_mix=True,
-        )
-        self.assertEqual(
-            text,
-            "Vocals ← Max Spec · mix residual · 2 models",
-        )
-        self.assertNotIn("← Min Spec", text)
-
-    def test_pair_consistent_summary_uses_leftover_label(self) -> None:
-        text = ensemble_options_summary(
-            stem_chosen=True,
-            main_stem="Vocals/Instrumental",
-            primary_stem="Vocals",
-            secondary_stem="Instrumental",
-            primary_algo=MAX_SPEC,
-            secondary_algo=MIN_SPEC,
-            model_count=3,
-            multi_stem=False,
-            derive_complement_from_mix=True,
-            leftover_label="Instrumental",
-        )
-        self.assertEqual(
-            text,
-            "Vocals ← Max Spec · Instrumental · 3 models",
-        )
-        self.assertNotIn("← Min Spec", text)
-
-    def test_karaoke_shaped_summary_uses_stacked_role_on_the_left(self) -> None:
-        """pair.karaoke is accompaniment-first; stacked lead must be the left stem."""
-        text = ensemble_options_summary(
-            stem_chosen=True,
-            main_stem="Instrumental with Backing Vocals/Lead Vocals",
-            primary_stem="Lead Vocals",
-            secondary_stem="Instrumental with Backing Vocals",
-            primary_algo=MAX_SPEC,
-            secondary_algo=MIN_SPEC,
-            model_count=2,
-            multi_stem=False,
-            derive_complement_from_mix=True,
-            leftover_label="Instrumental with Backing Vocals",
-        )
-        self.assertEqual(
-            text,
-            "Lead Vocals ← Max Spec · Instrumental with Backing Vocals · 2 models",
-        )
-
+class BlurbTests(unittest.TestCase):
     def test_algorithm_blurb_and_wav_subtitle(self) -> None:
         self.assertIn("agreement", algorithm_blurb(SOFT_SPEC).casefold())
         self.assertIn("chunk", wav_ensemble_subtitle(uses_chunk_min=True).casefold())
@@ -310,9 +223,6 @@ class PairConsistentPlanAvailabilityTests(unittest.TestCase):
         page.settings = Settings.defaults()
         page._syncing_preset = False
         page._lock_leftover_algo = False
-        page._pair_consistent_leftover_label = None
-        page._pair_consistent_stacked_label = None
-        page._describe_mix_residual = False
         page._ensemble_is_multi_or_four = mock.Mock(return_value=False)
         page._ensemble_pair = mock.Mock(return_value="pair.vocals_instrumental")
         page._ensemble_stem_pair = mock.Mock(return_value=("Vocals", "Instrumental"))

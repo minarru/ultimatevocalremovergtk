@@ -217,38 +217,6 @@ def algorithm_row_titles(
     return primary, secondary
 
 
-def ensemble_options_summary(
-    *,
-    stem_chosen: bool,
-    main_stem: str,
-    primary_stem: Optional[str],
-    secondary_stem: Optional[str],
-    primary_algo: str,
-    secondary_algo: str,
-    model_count: int,
-    multi_stem: bool,
-    derive_complement_from_mix: bool = False,
-    leftover_label: str | None = None,
-) -> str:
-    """Live description for the Ensemble options group."""
-    if not stem_chosen:
-        return "Choose a stem pair · select 2+ models"
-
-    models_bit = f"{model_count} model" if model_count == 1 else f"{model_count} models"
-    if model_count < 2:
-        models_bit = f"{models_bit} (need 2+)"
-
-    if multi_stem:
-        return f"{main_stem} · {primary_algo} · {models_bit}"
-
-    left = primary_stem or "Primary"
-    if derive_complement_from_mix:
-        right = leftover_label or "mix residual"
-        return f"{left} ← {primary_algo} · {right} · {models_bit}"
-    right = secondary_stem or "Secondary"
-    return f"{left} ← {primary_algo} · {right} ← {secondary_algo} · {models_bit}"
-
-
 def wav_ensemble_subtitle(*, uses_chunk_min: bool) -> str:
     """Subtitle for the Ensemble waveforms switch."""
     if uses_chunk_min:
