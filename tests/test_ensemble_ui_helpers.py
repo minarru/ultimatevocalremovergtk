@@ -22,7 +22,6 @@ from core.ensemble_algorithms import (
     SOFT_BLEND_PRESET,
     algorithm_blurb,
     algorithm_row_titles,
-    model_row_matches_query,
     models_selection_status,
     pair_for_preset,
     preset_for_pair,
@@ -92,12 +91,6 @@ class StemTitleTests(unittest.TestCase):
 
 
 class FilterAndStatusTests(unittest.TestCase):
-    def test_model_row_matches_query(self) -> None:
-        self.assertTrue(model_row_matches_query("Kim Vocal 2", "MDX-Net", ""))
-        self.assertTrue(model_row_matches_query("Kim Vocal 2", "MDX-Net", "vocal"))
-        self.assertTrue(model_row_matches_query("Kim Vocal 2", "MDX-Net", "mdx"))
-        self.assertFalse(model_row_matches_query("Kim Vocal 2", "MDX-Net", "demucs"))
-
     def test_models_selection_status(self) -> None:
         self.assertEqual(models_selection_status(0, visible_matches=0), "No matches")
         self.assertEqual(models_selection_status(0), "Select at least 2 models")

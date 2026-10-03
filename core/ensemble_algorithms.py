@@ -224,15 +224,6 @@ def wav_ensemble_subtitle(*, uses_chunk_min: bool) -> str:
     return _DEFAULT_WAV_ENSEMBLE_SUBTITLE
 
 
-def model_row_matches_query(title: str, subtitle: str, query: str) -> bool:
-    """True when a member-model row matches a casefold search query."""
-    q = (query or "").strip().casefold()
-    if not q:
-        return True
-    haystack = f"{title} {subtitle}".casefold()
-    return q in haystack
-
-
 def models_selection_status(selected: int, *, visible_matches: Optional[int] = None) -> str:
     """Status line for the member-models dialog."""
     if visible_matches == 0:

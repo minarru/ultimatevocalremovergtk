@@ -367,6 +367,7 @@ class MemberPickerUiTests(unittest.TestCase):
         self.addCleanup(self.inventory.stop)
         self.toggled = Mock()
         self.set_visible_active = Mock()
+        self.filtered = Mock()
         self.more = Mock()
         self.picker = ModelPicker(
             ModelRepository(),
@@ -374,7 +375,7 @@ class MemberPickerUiTests(unittest.TestCase):
             Mock(return_value=False),
             self.more,
             config=PickerConfig(title='Member Models', purposes=()),
-            members=MemberCallbacks(self.toggled, self.set_visible_active),
+            members=MemberCallbacks(self.toggled, self.set_visible_active, self.filtered),
         )
 
     def test_members_reuse_checks_and_block_handlers(self):
@@ -497,3 +498,11 @@ class MemberPickerUiTests(unittest.TestCase):
         row.activate()
         self.assertTrue(checks['vr:alpha'].get_active())
         self.toggled.assert_called_once_with(checks['vr:alpha'])
+
+    def test_members_search_notifies_the_page(self):
+        self.picker.set_members([self.a, self.b], ())
+        self.filtered.reset_mock()
+        self.picker.search.set_text('alpha')
+        self.picker._refresh()
+        self.filtered.assert_called()
+        self.assertEqual(self.picker.visible_ids(), ['vr:alpha'])

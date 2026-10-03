@@ -66,7 +66,6 @@ from core.ensemble_algorithms import (
     algorithm_row_titles,
     ensemble_preset_options,
     format_ensemble_type,
-    model_row_matches_query,
     models_selection_status,
     pair_for_preset,
     parse_ensemble_type,
@@ -119,7 +118,6 @@ from ..shared_settings import (
     gpu_dependent_enabled,
 )
 from ..template import load_builder, object_from_builder
-from ..widget_state import fetch, stash
 from ..widgets.columns import build_columns_box, wrap_options_scroller
 from ..widgets.output_stems import OutputStemsSection
 from ..widgets.page_groups import PageGroupCallbacks, PageGroups, build_page_groups
@@ -303,9 +301,6 @@ class EnsemblePage:
         self.models_trigger_row.set_subtitle(self._models_summary())
         set_tooltip(self.models_trigger_row, ENSEMBLE_LISTBOX_HELP)
         self.models_trigger_row.connect("activated", self._open_models_dialog)
-        self._layout_object("edit_models_button", Gtk.Button).connect(
-            "clicked", self._open_models_dialog
-        )
 
         # Member model options and the vocal splitter sit under Member models,
         # mirroring Separation's Model group.
@@ -353,29 +348,28 @@ class EnsemblePage:
         return group
 
     def _build_models_dialog(self) -> None:
-        """Build the modal member-model checklist (the inline boxed list lives
-        here now, opened from the compact trigger row in "Ensemble options")."""
-        builder = load_builder("ensemble-member-picker")
-        self.models_listbox = object_from_builder(builder, "models_listbox", Gtk.ListBox)
-        set_tooltip(self.models_listbox, ENSEMBLE_LISTBOX_HELP)
-        self.models_listbox.set_filter_func(self._models_row_visible)
-        self.models_listbox.append(Adw.ActionRow(title="Choose a stem pair to list models"))
+        """Build the member-model picker opened from the Member models row."""
+        from ..model_picker import MemberCallbacks, ModelPicker, PickerConfig
 
-        scroller = object_from_builder(builder, "scroller", Gtk.ScrolledWindow)
-        set_tooltip(scroller, ENSEMBLE_LISTBOX_HELP)
-
-        self.models_status_label = object_from_builder(builder, "models_status_label", Gtk.Label)
-        self.models_status_label.set_label(models_selection_status(0))
-
-        self.models_search = object_from_builder(builder, "models_search", Gtk.SearchEntry)
-        self.models_search.connect("search-changed", self._on_models_search_changed)
-
-        select_all_btn = object_from_builder(builder, "select_all_button", Gtk.Button)
-        select_all_btn.connect("clicked", self._on_models_select_all)
-        clear_btn = object_from_builder(builder, "clear_button", Gtk.Button)
-        clear_btn.connect("clicked", self._on_models_clear)
-
-        self.models_dialog = object_from_builder(builder, "dialog", Adw.Dialog)
+        self._member_picker = ModelPicker(
+            self.context.repo,
+            lambda: "",
+            lambda _model_id: False,
+            lambda: self.window._on_download(None, None),
+            config=PickerConfig(
+                title="Member Models",
+                purposes=(),
+                search_placeholder="Search compatible models",
+                list_label="Compatible models",
+            ),
+            members=MemberCallbacks(
+                self._on_model_toggled,
+                self._set_visible_models_active,
+                lambda: self._update_models_dialog_status(),
+            ),
+        )
+        set_tooltip(self._member_picker.list, ENSEMBLE_LISTBOX_HELP)
+        self.models_dialog = self._member_picker.dialog
         self.models_dialog.connect("closed", self._on_models_dialog_closed)
 
     def _open_blend_options(self, *_args: typing.Any) -> None:
@@ -1336,37 +1330,21 @@ class EnsemblePage:
         if projection.replace_gate:
             self._models_gated_values = list(preselected) if projection.write_gated else None
             self._models_gated_ids = projection.gated_ids
-        child = self.models_listbox.get_first_child()
-        while child is not None:
-            nxt = child.get_next_sibling()
-            self.models_listbox.remove(child)
-            child = nxt
-        self._model_checks = {}
-        self._model_row_text = {}
-        if projection.placeholder:
-            row = Adw.ActionRow(title=projection.placeholder)
-            if projection.placeholder == "Could not list models":
-                set_row_subtitle(row, "See Error Log for details")
-            self.models_listbox.append(row)
-            return
-        for record in projection.records:
-            tag = record.id
-            title = record.display
-            subtitle = ARCH_BY_FAMILY[record.family]
-            row = Adw.ActionRow()
-            set_row_title(row, title)
-            row.set_subtitle(subtitle)
-            check = Gtk.CheckButton(valign=Gtk.Align.CENTER)
-            check.set_active(tag in projection.selected_ids)
-            check.connect("toggled", self._on_model_toggled)
-            row.add_prefix(check)
-            row.set_activatable_widget(check)
-            stash(row, "_uvr_model_tag", tag)
-            self.models_listbox.append(row)
-            self._model_checks[tag] = check
-            self._model_row_text[tag] = (title, subtitle)
-
-        self.models_listbox.invalidate_filter()
+        # Placeholder projections carry no records, so the checks empty too.
+        self._model_row_text = {
+            record.id: (record.display, ARCH_BY_FAMILY[record.family])
+            for record in projection.records
+        }
+        self._model_checks = self._member_picker.set_members(
+            projection.records,
+            projection.selected_ids,
+            placeholder=projection.placeholder,
+            placeholder_description=(
+                "See Error Log for details"
+                if projection.placeholder == "Could not list models"
+                else ""
+            ),
+        )
 
     def _reconcile_member_list(self, preselected: List[typing.Any]) -> None:
         """Refresh presentation and retain the existing successful-list write boundary."""
@@ -1483,48 +1461,19 @@ class EnsemblePage:
         self._update_member_models_sensitivity()
         self._update_ensemble_banner()
 
-    def _models_row_visible(self, row: Gtk.ListBoxRow) -> bool:
-        tag = fetch(row, "_uvr_model_tag", None)
-        if tag is None:
-            # Placeholder / error rows stay visible.
-            return True
-        title, subtitle = self._model_row_text.get(tag, ("", ""))
-        query = ""
-        search = getattr(self, "models_search", None)
-        if search is not None:
-            query = search.get_text()
-        return model_row_matches_query(title, subtitle, query)
-
     def _visible_model_tags(self) -> List[str]:
-        query = ""
-        search = getattr(self, "models_search", None)
-        if search is not None:
-            query = search.get_text()
-        return [
-            tag
-            for tag, (title, subtitle) in self._model_row_text.items()
-            if model_row_matches_query(title, subtitle, query)
-        ]
+        return self._member_picker.visible_ids()
 
     def _update_models_dialog_status(self) -> None:
-        label = getattr(self, "models_status_label", None)
-        if label is None:
+        picker = getattr(self, "_member_picker", None)
+        if picker is None:
             return
         selected = len(self._effective_selected_models())
         if not self._model_checks:
-            label.set_label(models_selection_status(selected))
+            picker.set_status(models_selection_status(selected))
             return
         visible = len(self._visible_model_tags())
-        label.set_label(
-            models_selection_status(
-                selected,
-                visible_matches=visible,
-            )
-        )
-
-    def _on_models_search_changed(self, *_args: typing.Any) -> None:
-        self.models_listbox.invalidate_filter()
-        self._update_models_dialog_status()
+        picker.set_status(models_selection_status(selected, visible_matches=visible))
 
     def _set_visible_models_active(self, active: bool) -> None:
         changed = False
@@ -1549,9 +1498,9 @@ class EnsemblePage:
     def _open_models_dialog(self, *_args: typing.Any) -> None:
         if not self._stem_pair_chosen():
             return
-        search = getattr(self, "models_search", None)
-        if search is not None:
-            search.set_text("")
+        picker = getattr(self, "_member_picker", None)
+        if picker is not None:
+            picker.reset()
         self._ensure_member_list()
         present_modal_dialog(self.models_dialog, self.window)
 

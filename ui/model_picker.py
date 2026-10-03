@@ -55,6 +55,8 @@ class MemberCallbacks:
 
     toggled: Callable[[Gtk.CheckButton | None], None]
     set_visible_active: Callable[[bool], None]
+    # Called after the listed rows change (search, filters, members).
+    filtered: Callable[[], None] | None = None
 
 
 @dataclass
@@ -370,6 +372,8 @@ class ModelPicker:
             if self.filters.purpose in _SCORED_PURPOSES
             else 'SDR sorting is available for Vocals and Instrumental'
         )
+        if self.members is not None and self.members.filtered is not None:
+            self.members.filtered()
 
     def _subtitle(self, model: PickerModel) -> str:
         subtitle = model.subtitle(self.filters.purpose)
