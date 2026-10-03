@@ -7,9 +7,10 @@ the shared responsive two-column layout; the console, progress bar and
 Start/Stop action bar are shared across all modes and supplied by the main
 window via :meth:`AudioToolsPage.start`.
 
-Layout mirrors Separation / Ensemble: a shared left **Files** group (multi-file
-or dual-pair inputs + output folder), an untitled tool selector, tool-specific
-settings in a stack, and a right **Processing** group for format options.
+Layout follows the shared run-page rule: the left column holds **Input**
+(multi-file or dual-pair inputs) then **Tool** (the tool picker followed by the
+active tool's settings rows); the right column holds **Output** (format and
+output folder) then **Processing**.
 
 It offers the UVR audio tools as selectable sub-modes:
 
@@ -58,22 +59,18 @@ from bundled.constants import (
     CHANGE_PITCH,
     CHOOSE_APOLLO_MODEL_HELP,
     CHOOSE_MODEL,
-    INPUT_FOLDER_ENTRY_HELP,
     INTRO_ANALYSIS_ALIGN_HELP,
     INTRO_MAPPER,
     IS_ALIGN_TRACK_HELP,
-    IS_GPU_CONVERSION_HELP,
     IS_MATCH_SILENCE_HELP,
     IS_MATCH_SPEC_HELP,
     IS_NORMALIZATION_HELP,
     IS_PHASE_HELP,
-    IS_TESTING_AUDIO_HELP,
     IS_TIME_CORRECTION_HELP,
     IS_WAV_ENSEMBLE_HELP,
     MANUAL_ENSEMBLE,
     MANUAL_ENSEMBLE_OPTIONS,
     MATCH_INPUTS,
-    OUTPUT_FOLDER_ENTRY_HELP,
     PHASE_SHIFTS_ALIGN_HELP,
     PHASE_SHIFTS_OPT,
     PITCH_SHIFT_HELP,
@@ -87,21 +84,16 @@ from bundled.constants import (
 from ..help_text import (
     MANUAL_ENSEMBLE_ALGORITHM_HINT,
     PLAYBACK_RATE_HINT,
-    VIEW_INPUTS_BUTTON_HINT,
 )
-from ..hints import HelpHintManager, set_icon_button_a11y, set_tooltip
+from ..hints import HelpHintManager, set_icon_button_a11y
 from ..protocols import FormatEdit
 from ..settings_bind import set_flat
-from ..shared_settings import (
-    SharedSettingsSession,
-    apply_shared_file_options,
-    shared_settings_bindings,
-)
+from ..shared_settings import SharedSettingsSession
 from ..template import load_builder, object_from_builder
 from ..widgets.columns import build_columns_box, wrap_options_scroller
 from ..widgets.dual_inputs import DualInputsRow
-from ..widgets.file_chooser import InputFilesRow, OutputFolderRow
-from ..widgets.format_row import OutputFormatRow
+from ..widgets.page_groups import PageGroupCallbacks, PageGroups, build_page_groups
+from ..widgets.row_slot import RowSlot
 from ..widgets.rows import (
     configure_combo_row,
     get_combo_value,
@@ -174,18 +166,18 @@ class AudioToolsPage:
         self._apollo_gated_value: typing.Any = None
         self._layout_builder = load_builder("audio-tools-page")
 
-        # Match Separation / Ensemble: shared Files (inputs + output) on the
-        # left, Processing on the right. Tool-specific settings stay in the
-        # stack below the tool selector.
-        self.files_group = self._build_files_group()
-        select_group = self._build_select_group()
-        self.tool_stack = self._build_tool_stack()
-        self.shared_group = self._build_shared_group()
+        # Shared column rule: left = Input, then the Tool group (picker plus
+        # the active tool's rows); right = Output, then Processing.
+        self._page_groups = self._build_page_groups()
+        self.tool_group = self._build_tool_group()
+        self._tool_rows = self._build_tool_rows()
+        self._build_processing_rows()
         self._install_shared_session()
 
-        self.columns_box, _, _ = build_columns_box(
-            left_groups=(self.files_group, select_group, self.tool_stack),
-            right_groups=(self.shared_group,),
+        groups = self._page_groups
+        self.columns_box, self._col_start, self._col_end = build_columns_box(
+            left_groups=(groups.input_group, self.tool_group),
+            right_groups=(groups.output_group, groups.processing_group),
         )
         self.options_page = wrap_options_scroller(self.columns_box)
 
@@ -215,61 +207,84 @@ class AudioToolsPage:
     def _layout_object(self, name: str, kind: type[LayoutObjectT]) -> LayoutObjectT:
         return object_from_builder(self._layout_builder, name, kind)
 
-    def _build_files_group(self) -> Adw.PreferencesGroup:
-        """Shared inputs + output folder, matching Separation / Ensemble."""
-        group = self._layout_object("files_group", Adw.PreferencesGroup)
-        self._view_inputs_button = self._layout_object("view_inputs_button", Gtk.Button)
-        set_icon_button_a11y(self._view_inputs_button, VIEW_INPUTS_BUTTON_HINT)
-        self._view_inputs_button.connect("clicked", self._on_view_inputs_clicked)
-
-        self.inputs_row = InputFilesRow(
-            self._on_inputs_changed,
-            on_toast=self.window.toast,
-            accept_any_getter=lambda: bool(self.settings.process.accept_any_input),
+    def _build_page_groups(self) -> PageGroups:
+        """Input, Output and Processing groups shared with the other run pages."""
+        groups = build_page_groups(
+            PageGroupCallbacks(
+                on_inputs_changed=self._on_inputs_changed,
+                on_output_changed=self._on_output_changed,
+                on_format_changed=self._on_format_changed,
+                toast=self.window.toast,
+                hint=self.hints.register,
+                accept_any_getter=lambda: bool(self.settings.process.accept_any_input),
+                initial_folder_getter=lambda: (
+                    os.path.dirname(self.settings.process.input_paths[0])
+                    if self.settings.process.input_paths
+                    else None
+                ),
+                # Dual tools open the pair editor, so this is not the global action.
+                view_inputs_action=None,
+                on_view_inputs=lambda: self._on_view_inputs_clicked(None),
+                on_gpu_changed=self._on_gpu_changed,
+            ),
+            processing=("gpu",),
         )
-        self.hints.register(self.inputs_row, INPUT_FOLDER_ENTRY_HELP)
-        # Back-compat aliases for callers that still look up per-tool rows.
-        self.me_inputs_row = self.inputs_row
-        self.ts_inputs_row = self.inputs_row
-        self.ps_inputs_row = self.inputs_row
-        self.ap_inputs_row = self.inputs_row
+        assert groups.gpu_row is not None
+        self.input_row = groups.input_row
+        self.output_row = groups.output_row
+        self.format_row = groups.format_row
+        self.gpu_row = groups.gpu_row
+        # Back-compat aliases for callers that still look up the older names.
+        self.inputs_row = self.input_row
+        self.me_inputs_row = self.input_row
+        self.ts_inputs_row = self.input_row
+        self.ps_inputs_row = self.input_row
+        self.ap_inputs_row = self.input_row
+        # Shown only for Apollo (the GPU-accelerated audio tool).
+        self.apollo_gpu_row = self.gpu_row
 
         self.dual_inputs_row = DualInputsRow(self._on_open_dual_editor)
         self._dual_inputs_rows: List[DualInputsRow] = [self.dual_inputs_row]
+        groups.add_input_row(self.dual_inputs_row)
+        return groups
 
-        self.output_row = OutputFolderRow(self._on_output_changed, on_toast=self.window.toast)
-        set_tooltip(self.output_row, OUTPUT_FOLDER_ENTRY_HELP)
-
-        group.add(self.inputs_row)
-        group.add(self.dual_inputs_row)
-        group.add(self.output_row)
-        return group
-
-    def _build_select_group(self) -> Adw.PreferencesGroup:
-        # Untitled group + row title (same de-chrome pattern as Separation method).
-        select_group = self._layout_object("select_group", Adw.PreferencesGroup)
+    def _build_tool_group(self) -> Adw.PreferencesGroup:
+        group = self._layout_object("tool_group", Adw.PreferencesGroup)
         self.tool_row = configure_combo_row(
             self._layout_object("tool_row", Adw.ComboRow),
             AUDIO_TOOL_ORDER,
         )
         self.hints.register(self.tool_row, AUDIO_TOOLS_HELP)
         self.tool_row.connect("notify::selected", self._on_tool_changed)
-        return select_group
+        # The active tool's rows follow the picker (see ``_sync_tool_visibility``).
+        self._tool_slot = RowSlot(group)
+        return group
 
-    def _build_tool_stack(self) -> Gtk.Stack:
-        stack = self._layout_object("tool_stack", Gtk.Stack)
-        self._build_manual_ensemble_page()
-        self._build_time_stretch_page()
-        self._build_pitch_page()
-        self._build_align_page()
-        # Matchering has no tool settings; stack page is omitted (Files copy covers it).
-        self._build_apollo_page()
-        return stack
+    def _build_tool_rows(self) -> dict[str, tuple[Gtk.Widget, ...]]:
+        """Wire each tool's rows; they stay in their holder group until shown."""
+        self._tool_holders: dict[str, Adw.PreferencesGroup] = {
+            MANUAL_ENSEMBLE: self._build_manual_ensemble_page(),
+            TIME_STRETCH: self._build_time_stretch_page(),
+            CHANGE_PITCH: self._build_pitch_page(),
+            ALIGN_INPUTS: self._build_align_page(),
+            APOLLO_RESTORE: self._build_apollo_page(),
+        }
+        # Align's advanced options move as one expander row, children inside.
+        align_advanced = self._layout_object("align_advanced_row", Adw.ExpanderRow)
+        return {
+            MANUAL_ENSEMBLE: (self.algorithm_row, self.wav_ensemble_row),
+            TIME_STRETCH: (self.time_rate_row,),
+            CHANGE_PITCH: (self.pitch_rate_row, self.time_correction_row),
+            ALIGN_INPUTS: (self.time_window_row, self.intro_row, self.db_row, align_advanced),
+            # Matchering has no tool settings; the Input description covers it.
+            MATCH_INPUTS: (),
+            APOLLO_RESTORE: (self.apollo_model_row, self.apollo_overlap_row, self.apollo_chunk_row),
+        }
 
-    # -- Per-tool pages (settings only; inputs live in Files) ------------------
+    # -- Per-tool settings (rows live in holder groups until shown) ------------
 
-    def _build_manual_ensemble_page(self) -> Gtk.Widget:
-        box = self._layout_object("manual_ensemble_page", Gtk.Box)
+    def _build_manual_ensemble_page(self) -> Adw.PreferencesGroup:
+        holder = self._layout_object("manual_ensemble_group", Adw.PreferencesGroup)
         self.algorithm_row = configure_combo_row(
             self._layout_object("algorithm_row", Adw.ComboRow), MANUAL_ENSEMBLE_OPTIONS
         )
@@ -285,20 +300,20 @@ class AudioToolsPage:
             "notify::active",
             lambda *_a: self._set("is_wav_ensemble", self.wav_ensemble_row.get_active()),
         )
-        return box
+        return holder
 
-    def _build_time_stretch_page(self) -> Gtk.Widget:
-        box = self._layout_object("time_stretch_page", Gtk.Box)
+    def _build_time_stretch_page(self) -> Adw.PreferencesGroup:
+        holder = self._layout_object("time_stretch_group", Adw.PreferencesGroup)
         self.time_rate_row = self._layout_object("time_rate_row", Adw.SpinRow)
         self.hints.register(self.time_rate_row, PLAYBACK_RATE_HINT)
         self.time_rate_row.connect(
             "notify::value",
             lambda *_a: self._set("time_stretch_rate", round(self.time_rate_row.get_value(), 2)),
         )
-        return box
+        return holder
 
-    def _build_pitch_page(self) -> Gtk.Widget:
-        box = self._layout_object("pitch_page", Gtk.Box)
+    def _build_pitch_page(self) -> Adw.PreferencesGroup:
+        holder = self._layout_object("pitch_group", Adw.PreferencesGroup)
         self.pitch_rate_row = self._layout_object("pitch_rate_row", Adw.SpinRow)
         self.hints.register(self.pitch_rate_row, PITCH_SHIFT_HELP)
         self.pitch_rate_row.connect(
@@ -312,10 +327,10 @@ class AudioToolsPage:
             "notify::active",
             lambda *_a: self._set("is_time_correction", self.time_correction_row.get_active()),
         )
-        return box
+        return holder
 
-    def _build_align_page(self) -> Gtk.Widget:
-        box = self._layout_object("align_page", Gtk.Box)
+    def _build_align_page(self) -> Adw.PreferencesGroup:
+        holder = self._layout_object("align_group", Adw.PreferencesGroup)
         self.time_window_row = configure_combo_row(
             self._layout_object("time_window_row", Adw.ComboRow),
             list(TIME_WINDOW_MAPPER.keys()),
@@ -382,11 +397,10 @@ class AudioToolsPage:
             "notify::active",
             lambda *_a: self._set("is_spec_match", self.spec_match_row.get_active()),
         )
-        return box
+        return holder
 
-    def _build_apollo_page(self) -> Gtk.Widget:
-        box = self._layout_object("apollo_page", Gtk.Box)
-        self.apollo_group = self._layout_object("apollo_group", Adw.PreferencesGroup)
+    def _build_apollo_page(self) -> Adw.PreferencesGroup:
+        holder = self._layout_object("apollo_group", Adw.PreferencesGroup)
         apollo_folder_button = self._layout_object("apollo_folder_button", Gtk.Button)
         set_icon_button_a11y(apollo_folder_button, "Open Apollo models folder")
         apollo_folder_button.connect("clicked", self._on_open_apollo_folder)
@@ -410,7 +424,7 @@ class AudioToolsPage:
             "notify::value",
             lambda *_a: self._set("apollo_chunk_size", int(self.apollo_chunk_row.get_value())),
         )
-        return box
+        return holder
 
     def _on_apollo_model_changed(self, *_args: typing.Any) -> None:
         if self._loading:
@@ -475,31 +489,20 @@ class AudioToolsPage:
             self._loading = was_loading
 
         self._apollo_has_models = bool(found)
-        self.apollo_group.set_visible(self._apollo_has_models)
+        # Apollo's settings are hidden until a checkpoint is installed.
+        for row in self._tool_rows[APOLLO_RESTORE]:
+            row.set_visible(self._apollo_has_models)
         self._update_audio_banner()
 
-    def _build_shared_group(self) -> Gtk.Widget:
-        group = self._layout_object("processing_group", Adw.PreferencesGroup)
-
-        self.format_row = OutputFormatRow(self._on_format_changed)
-        group.add(self.format_row)
-
-        # Shown only for Apollo (GPU-accelerated audio tool).
-        self.apollo_gpu_row = self._layout_object("apollo_gpu_row", Adw.SwitchRow)
-        self.hints.register(self.apollo_gpu_row, IS_GPU_CONVERSION_HELP)
-        self.apollo_gpu_row.connect(
-            "notify::active",
-            self._on_gpu_changed,
-        )
-        group.add(self.apollo_gpu_row)
-
+    def _build_processing_rows(self) -> None:
+        """Audio-Tools-only rows after the shared GPU switch."""
         self.normalize_row = self._layout_object("normalize_row", Adw.SwitchRow)
         self.hints.register(self.normalize_row, IS_NORMALIZATION_HELP)
         self.normalize_row.connect(
             "notify::active",
             lambda *_a: self._set("is_normalization", self.normalize_row.get_active()),
         )
-        group.add(self.normalize_row)
+        self._page_groups.add_processing(self.normalize_row)
 
         self.amplification_row = self._layout_object("amplification_row", Adw.SpinRow)
         self.hints.register(self.amplification_row, AMPLIFICATION_THRESHOLD_HELP)
@@ -509,17 +512,7 @@ class AudioToolsPage:
                 "amplification_threshold", float(self.amplification_row.get_value())
             ),
         )
-        group.add(self.amplification_row)
-
-        self.testing_row = self._layout_object("testing_row", Adw.SwitchRow)
-        self.hints.register(self.testing_row, IS_TESTING_AUDIO_HELP)
-        self.testing_row.connect(
-            "notify::active",
-            lambda *_a: self._set("is_testing_audio", self.testing_row.get_active()),
-        )
-        group.add(self.testing_row)
-
-        return group
+        self._page_groups.add_processing(self.amplification_row)
 
     # -- Settings load / persist -----------------------------------------------
 
@@ -583,7 +576,6 @@ class AudioToolsPage:
             except (TypeError, ValueError):
                 amp = 0.0
             self.amplification_row.set_value(max(0.0, min(1.0, amp)))
-            self.testing_row.set_active(bool(s.get("is_testing_audio")))
         finally:
             self._loading = False
 
@@ -594,23 +586,12 @@ class AudioToolsPage:
     def _install_shared_session(self) -> None:
         self._shared_session = SharedSettingsSession(
             self.settings,
-            shared_settings_bindings(
-                input_row=self.inputs_row,
-                output_row=self.output_row,
-                format_row=self.format_row,
-                gpu_row=self.apollo_gpu_row,
-            ),
+            self._page_groups.bindings(),
             can_commit=lambda: self.window.content_stack.get_visible_child_name() == "audio_tools",
         )
 
     def _apply_shared_widgets(self) -> None:
-        apply_shared_file_options(
-            self.settings,
-            input_row=self.inputs_row,
-            output_row=self.output_row,
-            format_row=self.format_row,
-            gpu_row=self.apollo_gpu_row,
-        )
+        self._page_groups.apply(self.settings)
 
     def _sync_shared_from_settings(self) -> None:
         """Refresh displayed baselines without creating shared edits."""
@@ -641,12 +622,13 @@ class AudioToolsPage:
 
     def _sync_tool_visibility(self) -> None:
         tool = self._current_tool()
-        # Matchering has no tool settings page; hide the empty stack slot.
-        has_settings = tool != MATCH_INPUTS
-        self.tool_stack.set_visible(has_settings)
-        if has_settings:
-            self.tool_stack.set_visible_child_name(tool)
-        self.apollo_gpu_row.set_visible(tool == APOLLO_RESTORE)
+        rows = self._tool_rows.get(tool, ())
+        if self._tool_slot.rows != rows:
+            self._tool_slot.replace(rows)
+        holder = self._tool_holders.get(tool)
+        # Each tool's description is the picker's subtitle; Matchering has none.
+        self.tool_row.set_subtitle((holder.get_description() if holder else None) or "")
+        self.gpu_row.set_visible(tool == APOLLO_RESTORE)
         self._sync_files_visibility(tool)
         self._update_audio_banner()
 
@@ -658,12 +640,13 @@ class AudioToolsPage:
         dual = tool in DUAL_INPUT_TOOLS
         self.inputs_row.set_visible(not dual)
         self.dual_inputs_row.set_visible(dual)
+        input_group = self._page_groups.input_group
         if tool == MATCH_INPUTS:
-            self.files_group.set_description(_MATCH_FILES_DESCRIPTION)
+            input_group.set_description(_MATCH_FILES_DESCRIPTION)
         elif tool == ALIGN_INPUTS:
-            self.files_group.set_description(_ALIGN_FILES_DESCRIPTION)
+            input_group.set_description(_ALIGN_FILES_DESCRIPTION)
         else:
-            self.files_group.set_description(None)
+            input_group.set_description(None)
 
     def _update_audio_banner(self) -> None:
         """Retain saved-model details; the log panel owns readiness messages."""

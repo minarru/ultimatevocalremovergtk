@@ -243,5 +243,134 @@ class EnsembleLayoutTests(unittest.TestCase):
         self.assertIn(group.get_description(), ("", None))
 
 
+#: Each tool's settings holder group in ``audio-tools-page.blp`` (Matchering has none).
+_AUDIO_TOOL_HOLDERS = {
+    "Manual Ensemble": "manual_ensemble_group",
+    "Time Stretch": "time_stretch_group",
+    "Change Pitch": "pitch_group",
+    "Align Inputs": "align_group",
+    "Apollo Restore": "apollo_group",
+}
+
+
+@unittest.skipUnless(
+    os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"),
+    "GTK widget construction needs a display",
+)
+class AudioToolsLayoutTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        import gi
+
+        gi.require_version("Gtk", "4.0")
+        gi.require_version("Adw", "1")
+        from gi.repository import Adw
+
+        cls._app = Adw.Application(application_id="org.uvr.test.page-layout-audio-tools")
+        cls._app.register()
+
+    def _window(self) -> Any:
+        from ui.window import MainWindow
+
+        window = MainWindow()
+        self.addCleanup(window.set_application, None)
+        return window
+
+    def _select(self, page: Any, tool: str) -> None:
+        from ui.widgets.rows import set_combo_value
+
+        set_combo_value(page.tool_row, tool)
+        self.assertEqual(page._current_tool(), tool)
+
+    def test_every_tool_follows_the_column_rule(self) -> None:
+        from gi.repository import Adw
+
+        from bundled.constants import APOLLO_RESTORE
+        from ui.audio_tools.window import AUDIO_TOOL_ORDER
+
+        page = self._window()._audio_tools_page
+        self.assertFalse(hasattr(page, "testing_row"))
+        self.assertIs(page.apollo_gpu_row, page.gpu_row)
+        self.assertIs(page.inputs_row, page.input_row)
+        for tool in AUDIO_TOOL_ORDER:
+            with self.subTest(tool=tool):
+                self._select(page, tool)
+                self.assertEqual(column_titles(page._col_start), ["Input", "Tool"])
+                self.assertEqual(column_titles(page._col_end), ["Output", "Processing"])
+                self.assertEqual(_order(page.tool_group), [page.tool_row, *page._tool_rows[tool]])
+                holder = _AUDIO_TOOL_HOLDERS.get(tool)
+                description = (
+                    page._layout_object(holder, Adw.PreferencesGroup).get_description()
+                    if holder
+                    else None
+                )
+                self.assertEqual(page.tool_row.get_subtitle() or "", description or "")
+                self.assertEqual(
+                    _order(page._page_groups.output_group), [page.format_row, page.output_row]
+                )
+                self.assertEqual(
+                    _order(page._page_groups.processing_group),
+                    [page.gpu_row, page.normalize_row, page.amplification_row],
+                )
+                self.assertEqual(page.gpu_row.get_visible(), tool == APOLLO_RESTORE)
+
+    def test_matchering_shows_only_the_picker(self) -> None:
+        from bundled.constants import MATCH_INPUTS
+
+        page = self._window()._audio_tools_page
+        self._select(page, MATCH_INPUTS)
+        self.assertEqual(page._tool_rows[MATCH_INPUTS], ())
+        self.assertEqual(_order(page.tool_group), [page.tool_row])
+
+    def test_tool_switch_keeps_rows_and_expander(self) -> None:
+        from gi.repository import Adw
+
+        from bundled.constants import ALIGN_INPUTS, APOLLO_RESTORE
+
+        page = self._window()._audio_tools_page
+        self._select(page, ALIGN_INPUTS)
+        expander = page._layout_object("align_advanced_row", Adw.ExpanderRow)
+        self.assertIn(expander, page._tool_rows[ALIGN_INPUTS])
+        expander.set_expanded(True)
+        self._select(page, APOLLO_RESTORE)
+        self.assertFalse(contains(page.tool_group, expander))
+        self._select(page, ALIGN_INPUTS)
+        self.assertEqual(_order(page.tool_group), [page.tool_row, *page._tool_rows[ALIGN_INPUTS]])
+        self.assertTrue(expander.get_expanded())
+        self.assertTrue(contains(expander, page.spec_match_row))
+
+    def test_dual_tools_show_pairs_row(self) -> None:
+        from bundled.constants import MANUAL_ENSEMBLE
+        from core.audio_tools import DUAL_INPUT_TOOLS
+
+        page = self._window()._audio_tools_page
+        input_group = page._page_groups.input_group
+        self.assertEqual(_order(input_group), [page.input_row, page.dual_inputs_row])
+        for tool in DUAL_INPUT_TOOLS:
+            with self.subTest(tool=tool):
+                self._select(page, tool)
+                self.assertTrue(page.dual_inputs_row.get_visible())
+                self.assertFalse(page.input_row.get_visible())
+                self.assertTrue(input_group.get_description())
+        self._select(page, MANUAL_ENSEMBLE)
+        self.assertFalse(page.dual_inputs_row.get_visible())
+        self.assertTrue(page.input_row.get_visible())
+        self.assertIn(input_group.get_description(), ("", None))
+
+    def test_inputs_edit_after_tool_switch_persists(self) -> None:
+        import tempfile
+
+        from bundled.constants import APOLLO_RESTORE, TIME_STRETCH
+
+        window = self._window()
+        page = window._audio_tools_page
+        window.content_stack.set_visible_child_name("audio_tools")
+        self._select(page, APOLLO_RESTORE)
+        self._select(page, TIME_STRETCH)
+        with tempfile.NamedTemporaryFile(suffix=".wav") as audio:
+            page.input_row.set_paths([audio.name])
+            self.assertEqual(window.settings.process.input_paths, [audio.name])
+
+
 if __name__ == "__main__":
     unittest.main()
