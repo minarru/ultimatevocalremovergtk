@@ -198,10 +198,11 @@ New behaviour:
   `build_stem_options`).
 - On a method switch the window calls
   `groups.set_output_lead(view.output_stems.rows)`.
-- The composed stem tooltip and description computed in
-  `MethodView._update_stem_group_metadata` reach the shared Output group
-  through a hook (`on_output_metadata(description, tooltip)`), applied when
-  the view is active and whenever it recomputes.
+- The composed stem tooltip computed in
+  `MethodView._update_stem_group_metadata` reaches the shared Output group
+  through a hook (`MethodView.on_output_tooltip(text)`), applied when the view
+  becomes active and whenever it recomputes. (The method always clears the
+  group description, so only the tooltip needs forwarding.)
 - The Vocal splitter row joins the per-view Model group and moves into the
   active view's group on a switch, using the same host-tracking pattern as
   `model_options_row` (`_model_options_host`).
