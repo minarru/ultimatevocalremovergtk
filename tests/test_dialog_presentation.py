@@ -233,12 +233,17 @@ class DialogKindWiringTests(unittest.TestCase):
     def test_settings_close_on_backdrop(self) -> None:
         from ui.window import MainWindow
 
-        window = MainWindow()
-        window.set_application(self.app)
-        self.addCleanup(window.set_application, None)
-        with mock.patch("ui.window.present_modal_dialog") as present:
-            window._on_open_settings(mock.Mock(), None)
+        # A stub host: building a real MainWindow here makes a later
+        # test_output_stems run crash inside GTK (it does so on the base commit
+        # too, with test_control_types), and the wiring is all this test checks.
+        host = mock.Mock()
+        with (
+            mock.patch("ui.preferences.PreferencesDialog") as dialog_class,
+            mock.patch("ui.window.present_modal_dialog") as present,
+        ):
+            MainWindow._on_open_settings(host, mock.Mock(), None)
         self.assert_backdrop(present, True)
+        self.assertEqual(present.call_args.args, (dialog_class.return_value, host))
 
 
 if __name__ == "__main__":
