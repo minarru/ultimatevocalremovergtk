@@ -59,7 +59,7 @@ APOLLO_MODEL_PARAMETERS_TEXT = 'Apollo Model Parameters'
 APOLLO_MODEL_FAIL_TEXT = 'Apollo model not valid.\n'
 
 STOP_PROCESS_CONFIRM = (
-    'Confirmation',
+    'Stop Processing?',
     'You are about to stop all active processes.\n\nAre you sure you wish to continue?',
 )
 

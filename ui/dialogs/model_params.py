@@ -656,7 +656,7 @@ def show_change_defaults_dialog(context: typing.Any, parent: typing.Any):
         tag = get_combo_value(model_row)
         model_title = format_tag_title(tag, repo) if tag else "this model"
         dialog = Adw.AlertDialog(
-            heading="Delete stored parameters?",
+            heading="Delete Stored Parameters?",
             body=(
                 f'This permanently removes the saved recognition parameters for "{model_title}".'
             ),

@@ -70,10 +70,10 @@ class UpdateView:
 
         if not status.get("is_online"):
             self.status_row.set_subtitle("Could not check for updates (offline)")
-            self.update_button.set_label("Check again")
+            self.update_button.set_label("Check Again")
         elif status.get("is_current"):
             self.status_row.set_subtitle("This release is up to date")
-            self.update_button.set_label("View release notes")
+            self.update_button.set_label("View Release Notes")
         else:
             latest = status.get("latest") or "available"
             self.status_row.set_subtitle(
@@ -83,11 +83,11 @@ class UpdateView:
             if instructions:
                 self.upgrade_row.set_subtitle(str(instructions))
                 self.upgrade_row.set_visible(True)
-            self.update_button.set_label("View release notes")
+            self.update_button.set_label("View Release Notes")
 
     def _on_check_or_update(self, _button: typing.Any) -> None:
         label = self.update_button.get_label()
-        if label == "Check again":
+        if label == "Check Again":
             self._check()
         elif self._update_link:
             open_uri_in_browser(self.parent, self._update_link)

@@ -672,14 +672,14 @@ class RunController:
     def _present_shutdown_confirm(self) -> None:
         download_count = self._active_download_count()
         if self.is_running() and download_count:
-            heading = "Stop processing and downloads?"
+            heading = "Stop Processing and Downloads?"
             body = (
                 "Processing and model downloads are still running. "
                 "Stopping now may leave the current output incomplete; partial "
                 "model downloads will be removed."
             )
         elif download_count:
-            heading = "Cancel model downloads and quit?"
+            heading = "Cancel Model Downloads and Quit?"
             noun = "download is" if download_count == 1 else "downloads are"
             body = (
                 f"{download_count} model {noun} still active. Partial downloads "
@@ -896,7 +896,7 @@ class RunController:
             "\nProcessing has not stopped. Wait longer or quit and restart the app.\n"
         )
         dialog = Adw.AlertDialog(
-            heading="Processing has not stopped",
+            heading="Processing Has Not Stopped",
             body=(
                 "The worker or its cleanup is not responding. Another run cannot start safely. "
                 "You can wait longer, or quit and restart the app. Quitting also stops downloads."
@@ -1138,7 +1138,7 @@ class RunController:
         label = self._run_label_for(target) if target is not None else "Process"
         present_error_dialog(
             self._host.dialog_parent,
-            heading=f"{label} failed",
+            heading=f"{label} Failed",
             exception=exc,
             formatted_log=formatted,
             on_copied=lambda: self._host.toast("Report copied to clipboard"),

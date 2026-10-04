@@ -933,12 +933,12 @@ class EnsemblePage:
         if unresolved:
             body_parts.append(f"{len(unresolved)} could not be matched in the catalogue.")
         dialog = Adw.AlertDialog(
-            heading="Download missing models?",
+            heading="Download Missing Models?",
             body=" ".join(body_parts),
         )
-        dialog.add_response("cancel", "Not now")
+        dialog.add_response("cancel", "Not Now")
         if entries:
-            dialog.add_response("download", "Download missing")
+            dialog.add_response("download", "Download Missing")
             dialog.set_response_appearance("download", Adw.ResponseAppearance.SUGGESTED)
             dialog.set_default_response("download")
         else:
@@ -1044,7 +1044,7 @@ class EnsemblePage:
             self._toast("Curated recipes cannot be deleted.")
             return
         dialog = Adw.AlertDialog(
-            heading="Delete ensemble?",
+            heading="Delete Ensemble?",
             body=f'This permanently deletes the saved ensemble "{name}".',
         )
         dialog.add_response("cancel", "Cancel")

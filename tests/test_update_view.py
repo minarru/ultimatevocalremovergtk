@@ -51,7 +51,7 @@ class UpdateViewTests(unittest.TestCase):
         self.assertIn("2.0.0", view.status_row.get_subtitle() or "")
         self.assertTrue(view.upgrade_row.get_visible())
         self.assertEqual(view.upgrade_row.get_subtitle(), "Run the installer after updating.")
-        self.assertEqual(view.update_button.get_label(), "View release notes")
+        self.assertEqual(view.update_button.get_label(), "View Release Notes")
 
     def test_offline_result_keeps_retry_action_available(self) -> None:
         from ui.updates import UpdateView
@@ -60,6 +60,6 @@ class UpdateViewTests(unittest.TestCase):
         view = UpdateView(None, types.SimpleNamespace(download_manager=manager))
         view._check_done({"is_online": False})
         self.assertEqual(view.status_row.get_subtitle(), "Could not check for updates (offline)")
-        self.assertEqual(view.update_button.get_label(), "Check again")
+        self.assertEqual(view.update_button.get_label(), "Check Again")
         self.assertTrue(view.update_button.get_sensitive())
         self.assertFalse(view.upgrade_row.get_visible())
