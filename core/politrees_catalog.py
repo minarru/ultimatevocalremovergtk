@@ -12,7 +12,7 @@ from bundled.constants import POLITREES_MODEL_LINKS_URL
 
 from . import paths
 from .debug_log import debug
-from .mdx_config_fetch import _urlopen, fetch_mdx_config_url
+from .mdx_config_fetch import _urlopen
 
 _POLITREES_CACHE_TTL_SECONDS = 24 * 60 * 60
 
@@ -93,21 +93,6 @@ def _read_disk_cache() -> Optional[Dict]:
     except (OSError, ValueError, TypeError):
         pass
     return None
-
-
-def _read_disk_cache_entry() -> Optional[Tuple[Dict, float]]:
-    """Return ``(data, fetched_at)`` from the on-disk cache, or ``None``."""
-    try:
-        with open(_politrees_cache_path(), "r", encoding="utf-8") as handle:
-            payload = json.load(handle)
-        if not isinstance(payload, dict) or not isinstance(payload.get("data"), dict):
-            return None
-        fetched_at = payload.get("fetched_at")
-        if not isinstance(fetched_at, (int, float)):
-            return None
-        return payload["data"], float(fetched_at)
-    except (OSError, ValueError, TypeError):
-        return None
 
 
 def _start_background_refresh() -> None:
@@ -275,24 +260,6 @@ def mdx_checkpoint_filename(model: object) -> str:
                 return name
         return next(iter(model))
     return str(model)
-
-
-def prefetch_mdx_catalog_entry(model: object) -> None:
-    """Ensure local YAML exists for an MDX catalogue entry when possible."""
-    if not isinstance(model, dict):
-        return
-
-    for name, ref in model.items():
-        if name.endswith(".yaml"):
-            if is_remote_ref(ref):
-                if fetch_mdx_config_url(name, ref):
-                    continue
-            continue
-
-        if not is_remote_ref(ref):
-            from .mdx_config_fetch import ensure_mdx_c_config
-
-            ensure_mdx_c_config(ref)
 
 
 def resolve_vr_jobs(model: object, model_repo: str) -> List[Tuple[str, str]]:

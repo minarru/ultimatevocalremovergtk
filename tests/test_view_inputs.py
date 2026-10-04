@@ -10,7 +10,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, cast
 from unittest.mock import Mock, patch
 
-from tests.gtk_layout_helpers import wait_for_dialog_open
+from tests.gtk_layout_helpers import iter_descendants, wait_for_dialog_open
 
 if TYPE_CHECKING:
     from gi.repository import Gtk
@@ -23,6 +23,9 @@ if TYPE_CHECKING:
 class ViewInputsTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
+        from tests.private_gtk import require_private_gtk
+
+        require_private_gtk()
         try:
             import gi
 
@@ -310,16 +313,9 @@ class ViewInputsTests(unittest.TestCase):
 
         view, context, changed = self.make_view()
 
-        def descendants(widget: Gtk.Widget):
-            yield widget
-            child = widget.get_first_child()
-            while child is not None:
-                yield from descendants(child)
-                child = child.get_next_sibling()
-
         remove = next(
             w
-            for w in descendants(view._rows["/tmp/bad.wav"])
+            for w in iter_descendants(view._rows["/tmp/bad.wav"])
             if isinstance(w, Gtk.Button) and w.get_icon_name() == "uvr-cross-small-symbolic"
         )
         remove.emit("clicked")

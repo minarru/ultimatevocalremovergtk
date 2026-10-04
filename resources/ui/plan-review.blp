@@ -73,18 +73,14 @@ template $ReviewPlanDialog : Adw.Dialog {
     };
     [bottom]
     Gtk.Box {
-      orientation: vertical;
-      Gtk.Separator {}
-      Gtk.Box {
-        spacing: 12;
-        margin-start: 20;
-        margin-end: 20;
-        margin-top: 16;
-        margin-bottom: 16;
-        Gtk.Button cancel { label: "Cancel"; styles ["pill"] }
-        Gtk.Box { hexpand: true; }
-        Gtk.Button start { label: "Start Processing"; styles ["pill", "suggested-action"] }
-      }
+      spacing: 12;
+      margin-start: 20;
+      margin-end: 20;
+      margin-top: 16;
+      margin-bottom: 16;
+      Gtk.Button cancel { label: "Cancel"; styles ["pill"] }
+      Gtk.Box { hexpand: true; }
+      Gtk.Button start { label: "Start Processing"; styles ["pill", "suggested-action"] }
     }
   };
 }

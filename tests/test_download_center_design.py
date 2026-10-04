@@ -9,7 +9,7 @@ from collections.abc import Callable
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from tests.gtk_layout_helpers import resize_window
+from tests.gtk_layout_helpers import iter_descendants, resize_window
 
 
 @unittest.skipUnless(
@@ -18,6 +18,9 @@ from tests.gtk_layout_helpers import resize_window
 class DownloadCenterDesignTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
+        from tests.private_gtk import require_private_gtk
+
+        require_private_gtk()
         import gi
 
         gi.require_version('Gtk', '4.0')
@@ -136,17 +139,7 @@ class DownloadCenterDesignTests(unittest.TestCase):
         row = center._row_actions[(self.arch, 'Future')]
         self.assertTrue(row.get_sensitive())
         self.assertIn('dim-label', row.get_css_classes())
-        buttons = []
-
-        def walk(widget: Gtk.Widget) -> None:
-            if isinstance(widget, Gtk.MenuButton):
-                buttons.append(widget)
-            child = widget.get_first_child()
-            while child is not None:
-                walk(child)
-                child = child.get_next_sibling()
-
-        walk(row)
+        buttons = [w for w in iter_descendants(row) if isinstance(w, Gtk.MenuButton)]
         self.assertEqual(len(buttons), 1)
         self.assertTrue(buttons[0].get_sensitive())
         self.assertEqual(buttons[0].get_icon_name(), 'uvr-info-outline-symbolic')

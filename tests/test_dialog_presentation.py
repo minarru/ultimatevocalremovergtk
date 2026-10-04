@@ -14,17 +14,11 @@ from collections.abc import Callable
 from typing import Any
 from unittest import mock
 
-
-def _descendants(widget: Any):
-    yield widget
-    child = widget.get_first_child()
-    while child is not None:
-        yield from _descendants(child)
-        child = child.get_next_sibling()
+from tests.gtk_layout_helpers import iter_descendants, pump_until
 
 
 def _backdrop(dialog: Any) -> Any:
-    return next(w for w in _descendants(dialog) if w.get_css_name() == "dimming")
+    return next(w for w in iter_descendants(dialog) if w.get_css_name() == "dimming")
 
 
 def _click(dimming: Any) -> None:
@@ -85,13 +79,7 @@ class BackdropDismissTests(unittest.TestCase):
             time.sleep(0.005)
 
     def wait_for(self, predicate: Callable[[], bool]) -> None:
-        from gi.repository import GLib
-
-        deadline = time.monotonic() + 5
-        while not predicate():
-            self.assertLess(time.monotonic(), deadline)
-            GLib.MainContext.default().iteration(False)
-            time.sleep(0.005)
+        pump_until(predicate)
 
     def test_backdrop_click_closes_live_dialog(self) -> None:
         from tests.gtk_layout_helpers import wait_for_dialog_open

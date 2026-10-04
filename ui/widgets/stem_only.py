@@ -312,14 +312,6 @@ class SaveStemsSection:
         self._state.demucs_stem_count = value
 
     @property
-    def _demucs_focus_map(self) -> Dict[str, str]:
-        return self._state.demucs_focus_map
-
-    @_demucs_focus_map.setter
-    def _demucs_focus_map(self, value: Dict[str, str]) -> None:
-        self._state.demucs_focus_map = value
-
-    @property
     def _custom_selected(self) -> Set[str]:
         return self._state.custom_selected
 
@@ -641,10 +633,6 @@ class SaveStemsSection:
     def export_summary(self) -> str:
         return self.presentation().export_summary
 
-    def export_description_lines(self) -> List[str]:
-        """Group description lines (summary only; semantics live on the row)."""
-        return [self.export_summary()]
-
     def expected_output_count(self) -> int:
         return self.presentation().expected_count
 
@@ -795,9 +783,6 @@ class SaveStemsSection:
         self._custom_row.set_opacity(presentation.custom_opacity)
         self._quick_row.set_sensitive(True)
         self._custom_row.set_sensitive(True)
-
-    def _vocal_stem_in_subset(self) -> Optional[str]:
-        return self._state.vocal_stem_in_subset()
 
     def _subset_ids(self) -> Dict[str, str]:
         return _subset_option_ids(self._subset_stems, self._state.routes)
@@ -987,12 +972,6 @@ class SaveStemsSection:
 
     def _demucs_focus_value(self) -> str:
         return self._state.demucs_focus_value(self._demucs_active_name())
-
-    def _demucs_is_quick_vocals(self) -> bool:
-        return self._demucs_active_name() == _FOCUS_VOCALS
-
-    def _demucs_is_quick_instrumental(self) -> bool:
-        return self._demucs_active_name() == _FOCUS_INSTRUMENTAL
 
     def _demucs_is_all_stems(self) -> bool:
         return self._demucs_active_name() == _QUICK_ALL

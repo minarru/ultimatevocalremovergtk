@@ -6,32 +6,25 @@ Closing a commit dialog by any route (Cancel, Escape) discards its edits.
 from __future__ import annotations
 
 import os
-import time
 import unittest
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from types import SimpleNamespace
 from typing import Any
 
-
-def _descendants(widget: Any) -> Iterator[Any]:
-    yield widget
-    child = widget.get_first_child()
-    while child is not None:
-        yield from _descendants(child)
-        child = child.get_next_sibling()
+from tests.gtk_layout_helpers import iter_descendants, pump_until
 
 
 def _header(dialog: Any) -> Any:
     from gi.repository import Adw
 
-    return next(w for w in _descendants(dialog) if isinstance(w, Adw.HeaderBar))
+    return next(w for w in iter_descendants(dialog) if isinstance(w, Adw.HeaderBar))
 
 
 def _button(dialog: Any, label: str) -> Any:
     from gi.repository import Gtk
 
     return next(
-        w for w in _descendants(dialog) if isinstance(w, Gtk.Button) and w.get_label() == label
+        w for w in iter_descendants(dialog) if isinstance(w, Gtk.Button) and w.get_label() == label
     )
 
 
@@ -63,13 +56,7 @@ class CommitDialogActionTests(unittest.TestCase):
         self.addCleanup(self.parent.close)
 
     def wait_for(self, predicate: Callable[[], bool]) -> None:
-        from gi.repository import GLib
-
-        deadline = time.monotonic() + 5
-        while not predicate():
-            self.assertLess(time.monotonic(), deadline)
-            GLib.MainContext.default().iteration(False)
-            time.sleep(0.005)
+        pump_until(predicate)
 
     def _form(self) -> Any:
         from gi.repository import Adw, Gtk
@@ -164,7 +151,7 @@ class CommitDialogActionTests(unittest.TestCase):
         wait_for_dialog_open(dialog)
         weight = next(
             w
-            for w in _descendants(dialog)
+            for w in iter_descendants(dialog)
             if isinstance(w, Adw.SpinRow) and w.get_title() == "Model A"
         )
         weight.set_value(2.5)

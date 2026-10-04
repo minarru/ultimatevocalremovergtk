@@ -48,6 +48,9 @@ class _StubContentStack:
 class FlushSettingsTabGuardTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
+        from tests.private_gtk import require_private_gtk
+
+        require_private_gtk()
         import gi
 
         gi.require_version("Gtk", "4.0")

@@ -25,7 +25,7 @@ echo "==> Installing system dependencies (GTK4, libadwaita, audio tools, build d
 export DEBIAN_FRONTEND=noninteractive
 sudo apt-get update -qq
 sudo apt-get install -y --no-install-recommends \
-    python3-venv python3-pip python3-dev python3-gi \
+    python3-venv python3-pip python3-dev python3-gi python3-cairo \
     build-essential \
     gir1.2-gtk-4.0 gir1.2-adw-1 \
     libglib2.0-bin libglib2.0-dev-bin blueprint-compiler \

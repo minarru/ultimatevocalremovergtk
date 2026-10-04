@@ -79,7 +79,6 @@ from core.ensemble_presets import (
     download_entries_for_missing,
     is_curated_combo_label,
     list_curated_ensembles,
-    resolve_member_tags,
 )
 from core.job_plan_types import ModelDescriptor
 from core.job_route_observations import collect_ensemble_routes
@@ -124,6 +123,7 @@ from ..widgets.page_groups import PageGroupCallbacks, PageGroups, build_page_gro
 from ..widgets.rows import (
     configure_combo_row,
     get_combo_value,
+    keep_value_whole,
     log_model_picker_items,
     set_combo_tag_values,
     set_combo_value,
@@ -335,6 +335,7 @@ class EnsemblePage:
             self._layout_object("primary_algo_row", Adw.ComboRow),
             list(ENSEMBLE_ALGORITHMS),
         )
+        keep_value_whole(self.primary_algo_row)
         set_tooltip(self.primary_algo_row, ENSEMBLE_TYPE_HELP)
         self.primary_algo_row.connect("notify::selected", self._on_ensemble_type_changed)
 
@@ -342,6 +343,7 @@ class EnsemblePage:
             self._layout_object("secondary_algo_row", Adw.ComboRow),
             list(ENSEMBLE_ALGORITHMS),
         )
+        keep_value_whole(self.secondary_algo_row)
         set_tooltip(self.secondary_algo_row, ENSEMBLE_TYPE_HELP)
         self.secondary_algo_row.connect("notify::selected", self._on_ensemble_type_changed)
 
@@ -895,27 +897,6 @@ class EnsemblePage:
             self._toast(preset.description)
         if preset.kind == "curated":
             self._offer_download_missing(list(preset.source_members))
-
-    def _apply_saved_ensemble(self, data: dict, *, curated_id: Optional[str] = None) -> None:
-        self._loading = True
-        try:
-            self._set_ensemble_pair(data.get("ensemble_main_stem"))
-            set_combo_value(self.main_stem_row, self.settings.ensemble.main_stem)
-            ensemble_type = data.get("ensemble_type", MAX_MIN)
-            self.settings.ensemble.type = ensemble_type
-            self._refresh_ensemble_type_values()
-        finally:
-            self._loading = False
-        selected = list(data.get("selected_models") or [])
-        if curated_id is not None:
-            selected = resolve_member_tags(selected, self.context.repo)
-        self._reconcile_member_list(selected)
-        self._persist_selected_models()
-        if curated_id is not None:
-            description = (data.get("description") or "").strip()
-            if description:
-                self._toast(description)
-            self._offer_download_missing(data.get("selected_models") or [])
 
     def _offer_download_missing(self, tags: List[str]) -> None:
         _installed, missing = classify_preset_members(tags, self.context.repo)

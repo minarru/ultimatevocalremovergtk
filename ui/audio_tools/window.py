@@ -97,6 +97,7 @@ from ..widgets.row_slot import RowSlot
 from ..widgets.rows import (
     configure_combo_row,
     get_combo_value,
+    keep_value_whole,
     set_combo_tag_values,
     set_combo_value,
     use_wrapping_list,
@@ -257,6 +258,7 @@ class AudioToolsPage:
             self._layout_object("tool_row", Adw.ComboRow),
             AUDIO_TOOL_ORDER,
         )
+        keep_value_whole(self.tool_row)
         self.hints.register(self.tool_row, AUDIO_TOOLS_HELP)
         self.tool_row.connect("notify::selected", self._on_tool_changed)
         # The active tool's rows follow the picker (see ``_sync_tool_visibility``).
@@ -444,10 +446,6 @@ class AudioToolsPage:
 
     def refresh_models(self) -> None:
         """Uniform hook for ``MainWindow._model_list_consumers``."""
-        self._refresh_apollo_models()
-
-    def refresh_apollo_models(self) -> None:
-        """Public hook: re-read Apollo models after a Download Center batch."""
         self._refresh_apollo_models()
 
     def _refresh_apollo_models(self) -> None:

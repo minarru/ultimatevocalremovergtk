@@ -125,6 +125,8 @@ class ColorScheme(str, Enum):
     AUTO = "auto"
     LIGHT = "light"
     DARK = "dark"
+    CLASSIC = "classic"
+    CLASSIC_LIGHT = "classic-light"
 
 
 class DiagnosticLevel(str, Enum):

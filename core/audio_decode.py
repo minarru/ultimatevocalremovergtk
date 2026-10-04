@@ -73,15 +73,50 @@ def _local_path(source: AudioSource) -> Iterator[str]:
         yield path
 
 
+class _OutputLimitExceeded(Exception):
+    """PCM grew past the caller's byte cap; the tool was killed.
+
+    The PCM itself is not retained. Holding it on this exception would pin the
+    buffer in the traceback for as long as the error is chained.
+    """
+
+    def __init__(self, errors: bytes) -> None:
+        super().__init__('audio tool output exceeded its byte cap')
+        self.errors = errors
+
+
+def _repair_output_limit(decoded_bytes: int, channels: int) -> int:
+    """Largest padded PCM size the damage budget can still accept.
+
+    One extra frame of slack covers the float boundary of the budget check.
+    A file past the budget is stopped here instead of being buffered first.
+    """
+    frame_bytes = 4 * channels
+    if channels <= 0 or decoded_bytes <= 0:
+        return 0
+    decoded_frames = decoded_bytes // frame_bytes
+    if decoded_frames <= 0:
+        return 0
+    max_frames = int(decoded_frames / (1.0 - _MAX_REPAIRED_FRACTION)) + 1
+    return max_frames * frame_bytes
+
+
 def _run_tool(
-    command: list[str], *, timeout: float, total_timeout: bool = False, keep_output: bool = True
+    command: list[str],
+    *,
+    timeout: float,
+    total_timeout: bool = False,
+    keep_output: bool = True,
+    max_output_bytes: int | None = None,
 ) -> tuple[bytearray, int, bytes]:
     """Drain both pipes; keep only a bounded diagnostic tail and reap on every exit.
 
     Returns ``(stdout, stdout_bytes, stderr_tail)``. The stdout buffer itself is
     returned: decoded PCM for a long track is hundreds of megabytes, and callers
     wrap it in place rather than copying it. ``keep_output=False`` only counts
-    the bytes. A non-zero exit raises ``RuntimeError``.
+    the bytes. A non-zero exit raises ``RuntimeError``. ``max_output_bytes``
+    kills the tool once stdout passes that size and raises
+    :class:`_OutputLimitExceeded` without keeping the PCM.
     """
     process = subprocess.Popen(
         command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE
@@ -109,6 +144,11 @@ def _run_tool(
                         selector.unregister(key.fileobj)
                     elif key.data:
                         output_bytes += len(chunk)
+                        if max_output_bytes is not None and output_bytes > max_output_bytes:
+                            # Drop the prefix before raising so the traceback
+                            # cannot keep a buffer the caller is about to reject.
+                            output = bytearray()
+                            raise _OutputLimitExceeded(bytes(errors))
                         if keep_output:
                             output.extend(chunk)
                         if not total_timeout:
@@ -264,18 +304,28 @@ def _decode_damaged(
     """Decode past corrupt packets, padding what FFmpeg drops with silence.
 
     Two tolerant passes measure the loss exactly: one counts the samples FFmpeg
-    could decode, the other fills the timestamp gaps. Only damaged files, whose
-    strict decode already failed, pay for them.
+    could decode, the other fills the timestamp gaps. The fill pass is capped at
+    the damage budget, so a few corrupt timestamps cannot expand into an
+    unbounded silence buffer. Only damaged files, whose strict decode already
+    failed, pay for either pass.
     """
     _unused, decoded_bytes, _errors = _run_tool(
         _pcm_command(executable, path, info, duration, strict=False),
         timeout=_STDOUT_TIMEOUT,
         keep_output=False,
     )
-    pcm, _count, errors = _run_tool(
-        _pcm_command(executable, path, info, duration, strict=False, fill_gaps=True),
-        timeout=_STDOUT_TIMEOUT,
-    )
+    try:
+        pcm, _count, errors = _run_tool(
+            _pcm_command(executable, path, info, duration, strict=False, fill_gaps=True),
+            timeout=_STDOUT_TIMEOUT,
+            max_output_bytes=_repair_output_limit(decoded_bytes, info.channels),
+        )
+    except _OutputLimitExceeded as exc:
+        diagnostic = _last_lines(exc.errors)
+        raise ValueError(
+            'Audio is too damaged to decode reliably: gap filling exceeded the '
+            f'{_MAX_REPAIRED_FRACTION:.1%} silence budget before the file ended.\n{diagnostic}'
+        ) from exc
     frame_bytes = 4 * info.channels
     total_frames = len(pcm) // frame_bytes
     lost_frames = max(0, total_frames - decoded_bytes // frame_bytes)

@@ -15,6 +15,9 @@ import unittest
 class UpdateViewTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
+        from tests.private_gtk import require_private_gtk
+
+        require_private_gtk()
         try:
             import gi
 

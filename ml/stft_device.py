@@ -56,10 +56,3 @@ def torch_istft(
         return torch.istft(input, window=window, **kwargs)
     win = None if window is None else window.to("cpu")
     return torch.istft(input.cpu(), window=win, **kwargs)
-
-
-def to_stft_compute_device(tensor: torch.Tensor) -> torch.Tensor:
-    """Move ``tensor`` to CPU when the current device cannot run STFT ops."""
-    if needs_cpu_stft(tensor.device):
-        return tensor.cpu()
-    return tensor

@@ -8,7 +8,8 @@ from gi.repository import Adw, Gio, GLib
 from core import Settings, ensure_data_dir
 
 from . import APP_ID
-from .resources import load_application_styles, register_gresources
+from .resources import load_application_styles, register_gresources, set_palette_override
+from .widgets.color_fade import begin_color_fades
 from .window import MainWindow
 
 #: String ``color_scheme`` settings values mapped to libadwaita scheme enums.
@@ -16,16 +17,28 @@ _COLOR_SCHEMES = {
     "auto": Adw.ColorScheme.DEFAULT,
     "light": Adw.ColorScheme.FORCE_LIGHT,
     "dark": Adw.ColorScheme.FORCE_DARK,
+    # The Tkinter palettes are fixed colors, so the base scheme only supplies
+    # the widgets those stylesheets do not recolor.
+    "classic": Adw.ColorScheme.FORCE_DARK,
+    "classic-light": Adw.ColorScheme.FORCE_LIGHT,
 }
+_applied_color_scheme: str | None = None
 
 
 def apply_color_scheme(name: str) -> None:
     """Apply a ``color_scheme`` setting value via ``Adw.StyleManager``.
 
-    Unknown values fall back to ``Adw.ColorScheme.DEFAULT`` (follow system).
+    ``classic`` and ``classic-light`` also install the matching palette
+    stylesheet. Unknown values fall back to ``Adw.ColorScheme.DEFAULT``
+    (follow system) and clear that palette.
     """
-    scheme = _COLOR_SCHEMES.get(name, Adw.ColorScheme.DEFAULT)
-    Adw.StyleManager.get_default().set_color_scheme(scheme)
+    global _applied_color_scheme
+    name = name if name in _COLOR_SCHEMES else "auto"
+    if name != _applied_color_scheme:
+        begin_color_fades()
+    _applied_color_scheme = name
+    Adw.StyleManager.get_default().set_color_scheme(_COLOR_SCHEMES[name])
+    set_palette_override(name)
 
 
 class UVRApplication(Adw.Application):
