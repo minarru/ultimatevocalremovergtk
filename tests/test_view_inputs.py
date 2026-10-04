@@ -273,7 +273,7 @@ class ViewInputsTests(unittest.TestCase):
                 f"status measure: {view._empty_state.measure(Gtk.Orientation.VERTICAL, view._empty_state.get_width())}",
             )
 
-        wait_for(lambda: body.get_width() == 620 and 0 < body.get_height() < 400)
+        wait_for(lambda: body.get_width() == 600 and 0 < body.get_height() < 400)
         compact_height = body.get_height()
         view._status = {path: (False, "Could not read this file") for path in view.paths}
         view._rebuild_list()
@@ -285,7 +285,7 @@ class ViewInputsTests(unittest.TestCase):
         view._sync_actions()
         wait_for(lambda: body.get_height() > 500)
         self.assertLess(body.get_height(), parent.get_height())
-        self.assertEqual(body.get_width(), 620)
+        self.assertEqual(body.get_width(), 600)
         scroll = view._input_scroll.get_vadjustment()
         wait_for(lambda: scroll.get_upper() > scroll.get_page_size())
         expanded_height = body.get_height()
@@ -303,7 +303,7 @@ class ViewInputsTests(unittest.TestCase):
             )
         )
         self.assertLess(body.get_height(), expanded_height)
-        self.assertEqual(body.get_width(), 620)
+        self.assertEqual(body.get_width(), 600)
 
     def test_remove_button_preserves_other_file_then_clear_reaches_empty_state(self) -> None:
         from gi.repository import Gtk
