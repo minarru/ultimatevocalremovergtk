@@ -17,6 +17,7 @@ from bundled.constants import DONATE_LINK_BMAC, FORK_ISSUE_URL, LICENSE_TEXT
 from core import paths
 
 from . import APP_ID
+from .dialogs.utils import present_modal_dialog
 
 try:
     from __version__ import UPSTREAM_BASE, VERSION
@@ -25,6 +26,10 @@ except Exception:  # pragma: no cover
     UPSTREAM_BASE = "v5.6.0"
 
 CHANGE_LOG = paths.CHANGE_LOG_PATH
+
+# libadwaita interpolates this into "Other Apps by %s" markup without escaping it,
+# so it must not contain "&" or "<".
+DEVELOPER_NAME = "Anjok07 and Aufr33"
 
 # Upstream AI code authors. Formatted as "Name URL" so libadwaita renders the
 # trailing URL as a clickable link in the credit section.
@@ -116,7 +121,7 @@ def open_about(parent_window: typing.Any):
         comments="A GUI for vocal/instrumental separation using state-of-the-art AI models.",
         website="https://github.com/minarru/ultimatevocalremovergtk",
         issue_url=FORK_ISSUE_URL,
-        developer_name="Anjok07 & Aufr33",
+        developer_name=DEVELOPER_NAME,
         developers=["Anjok07", "Aufr33", "DilanBoskan"],
         copyright="\u00a9 2022 Ultimate Vocal Remover",
     )
@@ -126,7 +131,7 @@ def open_about(parent_window: typing.Any):
     if hasattr(Adw, "AboutDialog"):
         about = Adw.AboutDialog(**kwargs)
         _enrich_about(about)
-        about.present(parent_window)
+        present_modal_dialog(about, parent_window)
     else:
         about = Adw.AboutWindow(transient_for=parent_window, **kwargs)
         _enrich_about(about)

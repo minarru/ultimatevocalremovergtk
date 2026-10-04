@@ -41,6 +41,25 @@ Applies to `ui/`, `resources/ui/*.blp`, and `resources/style.css`. Layer rules, 
 - `UVR_DEV_CSS=1 ./run_uvr.sh` enables live stylesheet reload. Blueprint edits
   still need compilation and a restart; rebuild the bundle before committing CSS.
 
+## Dialogs
+
+- Present every `Adw.Dialog` through `ui.dialogs.utils.present_modal_dialog`
+  (alerts and `Adw.Window`s excepted). It wires backdrop dismissal and caps the
+  width to the window, re-capping while the dialog is open.
+- Commit dialogs (edits held until Save/Apply) pass `dismiss_on_backdrop=False`
+  and put Cancel at the header start, the suggested action at the end, with
+  both title-button sides hidden. Live and info dialogs keep the close button
+  and close on a backdrop click. `run_blocking_dialog` forms already comply.
+- Set `content-width` in Blueprint to a tier: 440 (forms, short info), 600
+  (single-column lists and tools) or 800 (browsers, two-column sheets), with a
+  `width-request: 360; height-request: 294;` minimum. Lists that would open as
+  a sliver also set `content-height`. Do not use `follows-content-size: true`:
+  it makes libadwaita ignore `content-width`. A `-1` content height is measured
+  once at present; call `set_content_height(-1)` after revealing rows.
+- Dialog titles, button labels and alert headings use title case; body text
+  and row titles keep sentence case. `tests/test_dialog_wording.py` and
+  `tests/test_dialog_sizing.py` enforce these rules for new dialogs.
+
 ## Widget behaviour and diagnosis
 
 - `Adw.Dialog.get_content_width()` is the *requested* width and never tracks allocation; `notify::content-width` only fires when code sets it. Drive responsive dialog layout from an `Adw.Breakpoint`.

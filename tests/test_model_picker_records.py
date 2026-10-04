@@ -275,33 +275,6 @@ class PickerVerboseLoggingTests(unittest.TestCase):
         )
 
 
-class _FakeRow:
-    def __init__(self, title: str = "", subtitle: str = "", **_kwargs: object) -> None:
-        self.title = title
-        self.subtitle = subtitle
-        self._listbox: _FakeListBox | None = None
-
-    def set_title(self, value: str) -> None:
-        self.title = value
-
-    def set_subtitle(self, value: str) -> None:
-        self.subtitle = value
-
-    def add_prefix(self, _child: object) -> None:
-        pass
-
-    def set_activatable_widget(self, _child: object) -> None:
-        pass
-
-    def get_next_sibling(self) -> _FakeRow | None:
-        if self._listbox is None:
-            return None
-        index = self._listbox.children.index(self)
-        if index + 1 >= len(self._listbox.children):
-            return None
-        return self._listbox.children[index + 1]
-
-
 class _FakeCheck:
     def __init__(self, **_kwargs: object) -> None:
         self.active = False
@@ -316,22 +289,33 @@ class _FakeCheck:
         pass
 
 
-class _FakeListBox:
+class _FakeMemberPicker:
+    """Stands in for ``ModelPicker`` in multi-select mode: one check per ID."""
+
     def __init__(self) -> None:
-        self.children: list[_FakeRow] = []
+        self.records: list[ModelRecord] = []
+        self.placeholder = ""
+        self.checks: dict[str, _FakeCheck] = {}
 
-    def get_first_child(self) -> _FakeRow | None:
-        return self.children[0] if self.children else None
+    def set_members(
+        self,
+        records: Any,
+        selected_ids: Any,
+        *,
+        placeholder: str = "",
+        placeholder_description: str = "",
+        placeholder_icon: str | None = None,
+    ) -> dict[str, _FakeCheck]:
+        self.records = list(records)
+        self.placeholder = placeholder
+        result = {}
+        for record in self.records:
+            check = self.checks.setdefault(record.id, _FakeCheck())
+            check.set_active(record.id in selected_ids)
+            result[record.id] = check
+        return result
 
-    def append(self, row: _FakeRow) -> None:
-        row._listbox = self
-        self.children.append(row)
-
-    def remove(self, row: _FakeRow) -> None:
-        self.children.remove(row)
-        row._listbox = None
-
-    def invalidate_filter(self) -> None:
+    def reset(self) -> None:
         pass
 
 
@@ -342,7 +326,7 @@ class EnsemblePickerTests(unittest.TestCase):
 
         requested: list[object] = []
         page: Any = ensemble_window.EnsemblePage.__new__(ensemble_window.EnsemblePage)
-        page.models_listbox = _FakeListBox()
+        page._member_picker = _FakeMemberPicker()
         page.context = SimpleNamespace(
             repo=SimpleNamespace(
                 ensemble_model_list=lambda _settings, pair: requested.append(pair) or []
@@ -359,8 +343,6 @@ class EnsemblePickerTests(unittest.TestCase):
 
         with (
             mock.patch("core.model_identity.ModelIdentityService.records", return_value=()),
-            mock.patch.object(ensemble_window.Adw, "ActionRow", _FakeRow),
-            mock.patch.object(ensemble_window, "stash"),
         ):
             page._reconcile_member_list([])
 
@@ -383,7 +365,7 @@ class EnsemblePickerTests(unittest.TestCase):
             ]
         )
         page: Any = ensemble_window.EnsemblePage.__new__(ensemble_window.EnsemblePage)
-        page.models_listbox = _FakeListBox()
+        page._member_picker = _FakeMemberPicker()
         page.context = SimpleNamespace(repo=repo)
         page.settings = SimpleNamespace()
         page._ensemble_pair = lambda: "pair.vocals_instrumental"
@@ -409,9 +391,6 @@ class EnsemblePickerTests(unittest.TestCase):
                     "core.model_identity.ModelIdentityService.records",
                     return_value=tuple(records),
                 ),
-                mock.patch.object(ensemble_window.Adw, "ActionRow", _FakeRow),
-                mock.patch.object(ensemble_window.Gtk, "CheckButton", _FakeCheck),
-                mock.patch.object(ensemble_window, "stash"),
             ):
                 page._reconcile_member_list([])
         finally:
@@ -420,11 +399,11 @@ class EnsemblePickerTests(unittest.TestCase):
             glib_log.set_emit_hook(None)
 
         self.assertEqual(
-            [(row.title, row.subtitle) for row in page.models_listbox.children],
-            [
-                ("Shared display", "MDX-Net"),
-                ("Shared display", "VR Arc"),
-            ],
+            [record.id for record in page._member_picker.records], ["mdx:shared", "vr:shared"]
+        )
+        self.assertEqual(
+            list(page._model_row_text.values()),
+            [("Shared display", "MDX-Net"), ("Shared display", "VR Arc")],
         )
         self.assertEqual(list(page._model_checks), ["mdx:shared", "vr:shared"])
         self.assertIn(
@@ -474,7 +453,7 @@ class EnsemblePickerTests(unittest.TestCase):
         from ui.ensemble import window as ensemble_window
 
         page: Any = ensemble_window.EnsemblePage.__new__(ensemble_window.EnsemblePage)
-        page.models_listbox = _FakeListBox()
+        page._member_picker = _FakeMemberPicker()
         page.context = SimpleNamespace(
             repo=SimpleNamespace(ensemble_model_list=lambda _settings, _pair: ["mdx:installed"])
         )
@@ -493,9 +472,6 @@ class EnsemblePickerTests(unittest.TestCase):
                     "core.model_identity.ModelIdentityService.records",
                     return_value=(record,),
                 ),
-                mock.patch.object(ensemble_window.Adw, "ActionRow", _FakeRow),
-                mock.patch.object(ensemble_window.Gtk, "CheckButton", _FakeCheck),
-                mock.patch.object(ensemble_window, "stash"),
             ):
                 page._reconcile_member_list(page.settings.ensemble.selected_models)
         except TypeError as exc:
@@ -512,7 +488,7 @@ class EnsemblePickerTests(unittest.TestCase):
         settings = Settings()
         settings.ensemble.selected_models = list(stored)
         page: Any = ensemble_window.EnsemblePage.__new__(ensemble_window.EnsemblePage)
-        page.models_listbox = _FakeListBox()
+        page._member_picker = _FakeMemberPicker()
         page.context = SimpleNamespace(
             repo=SimpleNamespace(ensemble_model_list=lambda _settings, _pair: ["mdx:installed"])
         )
@@ -529,9 +505,6 @@ class EnsemblePickerTests(unittest.TestCase):
                 "core.model_identity.ModelIdentityService.records",
                 return_value=(record,),
             ),
-            mock.patch.object(ensemble_window.Adw, "ActionRow", _FakeRow),
-            mock.patch.object(ensemble_window.Gtk, "CheckButton", _FakeCheck),
-            mock.patch.object(ensemble_window, "stash"),
         ):
             page._reconcile_member_list(list(stored))
             page.on_activated()
@@ -540,7 +513,7 @@ class EnsemblePickerTests(unittest.TestCase):
         self.assertFalse(page._models_write_gated)
         self.assertEqual(page.settings.ensemble.selected_models, ["mdx:installed"])
         self.assertEqual(page._selected_model_tags(), ["mdx:installed"])
-        self.assertEqual(len(page.models_listbox.children), 1)
+        self.assertEqual(len(page._member_picker.records), 1)
 
     def test_reopening_models_dialog_does_not_restore_dropped_gated_members(self) -> None:
         from core.settings import Settings
@@ -550,7 +523,7 @@ class EnsemblePickerTests(unittest.TestCase):
         settings = Settings()
         settings.ensemble.selected_models = list(stored)
         page: Any = ensemble_window.EnsemblePage.__new__(ensemble_window.EnsemblePage)
-        page.models_listbox = _FakeListBox()
+        page._member_picker = _FakeMemberPicker()
         page.context = SimpleNamespace(
             repo=SimpleNamespace(ensemble_model_list=lambda _settings, _pair: ["mdx:installed"])
         )
@@ -568,9 +541,6 @@ class EnsemblePickerTests(unittest.TestCase):
                 "core.model_identity.ModelIdentityService.records",
                 return_value=(record,),
             ),
-            mock.patch.object(ensemble_window.Adw, "ActionRow", _FakeRow),
-            mock.patch.object(ensemble_window.Gtk, "CheckButton", _FakeCheck),
-            mock.patch.object(ensemble_window, "stash"),
             mock.patch.object(ensemble_window, "present_modal_dialog"),
         ):
             page._reconcile_member_list(list(stored))
@@ -589,7 +559,7 @@ class EnsemblePickerTests(unittest.TestCase):
         settings = Settings()
         settings.ensemble.selected_models = list(stored)
         page: Any = ensemble_window.EnsemblePage.__new__(ensemble_window.EnsemblePage)
-        page.models_listbox = _FakeListBox()
+        page._member_picker = _FakeMemberPicker()
         page.context = SimpleNamespace(
             repo=SimpleNamespace(
                 ensemble_model_list=lambda _settings, _pair: [
@@ -610,9 +580,6 @@ class EnsemblePickerTests(unittest.TestCase):
                 "core.model_identity.ModelIdentityService.records",
                 return_value=records,
             ),
-            mock.patch.object(ensemble_window.Adw, "ActionRow", _FakeRow),
-            mock.patch.object(ensemble_window.Gtk, "CheckButton", _FakeCheck),
-            mock.patch.object(ensemble_window, "stash"),
         ):
             page._reconcile_member_list(list(stored))
             page._reconcile_member_list(list(settings.ensemble.selected_models))
@@ -633,7 +600,7 @@ class EnsemblePickerTests(unittest.TestCase):
         eligible = ["mdx:installed"]
         records = [_record("mdx:installed", "Installed")]
         page: Any = ensemble_window.EnsemblePage.__new__(ensemble_window.EnsemblePage)
-        page.models_listbox = _FakeListBox()
+        page._member_picker = _FakeMemberPicker()
         page.context = SimpleNamespace(
             repo=SimpleNamespace(ensemble_model_list=lambda _settings, _pair: list(eligible))
         )
@@ -648,9 +615,6 @@ class EnsemblePickerTests(unittest.TestCase):
                 "core.model_identity.ModelIdentityService.records",
                 side_effect=lambda: tuple(records),
             ),
-            mock.patch.object(ensemble_window.Adw, "ActionRow", _FakeRow),
-            mock.patch.object(ensemble_window.Gtk, "CheckButton", _FakeCheck),
-            mock.patch.object(ensemble_window, "stash"),
         ):
             page._reconcile_member_list(list(settings.ensemble.selected_models))
             self.assertTrue(page._models_write_gated)
@@ -663,6 +627,115 @@ class EnsemblePickerTests(unittest.TestCase):
         self.assertFalse(page._model_checks[missing_id].get_active())
         self.assertFalse(page._models_write_gated)
         self.assertEqual(settings.ensemble.selected_models, ["mdx:installed"])
+
+
+@unittest.skipUnless(
+    os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"),
+    "GTK widget construction needs a display",
+)
+class EnsembleMemberDialogTests(unittest.TestCase):
+    """Ensemble's member dialog is the shared picker in multi-select mode."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        import gi
+
+        gi.require_version("Gtk", "4.0")
+        gi.require_version("Adw", "1")
+
+    def _page(self) -> Any:
+        from core.model_repository import ModelRepository
+        from core.settings import Settings
+        from ui.ensemble import window as ensemble_window
+
+        page: Any = ensemble_window.EnsemblePage.__new__(ensemble_window.EnsemblePage)
+        page.context = SimpleNamespace(repo=ModelRepository())
+        page.window = mock.Mock()
+        page.settings = Settings()
+        page._model_checks = {}
+        page._model_row_text = {}
+        page._update_models_dialog_status = lambda: None
+        page._update_models_summary = lambda: None
+        page._rebuild_stem_only_toggles = lambda: None
+        page._build_models_dialog()
+        return page
+
+    def test_member_dialog_is_the_shared_picker(self) -> None:
+        from ui.model_picker import ModelPicker
+
+        page = self._page()
+        self.assertIsInstance(page._member_picker, ModelPicker)
+        self.assertIs(page.models_dialog, page._member_picker.dialog)
+        self.assertEqual(page.models_dialog.get_title(), "Member Models")
+        page._member_picker.get_more()
+        page.window._on_download.assert_called_once_with(None, None)
+
+    def _render(self, page: Any, selected: list[str]) -> Any:
+        from ui.ensemble.member_projection import project_members
+
+        records = (_record("mdx:a", "Alpha"), _record("mdx:b", "Bravo"))
+        projection = project_members(
+            records,
+            selected,
+            pair_id="pair.vocals_instrumental",
+            eligible_ids={"mdx:a", "mdx:b"},
+        )
+        page._render_member_projection(projection, selected)
+        return projection
+
+    def test_render_uses_picker_checks(self) -> None:
+        page = self._page()
+        self._render(page, ["mdx:b"])
+        self.assertEqual(list(page._model_checks), ["mdx:a", "mdx:b"])
+        self.assertEqual(page._selected_model_tags(), ["mdx:b"])
+        self.assertEqual(page._member_picker.visible_ids(), ["mdx:a", "mdx:b"])
+        first = dict(page._model_checks)
+        self._render(page, ["mdx:a"])
+        for model_id, check in first.items():
+            self.assertIs(page._model_checks[model_id], check)
+        self.assertEqual(page._selected_model_tags(), ["mdx:a"])
+
+    def test_rendering_does_not_reset_saved_ensemble(self) -> None:
+        page = self._page()
+        page.settings.ensemble.chosen_ensemble = "Saved preset"
+        with mock.patch.object(page, "_on_model_toggled") as toggled:
+            self._render(page, ["mdx:a", "mdx:b"])
+        toggled.assert_not_called()
+        self.assertEqual(page.settings.ensemble.chosen_ensemble, "Saved preset")
+
+    def test_load_error_placeholder_explains_where_to_look(self) -> None:
+        from gi.repository import Adw
+
+        from ui.ensemble.member_projection import project_members
+
+        page = self._page()
+        projection = project_members(
+            (), [], pair_id="pair.vocals_instrumental", eligible_ids=None, load_error=True
+        )
+        page._render_member_projection(projection, [])
+        empty = page._member_picker.get("empty", Adw.StatusPage)
+        self.assertEqual(empty.get_title(), "Could not list models")
+        self.assertEqual(empty.get_description(), "See Error Log for details")
+        self.assertEqual(empty.get_icon_name(), "dialog-warning-symbolic")
+        self.assertEqual(page._model_checks, {})
+
+    def test_trigger_row_has_no_edit_button(self) -> None:
+        from gi.repository import Adw, Gtk
+
+        from ui.template import load_builder, object_from_builder
+
+        row = object_from_builder(
+            load_builder("ensemble-page"), "models_trigger_row", Adw.ActionRow
+        )
+
+        def descendants(widget: Gtk.Widget) -> Any:
+            child = widget.get_first_child()
+            while child is not None:
+                yield child
+                yield from descendants(child)
+                child = child.get_next_sibling()
+
+        self.assertFalse(any(isinstance(w, Gtk.Button) for w in descendants(row)))
 
 
 class _FakeControl:

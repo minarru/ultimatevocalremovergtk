@@ -1,6 +1,5 @@
 """Shared helpers for modal ``Adw.Dialog`` presentation."""
 
-import typing
 from collections.abc import Callable
 from typing import Any
 
@@ -55,24 +54,35 @@ def _find_dimming_widget(root: Gtk.Widget) -> Gtk.Widget | None:
     return None
 
 
-def _install_backdrop_dismiss(dimming: Gtk.Widget, on_dismiss: typing.Any) -> None:
-    if fetch(dimming, "_uvr_backdrop_dismiss", False):
+def _install_backdrop_dismiss(dimming: Gtk.Widget, dialog: Adw.Dialog) -> None:
+    first = not fetch(dimming, "_uvr_backdrop_dialog", None)
+    stash(dimming, "_uvr_backdrop_dialog", dialog)
+    if not first:
         return
     gesture = Gtk.GestureClick()
-    gesture.connect("released", lambda *_: on_dismiss())
+
+    def released(*_args: object) -> None:
+        target = fetch(dimming, "_uvr_backdrop_dialog", None)
+        if target is not None:
+            target.close()
+
+    gesture.connect("released", released)
     dimming.add_controller(gesture)
-    stash(dimming, "_uvr_backdrop_dismiss", True)
 
 
-def _try_install_backdrop_dismiss(dialog: Adw.Dialog, parent: Gtk.Window | None) -> None:
-    roots: list[Gtk.Widget] = [dialog]
-    if parent is not None:
-        roots.insert(0, parent)
-    for root in roots:
-        dimming = _find_dimming_widget(root)
-        if dimming is not None:
-            _install_backdrop_dismiss(dimming, lambda: dialog.close())
-            return
+def _try_install_backdrop_dismiss(dialog: Adw.Dialog) -> bool:
+    # Each dialog owns its dimming widget. Searching the parent window instead
+    # would find the lower dialog's when one dialog is stacked over another.
+    dimming = _find_dimming_widget(dialog)
+    if dimming is None:
+        return False
+    _install_backdrop_dismiss(dimming, dialog)
+    return True
+
+
+def _retry_backdrop_dismiss(dialog: Adw.Dialog) -> bool:
+    _try_install_backdrop_dismiss(dialog)
+    return GLib.SOURCE_REMOVE
 
 
 def parent_window_width(parent: WindowSizing | None, *, fallback: int = 440) -> int:
@@ -89,12 +99,55 @@ def parent_window_width(parent: WindowSizing | None, *, fallback: int = 440) -> 
     return fallback
 
 
-def configure_dialog_width(
-    dialog: Adw.Dialog, parent: Gtk.Window | None, *, fallback: int = 440
-) -> None:
-    """Pin dialog content width to ``parent`` instead of shrinking to natural size."""
-    dialog.set_content_width(parent_window_width(parent, fallback=fallback))
-    dialog.set_follows_content_size(False)
+DIALOG_MIN_WIDTH = 360
+DIALOG_WINDOW_MARGIN = 64
+
+
+def capped_dialog_width(width: int, parent: WindowSizing | None) -> int:
+    """``width``, shrunk to leave a margin inside ``parent`` but never below the minimum."""
+    if parent is None:
+        return width
+    parent_width = parent_window_width(parent, fallback=width)
+    return max(DIALOG_MIN_WIDTH, min(width, parent_width - DIALOG_WINDOW_MARGIN))
+
+
+def _libadwaita_sized() -> tuple[type, ...]:
+    names = ("PreferencesDialog", "AboutDialog", "ShortcutsDialog")
+    return tuple(getattr(Adw, name) for name in names if hasattr(Adw, name))
+
+
+def _cap_to_window(dialog: Adw.Dialog, parent: Gtk.Window | None) -> None:
+    if isinstance(dialog, _libadwaita_sized()):
+        return
+    design = fetch(dialog, "_uvr_design_width", None)
+    if design is None:
+        width = dialog.get_content_width()
+        if width <= 0:
+            return
+        design = width
+        stash(dialog, "_uvr_design_width", design)
+    dialog.set_content_width(capped_dialog_width(design, parent))
+    _follow_window_width(dialog, parent, design)
+
+
+def _follow_window_width(dialog: Adw.Dialog, parent: Gtk.Window | None, design: int) -> None:
+    """Re-cap while the dialog is open, so widening the window widens it again."""
+    surface = parent.get_surface() if parent is not None else None
+    if surface is None:
+        return
+
+    def on_layout(*_args: object) -> None:
+        width = capped_dialog_width(design, parent)
+        if dialog.get_content_width() != width:
+            dialog.set_content_width(width)
+
+    layout_id = surface.connect("layout", on_layout)
+
+    def on_closed(*_args: object) -> None:
+        surface.disconnect(layout_id)
+        dialog.disconnect(closed_id)
+
+    closed_id = dialog.connect("closed", on_closed)
 
 
 def fill_dialog_width(widget: Gtk.Widget) -> None:
@@ -122,6 +175,8 @@ def set_form_dialog_content(
     builder = load_builder("form-dialog-content")
     toolbar = object_from_builder(builder, "toolbar", Adw.ToolbarView)
     save = object_from_builder(builder, "save", Gtk.Button)
+    cancel = object_from_builder(builder, "cancel_button", Gtk.Button)
+    cancel.connect("clicked", lambda *_: dialog.close())
     save.set_label(save_label)
     save.connect("clicked", lambda *_: on_save())
     toolbar.set_content(content)
@@ -129,19 +184,35 @@ def set_form_dialog_content(
     return save
 
 
-def present_modal_dialog(dialog: Adw.Dialog, parent: Gtk.Window | None = None) -> None:
-    """Present a modal dialog; clicking the dimmed backdrop closes it.
+def present_modal_dialog(
+    dialog: Adw.Dialog,
+    parent: Gtk.Window | None = None,
+    *,
+    dismiss_on_backdrop: bool = True,
+) -> None:
+    """Present a modal dialog; by default clicking the dimmed backdrop closes it.
 
     ``Adw.FloatingSheet`` (the default desktop presentation) does not wire
     backdrop clicks to close, unlike ``Adw.BottomSheet``. This helper adds that
-    gesture so behavior matches GNOME HIG expectations.
+    gesture so behavior matches GNOME HIG expectations. Commit dialogs pass
+    ``dismiss_on_backdrop=False`` so a stray click cannot discard their edits.
+
+    The dialog's content width (its Blueprint tier) is capped to the parent so
+    a small window shrinks the dialog instead of overflowing it; libadwaita's
+    own dialogs keep their sizing.
     """
     dialog.set_can_close(True)
+    _cap_to_window(dialog, parent)
     if parent is not None:
         dialog.present(parent)
     else:
         dialog.present()
-    GLib.idle_add(_try_install_backdrop_dismiss, dialog, parent)
+    if dismiss_on_backdrop:
+        # The dimming widget exists once present() returns; an idle callback
+        # could run late on a busy main loop and leave the backdrop inert.
+        # Retry once on idle in case a libadwaita build creates it lazily.
+        if not _try_install_backdrop_dismiss(dialog):
+            GLib.idle_add(_retry_backdrop_dismiss, dialog)
 
 
 def run_blocking_dialog(
@@ -202,6 +273,6 @@ def run_blocking_dialog(
         on_save=on_save,
         save_label=save_label,
     )
-    present_modal_dialog(dialog, parent)
+    present_modal_dialog(dialog, parent, dismiss_on_backdrop=False)
     loop.run()
     return state["result"]

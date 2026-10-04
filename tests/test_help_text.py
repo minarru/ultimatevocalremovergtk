@@ -51,7 +51,7 @@ class HelpTextStyleTests(unittest.TestCase):
         self.assertIn("Instrumental with Lead Vocals", IS_VOC_SPLIT_INST_SAVE_SELECT_HELP)
         self.assertNotIn("does not work in ensemble", IS_VOC_SPLIT_MODEL_SELECT_HELP)
         self.assertNotIn("does not work in ensemble", IS_DEVERB_VOC_HELP)
-        self.assertIn("independently of Normalize output", AMPLIFICATION_THRESHOLD_HELP)
+        self.assertIn("independently of Limit peaks above full scale", AMPLIFICATION_THRESHOLD_HELP)
         self.assertIn("Spectral-only algorithms ignore", IS_WAV_ENSEMBLE_HELP)
         self.assertIn("Preferences → Processing", MODEL_SAMPLE_MODE_HELP)
         self.assertIn("time-window alignment", PHASE_SHIFTS_ALIGN_HELP)

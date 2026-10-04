@@ -860,7 +860,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
         canonical = name.replace(" ", "_")
         if canonical in self._profiles.list_profiles():
             dialog = Adw.AlertDialog(
-                heading=f'Replace profile "{name}"?',
+                heading=f'Replace Profile "{name}"?',
                 body="A profile with this name already exists. Replacing it overwrites the saved settings.",
             )
             dialog.add_response("cancel", "Cancel")
@@ -899,7 +899,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
         if not name or name == _NO_PROFILES:
             return
         dialog = Adw.AlertDialog(
-            heading=f'Load profile "{name}"?',
+            heading=f'Load Profile "{name}"?',
             body="This replaces the current settings and file selections.",
         )
         dialog.add_response("cancel", "Cancel")
@@ -944,7 +944,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
         if not name or name == _NO_PROFILES:
             return
         dialog = Adw.AlertDialog(
-            heading="Remove profile?",
+            heading="Remove Profile?",
             body=f'This permanently deletes the saved profile "{name}".',
         )
         dialog.add_response("cancel", "Cancel")
@@ -978,7 +978,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
 
     def _on_reset_clicked(self, _button: typing.Any) -> None:
         dialog = Adw.AlertDialog(
-            heading="Reset all settings?",
+            heading="Reset All Settings?",
             body="Every option will be restored to its default value. This cannot be undone.",
         )
         dialog.add_response("cancel", "Cancel")

@@ -125,15 +125,16 @@ class DemucsView(MethodView):
         super().save_options()
 
     def build_advanced(self, group: typing.Any):
-        self.add_option_scale(
+        self.add_option_spin(
             group,
             "shifts",
             None,
-            lower=min(DEMUCS_SHIFTS),
-            upper=max(DEMUCS_SHIFTS),
-            step=1,
+            min(DEMUCS_SHIFTS),
+            max(DEMUCS_SHIFTS),
+            1,
+            digits=0,
             hint=SHIFTS_HELP,
-            row=self._layout_object("shifts_row", Adw.ActionRow),
+            row=self._layout_object("shifts_row", Adw.SpinRow),
         )
         self.add_option_scale(
             group,

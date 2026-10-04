@@ -1,0 +1,30 @@
+using Gtk 4.0;
+using Adw 1;
+
+// Input, Output and Processing groups shared by the Separation, Ensemble and
+// Audio Tools pages. Python (ui/widgets/page_groups.py) owns row order.
+Adw.PreferencesGroup input_group {
+  title: "Input";
+  [header-suffix]
+  Gtk.Button view_inputs_button {
+    icon-name: "view-list-symbolic";
+    valign: center;
+    styles ["flat"]
+  }
+}
+Adw.PreferencesGroup output_group { title: "Output"; }
+Adw.PreferencesGroup processing_group { title: "Processing"; }
+Adw.SwitchRow gpu_row {
+  title: "GPU conversion";
+  [prefix]
+  Gtk.Image { icon-name: "uvr-pci-card-symbolic"; }
+}
+Adw.SwitchRow autocast_row {
+  title: "FP16 autocast";
+  subtitle: "Faster VR/MDX/Roformer on modern NVIDIA GPUs";
+}
+Adw.SwitchRow sample_row {
+  title: "Sample mode";
+  [prefix]
+  Gtk.Image { icon-name: "uvr-stopwatch-symbolic"; }
+}

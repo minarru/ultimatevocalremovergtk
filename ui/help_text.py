@@ -169,7 +169,7 @@ IS_PREVENT_EXPORT_CLIPPING_HELP = (
 
 AMPLIFICATION_THRESHOLD_HELP = (
     "Raise quiet outputs to the selected peak level from 0 to 1. Set 0 to "
-    "disable. This applies after peak reduction and independently of Normalize output"
+    "disable. This applies after peak reduction and independently of Limit peaks above full scale"
 )
 
 LONG_FILE_CHUNK_HELP = (

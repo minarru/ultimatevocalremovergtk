@@ -58,8 +58,17 @@ class HelpHintManager:
         self._registry: List = []
 
     def register(self, widget: typing.Any, text: str):
-        """Register a widget + hint text and apply it immediately."""
-        self._registry.append((widget, text))
+        """Register a widget + hint text and apply it immediately.
+
+        Registering a widget again replaces its text, so callers that recompose
+        a tooltip (the Output group's stem summary) keep one entry per widget.
+        """
+        for index, (known, _text) in enumerate(self._registry):
+            if known is widget:
+                self._registry[index] = (widget, text)
+                break
+        else:
+            self._registry.append((widget, text))
         set_tooltip(widget, text)
         return widget
 

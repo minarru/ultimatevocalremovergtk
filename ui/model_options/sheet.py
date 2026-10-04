@@ -23,7 +23,7 @@ from .applicability import (
 #: The sheet is a modal options surface, not a second window: it is capped
 #: rather than sized to the parent. Dropping parent-width tracking also drops
 #: the sheet's two call sites into the parent-width helper in dialogs/utils.py.
-_SHEET_WIDTH = 760
+_SHEET_WIDTH = 800
 #: Used when the parent's allocated height is not yet known (unrealized window).
 _SHEET_FALLBACK_HEIGHT = 560
 #: Never take more than this share of the parent's height.

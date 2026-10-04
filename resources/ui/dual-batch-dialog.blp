@@ -2,12 +2,22 @@ using Gtk 4.0;
 using Adw 1;
 
 Adw.Dialog dialog {
-  title: "Dual / Batch Inputs";
-  content-width: 640;
-  content-height: 520;
+  title: "Input Pairs";
+  content-width: 600;
+  content-height: 560;
+  width-request: 360;
+  height-request: 294;
   child: Adw.ToolbarView {
     [top]
     Adw.HeaderBar {
+      show-start-title-buttons: false;
+      show-end-title-buttons: false;
+
+      [start]
+      Gtk.Button cancel_button {
+        label: "Cancel";
+      }
+
       [end]
       Gtk.Button save_button {
         label: "Save";
