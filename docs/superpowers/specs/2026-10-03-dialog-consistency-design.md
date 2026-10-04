@@ -1,6 +1,6 @@
 # Dialog consistency — design
 
-**Status:** approved in brainstorming, awaiting spec review
+**Status:** implemented (claude/ui-consistency-fixes); amended with the decisions made during implementation
 **Date:** 2026-10-03
 **Branch:** `dev` (implementation on a feature branch off `dev`)
 
@@ -40,7 +40,9 @@ edits a snapshot that only Apply writes, Input Pairs only calls
 **Rule:** dialog titles, button labels and alert headings use GNOME header
 capitalization (title case). Articles, short conjunctions and short
 prepositions stay lowercase unless they are the first word: a, an, and,
-as, at, but, by, for, in, of, on, or, the, to, with. Body text,
+as, at, but, by, for, from, in, of, on, or, the, to, with ("from" added
+during implementation, so "Remove from Ensemble" pairs with "Add to
+Ensemble"). Body text,
 descriptions and row titles inside dialogs keep sentence case.
 
 A row that opens a dialog keeps its sentence-case label (the "Blend options"
@@ -138,18 +140,24 @@ dialogs and checks a backdrop click closes the top one only.
 **Rule: minimum size 360×294** (GNOME's smallest supported size) on every
 `Adw.Dialog`. Choose Model keeps its 480 minimum height and Review
 Processing Plan its 400, which they set so their controls and content stay
-visible together.
+visible together. The run-failure dialog keeps the 360 minimum width but has
+no minimum height: its content is shorter than 294, and the minimum
+collapsed its error summary to nothing.
 
 **Rule: opening height.** Lists and browsers set a content height so they do
-not open as a sliver: Choose Model, Member Models, Save Stems, Verify
-Inputs, Input Pairs, Blend Options, Review Processing Plan, Compare Stems,
-Manual Downloads. Forms and short info dialogs follow their content. Model
+not open as a sliver: Choose Model and Member Models (640), Input Pairs,
+Blend Options, Review Processing Plan and Manual Downloads (560). Save
+Stems, Verify Inputs and Compare Stems fit their content instead (decided
+during implementation): they grow with their lists inside scroller bounds,
+and a fixed height would leave a short list mostly empty. Forms and short
+info dialogs follow their content and remeasure after revealing rows. Model
 Options keeps its existing logic, which bounds its height to the window.
 
 **Rule: never wider than the window.** The run-failure dialog's cap
 (`min(width, parent width − margin)`, at least 360) moves into the shared
 presentation helper and applies to every dialog, so a small window shrinks
-dialogs instead of overflowing.
+dialogs instead of overflowing. The cap follows the window while the dialog
+is open.
 
 Fixed widths, heights and minimums live in each dialog's Blueprint; the
 window cap stays in Python.
