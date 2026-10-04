@@ -417,6 +417,58 @@ class SubprocessDecodeTests(unittest.TestCase):
         with self.assertRaisesRegex(AudioDecodeError, "too damaged"):
             self._tolerant_decode(RuntimeError("decoder error"), unfilled=99_000, filled=100_000)
 
+    def test_repair_limit_tracks_the_silence_budget(self):
+        from core.audio_decode import _repair_output_limit
+
+        # 99_700 of 100_000 stereo frames is inside the 0.5% budget, so the cap
+        # must leave that fill intact. A thousand real frames must not allow a
+        # multi-megabyte pad.
+        self.assertGreaterEqual(_repair_output_limit(8 * 99_700, 2), 8 * 100_000)
+        self.assertLess(_repair_output_limit(8 * 1_000, 2), 8 * 1_100)
+        self.assertEqual(_repair_output_limit(0, 2), 0)
+
+    def test_gap_fill_over_the_budget_is_stopped(self):
+        from core.audio_decode import (
+            AudioMetadata,
+            _decode_damaged,
+            _OutputLimitExceeded,
+            _repair_output_limit,
+        )
+
+        limits: list[int] = []
+
+        def run_tool(command: list[str], **kwargs: Any):
+            if any("aresample" in part for part in command):
+                limit = kwargs.get("max_output_bytes")
+                if not isinstance(limit, int):
+                    raise AssertionError("gap fill must be given an integer byte cap")
+                limits.append(limit)
+                raise _OutputLimitExceeded(b"[aac] timestamp gap\n")
+            return bytearray(), 8 * 1_000, b""
+
+        with (
+            mock.patch("core.audio_decode._run_tool", side_effect=run_tool),
+            self.assertRaisesRegex(ValueError, "silence budget"),
+        ):
+            _decode_damaged("ffmpeg", "song.m4a", AudioMetadata(48_000, 2), None, None)
+        self.assertEqual(limits, [_repair_output_limit(8 * 1_000, 2)])
+        self.assertLess(limits[0], 8 * 1_100)
+
+    def test_run_tool_stops_when_stdout_passes_the_cap(self):
+        import sys
+
+        from core.audio_decode import _OutputLimitExceeded, _run_tool
+
+        script = 'import sys; sys.stdout.buffer.write(b"x" * (1 << 20)); sys.stdout.buffer.flush()'
+        with self.assertRaises(_OutputLimitExceeded) as caught:
+            _run_tool(
+                [sys.executable, "-c", script],
+                timeout=5,
+                max_output_bytes=1024,
+            )
+        self.assertNotIn(b"x" * 64, caught.exception.errors)
+        self.assertNotIn("xxxx", str(caught.exception))
+
     def test_concealed_errors_without_lost_audio_still_notify(self):
         (data, _rate), notices, _calls = self._tolerant_decode(
             RuntimeError("decoder error"), unfilled=100_000, filled=100_000
