@@ -115,19 +115,19 @@ done
 install_system_deps() {
     if command -v apt-get >/dev/null 2>&1; then
         sudo apt-get update
-        sudo apt-get install -y ffmpeg python3-venv python3-pip python3-gi \
+        sudo apt-get install -y ffmpeg python3-venv python3-pip python3-gi python3-cairo \
             gir1.2-gtk-4.0 gir1.2-adw-1 libglib2.0-bin libglib2.0-dev-bin blueprint-compiler \
             libsndfile1 rubberband-cli gir1.2-gstreamer-1.0 gir1.2-gst-plugins-base-1.0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good
     elif command -v dnf >/dev/null 2>&1; then
-        sudo dnf install -y ffmpeg python3-pip python3-gobject gtk4 libadwaita \
+        sudo dnf install -y ffmpeg python3-pip python3-gobject python3-cairo gtk4 libadwaita \
             blueprint-compiler libsndfile rubberband gstreamer1 gstreamer1-plugins-base \
             gstreamer1-plugins-good
     elif command -v pacman >/dev/null 2>&1; then
-        sudo pacman -Syu --needed ffmpeg python-pip python-virtualenv python-gobject \
+        sudo pacman -Syu --needed ffmpeg python-pip python-virtualenv python-gobject python-cairo \
             gtk4 libadwaita glib2 blueprint-compiler libsndfile rubberband gstreamer \
             gst-plugins-base gst-plugins-good
     elif command -v zypper >/dev/null 2>&1; then
-        sudo zypper install -y ffmpeg python3-pip python3-gobject gtk4 libadwaita \
+        sudo zypper install -y ffmpeg python3-pip python3-gobject python3-cairo gtk4 libadwaita \
             blueprint-compiler libsndfile1 rubberband typelib-1_0-Gst-1_0 typelib-1_0-GstPbutils-1_0 \
             gstreamer-plugins-base gstreamer-plugins-good
     else
