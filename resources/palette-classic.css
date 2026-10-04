@@ -8,7 +8,7 @@
 @define-color view_fg_color #cdd3ce;
 @define-color headerbar_bg_color #0e0e0f;
 @define-color headerbar_fg_color #f6f6f7;
-@define-color headerbar_border_color RGB(19 132 159 / 28%);
+@define-color headerbar_border_color RGB(255 255 255 / 8%);
 @define-color card_bg_color #141a1c;
 @define-color card_fg_color #f6f6f7;
 @define-color dialog_bg_color #101416;
@@ -28,7 +28,7 @@
   --view-fg-color: #cdd3ce;
   --headerbar-bg-color: #0e0e0f;
   --headerbar-fg-color: #f6f6f7;
-  --headerbar-border-color: RGB(19 132 159 / 28%);
+  --headerbar-border-color: RGB(255 255 255 / 8%);
   --card-bg-color: #141a1c;
   --card-fg-color: #f6f6f7;
   --dialog-bg-color: #101416;
@@ -52,30 +52,29 @@ preferencesgroup .header .heading {
   color: #84bfcd;
 }
 
+/* Frames and dividers stay neutral so teal marks only selection and active controls.
+   The frame is what separates a card from the window, so it stays visible. */
 list.boxed-list {
-  box-shadow: inset 0 0 0 1px alpha(#13849f, 0.42);
+  box-shadow: inset 0 0 0 1px alpha(#ffffff, 0.13);
 }
 
 /* Dividers stay fainter than the card frame; nested expander rows keep Adwaita's shade. */
 list.boxed-list > row,
 list.boxed-list > row.expander row.header,
 row.expander list.nested > row {
-  border-bottom-color: alpha(#13849f, 0.16);
+  border-bottom-color: alpha(#ffffff, 0.06);
 }
 
 .uvr-log-panel {
-  border-color: alpha(#13849f, 0.42);
+  border-color: alpha(#ffffff, 0.13);
 }
 
-/* The selected tab carries a stronger wash than the card frames it shares a hue with. */
+/* Tabs and toggles share one selected look: a teal fill without an outline,
+   which would read as keyboard focus. */
 viewswitcher button.toggle:checked,
-.uvr-purpose-tabs button.toggle:checked {
-  background-color: alpha(#13849f, 0.38);
-  box-shadow: inset 0 0 0 1px #13849f;
-}
-
+.uvr-purpose-tabs button.toggle:checked,
 button.stem-toggle:checked,
 toggle-group > toggle:checked {
-  background-color: alpha(#13849f, 0.32);
+  background-color: alpha(#13849f, 0.36);
   box-shadow: none;
 }

@@ -1,4 +1,4 @@
-/* Light counterpart: the same teal hairline and headings, on a cool paper field. */
+/* Light counterpart: the same teal headings and controls, on a cool paper field. */
 @define-color accent_bg_color #13849f;
 @define-color accent_fg_color #ffffff;
 @define-color accent_color #0f7590;
@@ -8,7 +8,7 @@
 @define-color view_fg_color #0e0e0f;
 @define-color headerbar_bg_color #e7eef0;
 @define-color headerbar_fg_color #0e0e0f;
-@define-color headerbar_border_color RGB(19 132 159 / 22%);
+@define-color headerbar_border_color RGB(14 40 48 / 10%);
 @define-color card_bg_color #ffffff;
 @define-color card_fg_color #0e0e0f;
 @define-color dialog_bg_color #ffffff;
@@ -16,7 +16,7 @@
 @define-color popover_bg_color #ffffff;
 @define-color popover_fg_color #0e0e0f;
 @define-color shade_color RGB(14 40 48 / 10%);
-@define-color borders RGB(19 132 159 / 28%);
+@define-color borders RGB(14 40 48 / 18%);
 
 :root {
   --accent-bg-color: #13849f;
@@ -28,7 +28,7 @@
   --view-fg-color: #0e0e0f;
   --headerbar-bg-color: #e7eef0;
   --headerbar-fg-color: #0e0e0f;
-  --headerbar-border-color: RGB(19 132 159 / 22%);
+  --headerbar-border-color: RGB(14 40 48 / 10%);
   --card-bg-color: #ffffff;
   --card-fg-color: #0e0e0f;
   --dialog-bg-color: #ffffff;
@@ -52,30 +52,28 @@ preferencesgroup .header .heading {
   color: #0f7590;
 }
 
+/* Frames and dividers stay neutral so teal marks only selection and active controls. */
 list.boxed-list {
-  box-shadow: inset 0 0 0 1px alpha(#13849f, 0.35);
+  box-shadow: inset 0 0 0 1px alpha(#0e2830, 0.12);
 }
 
 list.boxed-list > row,
 list.boxed-list > row.expander row.header,
 row.expander list.nested > row {
-  border-bottom-color: alpha(#13849f, 0.14);
+  border-bottom-color: alpha(#0e2830, 0.07);
 }
 
 .uvr-log-panel {
-  border-color: alpha(#13849f, 0.35);
+  border-color: alpha(#0e2830, 0.12);
 }
 
+/* Tabs and toggles share one selected look: a teal fill without an outline,
+   which would read as keyboard focus. */
 viewswitcher button.toggle:checked,
-.uvr-purpose-tabs button.toggle:checked {
-  background-color: alpha(#13849f, 0.24);
-  color: #0e0e0f;
-  box-shadow: inset 0 0 0 1px #13849f;
-}
-
+.uvr-purpose-tabs button.toggle:checked,
 button.stem-toggle:checked,
 toggle-group > toggle:checked {
-  background-color: alpha(#13849f, 0.2);
+  background-color: alpha(#13849f, 0.22);
   color: #0e0e0f;
   box-shadow: none;
 }
