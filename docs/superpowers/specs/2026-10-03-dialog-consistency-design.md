@@ -26,9 +26,9 @@ Success means:
 | Kind | Meaning | Dialogs |
 |---|---|---|
 | **Commit** | Holds edits; one action commits them, closing discards | Input Pairs, Blend Options, Specify Model Parameters (VR, MDX, MDX-C), Apollo Model Parameters, Review Processing Plan |
-| **Live / info** | Changes apply as made, or the dialog only shows information | Member Models, Model Options, Save Stems, Custom Stems, Verify Inputs, Compare Stems, run-failure dialog, Manual Downloads, Updates, Change Model Defaults, Settings, About |
+| **Live / info** | Changes apply as made, or the dialog only shows information | Member Models, Model Options, Save Stems, Custom Stems, Verify Inputs, Compare Stems, run-failure dialog, Manual Downloads, Updates, Change Model Defaults, Settings, About, Keyboard Shortcuts |
 | **Pick one** | Choosing an item closes the dialog | Choose Model |
-| **Alert** | `Adw.AlertDialog` confirmations and prompts | The 12 alerts in the catalogue |
+| **Alert** | `Adw.AlertDialog` confirmations and prompts | The 13 alerts in the catalogue |
 | **Window** | Separate resizable `Adw.Window` | Download Center, Error Log |
 
 All commit dialogs were checked: none applies edits live. Blend Options
@@ -57,7 +57,7 @@ Changes:
 - **Alert headings:** Stop Processing and Downloads?, Cancel Model
   Downloads and Quit?, Processing Has Not Stopped, GPU Out of Memory (and
   its "(Debug Mock)" variant), Replace Profile "…"?, Load Profile "…"?,
-  Remove Profile?, Reset All Settings?, Download Missing Models?, Delete
+  Remove Profile?, Reset All Settings?, Save Current Settings, Download Missing Models?, Delete
   Ensemble?, Delete Stored Parameters?. Quoted names inside a heading keep
   their own spelling. `QUIT_WHILE_PROCESSING_CONFIRM` ("Stop Processing?")
   and "Save Ensemble" already comply.
@@ -100,7 +100,7 @@ page, a step inside the picker rather than a separate commit.
 ## 3. Dismissal
 
 **Live / info and pick-one dialogs:** a backdrop click and Escape both
-close. Choose Model, Settings and About gain backdrop close (they call
+close. Choose Model, Settings, About and Keyboard Shortcuts gain backdrop close (they call
 `present()` directly today and skip the shared helper).
 
 **Commit dialogs, including Review Processing Plan:** Escape cancels; a
@@ -116,12 +116,14 @@ backdrop does nothing).
 `present_modal_dialog(dialog, parent, *, dismiss_on_backdrop=True)` gains
 the keyword; commit dialogs pass `False`.
 
-**To verify during implementation:** `_install_backdrop_dismiss` marks the
-first "dimming" widget it finds and never re-attaches. If libadwaita reuses
-that widget across dialogs, a later dialog's backdrop click would close the
-earlier, already-closed dialog. A test opens two dialogs in turn and checks
-the second one closes; if the widget is shared, the handler must close the
-dialog currently presented.
+**Verified (2026-10-04):** libadwaita gives each dialog its own "dimming"
+widget inside the dialog's own tree, so nothing is shared. The real bug is
+that `_try_install_backdrop_dismiss` searches the parent window first and
+stops at the first dimming widget, which is the lower dialog's when one
+dialog opens over another (Custom Stems over Save Stems, Change Model
+Defaults over Model Options): the upper dialog never gets a backdrop
+handler. The helper searches only the dialog's own tree; a test stacks two
+dialogs and checks a backdrop click closes the top one only.
 
 ## 4. Sizing
 
@@ -153,7 +155,7 @@ Fixed widths, heights and minimums live in each dialog's Blueprint; the
 window cap stays in Python.
 
 **Exceptions:** Settings (libadwaita `Adw.PreferencesDialog`, laid out at
-700 sp for its search and pages) and About (`Adw.AboutDialog`) keep
+700 sp for its search and pages) About (`Adw.AboutDialog`) and Keyboard Shortcuts (`Adw.ShortcutsDialog`) keep
 libadwaita's sizing. Download Center and Error Log are resizable windows
 with their own defaults and minimums.
 
@@ -183,8 +185,8 @@ leftovers (dot-formatted numbers).
   representative content: a few inputs, a populated plan, a failed-run
   report) inside the private headless display and saves a PNG of each. It
   runs once on the current code **before any change** and again after the
-  implementation, in light and dark at the default window size, plus a
-  narrow window (360 wide) for the sizing rule. Images go to
+  implementation, in light and dark at the default window size, plus the
+  main window's minimum size (640×560) for the sizing rule. Images go to
   `.superpowers/dialog-screenshots/{before,after}/` (local scratch, never
   committed) with matching file names, and the implementation ends with a
   side-by-side review of every pair. The script is local scratch in the
@@ -223,6 +225,7 @@ downloads? / Cancel model downloads and quit? / Stop Processing? (quit;
 Cancel, Stop and Quit); Processing has not stopped (Wait Longer, Quit); GPU
 out of memory (Export completed, Stop, Retry with smaller segment); Replace
 / Load profile "…"?, Remove profile?, Reset all settings? (Cancel + action);
+Save current settings (Cancel, Save);
 Download missing models? (Not now, Download
 missing); Save Ensemble (Cancel, Save); Delete ensemble? (Cancel, Delete);
 Delete stored parameters? (Cancel, Delete).
