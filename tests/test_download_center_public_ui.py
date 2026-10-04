@@ -29,6 +29,12 @@ def _purpose_page_titles(stack: Any) -> list[str]:
     "GTK widget construction needs a display",
 )
 class DownloadCenterPublicUiTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        from tests.private_gtk import require_private_gtk
+
+        require_private_gtk()
+
     def test_header_has_public_menu_without_password_control(self) -> None:
         import gi
 

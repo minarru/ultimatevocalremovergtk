@@ -2,7 +2,6 @@
 
 import json
 import os
-import time
 import unittest
 from collections.abc import Callable
 from dataclasses import replace
@@ -170,14 +169,10 @@ class PlanReviewDialogTests(unittest.TestCase):
         self.plan = resolved_plan()
         self.target = Mock()
 
-    def wait_for(self, predicate: Callable[[], bool]):
-        from gi.repository import GLib
+    def wait_for(self, predicate: Callable[[], bool]) -> None:
+        from tests.gtk_layout_helpers import pump_until
 
-        deadline = time.monotonic() + 5
-        while not predicate():
-            self.assertLess(time.monotonic(), deadline)
-            GLib.MainContext.default().iteration(False)
-            time.sleep(0.005)
+        pump_until(predicate)
 
     def test_start_uses_existing_plan_acceptance_once(self):
         from ui.dialogs.plan_review import ReviewPlanDialog
