@@ -14,7 +14,9 @@ from collections.abc import Iterator
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SMALL_WORDS = frozenset("a an and as at but by for in of on or the to with".split())
+# The spec's list, plus "from": it lowercases four-letter "with", and
+# "Remove from Ensemble" pairs with "Add to Ensemble".
+SMALL_WORDS = frozenset("a an and as at but by for from in of on or the to with".split())
 _WORD = re.compile(r"[A-Za-z][A-Za-z'’]*")
 _DIALOG_OBJECT = re.compile(r"\bAdw\.(?:Dialog|AlertDialog|Window|PreferencesDialog)\b")
 
@@ -59,34 +61,65 @@ def _string_parts(node: ast.expr) -> list[tuple[str, bool]]:
             if isinstance(value, ast.Constant) and isinstance(value.value, str):
                 parts.append((value.value, index == 0))
         return parts
+    if isinstance(node, ast.IfExp):
+        return _string_parts(node.body) + _string_parts(node.orelse)
     return []
 
 
-def _call_name(node: ast.Call) -> str:
-    func = node.func
-    if isinstance(func, ast.Attribute):
-        return func.attr
-    if isinstance(func, ast.Name):
-        return func.id
+def _name(node: ast.expr) -> str:
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    if isinstance(node, ast.Name):
+        return node.id
     return ""
 
 
+# Keywords and dataclass fields that hold a dialog title or button label.
+_PICKER_FIELDS = frozenset({"title", "add_label", "remove_label"})
+
+
+def _call_strings(node: ast.Call) -> list[tuple[str, bool]]:
+    name = _name(node.func)
+    receiver = _name(node.func.value) if isinstance(node.func, ast.Attribute) else ""
+    parts: list[tuple[str, bool]] = []
+    if name == "add_response" and len(node.args) >= 2:
+        parts += _string_parts(node.args[1])
+    if node.args and (
+        name in ("set_heading", "set_button_label")
+        or (name == "set_label" and "button" in receiver.lower())
+    ):
+        parts += _string_parts(node.args[0])
+    for keyword in node.keywords:
+        if keyword.arg == "heading" and name in ("AlertDialog", "present_error_dialog"):
+            parts += _string_parts(keyword.value)
+        if keyword.arg in _PICKER_FIELDS and name == "PickerConfig":
+            parts += _string_parts(keyword.value)
+    return parts
+
+
 def _python_strings(tree: ast.AST) -> Iterator[tuple[int, str, bool]]:
+    picker_fields = {
+        id(statement)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ClassDef) and node.name == "PickerConfig"
+        for statement in node.body
+        if isinstance(statement, ast.AnnAssign)
+        and isinstance(statement.target, ast.Name)
+        and statement.target.id in _PICKER_FIELDS
+    }
     for node in ast.walk(tree):
         parts: list[tuple[str, bool]] = []
         if isinstance(node, ast.Call):
-            name = _call_name(node)
-            if name == "add_response" and len(node.args) >= 2:
-                parts += _string_parts(node.args[1])
-            for keyword in node.keywords:
-                if keyword.arg == "heading" and name in ("AlertDialog", "present_error_dialog"):
-                    parts += _string_parts(keyword.value)
-                if keyword.arg == "title" and name == "PickerConfig":
-                    parts += _string_parts(keyword.value)
+            parts += _call_strings(node)
         elif isinstance(node, ast.Assign) and any(
             isinstance(target, ast.Name) and target.id == "heading" for target in node.targets
         ):
             parts += _string_parts(node.value)
+        elif isinstance(node, ast.AnnAssign) and node.value is not None:
+            if id(node) in picker_fields or (
+                isinstance(node.target, ast.Name) and node.target.id == "heading"
+            ):
+                parts += _string_parts(node.value)
         line = getattr(node, "lineno", 0)
         for text, start in parts:
             yield line, text, start
@@ -102,6 +135,38 @@ class TitleCaseRuleTests(unittest.TestCase):
         self.assertEqual(title_case_violations("With Care"), [])
         self.assertEqual(title_case_violations(" Failed", first_is_start=False), [])
         self.assertEqual(title_case_violations(" with", first_is_start=False), [])
+        self.assertEqual(title_case_violations("Remove from Ensemble"), [])
+
+
+class PythonScanTests(unittest.TestCase):
+    """The scan reaches every way the UI code spells a dialog string."""
+
+    def found(self, source: str) -> list[str]:
+        return [text for _line, text, _start in _python_strings(ast.parse(source))]
+
+    def test_button_labels_set_from_python(self) -> None:
+        self.assertEqual(self.found('self.update_button.set_label("check again")'), ["check again"])
+        self.assertEqual(self.found('button.set_label("use this model")'), ["use this model"])
+        self.assertEqual(self.found('toast.set_button_label("view queue")'), ["view queue"])
+        self.assertEqual(self.found('self.status_label.set_label("body text")'), [])
+
+    def test_conditional_and_annotated_headings(self) -> None:
+        self.assertEqual(self.found('heading = "a b" if mock else "c d"'), ["a b", "c d"])
+        self.assertEqual(self.found('heading: str = "e f"'), ["e f"])
+        self.assertEqual(self.found('dialog.set_heading("g h")'), ["g h"])
+
+    def test_picker_config_labels(self) -> None:
+        source = (
+            "class PickerConfig:\n"
+            "    title: str = 'choose model'\n"
+            "    add_label: str = 'add it'\n"
+            "    search_placeholder: str = 'search here'\n"
+            "PickerConfig(title='member models', remove_label='drop it')\n"
+        )
+        self.assertEqual(
+            sorted(self.found(source)),
+            ["add it", "choose model", "drop it", "member models"],
+        )
 
 
 class DialogWordingTests(unittest.TestCase):
