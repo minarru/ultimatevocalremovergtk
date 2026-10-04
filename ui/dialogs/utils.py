@@ -127,6 +127,27 @@ def _cap_to_window(dialog: Adw.Dialog, parent: Gtk.Window | None) -> None:
         design = width
         stash(dialog, "_uvr_design_width", design)
     dialog.set_content_width(capped_dialog_width(design, parent))
+    _follow_window_width(dialog, parent, design)
+
+
+def _follow_window_width(dialog: Adw.Dialog, parent: Gtk.Window | None, design: int) -> None:
+    """Re-cap while the dialog is open, so widening the window widens it again."""
+    surface = parent.get_surface() if parent is not None else None
+    if surface is None:
+        return
+
+    def on_layout(*_args: object) -> None:
+        width = capped_dialog_width(design, parent)
+        if dialog.get_content_width() != width:
+            dialog.set_content_width(width)
+
+    layout_id = surface.connect("layout", on_layout)
+
+    def on_closed(*_args: object) -> None:
+        surface.disconnect(layout_id)
+        dialog.disconnect(closed_id)
+
+    closed_id = dialog.connect("closed", on_closed)
 
 
 def fill_dialog_width(widget: Gtk.Widget) -> None:

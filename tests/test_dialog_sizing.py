@@ -188,6 +188,37 @@ class PresentedWidthTests(unittest.TestCase):
         self._present(dialog, 1000)
         self.assertEqual(dialog.get_content_width(), 600)
 
+    def _wait_width(self, dialog: Any, width: int) -> None:
+        import time
+
+        from gi.repository import GLib
+
+        deadline = time.monotonic() + 3
+        while dialog.get_content_width() != width and time.monotonic() < deadline:
+            GLib.MainContext.default().iteration(False)
+            time.sleep(0.005)
+        self.assertEqual(dialog.get_content_width(), width)
+
+    def test_cap_follows_window_resized_while_open(self) -> None:
+        from tests.gtk_layout_helpers import resize_window
+
+        dialog = self._dialog()
+        self._present(dialog, 480)
+        self.assertEqual(dialog.get_content_width(), 416)
+        resize_window(self.parent, 1000, 600)
+        self._wait_width(dialog, 600)
+        resize_window(self.parent, 500, 600)
+        self._wait_width(dialog, 436)
+
+    def test_closed_dialog_stops_following_the_window(self) -> None:
+        from tests.gtk_layout_helpers import resize_window
+
+        dialog = self._dialog()
+        self._present(dialog, 1000)
+        dialog.force_close()
+        resize_window(self.parent, 480, 600)
+        self.assertEqual(dialog.get_content_width(), 600)
+
     def test_run_failure_summary_gets_its_height(self) -> None:
         # A minimum dialog height collapsed the summary TextView to 0 px.
         from gi.repository import Gtk
