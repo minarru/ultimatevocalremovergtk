@@ -114,6 +114,9 @@ class ClassicPaletteTests(unittest.TestCase):
                 self.fade.draw(snapshot, frame.to_node())
 
         window = _FadingWindow()
+        # Without a child an undecorated X11 window draws nothing of its own,
+        # leaving no frame to fade from.
+        window.set_child(Gtk.Label(label="Fade"))
         window.add_css_class("background")
         window.set_default_size(80, 60)
         fade = window.fade
