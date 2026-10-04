@@ -253,6 +253,7 @@ class EnsembleLayoutTests(unittest.TestCase):
         from gi.repository import GLib, Gtk
 
         from bundled.constants import ENSEMBLE_ALGORITHMS
+        from core.ensemble_algorithms import CUSTOM_PRESET
         from tests.gtk_layout_helpers import resize_window
         from ui.widgets.rows import set_combo_value
 
@@ -261,8 +262,10 @@ class EnsembleLayoutTests(unittest.TestCase):
         self.addCleanup(window.set_visible, False)
         resize_window(window, 1280, 900)
         window.content_stack.set_visible_child_name("ensemble")
+        # Named presets hide the algorithm rows. Descriptions sit beside the
+        # values only while Custom leaves those rows open.
+        set_combo_value(page.preset_row, CUSTOM_PRESET)
         row = page.secondary_algo_row
-        row.set_visible(True)
 
         def find(widget: Any, kind: type) -> Any:
             if isinstance(widget, kind):

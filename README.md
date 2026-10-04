@@ -73,7 +73,7 @@ system dependencies yourself and then run `./install_packages.sh` without
 
 ```bash
 sudo apt update
-sudo apt install -y ffmpeg python3-venv python3-pip python3-gi gir1.2-gtk-4.0 \
+sudo apt install -y ffmpeg python3-venv python3-pip python3-gi python3-cairo gir1.2-gtk-4.0 \
     gir1.2-adw-1 libglib2.0-bin libsndfile1 rubberband-cli \
     gir1.2-gstreamer-1.0 gir1.2-gst-plugins-base-1.0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good
 ```
@@ -84,7 +84,7 @@ sudo apt install -y ffmpeg python3-venv python3-pip python3-gi gir1.2-gtk-4.0 \
 <summary>Fedora</summary>
 
 ```bash
-sudo dnf install -y ffmpeg python3-pip python3-gobject gtk4 libadwaita libsndfile rubberband \
+sudo dnf install -y ffmpeg python3-pip python3-gobject python3-cairo gtk4 libadwaita libsndfile rubberband \
     gstreamer1 gstreamer1-plugins-base gstreamer1-plugins-good
 ```
 
@@ -94,7 +94,7 @@ sudo dnf install -y ffmpeg python3-pip python3-gobject gtk4 libadwaita libsndfil
 <summary>Arch, CachyOS, EndeavourOS, and Manjaro</summary>
 
 ```bash
-sudo pacman -Syu --needed ffmpeg python-pip python-virtualenv python-gobject gtk4 \
+sudo pacman -Syu --needed ffmpeg python-pip python-virtualenv python-gobject python-cairo gtk4 \
     libadwaita glib2 libsndfile rubberband gstreamer gst-plugins-base gst-plugins-good
 ```
 
@@ -104,7 +104,7 @@ sudo pacman -Syu --needed ffmpeg python-pip python-virtualenv python-gobject gtk
 <summary>openSUSE</summary>
 
 ```bash
-sudo zypper install -y ffmpeg python3-pip python3-gobject gtk4 libadwaita libsndfile1 rubberband \
+sudo zypper install -y ffmpeg python3-pip python3-gobject python3-cairo gtk4 libadwaita libsndfile1 rubberband \
     typelib-1_0-Gst-1_0 typelib-1_0-GstPbutils-1_0 gstreamer-plugins-base gstreamer-plugins-good
 ```
 
