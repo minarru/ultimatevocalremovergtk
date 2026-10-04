@@ -59,10 +59,6 @@ class LoadedProfile:
     settings: dict[str, Any] = field(default_factory=dict)
     validation_warnings: list[str] = field(default_factory=list, repr=False, compare=False)
 
-    @property
-    def inherited_identity(self) -> bool:
-        return bool(self.model or self.ensemble or self.members)
-
     def to_dict(self) -> dict[str, Any]:
         return {
             "schema_version": PROFILE_SCHEMA_VERSION,

@@ -60,6 +60,8 @@ _COLOR_SCHEME_OPTIONS = (
     ("Follow system", "auto"),
     ("Light", "light"),
     ("Dark", "dark"),
+    ("Classic", "classic"),
+    ("Classic light", "classic-light"),
 )
 
 _DIAGNOSTIC_LEVEL_OPTIONS = (

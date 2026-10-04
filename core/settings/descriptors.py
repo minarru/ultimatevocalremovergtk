@@ -48,13 +48,3 @@ def describe_setting(path: str) -> SettingDescriptor:
         value is None,
         _MODEL_BEHAVIOR.get(path),
     )
-
-
-def setting_descriptors() -> tuple[SettingDescriptor, ...]:
-    settings = Settings.defaults()
-    paths = (
-        f"{section_name}.{item.name}"
-        for section_name in ("process", "vr", "mdx", "demucs", "ensemble", "audio_tools", "ui")
-        for item in dataclasses.fields(getattr(settings, section_name))
-    )
-    return tuple(describe_setting(path) for path in paths)

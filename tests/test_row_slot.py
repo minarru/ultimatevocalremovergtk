@@ -6,23 +6,14 @@ import os
 import unittest
 from typing import Any
 
+from tests.gtk_layout_helpers import iter_descendants
+
 
 def _order(group: Any) -> list[Any]:
     """Rows of ``group`` in display order (libadwaita hosts them in a ListBox)."""
     from gi.repository import Gtk
 
-    def find_list_box(widget: Any) -> Any:
-        if isinstance(widget, Gtk.ListBox):
-            return widget
-        child = widget.get_first_child()
-        while child is not None:
-            found = find_list_box(child)
-            if found is not None:
-                return found
-            child = child.get_next_sibling()
-        return None
-
-    box = find_list_box(group)
+    box = next((w for w in iter_descendants(group) if isinstance(w, Gtk.ListBox)), None)
     rows: list[Any] = []
     if box is None:
         return rows
@@ -40,6 +31,9 @@ def _order(group: Any) -> list[Any]:
 class RowSlotTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
+        from tests.private_gtk import require_private_gtk
+
+        require_private_gtk()
         import gi
 
         gi.require_version("Gtk", "4.0")

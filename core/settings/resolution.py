@@ -1,12 +1,9 @@
-"""Shared settings layering, provenance, and configuration validation."""
+"""Environment setting overrides and processing configuration validation."""
 
 from __future__ import annotations
 
 import os
-from collections.abc import Iterable
-from typing import Any
 
-from .access import apply_settings_overrides
 from .model import Settings
 
 
@@ -38,21 +35,3 @@ def validate_processing_settings(settings: Settings) -> None:
         raise ValueError("long-file chunk overlap must be smaller than the chunk duration")
     if settings.mdx.segment_size <= 0:
         raise ValueError("MDX segment size must be greater than zero")
-
-
-def resolve_settings_layers(
-    base: Settings,
-    layers: Iterable[tuple[str, Iterable[tuple[str, Any]]]],
-) -> tuple[Settings, dict[str, str]]:
-    """Apply ordered setting layers and return provenance for changed paths."""
-    provenance: dict[str, str] = {}
-    for source, overrides in layers:
-        pairs = list(overrides)
-        apply_settings_overrides(base, pairs)
-        provenance.update({path: source for path, _value in pairs})
-        if any(path in {"process.stem_focus", "demucs.stems"} for path, _ in pairs):
-            provenance["demucs.stems_selected"] = source
-    for path in apply_environment_overrides(base):
-        provenance[path] = "environment"
-    validate_processing_settings(base)
-    return base, provenance

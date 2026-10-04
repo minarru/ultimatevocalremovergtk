@@ -10,7 +10,7 @@ expects (mirroring how Tk stores every option as a string).
 import typing
 from typing import Iterable, List, Optional, Sequence
 
-from gi.repository import Adw, Gdk, Gtk, Pango
+from gi.repository import Adw, Gdk, GObject, Gtk, Pango
 
 from ..template import load_builder, object_from_builder
 from ..widget_state import drop, fetch, has, stash
@@ -80,43 +80,9 @@ def image_from_icon_name(icon_name: str, size: int = 16) -> Gtk.Image:
     return image
 
 
-def _apply_icon_name(image: Gtk.Image, icon_name: str, size: int = 16) -> None:
-    display = Gdk.Display.get_default()
-    if display is not None:
-        theme = Gtk.IconTheme.get_for_display(display)
-        if theme.has_icon(icon_name):
-            paintable = theme.lookup_icon(
-                icon_name,
-                None,
-                size,
-                1,
-                Gtk.TextDirection.LTR,
-                _ICON_LOOKUP_FLAGS,
-            )
-            image.set_from_paintable(paintable)
-            return
-    image.set_from_icon_name(icon_name)
-
-
 def add_row_icon(row: typing.Any, icon_name: str) -> None:
     """Add a leading symbolic ``icon_name`` prefix to an ``Adw`` row."""
     row.add_prefix(image_from_icon_name(icon_name))
-
-
-def set_row_icon(row: typing.Any, icon_name: Optional[str]) -> None:
-    """Set or clear the leading icon on an ``Adw`` row (updates in place)."""
-    image = fetch(row, "_uvr_row_icon", None)
-    if not icon_name:
-        if image is not None:
-            image.unparent()
-            stash(row, "_uvr_row_icon", None)
-        return
-    if image is None:
-        image = image_from_icon_name(icon_name)
-        row.add_prefix(image)
-        stash(row, "_uvr_row_icon", image)
-    else:
-        _apply_icon_name(image, icon_name)
 
 
 def make_combo_row(
@@ -138,6 +104,34 @@ def configure_combo_row(row: Adw.ComboRow, values: Iterable) -> Adw.ComboRow:
     """Install the mutable model on a declaratively constructed combo row."""
     set_combo_values(row, values)
     return row
+
+
+def keep_value_whole(row: Adw.ComboRow) -> None:
+    """Never ellipsize the selected value of a combo row with short values.
+
+    The row gives its subtitle all the width the value's minimum leaves, so an
+    ellipsizing value collapses whenever a description just fits on one line.
+    A value that cannot shrink makes the description wrap instead. The popover
+    keeps libadwaita's default items, including the selection checkmark.
+    """
+    row.set_list_factory(row.get_factory())
+    factory = Gtk.SignalListItemFactory()
+
+    def on_setup(_factory: Gtk.SignalListItemFactory, item: GObject.Object) -> None:
+        if isinstance(item, Gtk.ListItem):
+            item.set_child(Gtk.Label(xalign=0.0))
+
+    def on_bind(_factory: Gtk.SignalListItemFactory, item: GObject.Object) -> None:
+        if not isinstance(item, Gtk.ListItem):
+            return
+        label = item.get_child()
+        value = item.get_item()
+        if isinstance(label, Gtk.Label) and isinstance(value, Gtk.StringObject):
+            label.set_label(value.get_string())
+
+    factory.connect("setup", on_setup)
+    factory.connect("bind", on_bind)
+    row.set_factory(factory)
 
 
 def use_wrapping_list(row: Adw.ComboRow) -> None:

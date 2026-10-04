@@ -346,9 +346,3 @@ class EnsembleService:
     @staticmethod
     def delete(name: str) -> bool:
         return delete_ensemble(name)
-
-
-def apply_ensemble_preset(
-    settings: Any, name: str, *, repo: Any | None = None
-) -> ResolvedEnsemblePreset:
-    return EnsembleService(repo).apply(settings, name)

@@ -430,13 +430,6 @@ def is_vocal_family_stem(stem: str) -> bool:
     return token in ("voices", "vox", "lead-vocal")
 
 
-def is_instrumental_target(stem: str) -> bool:
-    if not stem:
-        return False
-    low = str(stem).lower()
-    return low in ("instrumental", "inst", "instrument", "other")
-
-
 # Yaml/community spellings for a dedicated backing-vocal stem. Kept out of
 # ``_STEM_NAME_ALIASES`` so they never merge with MUSDB ``Vocals``.
 _BACKING_VOCAL_TOKENS = frozenset(

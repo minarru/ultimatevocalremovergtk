@@ -828,25 +828,6 @@ class MethodView:
         for key, row in self._option_rows.items():
             set_flat(self.settings, key, get_combo_value(row))
 
-    def add_advanced_combo(
-        self,
-        key: typing.Any,
-        title: typing.Any,
-        values: typing.Any,
-        subtitle: typing.Any = None,
-        hint: typing.Any = None,
-    ):
-        return self.add_option_combo(self.advanced_group, key, title, values, subtitle, hint=hint)
-
-    def add_advanced_switch(
-        self,
-        key: typing.Any,
-        title: typing.Any,
-        subtitle: typing.Any = None,
-        hint: typing.Any = None,
-    ):
-        return self.add_option_switch(self.advanced_group, key, title, subtitle, hint=hint)
-
     # -- Secondary / pre-process / vocal-splitter model selection --------------
 
     def _add_model_combo(

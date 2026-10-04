@@ -2,10 +2,9 @@
 
 import importlib.util
 import unittest
-from collections.abc import Iterator
 from types import SimpleNamespace
-from typing import Any
 
+from tests.gtk_layout_helpers import iter_descendants
 from tests.private_gtk import require_private_gtk
 
 
@@ -47,14 +46,7 @@ class EnsembleBlendDialogTests(unittest.TestCase):
             received.append,
         )
 
-        def descendants(widget: Any) -> Iterator[Any]:
-            yield widget
-            child = widget.get_first_child()
-            while child is not None:
-                yield from descendants(child)
-                child = child.get_next_sibling()
-
-        children = list(descendants(dialog))
+        children = list(iter_descendants(dialog))
         weight = next(
             w for w in children if isinstance(w, Adw.SpinRow) and w.get_title() == "Model A"
         )

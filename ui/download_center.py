@@ -70,6 +70,7 @@ from .lifetime import UiLifetime
 from .markup import set_row_subtitle, set_row_title
 from .template import load_builder, object_from_builder
 from .widget_state import drop, fetch, stash
+from .widgets.color_fade import FadingWindow
 
 _NETWORKS = [
     ("VR Arch", VR_ARCH_TYPE),
@@ -141,7 +142,7 @@ class DownloadCenterWindow:
         self._selection_batch_depth = 0
 
         self._layout_builder = load_builder("download-center")
-        self.window = object_from_builder(self._layout_builder, "window", Adw.Window)
+        self.window = object_from_builder(self._layout_builder, "window", FadingWindow)
         if parent is not None:
             self.window.set_transient_for(parent)
         close_on_escape(self.window)
@@ -1354,12 +1355,6 @@ class DownloadCenterWindow:
         self._invalidate_all_filters()
         self._invalidate_all_sorts()
         return False
-
-    def _available_count(self) -> int:
-        return self.browser.available_count()
-
-    def _unsupported_count(self, *, visible_only: bool = False) -> int:
-        return self.browser.unsupported_count(hide=visible_only and self._hide_unsupported)
 
     def _update_status_from_catalogue(self) -> None:
         if not self._refreshing:

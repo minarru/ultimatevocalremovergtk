@@ -46,6 +46,7 @@ from .dialogs.utils import (
 from .error_log_view import ErrorLogView
 from .protocols import WindowSizing
 from .template import load_builder, object_from_builder
+from .widgets.color_fade import FadingWindow
 
 # Floating sheet width: wide enough to read, capped so it cannot grow with a
 # long RuntimeError line. TextView (not Label) wraps to the allocated width.
@@ -328,7 +329,7 @@ def open_error_log(parent_window: typing.Any, message: typing.Any = None):
         return _ERROR_LOG_WINDOW
 
     builder = load_builder("error-console")
-    window = object_from_builder(builder, "window", Adw.Window)
+    window = object_from_builder(builder, "window", FadingWindow)
     from .resources import register_gresources
 
     register_gresources()

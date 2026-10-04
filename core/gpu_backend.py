@@ -244,13 +244,3 @@ def onnx_cpu_fallback_warning(
         else ONNX_PROVIDER_NOT_INSTALLED_HINT
     )
     return _ONNX_CPU_FALLBACK_PREFIX.format(provider=preferred) + hint
-
-
-def available_onnx_providers() -> Sequence[str]:
-    """Return ONNX Runtime execution providers (empty when ORT is not installed)."""
-    try:
-        import onnxruntime as ort
-
-        return ort.get_available_providers()
-    except Exception:
-        return []

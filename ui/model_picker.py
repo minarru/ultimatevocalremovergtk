@@ -415,6 +415,7 @@ class ModelPicker:
         info.connect('clicked', lambda *_: self._show_details_by_id(model_id))
         if self.members is not None:
             toggle = Gtk.CheckButton(valign=Gtk.Align.CENTER)
+            toggle.add_css_class('selection-mode')
             handler = toggle.connect('toggled', self._member_toggled, model_id)
             row.add_prefix(toggle)
             row.set_activatable_widget(toggle)

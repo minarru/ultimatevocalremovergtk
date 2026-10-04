@@ -11,6 +11,7 @@ import os
 import unittest
 from typing import Any
 
+from tests.gtk_layout_helpers import iter_descendants
 from tests.test_row_slot import _order
 
 
@@ -36,6 +37,9 @@ def contains(group: Any, row: Any) -> bool:
 class SeparationLayoutTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
+        from tests.private_gtk import require_private_gtk
+
+        require_private_gtk()
         import gi
 
         gi.require_version("Gtk", "4.0")
@@ -160,18 +164,10 @@ def expander_rows(expander: Any) -> list[Any]:
     """Rows inside an ``Adw.ExpanderRow``'s revealer, in display order."""
     from gi.repository import Gtk
 
-    def find_revealer(widget: Any) -> Any:
-        if isinstance(widget, Gtk.Revealer):
-            return widget
-        child = widget.get_first_child()
-        while child is not None:
-            found = find_revealer(child)
-            if found is not None:
-                return found
-            child = child.get_next_sibling()
-        return None
-
-    revealer = find_revealer(expander)
+    revealer = next(
+        (w for w in iter_descendants(expander) if isinstance(w, Gtk.Revealer)),
+        None,
+    )
     return [] if revealer is None else _order(revealer)
 
 
@@ -182,6 +178,9 @@ def expander_rows(expander: Any) -> list[Any]:
 class EnsembleLayoutTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
+        from tests.private_gtk import require_private_gtk
+
+        require_private_gtk()
         import gi
 
         gi.require_version("Gtk", "4.0")
@@ -243,10 +242,11 @@ class EnsembleLayoutTests(unittest.TestCase):
         self.assertIn(group.get_description(), ("", None))
 
     def test_algorithm_values_fit_beside_their_descriptions(self) -> None:
-        """A one-line description must leave the combo room for its value.
+        """A description beside an algorithm value wraps instead of squeezing it.
 
-        The row's height is settled while the description fits on one line,
-        so a long description squeezes the selected value instead of wrapping.
+        The row gives its subtitle all the width the value's minimum leaves, so
+        an ellipsizing value collapses whenever a description just fits on one
+        line. The popover still uses libadwaita's own items.
         """
         import time
 
@@ -266,17 +266,11 @@ class EnsembleLayoutTests(unittest.TestCase):
         # values only while Custom leaves those rows open.
         set_combo_value(page.preset_row, CUSTOM_PRESET)
         row = page.secondary_algo_row
+        self.assertIsNotNone(row.get_list_factory())
+        self.assertIsNot(row.get_list_factory(), row.get_factory())
 
         def find(widget: Any, kind: type) -> Any:
-            if isinstance(widget, kind):
-                return widget
-            child = widget.get_first_child()
-            while child is not None:
-                found = find(child, kind)
-                if found is not None:
-                    return found
-                child = child.get_next_sibling()
-            return None
+            return next((w for w in iter_descendants(widget) if isinstance(w, kind)), None)
 
         def settle() -> None:
             context = GLib.MainContext.default()
@@ -313,6 +307,9 @@ _AUDIO_TOOL_HOLDERS = {
 class AudioToolsLayoutTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
+        from tests.private_gtk import require_private_gtk
+
+        require_private_gtk()
         import gi
 
         gi.require_version("Gtk", "4.0")
@@ -442,15 +439,7 @@ class AudioToolsLayoutTests(unittest.TestCase):
             return point.y
 
         def find(widget: Any, kind: type) -> Any:
-            if isinstance(widget, kind):
-                return widget
-            child = widget.get_first_child()
-            while child is not None:
-                found = find(child, kind)
-                if found is not None:
-                    return found
-                child = child.get_next_sibling()
-            return None
+            return next((w for w in iter_descendants(widget) if isinstance(w, kind)), None)
 
         for tool in AUDIO_TOOL_ORDER:
             with self.subTest(tool=tool):
@@ -492,6 +481,9 @@ class AudioToolsLayoutTests(unittest.TestCase):
 class NarrowLayoutTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
+        from tests.private_gtk import require_private_gtk
+
+        require_private_gtk()
         import gi
 
         gi.require_version("Gtk", "4.0")
@@ -522,6 +514,31 @@ class NarrowLayoutTests(unittest.TestCase):
                 order = column_titles(page._col_start) + column_titles(page._col_end)
                 self.assertEqual(order[0], "Input")
                 self.assertEqual(order[-2:], ["Output", "Processing"])
+
+    def test_option_clamps_match_preferences_edge_spacing(self) -> None:
+        from gi.repository import Adw, Gtk
+
+        from ui.widgets.columns import DEFAULT_MAX_WIDTH, DEFAULT_TIGHTENING, options_scroller
+        from ui.window import MainWindow
+
+        window = MainWindow()
+        self.addCleanup(window.set_application, None)
+        for page in window._options_pages:
+            scrolled = options_scroller(page)
+            viewport = scrolled.get_child()
+            if not isinstance(viewport, Gtk.Viewport):
+                self.fail(f"expected viewport, got {type(viewport)!r}")
+            clamp = viewport.get_child()
+            if not isinstance(clamp, Adw.Clamp):
+                self.fail(f"expected clamp, got {type(clamp)!r}")
+            self.assertEqual(clamp.get_unit(), Adw.LengthUnit.SP)
+            self.assertEqual(clamp.get_maximum_size(), DEFAULT_MAX_WIDTH)
+            self.assertEqual(clamp.get_tightening_threshold(), DEFAULT_TIGHTENING)
+            child = clamp.get_child()
+            assert child is not None
+            self.assertEqual(child.get_margin_top(), 18)
+            self.assertEqual(child.get_margin_start(), 12)
+            self.assertEqual(child.get_margin_end(), 12)
 
 
 if __name__ == "__main__":

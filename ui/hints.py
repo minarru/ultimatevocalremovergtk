@@ -43,14 +43,6 @@ def set_icon_button_a11y(widget: typing.Any, text: Optional[str]) -> None:
     widget.update_property([Gtk.AccessibleProperty.LABEL], [text or ""])
 
 
-def add_help_hint(widget: typing.Any, text: str) -> None:
-    """Set ``widget``'s tooltip to ``text``.
-
-    A lightweight, stateless helper for views that don't need the manager.
-    """
-    set_tooltip(widget, text)
-
-
 class HelpHintManager:
     """Tracks help-hint widgets and applies their tooltips."""
 

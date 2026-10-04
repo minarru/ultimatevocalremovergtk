@@ -15,6 +15,16 @@ RESOURCE_PREFIX = f"/{APP_ID.replace('.', '/')}"
 #: GResource prefix for the bundled icon theme (must match compile_resources.sh).
 ICON_RESOURCE_PREFIX = f"{RESOURCE_PREFIX}/icons"
 STYLE_CSS_RESOURCE = f"{RESOURCE_PREFIX}/style.css"
+#: Optional palettes, loaded only while that color scheme is selected.
+_PALETTE_RESOURCES = {
+    "classic": f"{RESOURCE_PREFIX}/palette-classic.css",
+    "classic-light": f"{RESOURCE_PREFIX}/palette-classic-light.css",
+}
+_palette_provider: Gtk.CssProvider | None = None
+# Above the bundled style.css, below the user's own gtk.css: the live dev
+# stylesheet replaces style.css, and a palette recolors both.
+_DEV_CSS_PRIORITY = Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 1
+_PALETTE_PRIORITY = Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 2
 
 _RESOURCE_PATH = os.path.join(os.path.dirname(__file__), "data", "uvr.gresource")
 #: Source (uncompiled) stylesheet, used by the dev-time live CSS loader.
@@ -29,11 +39,6 @@ _app_icon_registered = False
 _styles_loaded = False
 _dev_css_provider = None
 _dev_css_monitor = None
-
-
-def resource_bundle_path() -> str:
-    """Absolute path to the compiled ``uvr.gresource`` binary."""
-    return _RESOURCE_PATH
 
 
 def _packaging_app_icon_path() -> str:
@@ -160,6 +165,35 @@ def ensure_application_icon() -> bool:
     return _register_application_icon()
 
 
+def set_palette_override(name: str | None) -> None:
+    """Install or clear the Classic palette stylesheet for ``name``.
+
+    ``classic`` and ``classic-light`` load a display-wide provider that wins
+    over the Adwaita theme and the app's stylesheet, but not over the user's
+    own ``gtk.css``. Any other name removes
+    that provider and leaves Follow system, Light, and Dark unchanged.
+    """
+    global _palette_provider
+    display = Gdk.Display.get_default()
+    if display is not None and _palette_provider is not None:
+        Gtk.StyleContext.remove_provider_for_display(display, _palette_provider)
+        _palette_provider = None
+    resource = _PALETTE_RESOURCES.get(name or "")
+    if resource is None or display is None or not register_gresources():
+        return
+    provider = Gtk.CssProvider()
+    try:
+        provider.load_from_resource(resource)
+    except GLib.Error:
+        return
+    Gtk.StyleContext.add_provider_for_display(
+        display,
+        provider,
+        _PALETTE_PRIORITY,
+    )
+    _palette_provider = provider
+
+
 def load_application_styles() -> bool:
     """Load bundled ``style.css`` at application priority (idempotent).
 
@@ -189,7 +223,7 @@ def load_application_styles() -> bool:
 
 
 def _enable_dev_css(display: typing.Any) -> None:
-    """Load on-disk ``style.css`` at user priority with live reload."""
+    """Load on-disk ``style.css`` over the bundled copy with live reload."""
     global _dev_css_provider, _dev_css_monitor
     if _dev_css_provider is not None:
         return
@@ -201,7 +235,7 @@ def _enable_dev_css(display: typing.Any) -> None:
     Gtk.StyleContext.add_provider_for_display(
         display,
         provider,
-        Gtk.STYLE_PROVIDER_PRIORITY_USER,
+        _DEV_CSS_PRIORITY,
     )
 
     def reload_css(*_args: typing.Any) -> None:

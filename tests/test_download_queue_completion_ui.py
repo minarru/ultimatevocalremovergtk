@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from typing import Any, Callable, cast
 from unittest import mock
 
+from tests.gtk_layout_helpers import iter_descendants
 from tests.private_gtk import require_private_gtk
 
 
@@ -64,12 +65,7 @@ class DownloadQueueCompletionUiTests(unittest.TestCase):
                 threading.Event().wait(0.001)
 
         def labels(widget: Gtk.Widget) -> list[str]:
-            result = [widget.get_label()] if isinstance(widget, Gtk.Label) else []
-            child = widget.get_first_child()
-            while child is not None:
-                result.extend(labels(child))
-                child = child.get_next_sibling()
-            return result
+            return [w.get_label() for w in iter_descendants(widget) if isinstance(w, Gtk.Label)]
 
         def download(
             jobs: list[Any],

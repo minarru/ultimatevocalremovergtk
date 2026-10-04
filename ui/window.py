@@ -88,6 +88,7 @@ from .shared_settings import (
 from .startup import FirstFrameScheduler
 from .template import load_builder, object_from_builder
 from .views import METHOD_VIEWS
+from .widgets.color_fade import ColorFade
 from .widgets.columns import (
     build_columns_box,
     options_scroller,
@@ -232,6 +233,7 @@ class _SeparationTarget:
 class MainWindow(Adw.ApplicationWindow):
     def __init__(self, **kwargs: typing.Any):
         super().__init__(**kwargs)
+        self._color_fade = ColorFade(self)
 
         self.context = AppContext()
         self.settings = self.context.settings
@@ -337,6 +339,15 @@ class MainWindow(Adw.ApplicationWindow):
         self._subscribe_model_events()
         self.connect("map", self._on_window_mapped)
         self.connect("close-request", self._on_close_request)
+
+    def begin_color_fade(self) -> None:
+        """Capture the current frame so a color scheme change fades in."""
+        self._color_fade.begin()
+
+    def do_snapshot(self, snapshot: Gtk.Snapshot) -> None:
+        frame = Gtk.Snapshot()
+        Adw.ApplicationWindow.do_snapshot(self, frame)
+        self._color_fade.draw(snapshot, frame.to_node())
 
     # -- Construction -----------------------------------------------------------
 

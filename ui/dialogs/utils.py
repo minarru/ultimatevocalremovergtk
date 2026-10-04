@@ -150,12 +150,6 @@ def _follow_window_width(dialog: Adw.Dialog, parent: Gtk.Window | None, design: 
     closed_id = dialog.connect("closed", on_closed)
 
 
-def fill_dialog_width(widget: Gtk.Widget) -> None:
-    """Make dialog body widgets use the full content width."""
-    widget.set_hexpand(True)
-    widget.set_halign(Gtk.Align.FILL)
-
-
 def set_dialog_content(dialog: Adw.Dialog, content: Gtk.Widget) -> None:
     """Assign dialog body; an inner ``HeaderBar`` supplies the title and close button."""
     builder = load_builder("dialog-content")

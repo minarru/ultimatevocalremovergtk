@@ -1,7 +1,6 @@
 """Error Log updates preserve reading position and expose a floating tail action."""
 
 import os
-import time
 import unittest
 from collections.abc import Callable
 
@@ -27,14 +26,10 @@ class ErrorLogDesignTests(unittest.TestCase):
         self.view = errorlog._ERROR_LOG_VIEW
         assert self.view is not None
 
-    def wait_for(self, predicate: Callable[[], bool]):
-        from gi.repository import GLib
+    def wait_for(self, predicate: Callable[[], bool]) -> None:
+        from tests.gtk_layout_helpers import pump_until
 
-        deadline = time.monotonic() + 5
-        while not predicate():
-            self.assertLess(time.monotonic(), deadline, "Error Log did not settle")
-            GLib.MainContext.default().iteration(False)
-            time.sleep(0.005)
+        pump_until(predicate, message="Error Log did not settle")
 
     def test_empty_state_and_clear_action(self):
         from ui import errorlog

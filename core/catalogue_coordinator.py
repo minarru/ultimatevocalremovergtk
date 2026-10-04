@@ -109,11 +109,6 @@ class CatalogueSnapshot:
     #: retired row's filename still links to its catalogue entry.
     checkpoint_aliases: Mapping[str, Mapping[str, str]] = field(default_factory=dict)
 
-    def download_lists(
-        self,
-    ) -> tuple[Mapping[str, Any], Mapping[str, Any], Mapping[str, Any], Mapping[str, Any]]:
-        return self.vr, self.mdx, self.demucs, self.apollo
-
 
 def _readonly_catalogue(value: Mapping[str, Any]) -> Mapping[str, Any]:
     return MappingProxyType(dict(value))

@@ -89,6 +89,12 @@ class ConsoleView(Gtk.ScrolledWindow):
         # start before the first "Running inference..." message is written.
         if text == DONE and (self.is_empty() or self._ends_with_newline()):
             return
+        # Headings lead with a newline to separate them from earlier output;
+        # on an empty log that would leave a blank first line.
+        if self.is_empty():
+            text = text.lstrip("\n")
+            if not text:
+                return
 
         end = self._buffer.get_end_iter()
         self._buffer.insert(end, text)

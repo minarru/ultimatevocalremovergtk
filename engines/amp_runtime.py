@@ -12,7 +12,7 @@ autocast.
 from __future__ import annotations
 
 import os
-from contextlib import contextmanager, nullcontext
+from contextlib import contextmanager
 from typing import Any, Callable, Iterator, Optional
 
 import numpy as np
@@ -233,19 +233,3 @@ def build_ort_runner(session: Any, torch_device: Any) -> Callable[[torch.Tensor]
         )
 
     return run_numpy
-
-
-def forward_with_autocast(
-    device: Any,
-    fn: Callable[..., Any],
-    *args: Any,
-    settings: Any = None,
-    **kwargs: Any,
-) -> Any:
-    """Call ``fn`` under optional CUDA autocast."""
-    with maybe_autocast(device, settings):
-        return fn(*args, **kwargs)
-
-
-# Silence unused-import lint for nullcontext re-export convenience in callers.
-_ = nullcontext
