@@ -263,23 +263,6 @@ def reconcile_catalogue_evidence(
     )
 
 
-def with_catalogue_config_evidence(
-    meta: EntryMeta,
-    *,
-    stems: List[str],
-    target_instrument: Optional[str],
-    config_sha256: str,
-) -> EntryMeta:
-    """Reconcile newly parsed live YAML evidence through the shared boundary."""
-    return reconcile_catalogue_evidence(
-        meta,
-        live_stems=stems,
-        live_target_instrument=target_instrument,
-        live_config_sha256=config_sha256,
-        live_usable=bool(stems and config_sha256),
-    )
-
-
 @dataclass(frozen=True)
 class MergedCatalogues:
     vr: Dict[str, Any]

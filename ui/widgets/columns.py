@@ -28,12 +28,6 @@ def set_options_bottom_clearance(columns_box: Gtk.Widget, clearance_px: int) -> 
     columns_box.set_margin_bottom(clearance_px + _OPTIONS_CLEARANCE_GAP)
 
 
-def make_column() -> Gtk.Box:
-    """Build one vertical options column (top-aligned, expanding)."""
-    builder = load_builder("column")
-    return object_from_builder(builder, "column", Gtk.Box)
-
-
 def build_columns_box(left_groups: typing.Any = (), right_groups: typing.Any = ()):
     """Build the horizontal ``columns_box`` and its two child columns.
 

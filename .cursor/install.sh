@@ -6,7 +6,7 @@
 #      the audio runtime tools the ML stack shells out to (ffmpeg, rubberband,
 #      libsndfile), the C toolchain + Python headers that a couple of sdist-only
 #      wheels compile against (diffq), Xvfb for headless GTK tests, and
-#      glib-compile-resources for the icon bundle.
+#      blueprint-compiler and glib-compile-resources for the icon bundle.
 #   2. A --system-site-packages venv on the system Python so gi/GTK4/libadwaita
 #      resolve from the distro (matches install_packages.sh / CI), then the
 #      pinned ML + dev + type-stub dependencies on top via pip.
@@ -25,10 +25,11 @@ echo "==> Installing system dependencies (GTK4, libadwaita, audio tools, build d
 export DEBIAN_FRONTEND=noninteractive
 sudo apt-get update -qq
 sudo apt-get install -y --no-install-recommends \
-    python3-venv python3-pip python3-dev python3-gi \
+    python3-venv python3-pip python3-dev python3-gi python3-cairo \
     build-essential \
     gir1.2-gtk-4.0 gir1.2-adw-1 \
-    libglib2.0-bin libsndfile1 \
+    libglib2.0-bin libglib2.0-dev-bin blueprint-compiler \
+    libsndfile1 \
     ffmpeg rubberband-cli \
     xvfb
 

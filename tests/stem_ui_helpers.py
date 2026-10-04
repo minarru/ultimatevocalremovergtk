@@ -6,8 +6,7 @@ import typing
 from typing import Dict, List, Set
 
 from bundled.constants import ALL_STEMS
-from core.stem_selection import _QUICK_ALL
-from ui.widgets.rows import get_combo_value, set_combo_value
+from ui.widgets.rows import set_combo_value
 from ui.widgets.stem_only import SaveStemsSection
 
 
@@ -22,9 +21,6 @@ class _QuickExportProxy:
             set_combo_value(self._section._quick_row, name)
         finally:
             self._section._loading = was_loading
-
-    def active_name(self) -> str:
-        return get_combo_value(self._section._quick_row) or _QUICK_ALL
 
 
 class _SubsetProxy:
@@ -96,24 +92,5 @@ class _DemucsFocusProxy:
         finally:
             self._section._loading = was_loading
 
-    def active_name(self) -> str:
-        return self._section._demucs_active_name()
-
-    def focus_value(self) -> str:
-        return self._section._demucs_focus_value()
-
-    def is_quick_vocals(self) -> bool:
-        return self._section._demucs_is_quick_vocals()
-
-    def is_quick_instrumental(self) -> bool:
-        return self._section._demucs_is_quick_instrumental()
-
     def is_all_stems(self) -> bool:
         return self._section._demucs_is_all_stems()
-
-    def needs_export_filter(self) -> bool:
-        return self._section._demucs_needs_export_filter()
-
-    @property
-    def _focus_map(self) -> Dict[str, str]:
-        return self._section._demucs_focus_map

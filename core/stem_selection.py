@@ -655,15 +655,6 @@ class StemSelectionState:
             return pair_matches[0] if len(pair_matches) == 1 else None
         return _route_for_exact_backend_stem(self.routes, self.exclusive_secondary)
 
-    def _concept_for_flag(self, flag: str) -> str:
-        if flag == self.primary_key:
-            route = self._primary_route()
-            return route.concept if route is not None else _TOGGLE_ALL
-        if flag == self.secondary_key:
-            route = self._secondary_route()
-            return route.concept if route is not None else _TOGGLE_ALL
-        return _TOGGLE_ALL
-
     def _flag_name_for_route(self, route: StemRoute) -> str:
         if self.stem_pair_id:
             flags = exclusive_flags_for_stem_pair(route.concept, self.stem_pair_id)

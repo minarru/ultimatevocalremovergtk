@@ -80,43 +80,9 @@ def image_from_icon_name(icon_name: str, size: int = 16) -> Gtk.Image:
     return image
 
 
-def _apply_icon_name(image: Gtk.Image, icon_name: str, size: int = 16) -> None:
-    display = Gdk.Display.get_default()
-    if display is not None:
-        theme = Gtk.IconTheme.get_for_display(display)
-        if theme.has_icon(icon_name):
-            paintable = theme.lookup_icon(
-                icon_name,
-                None,
-                size,
-                1,
-                Gtk.TextDirection.LTR,
-                _ICON_LOOKUP_FLAGS,
-            )
-            image.set_from_paintable(paintable)
-            return
-    image.set_from_icon_name(icon_name)
-
-
 def add_row_icon(row: typing.Any, icon_name: str) -> None:
     """Add a leading symbolic ``icon_name`` prefix to an ``Adw`` row."""
     row.add_prefix(image_from_icon_name(icon_name))
-
-
-def set_row_icon(row: typing.Any, icon_name: Optional[str]) -> None:
-    """Set or clear the leading icon on an ``Adw`` row (updates in place)."""
-    image = fetch(row, "_uvr_row_icon", None)
-    if not icon_name:
-        if image is not None:
-            image.unparent()
-            stash(row, "_uvr_row_icon", None)
-        return
-    if image is None:
-        image = image_from_icon_name(icon_name)
-        row.add_prefix(image)
-        stash(row, "_uvr_row_icon", image)
-    else:
-        _apply_icon_name(image, icon_name)
 
 
 def make_combo_row(

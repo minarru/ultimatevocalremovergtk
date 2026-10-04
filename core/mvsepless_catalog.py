@@ -239,21 +239,6 @@ def _read_disk_cache() -> Optional[Dict[str, Any]]:
     return None
 
 
-def _read_disk_cache_entry() -> Optional[Tuple[Dict[str, Any], float]]:
-    """Return ``(data, fetched_at)`` from the on-disk cache, or ``None``."""
-    try:
-        with open(_cache_path(), "r", encoding="utf-8") as handle:
-            payload = json.load(handle)
-        if not isinstance(payload, dict) or not isinstance(payload.get("data"), dict):
-            return None
-        fetched_at = payload.get("fetched_at")
-        if not isinstance(fetched_at, (int, float)):
-            return None
-        return payload["data"], float(fetched_at)
-    except (OSError, ValueError, TypeError):
-        return None
-
-
 def _start_background_refresh() -> None:
     """Refresh the catalogue off the main loop; at most one in flight."""
     global _refresh_in_flight

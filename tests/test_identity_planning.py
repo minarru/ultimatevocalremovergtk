@@ -586,7 +586,6 @@ class ResolvedPlanIdentityTests(unittest.TestCase):
         with (
             tempfile.NamedTemporaryFile(suffix=".wav") as handle,
             patch("core.mdx_config_fetch.ensure_mdx_c_config", return_value=True),
-            patch("core.downloads.ensure_mdx_c_config", return_value=True),
         ):
             plan = resolver.resolve(
                 JobSpec("separate", settings, (handle.name,), "/tmp/out"),

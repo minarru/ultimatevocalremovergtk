@@ -61,7 +61,6 @@ from .download_sizes import (
 )
 from .download_transfer import DownloadTransferService
 from .json_store import locked_json_path
-from .mdx_config_fetch import ensure_mdx_c_config
 from .mvsepless_catalog import (
     unsupported_mvsepless_downloads,
     unsupported_reason_for_label,
@@ -815,9 +814,6 @@ class DownloadManager:
             }
         rows = self.unsupported_download_list.get(model_type) or []
         return {model_type: list(rows)} if rows else {}
-
-    def _ensure_mdx_c_config(self, config: str) -> None:
-        ensure_mdx_c_config(config)
 
     # -- Resolve a selection to concrete download jobs --------------------------
 

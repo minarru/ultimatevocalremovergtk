@@ -243,10 +243,6 @@ class LogPanel(Gtk.Box):
         self._panel_clamp.set_maximum_size(width)
         self._panel_clamp.set_tightening_threshold(width)
 
-    def collapsed_overlay_height(self) -> int:
-        """Alias for :meth:`options_overlay_clearance`."""
-        return self.options_overlay_clearance()
-
     def set_progress_pulse_step(self, step: float) -> None:
         self._progressbar.set_pulse_step(step)
 

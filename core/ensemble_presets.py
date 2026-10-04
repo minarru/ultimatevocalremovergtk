@@ -83,10 +83,6 @@ def resolve_member_tag(tag: str, repo: typing.Any) -> str:
         return tag
 
 
-def resolve_member_tags(tags: Sequence[str], repo: typing.Any) -> List[str]:
-    return [resolve_member_tag(tag, repo) for tag in tags]
-
-
 def _installed_basenames(repo: typing.Any, arch: str) -> set:
     if arch == VR_ARCH_TYPE:
         return set(repo.list_vr_models())
