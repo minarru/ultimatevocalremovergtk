@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 import re
 import unittest
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -45,7 +46,9 @@ OPENING = {
     "plan-review": 560,
     "manual-downloads": 560,
 }
-MIN_HEIGHT = {"model-picker": 480, "plan-review": 400}
+# The run-failure dialog has no minimum height: its content is shorter than
+# 294, and a minimum collapsed its summary TextView to nothing.
+MIN_HEIGHT = {"model-picker": 480, "plan-review": 400, "error-dialog": 0}
 # Model Options bounds its height to the window in Python.
 PYTHON_HEIGHT = {"model_options_sheet"}
 
@@ -61,6 +64,14 @@ def dialog_properties(source: str) -> dict[str, str]:
     head = re.split(r"\bchild\s*:", body, maxsplit=1)[0]
     head = re.split(r"\n\s*[A-Z]\w*\.\w+", head, maxsplit=1)[0]
     return dict(re.findall(r"([\w-]+)\s*:\s*([^;{}]+?)\s*;", head))
+
+
+def _descendants(widget: Any) -> Iterator[Any]:
+    yield widget
+    child = widget.get_first_child()
+    while child is not None:
+        yield from _descendants(child)
+        child = child.get_next_sibling()
 
 
 def dialog_blueprints() -> dict[str, dict[str, str]]:
@@ -176,6 +187,29 @@ class PresentedWidthTests(unittest.TestCase):
         dialog.force_close()
         self._present(dialog, 1000)
         self.assertEqual(dialog.get_content_width(), 600)
+
+    def test_run_failure_summary_gets_its_height(self) -> None:
+        # A minimum dialog height collapsed the summary TextView to 0 px.
+        from gi.repository import Gtk
+
+        import ui.errorlog as errorlog
+        from tests.gtk_layout_helpers import resize_window, wait_for_dialog_open
+
+        resize_window(self.parent, 1040, 720)
+        errorlog.present_error_dialog(
+            self.parent,
+            heading="Separation Failed",
+            exception=RuntimeError("CUDA error: device-side assert triggered"),
+            formatted_log="Traceback",
+        )
+        dialog = errorlog._ACTIVE_ERROR_DIALOG
+        assert dialog is not None
+        self.addCleanup(dialog.force_close)
+        wait_for_dialog_open(dialog)
+        view = next(w for w in _descendants(dialog) if isinstance(w, Gtk.TextView))
+        minimum, _natural, _b, _nb = view.measure(Gtk.Orientation.VERTICAL, view.get_width())
+        self.assertGreater(minimum, 0)
+        self.assertGreaterEqual(view.get_height(), minimum)
 
     def test_libadwaita_sized_dialogs_are_not_capped(self) -> None:
         from gi.repository import Adw
