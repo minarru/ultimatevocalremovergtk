@@ -81,8 +81,3 @@ def pitch_shift(mix: typing.Any):
     resampled_audio = signal.resample_poly(mix, new_sr, 44100)
 
     return resampled_audio
-
-
-def list_to_dictionary(lst: typing.Any):
-    dictionary = {item: index for index, item in enumerate(lst)}
-    return dictionary

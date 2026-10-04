@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Dict, Iterable, Optional, Sequence, Tuple
+from typing import Dict, Optional, Sequence, Tuple
 
 from bundled.constants import (
     AUDIO_AVERAGE,
@@ -146,19 +146,6 @@ def is_single_token_ensemble_type(value: Optional[str]) -> bool:
     """True for 4-stem / multi-stem styles that store one algorithm atom."""
     text = (value or "").strip()
     return text in set(ENSEMBLE_ALGORITHMS)
-
-
-def normalize_ensemble_algorithm(
-    algorithm: Optional[str],
-    *,
-    algorithms: Iterable[str] = ENSEMBLE_ALGORITHMS,
-) -> str:
-    """Return a known algorithm atom or Max Spec."""
-    allowed = set(algorithms)
-    text = (algorithm or "").strip()
-    if text in allowed:
-        return text
-    return MAX_SPEC
 
 
 def algorithm_blurb(algorithm: Optional[str]) -> str:

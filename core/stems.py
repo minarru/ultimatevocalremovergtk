@@ -536,8 +536,7 @@ def exclusive_flags_for_focus(
     """Return ``(primary_only, secondary_only)``, or ``None`` if focus is empty.
 
     A focus that names neither stem — or both — yields ``(False, False)``:
-    export everything rather than guess. Callers that can warn should ask
-    :func:`focus_is_resolvable` first.
+    export everything rather than guess.
     """
     if not str(focus or "").strip():
         return None
@@ -565,28 +564,6 @@ def _plain_family(bucket: StemBucket) -> StemBucket:
     if bucket in _INST_FAMILY:
         return StemBucket.INSTRUMENTAL
     return bucket
-
-
-def exclusive_flags_for_model(model: Any, focus: str) -> tuple[bool, bool] | None:
-    """:func:`exclusive_flags_for_focus` with the context read off ``model``."""
-    return exclusive_flags_for_focus(
-        focus,
-        primary_stem=getattr(model, "primary_stem", None),
-        secondary_stem=getattr(model, "secondary_stem", None),
-        stem_count=model_stem_count(model),
-        is_karaoke=bool(getattr(model, "is_karaoke", False)),
-        is_bv=bool(getattr(model, "is_bv_model", False)),
-    )
-
-
-def focus_is_resolvable(model: Any, focus: str) -> bool:
-    """True when ``focus`` is empty or names exactly one of the model's stems.
-
-    False means the exclusive pick cannot be honored and the run will fall
-    back to exporting every stem — the condition worth reporting at plan time.
-    """
-    flags = exclusive_flags_for_model(model, focus)
-    return flags is None or flags != (False, False)
 
 
 def focus_bucket(token: str) -> StemBucket:

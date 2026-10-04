@@ -18,13 +18,9 @@ def _stub_config_fetch(test: unittest.TestCase) -> None:
     when it is absent locally. Tests only care about the job list, so pretend
     the config is unavailable — the same outcome as an offline machine.
     """
-    for target in (
-        "core.mdx_config_fetch.ensure_mdx_c_config",
-        "core.downloads.ensure_mdx_c_config",
-    ):
-        patcher = patch(target, return_value=False)
-        patcher.start()
-        test.addCleanup(patcher.stop)
+    patcher = patch("core.mdx_config_fetch.ensure_mdx_c_config", return_value=False)
+    patcher.start()
+    test.addCleanup(patcher.stop)
 
 
 class DownloadManagerResolveTests(unittest.TestCase):

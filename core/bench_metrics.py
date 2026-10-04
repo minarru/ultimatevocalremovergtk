@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 from dataclasses import asdict, dataclass
-from typing import Iterable
 
 import numpy as np
 
@@ -63,11 +62,6 @@ def list_stem_basenames(directory: str) -> set[str]:
     }
 
 
-def list_wav_basenames(directory: str) -> set[str]:
-    """Deprecated alias of :func:`list_stem_basenames` (kept for older tests)."""
-    return list_stem_basenames(directory)
-
-
 def array_diff_stats(a: np.ndarray, b: np.ndarray) -> tuple[float, float, int, int]:
     """Return ``(peak_abs_diff, rms_diff, samples, channels)`` for two arrays.
 
@@ -123,16 +117,6 @@ def compare_stem_dirs(dir_a: str, dir_b: str) -> StemCompareReport:
         only_a=sorted(names_a - names_b),
         only_b=sorted(names_b - names_a),
     )
-
-
-def sanitize_env_label(env_assignments: Iterable[str]) -> str:
-    """Turn ``KEY=val`` assignments into a filesystem-safe short label."""
-    parts = []
-    for item in env_assignments:
-        text = str(item).strip().replace("=", "_").replace("/", "_").replace(" ", "")
-        if text:
-            parts.append(text)
-    return "_".join(parts) or "env"
 
 
 def parse_env_assignment(text: str) -> tuple[str, str]:

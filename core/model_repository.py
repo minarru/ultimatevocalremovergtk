@@ -639,17 +639,6 @@ class ModelRepository:
             )
             return None
 
-    def stem_labels_for_model(self, settings: Settings, process_method: str, model_name: str):
-        """Return ``(primary_stem, secondary_stem)`` for the selected model.
-
-        Used to label the per-model stem-only toggles; returns ``(None, None)``
-        when the model can't be resolved without prompting.
-        """
-        model = self.resolve_model_dry(settings, process_method, model_name)
-        if model is None:
-            return None, None
-        return model.primary_stem, model.secondary_stem
-
 
 def _dry_check_config(
     settings: Settings,

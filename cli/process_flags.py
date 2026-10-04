@@ -8,10 +8,9 @@ remaining the final CLI layer.
 from __future__ import annotations
 
 import argparse
-from typing import Any, Optional, Sequence
+from typing import Any, Optional
 
 from core.settings.access import parse_setting_assignment
-from core.settings.coerce import enum_value
 from core.types import FlacBitDepth, Mp3Bitrate, OpusBitrate, SaveFormat, WavType
 
 # dest -> settings path for symmetric BooleanOptionalAction flags.
@@ -200,13 +199,3 @@ def collect_overrides(
         overrides.append(parse_setting_assignment(item))
 
     return overrides
-
-
-def overrides_to_argv(overrides: Sequence[tuple[str, Any]]) -> list[str]:
-    """Serialize override pairs for a ``separate`` subprocess."""
-    argv: list[str] = []
-    for path, raw_value in overrides:
-        value = enum_value(raw_value)
-        text = str(value).lower() if isinstance(value, bool) else str(value)
-        argv.extend(["--set", f"{path}={text}"])
-    return argv
