@@ -319,7 +319,6 @@ def _initialize_scale_row(
     stash(row, "_uvr_value_label", value_label)
     stash(row, "_uvr_values", None)
     stash(row, "_uvr_digits", 0)
-    stash(row, "_uvr_store_float", False)
 
     def on_changed(*_args: typing.Any):
         values = fetch(row, "_uvr_values")
@@ -559,11 +558,6 @@ def get_scale_row_value(row: Adw.ActionRow) -> Optional[str]:
     return str(int(round(value)))
 
 
-def get_scale_row_float(row: Adw.ActionRow) -> float:
-    """Read the slider's current numeric value."""
-    return fetch(row, "_uvr_scale").get_value()
-
-
 def set_scale_row_value(row: Adw.ActionRow, value: typing.Any) -> bool:
     """Set a scale row from a stored settings value."""
     if value is None:
@@ -586,8 +580,3 @@ def set_scale_row_value(row: Adw.ActionRow, value: typing.Any) -> bool:
         return False
     _update_scale_value(row)
     return True
-
-
-def set_scale_row_float(row: Adw.ActionRow, value: float) -> None:
-    fetch(row, "_uvr_scale").set_value(value)
-    _update_scale_value(row)

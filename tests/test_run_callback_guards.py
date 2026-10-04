@@ -128,7 +128,7 @@ class ErrorAttributionTests(unittest.TestCase):
                         controller.fail_to_start('failed', ValueError('failed'))
                 self.assertIsNone(controller.running_target)
                 self.assertEqual(log.call_args.args[0], 'Ensemble')
-                self.assertEqual(dialog.call_args.kwargs['heading'], 'Ensemble failed')
+                self.assertEqual(dialog.call_args.kwargs['heading'], 'Ensemble Failed')
 
 
 class StopTimeoutUiTests(unittest.TestCase):

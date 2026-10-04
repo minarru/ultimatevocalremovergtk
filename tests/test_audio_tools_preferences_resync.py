@@ -4,7 +4,7 @@
 a cheap alternative to a full reload. For Audio Tools, ``on_activated`` used to
 call only ``_sync_shared_from_settings()``, which covers the block shared with
 every tab (inputs/output/format/GPU/sample mode) but not the Audio-Tools-only
-"Normalize output" switch or amplification threshold spin row — both editable
+"Limit peaks above full scale" switch or amplification threshold spin row — both editable
 from Preferences (see ``ui/preferences.py``). A user who changes normalization
 in Preferences while Separation or Ensemble is the visible tab would see the
 Audio Tools switch keep showing the old value for the rest of the session.
@@ -75,7 +75,7 @@ class AudioToolsPreferencesResyncTests(unittest.TestCase):
 
         self.assertTrue(
             page.normalize_row.get_active(),
-            "the Normalize output switch must pick up a Preferences edit "
+            "the peak-limit switch must pick up a Preferences edit "
             "through the light resync path (on_activated), not just a full "
             "reload",
         )

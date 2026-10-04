@@ -41,6 +41,7 @@ def _model_info(record: Any, repo: Any, *, detailed: bool = False) -> dict[str, 
             model_hash_table=repo.model_hash_table,
             on_unrecognized=None,
             is_dry_check=True,
+            persistent_hash_table=repo.persistent_model_hash_table(),
         )
         local = (
             ModelRegistryService(repo).read_local(record.method, data.model_hash)

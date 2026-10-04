@@ -219,6 +219,12 @@ def save_format(
     if not os.path.isfile(output_path):
         raise AudioExportError(f"Converted audio export was not created: {output_path}")
 
+    if save_format_sel != FLAC:
+        # Lossy files decode slowly; read the waveform from the WAV while it still exists.
+        from .waveform import compute_peaks, offer_peaks
+
+        offer_peaks(output_path, lambda: compute_peaks(audio_path))
+
     try:
         os.remove(audio_path)
     except OSError as exc:

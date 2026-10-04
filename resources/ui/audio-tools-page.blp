@@ -40,18 +40,11 @@ Gtk.Box page {
   }
 }
 
-Adw.PreferencesGroup files_group {
-  title: "Files";
+// Input, Output and Processing come from page-groups.blp. The Tool group holds
+// the tool picker; the active tool's rows move in from its holder group below.
+Adw.PreferencesGroup tool_group {
+  title: "Tool";
 
-  [header-suffix]
-  Gtk.Button view_inputs_button {
-    icon-name: "view-list-symbolic";
-    valign: center;
-    styles ["flat"]
-  }
-}
-
-Adw.PreferencesGroup select_group {
   Adw.ComboRow tool_row {
     title: "Audio tool";
 
@@ -62,171 +55,117 @@ Adw.PreferencesGroup select_group {
   }
 }
 
-Gtk.Stack tool_stack {
-  vhomogeneous: false;
+// Per-tool holders: never placed in a column. Each description becomes the
+// tool picker's subtitle while that tool is selected. Matchering has none.
+Adw.PreferencesGroup manual_ensemble_group {
+  description: "Combine two or more audio files";
 
-  Gtk.StackPage {
-    name: "Manual Ensemble";
-    child: Gtk.Box manual_ensemble_page {
-      orientation: vertical;
-      spacing: 18;
-
-      Adw.PreferencesGroup {
-        description: "Combine two or more audio files";
-
-        Adw.ComboRow algorithm_row {
-          title: "Algorithm";
-        }
-
-        Adw.SwitchRow wav_ensemble_row {
-          title: "Ensemble waveforms";
-          subtitle: "Combine in the time domain instead of spectrograms";
-        }
-      }
-    };
+  Adw.ComboRow algorithm_row {
+    title: "Algorithm";
   }
 
-  Gtk.StackPage {
-    name: "Time Stretch";
-    child: Gtk.Box time_stretch_page {
-      orientation: vertical;
-      spacing: 18;
-
-      Adw.PreferencesGroup {
-        description: "Change playback rate (requires pyrubberband)";
-
-        Adw.SpinRow time_rate_row {
-          title: "Rate";
-          adjustment: time_rate_adjustment;
-          digits: 2;
-        }
-      }
-    };
-  }
-
-  Gtk.StackPage {
-    name: "Change Pitch";
-    child: Gtk.Box pitch_page {
-      orientation: vertical;
-      spacing: 18;
-
-      Adw.PreferencesGroup {
-        description: "Pitch shift in semitones (requires pyrubberband)";
-
-        Adw.SpinRow pitch_rate_row {
-          title: "Semitones";
-          adjustment: pitch_rate_adjustment;
-          digits: 2;
-        }
-
-        Adw.SwitchRow time_correction_row {
-          title: "Time correction";
-          subtitle: "Preserve length while shifting pitch";
-        }
-      }
-    };
-  }
-
-  Gtk.StackPage {
-    name: "Align Inputs";
-    child: Gtk.Box align_page {
-      orientation: vertical;
-      spacing: 18;
-
-      Adw.PreferencesGroup {
-        title: "Alignment settings";
-
-        Adw.ComboRow time_window_row {
-          title: "Time window";
-        }
-
-        Adw.ComboRow intro_row {
-          title: "Intro analysis";
-        }
-
-        Adw.ComboRow db_row {
-          title: "Volume adjustment";
-        }
-
-        Adw.ExpanderRow align_advanced_row {
-          title: "Advanced align options";
-
-          Adw.ComboRow phase_option_row {
-            title: "Secondary phase";
-          }
-
-          Adw.ComboRow phase_shifts_row {
-            title: "Phase shifts";
-          }
-
-          Adw.SwitchRow save_align_row {
-            title: "Save aligned track";
-          }
-
-          Adw.SwitchRow match_silence_row {
-            title: "Silence matching";
-          }
-
-          Adw.SwitchRow spec_match_row {
-            title: "Spectral matching";
-          }
-        }
-      }
-    };
-  }
-
-  Gtk.StackPage {
-    name: "Apollo Restore";
-    child: Gtk.Box apollo_page {
-      orientation: vertical;
-      spacing: 18;
-
-      Adw.PreferencesGroup apollo_group {
-        description: "Restore codec-distorted audio (e.g. low-bitrate MP3s)";
-
-        [header-suffix]
-        Gtk.Button apollo_folder_button {
-          icon-name: "folder-symbolic";
-          styles ["flat"]
-        }
-
-        Adw.ComboRow apollo_model_row {
-          title: "Apollo model";
-        }
-
-        Adw.SpinRow apollo_overlap_row {
-          title: "Overlap";
-          adjustment: apollo_overlap_adjustment;
-          digits: 0;
-        }
-
-        Adw.SpinRow apollo_chunk_row {
-          title: "Chunk size";
-          adjustment: apollo_chunk_adjustment;
-          digits: 0;
-        }
-      }
-    };
+  Adw.SwitchRow wav_ensemble_row {
+    title: "Ensemble waveforms";
+    subtitle: "Combine in the time domain instead of spectrograms";
   }
 }
 
-Adw.PreferencesGroup processing_group {
-  title: "Processing";
-}
+Adw.PreferencesGroup time_stretch_group {
+  description: "Change playback rate (requires pyrubberband)";
 
-Adw.SwitchRow apollo_gpu_row {
-  title: "GPU conversion";
-  subtitle: "Use CUDA when available";
-
-  [prefix]
-  Gtk.Image {
-    icon-name: "uvr-pci-card-symbolic";
+  Adw.SpinRow time_rate_row {
+    title: "Rate";
+    adjustment: time_rate_adjustment;
+    digits: 2;
   }
 }
 
+Adw.PreferencesGroup pitch_group {
+  description: "Pitch shift in semitones (requires pyrubberband)";
+
+  Adw.SpinRow pitch_rate_row {
+    title: "Semitones";
+    adjustment: pitch_rate_adjustment;
+    digits: 2;
+  }
+
+  Adw.SwitchRow time_correction_row {
+    title: "Time correction";
+    subtitle: "Preserve length while shifting pitch";
+  }
+}
+
+Adw.PreferencesGroup align_group {
+  description: "Line up two recordings of the same song";
+
+  Adw.ComboRow time_window_row {
+    title: "Time window";
+  }
+
+  Adw.ComboRow intro_row {
+    title: "Intro analysis";
+  }
+
+  Adw.ComboRow db_row {
+    title: "Volume adjustment";
+  }
+
+  Adw.ExpanderRow align_advanced_row {
+    title: "Advanced align options";
+
+    Adw.ComboRow phase_option_row {
+      title: "Secondary phase";
+    }
+
+    Adw.ComboRow phase_shifts_row {
+      title: "Phase shifts";
+    }
+
+    Adw.SwitchRow save_align_row {
+      title: "Save aligned track";
+    }
+
+    Adw.SwitchRow match_silence_row {
+      title: "Silence matching";
+    }
+
+    Adw.SwitchRow spec_match_row {
+      title: "Spectral matching";
+    }
+  }
+}
+
+Adw.PreferencesGroup apollo_group {
+  description: "Restore codec-distorted audio (e.g. low-bitrate MP3s)";
+
+  Adw.ComboRow apollo_model_row {
+    title: "Apollo model";
+
+    [suffix]
+    Gtk.Button apollo_folder_button {
+      icon-name: "folder-symbolic";
+      valign: center;
+      styles ["flat"]
+    }
+  }
+
+  Adw.SpinRow apollo_overlap_row {
+    title: "Overlap";
+    adjustment: apollo_overlap_adjustment;
+    digits: 0;
+  }
+
+  Adw.SpinRow apollo_chunk_row {
+    title: "Chunk size";
+    adjustment: apollo_chunk_adjustment;
+    digits: 0;
+  }
+}
+
+// Audio-Tools-only Processing rows, appended after the shared GPU switch.
 Adw.SwitchRow normalize_row {
-  title: "Normalize output";
-  subtitle: "Limit peaks to prevent clipping";
+  title: "Limit peaks above full scale";
+  subtitle: "Scale down individual outputs with peaks above 1.0; this does not normalize loudness";
 }
 
 Adw.SpinRow amplification_row {
@@ -234,9 +173,4 @@ Adw.SpinRow amplification_row {
   subtitle: "Raise quiet outputs to this peak level (0 = off)";
   adjustment: amplification_adjustment;
   digits: 2;
-}
-
-Adw.SwitchRow testing_row {
-  title: "Settings test";
-  subtitle: "Append a timestamp to output names to avoid overwrites";
 }

@@ -176,3 +176,24 @@ scale marks mark indicator {
 
 /* Separate-file shortcuts remain secondary to the selected output controls. */
 .stem-selection-action { font-weight: normal; }
+
+/* Compare stems dialog: the audible row, keycaps and the transport. */
+.uvr-compare-row.uvr-compare-active { background-color: alpha(@accent_bg_color, 0.08); }
+.uvr-compare-row.uvr-compare-active:hover { background-color: alpha(@accent_bg_color, 0.12); }
+.uvr-keycap {
+  padding: 0 6px;
+  min-width: 10px;
+  border-radius: 5px;
+  background-color: alpha(currentColor, 0.08);
+  box-shadow: inset 0 -1px alpha(currentColor, 0.15);
+  font-size: 0.85em;
+  font-feature-settings: "tnum";
+}
+.uvr-pill {
+  padding: 0 7px;
+  border-radius: 99px;
+  background-color: alpha(currentColor, 0.1);
+  font-size: 0.8em;
+  font-weight: bold;
+}
+.uvr-transport-play { -gtk-icon-size: 20px; }

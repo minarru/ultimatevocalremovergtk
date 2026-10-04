@@ -21,6 +21,7 @@ archived; see [docs/mirroring.md](docs/mirroring.md).
 - Run VR Architecture, MDX-Net, MDX23C, Band-Split/Mel-Band RoFormer, SCNet,
   BandIt, and Demucs models.
 - Find and install supported models through the built-in **Download Center**.
+- Listen to the results inside the app and switch between stems at the same moment.
 - Combine models with curated or custom ensembles.
 - Inspect, stretch, pitch-shift, align, or match audio, and restore it with
   **Apollo**.
@@ -73,7 +74,8 @@ system dependencies yourself and then run `./install_packages.sh` without
 ```bash
 sudo apt update
 sudo apt install -y ffmpeg python3-venv python3-pip python3-gi gir1.2-gtk-4.0 \
-    gir1.2-adw-1 libglib2.0-bin libsndfile1 rubberband-cli
+    gir1.2-adw-1 libglib2.0-bin libsndfile1 rubberband-cli \
+    gir1.2-gstreamer-1.0 gir1.2-gst-plugins-base-1.0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good
 ```
 
 </details>
@@ -82,7 +84,8 @@ sudo apt install -y ffmpeg python3-venv python3-pip python3-gi gir1.2-gtk-4.0 \
 <summary>Fedora</summary>
 
 ```bash
-sudo dnf install -y ffmpeg python3-pip python3-gobject gtk4 libadwaita libsndfile rubberband
+sudo dnf install -y ffmpeg python3-pip python3-gobject gtk4 libadwaita libsndfile rubberband \
+    gstreamer1 gstreamer1-plugins-base gstreamer1-plugins-good
 ```
 
 </details>
@@ -92,7 +95,7 @@ sudo dnf install -y ffmpeg python3-pip python3-gobject gtk4 libadwaita libsndfil
 
 ```bash
 sudo pacman -Syu --needed ffmpeg python-pip python-virtualenv python-gobject gtk4 \
-    libadwaita glib2 libsndfile rubberband
+    libadwaita glib2 libsndfile rubberband gstreamer gst-plugins-base gst-plugins-good
 ```
 
 </details>
@@ -101,7 +104,8 @@ sudo pacman -Syu --needed ffmpeg python-pip python-virtualenv python-gobject gtk
 <summary>openSUSE</summary>
 
 ```bash
-sudo zypper install -y ffmpeg python3-pip python3-gobject gtk4 libadwaita libsndfile1 rubberband
+sudo zypper install -y ffmpeg python3-pip python3-gobject gtk4 libadwaita libsndfile1 rubberband \
+    typelib-1_0-Gst-1_0 typelib-1_0-GstPbutils-1_0 gstreamer-plugins-base gstreamer-plugins-good
 ```
 
 </details>
@@ -189,7 +193,7 @@ git pull
 ```
 
 Check [Releases](https://github.com/minarru/ultimatevocalremovergtk/releases)
-for release notes. **Application Version** in the Settings menu compares the
+for release notes. **Check for Updates** in the main menu compares the
 running version with the current GitHub release metadata.
 
 ## Troubleshooting and support
@@ -199,6 +203,7 @@ running version with the current GitHub release metadata.
 | `gi` or GTK import errors | Install your distro's GTK4, libadwaita, and Python GObject packages, then recreate `.venv` with `./install_packages.sh` |
 | FFmpeg errors on non-WAV files | Install `ffmpeg` and confirm it is on `PATH` |
 | Time Stretch or Change Pitch unavailable | Install `rubberband-cli` |
+| No **Compare** button after a run | Install GStreamer's GI bindings plus base and good plugins (for example `gir1.2-gstreamer-1.0 gir1.2-gst-plugins-base-1.0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good`) and restart the app |
 | No models in a picker | Open Download Center and install a supported model for that method |
 | Console warns that an MDX-Net model is running on the CPU | Run `./install_packages.sh --cuda` to install `onnxruntime-gpu`; if it is already installed, start the app from a terminal to see which CUDA library ONNX Runtime could not load |
 | Processing fails | Open **Error Log** or press `Ctrl+E`; enable Debug or Trace under **Preferences → General → Diagnostics** when more detail is needed |

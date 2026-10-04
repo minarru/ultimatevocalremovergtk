@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   viewBox="0 0 16 16"
+   width="16"
+   height="16"
+   version="1.1"
+   id="svg1"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <!-- GNOME Icon Development Kit: arrow-right-10-symbolic with the "10" redrawn as "5"; static outline export, 2026-10-03. CC0-1.0. -->
+  <title
+     id="title1">skip-forward-5</title>
+  <defs
+     id="defs1"
+     fill="#2e3436"
+     stroke="none"
+     class="foreground foreground-fill" />
+  <path
+     style="fill:#2e3436;stroke-linecap:round;stroke-linejoin:round"
+     d="M 5 0 A 1 1 0 0 0 4.2929688 0.29296875 A 1 1 0 0 0 4.2929688 1.7070312 L 6.5761719 3.9902344 L 4.0078125 3.9902344 C 1.8105126 3.9902344 0.0078125 5.7929452 0.0078125 7.9902344 L 0.0078125 10 C 0.0078125 12.197323 1.8105327 14 4.0078125 14 A 1 1 0 0 0 5.0078125 13 A 1 1 0 0 0 4.0078125 12 C 2.8913723 12 2.0078125 11.116477 2.0078125 10 L 2.0078125 7.9902344 C 2.0078125 6.8738236 2.8913924 5.9902344 4.0078125 5.9902344 L 6.5957031 5.9902344 L 4.2929688 8.2929688 A 1 1 0 0 0 4.2929688 9.7070312 A 1 1 0 0 0 5.7070312 9.7070312 L 9.7070312 5.7070312 A 1.0001 1.0001 0 0 0 9.7070312 4.2929688 L 5.7070312 0.29296875 A 1 1 0 0 0 5 0 z M 10 8 A 1.0001 1.0001 0 0 0 9 9 L 9 11.5 A 1.0001 1.0001 0 0 0 10 12.5 L 11.75 12.5 C 12.083333 12.5 12.206059 12.58899 12.314453 12.710938 C 12.422847 12.83288 12.5 13.034722 12.5 13.25 C 12.5 13.465278 12.42285 13.667119 12.314453 13.789062 C 12.206059 13.911005 12.083333 14 11.75 14 L 10 14 A 1 1 0 0 0 9 15 A 1 1 0 0 0 10 16 L 11.75 16 C 12.583333 16 13.335608 15.651494 13.810547 15.117188 C 14.285486 14.58288 14.5 13.909722 14.5 13.25 C 14.5 12.590278 14.285486 11.917119 13.810547 11.382812 C 13.335608 10.848505 12.583333 10.5 11.75 10.5 L 11 10.5 L 11 10 L 14 10 A 1 1 0 0 0 15 9 A 1 1 0 0 0 14 8 L 10 8 z "
+     id="right" />
+  <metadata
+     id="metadata1">
+    <rdf:RDF>
+      <Work>
+        <license
+           rdf:resource="https://creativecommons.org/publicdomain/zero/1.0/" />
+        <dc:subject>
+          <rdf:Bag>
+            <rdf:li>arrow right 5 skip media skip-forward-5</rdf:li>
+          </rdf:Bag>
+        </dc:subject>
+        <dc:creator>
+          <Agent>
+            <dc:title>Jakub Steiner</dc:title>
+          </Agent>
+        </dc:creator>
+      </Work>
+    </rdf:RDF>
+  </metadata>
+</svg>

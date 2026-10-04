@@ -12,6 +12,12 @@ matching resource bundle as described in [the environment guide](environment.md#
 - `ui/widgets/file_chooser.py`, `dual_inputs.py`, and `format_row.py` load the
   fixed chooser and format controls. Selected paths, pair summaries, format
   values, native file dialogs, and drop callbacks are runtime data and behavior.
+- `ui/widgets/page_groups.py` owns `resources/ui/page-groups.blp`, the shared
+  Input, Output and Processing groups used by all three run pages. Pages pass
+  callbacks and settings getters; the builder attaches the shared tooltips and
+  exposes the rows. `ui/widgets/row_slot.py` reparents rows at runtime
+  (Separation's Output lead rows, Audio Tools' Tool rows) and requires them to
+  be direct list-box rows of their `Adw.PreferencesGroup`.
 - `ui/widgets/vocal_split_row.py` and `stem_only.py` load fixed selection controls
   and custom-dialog shells. Eligible models, available stems, selection reducers,
   and readiness gates remain Python-owned.
@@ -44,9 +50,11 @@ drop routing, and environment-dependent debugging actions.
   banners, and member-picker shell. Runtime member projection, saved-preset
   operations, model membership, and field-specific settings commits remain in
   Python.
-- `ui/audio_tools/window.py` loads the fixed tool pages and controls. Runtime
-  model/configuration choices, tool applicability, selected files, and settings
-  resynchronization remain in Python.
+- `ui/audio_tools/window.py` loads one holder group per tool, plus the shared
+  groups from `page_groups.py`. The active tool's rows move from its holder
+  into the single Tool group. Runtime model/configuration choices, tool
+  applicability, selected files, and settings resynchronization remain in
+  Python.
 
 ## Download Center
 

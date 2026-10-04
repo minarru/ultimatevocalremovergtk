@@ -92,6 +92,9 @@ class GtkRunHost:
     def mark_run_complete(self) -> None:
         self.window.log_panel.mark_run_complete()
 
+    def set_compare_available(self, available: bool) -> None:
+        self.window.set_compare_available(available)
+
     def reveal_log(self) -> None:
         self.window._reveal_log_panel(True)
 

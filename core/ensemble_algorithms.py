@@ -28,7 +28,7 @@ ENSEMBLE_ALGORITHM_BLURBS: Dict[str, str] = {
     SOFT_SPEC: "Mean/variance magnitude-agreement blend with adjustable strength",
     MAX_MAG_AVG_PHASE: "Max magnitude with circular average phase",
     HYBRID_SPEC: "Adjustable blend of smoothed maximum and minimum selections",
-    CHUNK_MIN: "1-second windows; switches only for a 10% quieter member, with crossfades",
+    CHUNK_MIN: "1-second windows; switches only to a 10% quieter member, crossfaded",
 }
 
 CUSTOM_PRESET = "Custom"
@@ -217,52 +217,11 @@ def algorithm_row_titles(
     return primary, secondary
 
 
-def ensemble_options_summary(
-    *,
-    stem_chosen: bool,
-    main_stem: str,
-    primary_stem: Optional[str],
-    secondary_stem: Optional[str],
-    primary_algo: str,
-    secondary_algo: str,
-    model_count: int,
-    multi_stem: bool,
-    derive_complement_from_mix: bool = False,
-    leftover_label: str | None = None,
-) -> str:
-    """Live description for the Ensemble options group."""
-    if not stem_chosen:
-        return "Choose a stem pair · select 2+ models"
-
-    models_bit = f"{model_count} model" if model_count == 1 else f"{model_count} models"
-    if model_count < 2:
-        models_bit = f"{models_bit} (need 2+)"
-
-    if multi_stem:
-        return f"{main_stem} · {primary_algo} · {models_bit}"
-
-    left = primary_stem or "Primary"
-    if derive_complement_from_mix:
-        right = leftover_label or "mix residual"
-        return f"{left} ← {primary_algo} · {right} · {models_bit}"
-    right = secondary_stem or "Secondary"
-    return f"{left} ← {primary_algo} · {right} ← {secondary_algo} · {models_bit}"
-
-
 def wav_ensemble_subtitle(*, uses_chunk_min: bool) -> str:
     """Subtitle for the Ensemble waveforms switch."""
     if uses_chunk_min:
         return _CHUNK_MIN_WAV_SUBTITLE
     return _DEFAULT_WAV_ENSEMBLE_SUBTITLE
-
-
-def model_row_matches_query(title: str, subtitle: str, query: str) -> bool:
-    """True when a member-model row matches a casefold search query."""
-    q = (query or "").strip().casefold()
-    if not q:
-        return True
-    haystack = f"{title} {subtitle}".casefold()
-    return q in haystack
 
 
 def models_selection_status(selected: int, *, visible_matches: Optional[int] = None) -> str:

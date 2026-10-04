@@ -33,6 +33,8 @@ class UpdateView:
         self.context = app_context
         self.manager = _get_manager(app_context)
         self._update_link = FORK_RELEASE_PAGE
+        # The button checks again after an offline result, else opens the notes.
+        self._offline = True
 
         builder = load_builder("update-view")
         self.dialog = object_from_builder(builder, "dialog", Adw.Dialog)
@@ -68,12 +70,13 @@ class UpdateView:
         self.update_button.set_sensitive(True)
         self._update_link = status.get("update_link") or FORK_RELEASE_PAGE
 
-        if not status.get("is_online"):
+        self._offline = not status.get("is_online")
+        if self._offline:
             self.status_row.set_subtitle("Could not check for updates (offline)")
-            self.update_button.set_label("Check again")
+            self.update_button.set_label("Check Again")
         elif status.get("is_current"):
             self.status_row.set_subtitle("This release is up to date")
-            self.update_button.set_label("View release notes")
+            self.update_button.set_label("View Release Notes")
         else:
             latest = status.get("latest") or "available"
             self.status_row.set_subtitle(
@@ -83,11 +86,13 @@ class UpdateView:
             if instructions:
                 self.upgrade_row.set_subtitle(str(instructions))
                 self.upgrade_row.set_visible(True)
-            self.update_button.set_label("View release notes")
+            self.update_button.set_label("View Release Notes")
+        # A -1 content height is measured once at present; remeasure so the
+        # revealed rows stay on screen instead of scrolling.
+        self.dialog.set_content_height(-1)
 
     def _on_check_or_update(self, _button: typing.Any) -> None:
-        label = self.update_button.get_label()
-        if label == "Check again":
+        if self._offline:
             self._check()
         elif self._update_link:
             open_uri_in_browser(self.parent, self._update_link)

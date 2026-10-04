@@ -46,9 +46,9 @@ def present_oom_choice_dialog(
 ) -> Adw.AlertDialog:
     """Present the OOM recovery dialog and invoke ``on_choice`` with the response id."""
     if request.is_debug_mock:
-        heading = "GPU out of memory (debug mock)"
+        heading = "GPU Out of Memory (Debug Mock)"
     else:
-        heading = "GPU out of memory"
+        heading = "GPU Out of Memory"
 
     lines = [
         f"Model: {request.model_label}" if request.model_label else "",
@@ -71,10 +71,10 @@ def present_oom_choice_dialog(
 
     dialog = Adw.AlertDialog(heading=heading, body=body)
     if request.can_export:
-        dialog.add_response(OOM_CHOICE_EXPORT, "Export completed")
+        dialog.add_response(OOM_CHOICE_EXPORT, "Export Completed")
     dialog.add_response(OOM_CHOICE_STOP, "Stop")
     if request.can_retry:
-        dialog.add_response(OOM_CHOICE_RETRY, "Retry with smaller segment")
+        dialog.add_response(OOM_CHOICE_RETRY, "Retry with Smaller Segment")
         dialog.set_response_appearance(OOM_CHOICE_RETRY, Adw.ResponseAppearance.SUGGESTED)
     dialog.set_response_appearance(OOM_CHOICE_STOP, Adw.ResponseAppearance.DESTRUCTIVE)
     dialog.set_default_response(OOM_CHOICE_RETRY if request.can_retry else OOM_CHOICE_STOP)

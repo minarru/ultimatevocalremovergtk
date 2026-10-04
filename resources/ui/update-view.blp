@@ -2,10 +2,10 @@ using Gtk 4.0;
 using Adw 1;
 
 Adw.Dialog dialog {
-  title: "Application Version";
-  width-request: 425;
-  content-width: 425;
-  follows-content-size: true;
+  title: "Updates";
+  content-width: 440;
+  width-request: 360;
+  height-request: 294;
 
   child: Adw.ToolbarView {
     [top]
@@ -13,7 +13,7 @@ Adw.Dialog dialog {
 
     content: Adw.PreferencesPage {
       Adw.PreferencesGroup {
-        title: "Application Version";
+        title: "Version";
 
         Adw.ActionRow version_row {
           title: "Version";
@@ -39,7 +39,7 @@ Adw.Dialog dialog {
 
           [suffix]
           Gtk.Button update_button {
-            label: "Check again";
+            label: "Check Again";
             valign: center;
           }
         }

@@ -283,6 +283,101 @@ class FfmpegExportTests(unittest.TestCase):
                 self.assertEqual(handle.read(4), b"OggS")
 
 
+class _ExportSink:
+    """Records seeded peaks and whether the keyed file already existed."""
+
+    def __init__(self) -> None:
+        self.seeded: dict[str, typing.Any] = {}
+        self.existed: dict[str, bool] = {}
+
+    def get(self, path: str) -> typing.Any:
+        return self.seeded.get(path)
+
+    def put(self, path: str, peaks: typing.Any) -> None:
+        self.seeded[path] = peaks
+        self.existed[path] = os.path.isfile(path)
+
+
+class ExportPeakSeedingTests(unittest.TestCase):
+    def setUp(self) -> None:
+        from core.waveform import set_peak_sink
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.folder = tmp.name
+        self.addCleanup(set_peak_sink, None)
+
+    def _export(self, fmt: str, fake: _FakeFfmpeg | None = None) -> tuple[typing.Any, str]:
+        wav_path = os.path.join(self.folder, "stem.wav")
+        _write_wav(wav_path, frames=20_000)
+        with (
+            patch("core.audio_io.resolve_ffmpeg", return_value="ffmpeg"),
+            patch("core.audio_io.subprocess.run", side_effect=fake or _FakeFfmpeg()),
+        ):
+            try:
+                return save_format(wav_path, fmt, "320k"), wav_path
+            except RuntimeError as exc:
+                return exc, wav_path
+
+    def _install(self) -> _ExportSink:
+        from core.waveform import set_peak_sink
+
+        sink = _ExportSink()
+        set_peak_sink(sink)
+        return sink
+
+    def test_lossy_export_seeds_the_wavs_peaks_under_the_output_path(self) -> None:
+        import numpy as np
+
+        from core.waveform import compute_peaks
+
+        sink = self._install()
+        for fmt in ("MP3", "OPUS"):
+            with self.subTest(fmt=fmt):
+                expected = compute_peaks(_fixture_copy(self.folder))
+                output, _ = self._export(fmt)
+                self.assertEqual(list(sink.seeded), [output])
+                self.assertTrue(sink.existed[output])  # keyed after the rename
+                np.testing.assert_array_equal(sink.seeded[output].maxs, expected.maxs)
+                np.testing.assert_array_equal(sink.seeded[output].mins, expected.mins)
+                self.assertAlmostEqual(sink.seeded[output].duration, expected.duration)
+                sink.seeded.clear()
+
+    def test_no_sink_means_no_peak_work(self) -> None:
+        with patch("core.waveform.compute_peaks") as compute:
+            output, _ = self._export("OPUS")
+        self.assertTrue(str(output).endswith("stem.opus"))
+        compute.assert_not_called()
+
+    def test_failed_encode_seeds_nothing(self) -> None:
+        sink = self._install()
+        output, _ = self._export("MP3", _FakeFfmpeg(returncodes=[1, 1]))
+        self.assertIsInstance(output, RuntimeError)
+        self.assertEqual(sink.seeded, {})
+
+    def test_peak_failure_does_not_fail_the_export(self) -> None:
+        sink = self._install()
+        with patch("core.waveform.compute_peaks", side_effect=RuntimeError("boom")):
+            output, wav_path = self._export("OPUS")
+        self.assertEqual(output, os.path.join(self.folder, "stem.opus"))
+        self.assertFalse(os.path.exists(wav_path))
+        self.assertEqual(sink.seeded, {})
+
+    def test_wav_and_flac_exports_are_not_seeded(self) -> None:
+        sink = self._install()
+        for fmt in (WAV, "FLAC"):
+            with self.subTest(fmt=fmt):
+                self._export(fmt)
+        self.assertEqual(sink.seeded, {})
+
+
+def _fixture_copy(folder: str) -> str:
+    """Write the fixture WAV that ``_export`` will write, under another name."""
+    copy = os.path.join(folder, "expected.wav")
+    _write_wav(copy, frames=20_000)
+    return copy
+
+
 class ResolveWavTypeSetTests(unittest.TestCase):
     def test_pcm_16_passthrough(self):
         settings = Settings.from_flat({"wav_type_set": "PCM_16", "save_format": WAV})

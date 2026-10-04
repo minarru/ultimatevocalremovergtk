@@ -852,6 +852,37 @@ class BeginRunOutputTests(unittest.TestCase):
 
         self.assertIsNone(debug_log.current_operation_id())
 
+    def test_run_seeds_the_listening_peak_cache_only_while_running(self) -> None:
+        from core import waveform
+        from core.settings import Settings
+
+        self.addCleanup(waveform.set_peak_sink, None)
+        window = mock.Mock()
+        window.settings = Settings.defaults()
+        window.context.runner.settings = Settings.defaults()
+        window.log_panel = mock.Mock()
+        window.console = mock.Mock()
+        controller = RunController(GtkRunHost(cast(Any, window)))
+        controller._snapshot_error_context = mock.Mock(return_value=RunErrorContext("test"))
+        controller._run_label_for = mock.Mock(return_value="Separation")
+        controller._set_running = mock.Mock()
+        controller._restore_runner_settings = mock.Mock()
+        controller._show_complete_toast = mock.Mock()
+        controller._send_completion_notification = mock.Mock()
+        controller._schedule_release_inference_memory = mock.Mock()
+
+        with (
+            mock.patch("ui.run_control.mark_run_start"),
+            mock.patch("ui.run_control.reset_progress_log"),
+            mock.patch("core.error_context.clear_run_error_context"),
+            mock.patch("core.error_context.set_run_error_context"),
+        ):
+            controller.begin_run(mock.Mock())
+            self.assertIs(waveform._peak_sink, controller.listening.peak_cache)
+            controller._on_complete()
+
+        self.assertIsNone(waveform._peak_sink)
+
     def test_fail_to_start_restores_runner_settings(self) -> None:
         window = mock.Mock()
         window.console = mock.Mock()

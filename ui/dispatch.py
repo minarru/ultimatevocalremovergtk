@@ -206,6 +206,7 @@ def gtk_job_callbacks(
     on_stopped: Optional[Callable[[], None]] = None,
     on_error: Optional[Callable[[BaseException], None]] = None,
     on_oom_choice: Optional[Callable[[OomChoiceRequest], None]] = None,
+    on_input_finished: Optional[Callable[..., None]] = None,
 ) -> JobCallbacks:
     """Build :class:`JobCallbacks` whose handlers run on the GTK main loop."""
     console = _ConsoleBatch(on_console) if on_console else None
@@ -217,4 +218,5 @@ def gtk_job_callbacks(
         on_stopped=boundary(on_stopped) if on_stopped else None,
         on_error=boundary(on_error) if on_error else None,
         on_oom_choice=boundary(on_oom_choice) if on_oom_choice else None,
+        on_input_finished=boundary(on_input_finished) if on_input_finished else None,
     )

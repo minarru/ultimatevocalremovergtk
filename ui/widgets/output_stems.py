@@ -24,12 +24,16 @@ if TYPE_CHECKING:
 
 
 class OutputStemsSection:
-    """Render one selection owner; edits use the method page's settings guard."""
+    """Render one selection owner; edits use the method page's settings guard.
+
+    With a ``host`` group the quick-select and summary rows are added to it;
+    with ``host=None`` they are left for the caller to place through ``rows``.
+    """
 
     def __init__(
         self,
         section: SaveStemsSection,
-        host: Adw.PreferencesGroup,
+        host: Adw.PreferencesGroup | None,
         *,
         use_direct_controls: bool = True,
     ):
@@ -87,10 +91,16 @@ class OutputStemsSection:
         self._select_all.connect("clicked", self._all_clicked)
         self._mode.connect("notify::selected", self._mode_changed)
         self._focus.connect("notify::selected", self._focus_changed)
-        host.add(self._quick_row)
-        host.add(self.row)
+        if host is not None:
+            host.add(self._quick_row)
+            host.add(self.row)
         self.row.connect("activated", self._present)
         self.refresh()
+
+    @property
+    def rows(self) -> tuple[Adw.PreferencesRow, Adw.ActionRow]:
+        """The rows this section shows in an Output group: quick select, then summary."""
+        return (self._quick_row, self.row)
 
     def refresh(self, *, model_name: str | None = None, workload: str | None = None) -> None:
         if self.controls is None:

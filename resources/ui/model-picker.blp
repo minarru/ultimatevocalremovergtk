@@ -16,6 +16,7 @@ Adw.Dialog picker {
               halign: center;
               Gtk.Box purpose_tabs { spacing: 2; halign: center; }
               Gtk.DropDown purpose_compact { visible: false; tooltip-text: "Purpose"; }
+              Adw.WindowTitle header_title { visible: false; }
             };
             [start]
             Gtk.Button more {
@@ -32,6 +33,8 @@ Adw.Dialog picker {
                 spacing: 8;
                 Gtk.SearchEntry search { placeholder-text: "Search installed models"; hexpand: true; }
                 Gtk.Button reset { label: "Reset"; tooltip-text: "Reset search, filters and sorting"; styles ["flat"] }
+                Gtk.Button select_all { visible: false; label: "Select All"; tooltip-text: "Select every listed model"; styles ["flat"] }
+                Gtk.Button clear { visible: false; label: "Clear"; tooltip-text: "Deselect every listed model"; styles ["flat"] }
               }
               Gtk.Box filter_bar {
                 spacing: 8;

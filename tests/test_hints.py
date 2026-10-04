@@ -1,7 +1,7 @@
 import typing
 import unittest
 
-from ui.hints import set_icon_button_a11y, set_tooltip
+from ui.hints import HelpHintManager, set_icon_button_a11y, set_tooltip
 
 
 class _TooltipWidget:
@@ -46,6 +46,28 @@ class SetIconButtonA11yTests(unittest.TestCase):
         set_icon_button_a11y(widget, "Open menu")
         self.assertEqual(widget.tooltip, "Open menu")
         self.assertEqual(widget.props.get(Gtk.AccessibleProperty.LABEL), "Open menu")
+
+
+class HelpHintManagerTests(unittest.TestCase):
+    def test_register_replaces_existing_entry(self):
+        manager = HelpHintManager()
+        widget = _TooltipWidget()
+        manager.register(widget, "First")
+        manager.register(widget, "Second")
+        self.assertEqual(len(manager._registry), 1)
+        widget.tooltip = "unset"
+        manager.refresh()
+        self.assertEqual(widget.tooltip, "Second")
+
+    def test_register_keeps_other_widgets(self):
+        manager = HelpHintManager()
+        first, second = _TooltipWidget(), _TooltipWidget()
+        manager.register(first, "One")
+        manager.register(second, "Two")
+        manager.register(first, "Uno")
+        self.assertEqual(len(manager._registry), 2)
+        manager.refresh()
+        self.assertEqual((first.tooltip, second.tooltip), ("Uno", "Two"))
 
 
 if __name__ == "__main__":

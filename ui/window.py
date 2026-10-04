@@ -42,9 +42,7 @@ from typing import Optional
 from gi.repository import Adw, Gdk, Gio, Gtk
 
 from bundled.constants import (
-    INPUT_FOLDER_ENTRY_HELP,
     MDX_ARCH_TYPE,
-    OUTPUT_FOLDER_ENTRY_HELP,
     VR_ARCH_PM,
     VR_ARCH_TYPE,
 )
@@ -54,6 +52,7 @@ from core.types import ProcessMethod
 from . import APP_TITLE
 from .audio_tools import AudioToolsPage
 from .context import AppContext
+from .dialogs.utils import present_modal_dialog
 from .dispatch import idle_on_main
 from .download import init_download_queue_ui
 from .ensemble import EnsemblePage
@@ -61,7 +60,6 @@ from .files import open_folder_in_file_manager
 from .help_text import (
     MAIN_MENU_HINT,
     MODEL_OPTIONS_ROW_HINT,
-    VIEW_INPUTS_BUTTON_HINT,
 )
 from .hints import (
     SHARED_HINTS,
@@ -80,13 +78,10 @@ from .model_options import (
 from .protocols import FormatEdit, VocalSplitEdit
 from .run_control import RunController
 from .shared_settings import (
-    SAMPLE_MODE_TITLE,
     SharedSettingsSession,
-    apply_shared_file_options,
     format_input_sanitize_toasts,
     gpu_autocast_subtitle,
     gpu_dependent_enabled,
-    sample_mode_subtitle,
     sanitize_input_paths,
     shared_settings_bindings,
 )
@@ -101,9 +96,8 @@ from .widgets.columns import (
     wrap_options_scroller,
 )
 from .widgets.download_queue_indicator import DownloadQueueIndicator
-from .widgets.file_chooser import InputFilesRow, OutputFolderRow
-from .widgets.format_row import OutputFormatRow
 from .widgets.log_panel import OVERLAY_MARGIN_BOTTOM, LogPanel
+from .widgets.page_groups import PageGroupCallbacks, PageGroups, build_page_groups
 from .widgets.rows import configure_combo_row, get_combo_value, set_combo_value
 from .widgets.vocal_split_row import VocalSplitRow
 
@@ -360,6 +354,9 @@ class MainWindow(Adw.ApplicationWindow):
         install_view_tab_tooltips(self._view_switcher_bar)
         end_box = object_from_builder(builder, "end_box", Gtk.Box)
         end_box.prepend(self._download_queue_indicator.widget)
+        self._compare_button = object_from_builder(builder, "compare_button", Gtk.Button)
+        set_icon_button_a11y(self._compare_button, "Compare stems")
+        self._compare_button.connect("clicked", lambda _b: self._run_controller.open_compare())
         menu_button = object_from_builder(builder, "menu_button", Gtk.MenuButton)
         set_icon_button_a11y(menu_button, MAIN_MENU_HINT)
         menu_button.set_menu_model(self._build_primary_menu())
@@ -379,9 +376,12 @@ class MainWindow(Adw.ApplicationWindow):
         # Static groups are kept as attributes so they can be reparented between
         # the columns alongside the per-method groups.
         self._groups_builder = load_builder("separation-groups")
-        self.files_group = self._build_files_group()
+        self._page_groups = self._build_page_groups()
+        # The view whose stem rows currently lead the Output group.
+        self._output_view: typing.Any = None
+        self.files_group = self._page_groups.input_group
+        self.shared_group = self._page_groups.processing_group
         self.method_group = self._build_method_group()
-        self.shared_group = self._build_shared_group()
         self.model_options_group = self._build_model_options_group()
 
         # Separation page: two side-by-side columns when wide, collapsed to one
@@ -463,8 +463,10 @@ class MainWindow(Adw.ApplicationWindow):
         re-appended so the layout reflects ``self._current_view``.
 
         Input and Model occupy the left column; Output and Processing the
-        right. Shared rows move between the active view's groups without
-        recreating their widgets or changing their settings bindings.
+        right. The model-options and vocal-splitter rows move into the active
+        view's Model group, and the active view's stem rows lead the single
+        Output group, without recreating widgets or changing their settings
+        bindings.
         """
         for column in (self._col_start, self._col_end):
             child = column.get_first_child()
@@ -478,21 +480,41 @@ class MainWindow(Adw.ApplicationWindow):
         view = self._current_view
         if view is not None:
             self.selected_model_row = self._picker_rows[view.method_key]
-            if self._model_options_host is not view.group:
+            if self._model_options_host is not view.group or self._vocal_row_host is not view.group:
+                # Re-add both so the vocal splitter always follows Model options.
                 self._model_options_host.remove(self.model_options_row)
+                if self._vocal_row_host is not None:
+                    self._vocal_row_host.remove(self.vocal_split_row)
                 view.group.add(self.model_options_row)
+                view.group.add(self.vocal_split_row)
                 self._model_options_host = view.group
-            if self._output_rows_host is not view.stem_group:
-                for row in (self.format_row, self.output_row):
-                    if self._output_rows_host is not None:
-                        self._output_rows_host.remove(row)
-                    view.stem_group.add(row)
-                self._output_rows_host = view.stem_group
+                self._vocal_row_host = view.group
+            self._show_output_view(view)
             self._col_start.append(view.group)
-            self._col_end.append(view.stem_group)
-            self._col_end.append(self.shared_group)
-        else:
-            self._col_end.append(self.shared_group)
+
+        self._col_end.append(self._page_groups.output_group)
+        self._col_end.append(self.shared_group)
+
+    def _show_output_view(self, view: typing.Any) -> None:
+        """Lead the Output group with ``view``'s stem rows and forward its tooltip.
+
+        The previous view's rows go back to its ``stem_group``, which is only an
+        off-screen holder; ``format_row`` and ``output_row`` stay below the lead.
+        """
+        previous = self._output_view
+        if previous is view:
+            return
+        self._page_groups.set_output_lead(view.output_stems.rows)
+        if previous is not None:
+            previous.on_output_tooltip = None
+            for row in previous.output_stems.rows:
+                previous.stem_group.add(row)
+        self._output_view = view
+        view.on_output_tooltip = self._show_output_tooltip
+        view._update_stem_group_metadata(refresh_workload=False)
+
+    def _show_output_tooltip(self, text: str) -> None:
+        self._hint_manager.register(self._page_groups.output_group, text)
 
     def _show_method(self, view: typing.Any) -> None:
         """Make ``view`` the active method and refresh the column layout."""
@@ -606,26 +628,37 @@ class MainWindow(Adw.ApplicationWindow):
         self.console.get_clipboard().set(text)
         self.toast(_LOG_COPIED_TOAST)
 
-    def _build_files_group(self) -> Adw.PreferencesGroup:
-        group = object_from_builder(self._groups_builder, "files_group", Adw.PreferencesGroup)
-        view_inputs_button = object_from_builder(
-            self._groups_builder, "view_inputs_button", Gtk.Button
-        )
-        set_icon_button_a11y(view_inputs_button, VIEW_INPUTS_BUTTON_HINT)
-        self.input_row = InputFilesRow(
-            self._on_inputs_changed,
-            on_toast=self.toast,
-            accept_any_getter=lambda: bool(self.settings.process.accept_any_input),
-            initial_folder_getter=lambda: (
-                os.path.dirname(self.settings.process.input_paths[0])
-                if self.settings.process.input_paths
-                else None
+    def _build_page_groups(self) -> PageGroups:
+        groups = build_page_groups(
+            PageGroupCallbacks(
+                on_inputs_changed=self._on_inputs_changed,
+                on_output_changed=self._on_output_changed,
+                on_format_changed=self._on_format_changed,
+                toast=self.toast,
+                hint=self._hint_manager.register,
+                accept_any_getter=lambda: bool(self.settings.process.accept_any_input),
+                initial_folder_getter=lambda: (
+                    os.path.dirname(self.settings.process.input_paths[0])
+                    if self.settings.process.input_paths
+                    else None
+                ),
+                sample_duration=self.settings.process.sample_mode_duration,
+                on_gpu_changed=self._on_gpu_changed,
+                on_autocast_changed=self._on_autocast_changed,
+                on_sample_changed=self._on_sample_changed,
             ),
+            processing=("gpu", "autocast", "sample"),
         )
-        self.output_row = OutputFolderRow(self._on_output_changed, on_toast=self.toast)
-        group.add(self.input_row)
-        self._output_rows_host: Adw.PreferencesGroup | None = None
-        return group
+        assert groups.gpu_row is not None
+        assert groups.autocast_row is not None
+        assert groups.sample_row is not None
+        self.input_row = groups.input_row
+        self.output_row = groups.output_row
+        self.format_row = groups.format_row
+        self.gpu_row = groups.gpu_row
+        self.autocast_row = groups.autocast_row
+        self.sample_row = groups.sample_row
+        return groups
 
     def _build_method_group(self) -> Adw.PreferencesGroup:
         # Existing method/view adapters retain ownership of per-method settings.
@@ -645,7 +678,6 @@ class MainWindow(Adw.ApplicationWindow):
             row.connect("activated", self._open_model_picker)
             self._picker_rows[view.method_key] = row
             view.group.set_title("Model")
-            view.stem_group.set_title("Output")
         return group
 
     def _selected_model_id(self) -> str:
@@ -732,33 +764,12 @@ class MainWindow(Adw.ApplicationWindow):
         self._model_options_host = group
         self.model_options_row.connect("activated", lambda *_: self._open_model_options())
         set_tooltip(self.model_options_row, MODEL_OPTIONS_ROW_HINT)
-        return group
-
-    def _build_shared_group(self) -> Adw.PreferencesGroup:
-        group = object_from_builder(self._groups_builder, "processing_group", Adw.PreferencesGroup)
-
-        self.format_row = OutputFormatRow(self._on_format_changed)
-
-        self.gpu_row = object_from_builder(self._groups_builder, "gpu_row", Adw.SwitchRow)
-        self.gpu_row.connect("notify::active", self._on_gpu_changed)
-        group.add(self.gpu_row)
-
-        self.autocast_row = object_from_builder(self._groups_builder, "autocast_row", Adw.SwitchRow)
-        self.autocast_row.connect("notify::active", self._on_autocast_changed)
-        group.add(self.autocast_row)
-
-        duration = self.settings.process.sample_mode_duration
-        self.sample_row = object_from_builder(self._groups_builder, "sample_row", Adw.SwitchRow)
-        self.sample_row.set_title(SAMPLE_MODE_TITLE)
-        self.sample_row.set_subtitle(sample_mode_subtitle(duration))
-        self.sample_row.connect("notify::active", self._on_sample_changed)
-        group.add(self.sample_row)
-
+        # Follows the model-options row into the active view's Model group
+        # (see ``_populate_columns``).
         self.vocal_split_row = VocalSplitRow(
             self.context.repo, self._on_vocal_split_changed, hints=self._hint_manager
         )
-        group.add(self.vocal_split_row)
-
+        self._vocal_row_host: Adw.PreferencesGroup | None = None
         return group
 
     def _install_actions(self) -> None:
@@ -786,13 +797,8 @@ class MainWindow(Adw.ApplicationWindow):
 
     def _register_hints(self) -> None:
         self._hint_manager.register(self.stop_button, SHARED_HINTS["stop"])
-        self._hint_manager.register(self.gpu_row, SHARED_HINTS["gpu_conversion"])
-        self._hint_manager.register(self.autocast_row, SHARED_HINTS["autocast"])
-        self._hint_manager.register(self.sample_row, SHARED_HINTS["sample_mode"])
         self._hint_manager.register(self.console, SHARED_HINTS["console"])
         self._hint_manager.register(self.method_row, SHARED_HINTS["process_method"])
-        self._hint_manager.register(self.input_row, INPUT_FOLDER_ENTRY_HELP)
-        self._hint_manager.register(self.output_row, OUTPUT_FOLDER_ENTRY_HELP)
         self._hint_manager.register(self.model_options_row, MODEL_OPTIONS_ROW_HINT)
         from .help_text import PROGRESS_ETA_HINT
 
@@ -871,6 +877,11 @@ class MainWindow(Adw.ApplicationWindow):
         return self._current_view or self._views[0]
 
     def _install_shared_session(self) -> None:
+        # Deliberately built from the row attributes rather than
+        # ``self._page_groups.bindings()``: tests/test_flush_settings_tab_guard.py
+        # builds ``MainWindow.__new__`` with only these attributes and no
+        # ``_page_groups``. This call must mirror ``PageGroups.bindings()``; any
+        # shared row added there must be added here too.
         self._shared_session = SharedSettingsSession(
             self.settings,
             shared_settings_bindings(
@@ -886,15 +897,7 @@ class MainWindow(Adw.ApplicationWindow):
         )
 
     def _apply_shared_widgets(self) -> None:
-        apply_shared_file_options(
-            self.settings,
-            input_row=self.input_row,
-            output_row=self.output_row,
-            format_row=self.format_row,
-            gpu_row=self.gpu_row,
-            autocast_row=self.autocast_row,
-            sample_row=self.sample_row,
-        )
+        self._page_groups.apply(self.settings)
         self.vocal_split_row.apply_from_settings(self.settings)
 
     def _sync_shared_from_settings(self) -> None:
@@ -1224,7 +1227,7 @@ class MainWindow(Adw.ApplicationWindow):
             on_settings_reloaded=self._load_from_settings,
             on_settings_applied=self._sync_after_preferences,
         )
-        dialog.present(self)
+        present_modal_dialog(dialog, self)
 
     def _on_ensemble(self, _action: Gio.SimpleAction, _param: typing.Any) -> None:
         self.content_stack.set_visible_child_name("ensemble")
@@ -1478,3 +1481,7 @@ class MainWindow(Adw.ApplicationWindow):
     def toast(self, message: str) -> None:
         """Show a transient toast (public so the embedded pages can use it)."""
         self.toast_overlay.add_toast(Adw.Toast.new(message))
+
+    def set_compare_available(self, available: bool) -> None:
+        """Show the header Compare button while the last run has tracks to play."""
+        self._compare_button.set_visible(available)

@@ -2,12 +2,22 @@ using Gtk 4.0;
 using Adw 1;
 
 Adw.Dialog dialog {
-  title: "Blend options";
-  content-width: 540;
-  content-height: 620;
+  title: "Blend Options";
+  content-width: 600;
+  content-height: 560;
+  width-request: 360;
+  height-request: 294;
   child: Adw.ToolbarView {
     [top]
     Adw.HeaderBar {
+      show-start-title-buttons: false;
+      show-end-title-buttons: false;
+
+      [start]
+      Gtk.Button cancel_button {
+        label: "Cancel";
+      }
+
       [end]
       Gtk.Button apply_button {
         label: "Apply";

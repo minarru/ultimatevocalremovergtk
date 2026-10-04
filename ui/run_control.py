@@ -33,7 +33,9 @@ from core.debug_log import (
 )
 from core.processing_phase import ProcessingPhase
 from core.separate_import import engines_imported, warm_status
+from core.waveform import set_peak_sink
 
+from .dialogs.utils import present_modal_dialog
 from .dispatch import gtk_job_callbacks, idle_on_main, reset_progress_log
 from .files import open_folder_in_file_manager
 from .notifications import (
@@ -41,6 +43,8 @@ from .notifications import (
     NOTIFY_PROCESS_FAILED,
     send_desktop_notification,
 )
+from .playback.engine import playback_unavailable_reason
+from .playback.session import ListeningSession
 from .protocols import RunHost, RunReadiness, RunTarget
 from .run_error_context import RunErrorContext
 from .run_lifecycle import RunShutdownCoordinator
@@ -52,6 +56,8 @@ if TYPE_CHECKING:
     from core.settings import Settings
 
 _OPEN_FOLDER_LABEL = "Open Folder"
+_COMPARE_LABEL = "Compare"
+_PROGRESS_STOPPED_TOAST = "Process stopped."
 _NOTIFY_COMPLETE_TITLE = "{label} complete"
 _NOTIFY_COMPLETE_BODY = "Saved to {folder}"
 _NOTIFY_COMPLETE_BODY_PLAIN = "Processing finished"
@@ -92,6 +98,9 @@ class RunController:
         self._host = host
         self._running_target: RunTarget | None = None
         self._run_output_dir = ""
+        self.listening = ListeningSession()
+        self._compare_dialog: Any = None
+        self._run_planned_outputs: dict[str, tuple[Any, ...]] = {}
         self._run_label = "Processing"
         self._run_started_at = 0.0
         self._operation_id: Optional[str] = None
@@ -222,6 +231,7 @@ class RunController:
             on_stopped=current_run(self._on_stopped),
             on_error=current_run(self._on_error),
             on_oom_choice=oom_choice,
+            on_input_finished=current_run(self._on_input_finished),
         )
 
     def _start_target(self, target: RunTarget, plan: typing.Any = None) -> None:
@@ -238,6 +248,11 @@ class RunController:
         else:
             self._host.bind_run_settings(self._host.settings)
         callbacks = self._callbacks()
+        self._run_planned_outputs = {}
+        if isinstance(plan, ResolvedJob):
+            self._run_planned_outputs = {
+                os.path.abspath(item.path): tuple(item.outputs) for item in plan.inputs
+            }
         debug("ui", f"handle_start -> {type(target).__name__}.start()")
         try:
             if isinstance(plan, (ResolvedJob, ResolvedAudioJob)):
@@ -387,7 +402,7 @@ class RunController:
         dialog.connect("closed", closed)
         self._plan_dialog = dialog
         self.refresh_start_readiness()
-        dialog.present(self._host.dialog_parent)
+        present_modal_dialog(dialog, self._host.dialog_parent, dismiss_on_backdrop=False)
 
     def _accept_plan(self, target: RunTarget, fingerprint: str, plan: typing.Any) -> None:
         from core.job_plan import settings_fingerprint
@@ -491,6 +506,11 @@ class RunController:
         from core.error_context import clear_run_error_context, set_run_error_context
 
         self._ensure_operation()
+        self._close_compare_dialog()
+        self.listening.clear()
+        # Decodes and lossy exports during the run seed the compare dialog's waveforms.
+        set_peak_sink(self.listening.peak_cache)
+        self._host.set_compare_available(False)
         mark_run_start()
         reset_progress_log()
         clear_run_error_context()
@@ -652,14 +672,14 @@ class RunController:
     def _present_shutdown_confirm(self) -> None:
         download_count = self._active_download_count()
         if self.is_running() and download_count:
-            heading = "Stop processing and downloads?"
+            heading = "Stop Processing and Downloads?"
             body = (
                 "Processing and model downloads are still running. "
                 "Stopping now may leave the current output incomplete; partial "
                 "model downloads will be removed."
             )
         elif download_count:
-            heading = "Cancel model downloads and quit?"
+            heading = "Cancel Model Downloads and Quit?"
             noun = "download is" if download_count == 1 else "downloads are"
             body = (
                 f"{download_count} model {noun} still active. Partial downloads "
@@ -778,6 +798,7 @@ class RunController:
 
     def _complete_shutdown(self, *, deferred: bool) -> None:
         debug("ui", f"complete_shutdown deferred={deferred}")
+        self._close_compare_dialog()
         self.shutdown.cancel_inference_cleanup()
         self.shutdown.shutdown_target = None
         self._host.set_pulse(False)
@@ -875,7 +896,7 @@ class RunController:
             "\nProcessing has not stopped. Wait longer or quit and restart the app.\n"
         )
         dialog = Adw.AlertDialog(
-            heading="Processing has not stopped",
+            heading="Processing Has Not Stopped",
             body=(
                 "The worker or its cleanup is not responding. Another run cannot start safely. "
                 "You can wait longer, or quit and restart the app. Quitting also stops downloads."
@@ -917,12 +938,22 @@ class RunController:
         self.shutdown.cancel_inference_cleanup()
         exported = self._host.exported_after_oom()
         self._finish_run_ui(stopped=True)
+        ready = self.compare_ready()
+        self._host.set_compare_available(ready)
         if exported:
             toast = Adw.Toast.new("Exported completed ensemble outputs.")
             output_dir = self._run_output_dir
-            if output_dir and os.path.isdir(output_dir):
+            if ready:
+                toast.set_button_label(_COMPARE_LABEL)
+                toast.connect("button-clicked", self._on_compare_toast)
+            elif output_dir and os.path.isdir(output_dir):
                 toast.set_button_label(_OPEN_FOLDER_LABEL)
                 toast.connect("button-clicked", self._on_open_output_folder, output_dir)
+            self._host.add_toast(toast)
+        elif ready:
+            toast = Adw.Toast.new(_PROGRESS_STOPPED_TOAST)
+            toast.set_button_label(_COMPARE_LABEL)
+            toast.connect("button-clicked", self._on_compare_toast)
             self._host.add_toast(toast)
 
     def _on_complete(self) -> None:
@@ -937,6 +968,7 @@ class RunController:
         clear_run_start()
         output_dir = self._run_output_dir
         self._show_complete_toast(output_dir)
+        self._host.set_compare_available(self.compare_ready())
         self._send_completion_notification(output_dir)
         self._schedule_release_inference_memory(wait_for_stop=0.5)
         self._finish_operation("run_completed", output_path=output_dir)
@@ -951,6 +983,8 @@ class RunController:
         self._host.set_pulse(False)
         failed_target = self._running_target or self._host.target
         self._restore_idle_controls()
+        # Inputs that finished before the failure stay comparable from the header.
+        self._host.set_compare_available(self.compare_ready())
         self._host.set_run_result("Processing failed", error=True)
         message = f"Process failed: {exc}"
         self._host.append_console(f"\n{message}\n")
@@ -963,7 +997,10 @@ class RunController:
 
     def _show_complete_toast(self, output_dir: str) -> None:
         toast = Adw.Toast.new("Process complete.")
-        if output_dir and os.path.isdir(output_dir):
+        if self.compare_ready():
+            toast.set_button_label(_COMPARE_LABEL)
+            toast.connect("button-clicked", self._on_compare_toast)
+        elif output_dir and os.path.isdir(output_dir):
             toast.set_button_label(_OPEN_FOLDER_LABEL)
             toast.connect("button-clicked", self._on_open_output_folder, output_dir)
         self._host.add_toast(toast)
@@ -974,6 +1011,57 @@ class RunController:
             output_dir,
             on_error=self._host.toast,
         )
+
+    def _on_input_finished(
+        self,
+        paths: tuple[str, ...],
+        generated: tuple[str, ...],
+        _error: BaseException | None,
+        reference: str | None,
+    ) -> None:
+        from core.listening import build_comparison_set
+
+        if not paths or not generated:
+            return
+        source = paths[0]
+        planned = self._run_planned_outputs.get(os.path.abspath(source), ())
+        cset = build_comparison_set(source, reference, generated, planned)
+        if cset is not None:
+            self.listening.add(cset)
+
+    def compare_ready(self) -> bool:
+        return bool(self.listening) and playback_unavailable_reason() is None
+
+    def open_compare(self) -> None:
+        if not self.compare_ready():
+            return
+        if self._compare_dialog is not None:
+            self._compare_dialog.present(self._host.dialog_parent)
+            return
+        from .playback.dialog import CompareDialog
+        from .playback.engine import PlaybackEngine
+        from .playback.waveforms import WaveformLoader
+
+        self._compare_dialog = CompareDialog(
+            self.listening.sets(),
+            PlaybackEngine(),
+            waveforms=WaveformLoader(self.listening.peak_cache),
+            output_dir=self._run_output_dir,
+            on_toast=self._host.toast,
+            on_closed=self._on_compare_closed,
+        )
+        self._compare_dialog.present(self._host.dialog_parent)
+
+    def _on_compare_closed(self) -> None:
+        self._compare_dialog = None
+
+    def _close_compare_dialog(self) -> None:
+        dialog, self._compare_dialog = self._compare_dialog, None
+        if dialog is not None:
+            dialog.close()
+
+    def _on_compare_toast(self, _toast: Adw.Toast) -> None:
+        self.open_compare()
 
     def _send_completion_notification(self, output_dir: str) -> None:
         title = _NOTIFY_COMPLETE_TITLE.format(label=self._run_label)
@@ -1050,7 +1138,7 @@ class RunController:
         label = self._run_label_for(target) if target is not None else "Process"
         present_error_dialog(
             self._host.dialog_parent,
-            heading=f"{label} failed",
+            heading=f"{label} Failed",
             exception=exc,
             formatted_log=formatted,
             on_copied=lambda: self._host.toast("Report copied to clipboard"),
@@ -1062,6 +1150,7 @@ class RunController:
 
     def _restore_idle_controls(self) -> None:
         self.shutdown.cancel_inference_cleanup()
+        set_peak_sink(None)
         self._running_target = None
         for name in ("_stop_confirm_dialog", "_oom_dialog", "_stop_timeout_dialog"):
             dialog = getattr(self, name)
