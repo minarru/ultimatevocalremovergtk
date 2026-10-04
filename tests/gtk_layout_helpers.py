@@ -1,12 +1,37 @@
-"""Wait for exact content allocations across native GTK display backends."""
+"""Shared GTK display helpers: widget walks, main-loop waits, and window sizing."""
 
 from __future__ import annotations
 
 import time
-from typing import TYPE_CHECKING
+from collections.abc import Callable, Iterator
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from gi.repository import Adw, Gtk
+
+
+def iter_descendants(widget: Any) -> Iterator[Any]:
+    """Yield a widget and every descendant in child order."""
+    yield widget
+    child = widget.get_first_child()
+    while child is not None:
+        yield from iter_descendants(child)
+        child = child.get_next_sibling()
+
+
+def pump_until(
+    predicate: Callable[[], bool], *, timeout: float = 5, message: str | None = None
+) -> None:
+    """Iterate the default main context until ``predicate`` is true."""
+    from gi.repository import GLib
+
+    deadline = time.monotonic() + timeout
+    while not predicate():
+        if time.monotonic() >= deadline:
+            detail = message or "condition was not met"
+            raise AssertionError(f"{detail} within {timeout:g}s")
+        GLib.MainContext.default().iteration(False)
+        time.sleep(0.005)
 
 
 def resize_window(window: Gtk.Window, width: int, height: int) -> None:

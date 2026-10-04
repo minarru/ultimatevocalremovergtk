@@ -60,8 +60,6 @@ import sys
 import types
 from pathlib import Path
 
-from tests.diagnostic_fixtures import expected_event
-
 root = Path({json.dumps(str(_REPO))})
 pkg = types.ModuleType("engines")
 pkg.__path__ = [str(root / "engines")]

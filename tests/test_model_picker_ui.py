@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import os
 import unittest
-from collections.abc import Iterator
 from dataclasses import replace
 from typing import Any
 from unittest.mock import Mock, call, patch
 
+from tests.gtk_layout_helpers import iter_descendants
 from tests.test_model_picker_state import record
 
 
@@ -117,14 +117,7 @@ class ModelPickerUiTests(unittest.TestCase):
         self.assertEqual(row.get_title(), 'Renamed vocals')
 
         # Exercise the existing details button after the record changed.
-        def widgets(widget: Gtk.Widget):
-            yield widget
-            child = widget.get_first_child()
-            while child:
-                yield from widgets(child)
-                child = child.get_next_sibling()
-
-        info = next(w for w in widgets(row) if isinstance(w, Gtk.Button))
+        info = next(w for w in iter_descendants(row) if isinstance(w, Gtk.Button))
         info.emit('clicked')
         self.assertEqual(picker.get('detail_name', Gtk.Label).get_label(), 'Renamed vocals')
 
@@ -255,14 +248,6 @@ class ModelPickerUiTests(unittest.TestCase):
             setattr(controller, field, True)
             self.assertFalse(controller.can_edit_configuration(), field)
             setattr(controller, field, previous)
-
-
-def _descendants(widget: Any) -> Iterator[Any]:
-    yield widget
-    child = widget.get_first_child()
-    while child is not None:
-        yield from _descendants(child)
-        child = child.get_next_sibling()
 
 
 @unittest.skipUnless(
@@ -507,7 +492,7 @@ class MemberPickerUiTests(unittest.TestCase):
 
         checks = self.picker.set_members([self.a], ())
         row = self.picker.rows['vr:alpha']
-        check = next(w for w in _descendants(row) if isinstance(w, Gtk.CheckButton))
+        check = next(w for w in iter_descendants(row) if isinstance(w, Gtk.CheckButton))
         self.assertIs(check, checks['vr:alpha'])
         row.activate()
         self.assertTrue(checks['vr:alpha'].get_active())

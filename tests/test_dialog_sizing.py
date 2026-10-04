@@ -11,9 +11,10 @@ from __future__ import annotations
 import os
 import re
 import unittest
-from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
+
+from tests.gtk_layout_helpers import iter_descendants
 
 ROOT = Path(__file__).resolve().parents[1]
 UI = ROOT / "resources" / "ui"
@@ -64,14 +65,6 @@ def dialog_properties(source: str) -> dict[str, str]:
     head = re.split(r"\bchild\s*:", body, maxsplit=1)[0]
     head = re.split(r"\n\s*[A-Z]\w*\.\w+", head, maxsplit=1)[0]
     return dict(re.findall(r"([\w-]+)\s*:\s*([^;{}]+?)\s*;", head))
-
-
-def _descendants(widget: Any) -> Iterator[Any]:
-    yield widget
-    child = widget.get_first_child()
-    while child is not None:
-        yield from _descendants(child)
-        child = child.get_next_sibling()
 
 
 def dialog_blueprints() -> dict[str, dict[str, str]]:
@@ -237,7 +230,7 @@ class PresentedWidthTests(unittest.TestCase):
         assert dialog is not None
         self.addCleanup(dialog.force_close)
         wait_for_dialog_open(dialog)
-        view = next(w for w in _descendants(dialog) if isinstance(w, Gtk.TextView))
+        view = next(w for w in iter_descendants(dialog) if isinstance(w, Gtk.TextView))
         minimum, _natural, _b, _nb = view.measure(Gtk.Orientation.VERTICAL, view.get_width())
         self.assertGreater(minimum, 0)
         self.assertGreaterEqual(view.get_height(), minimum)

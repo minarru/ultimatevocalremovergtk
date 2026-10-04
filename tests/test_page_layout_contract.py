@@ -11,6 +11,7 @@ import os
 import unittest
 from typing import Any
 
+from tests.gtk_layout_helpers import iter_descendants
 from tests.test_row_slot import _order
 
 
@@ -36,6 +37,9 @@ def contains(group: Any, row: Any) -> bool:
 class SeparationLayoutTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
+        from tests.private_gtk import require_private_gtk
+
+        require_private_gtk()
         import gi
 
         gi.require_version("Gtk", "4.0")
@@ -160,18 +164,10 @@ def expander_rows(expander: Any) -> list[Any]:
     """Rows inside an ``Adw.ExpanderRow``'s revealer, in display order."""
     from gi.repository import Gtk
 
-    def find_revealer(widget: Any) -> Any:
-        if isinstance(widget, Gtk.Revealer):
-            return widget
-        child = widget.get_first_child()
-        while child is not None:
-            found = find_revealer(child)
-            if found is not None:
-                return found
-            child = child.get_next_sibling()
-        return None
-
-    revealer = find_revealer(expander)
+    revealer = next(
+        (w for w in iter_descendants(expander) if isinstance(w, Gtk.Revealer)),
+        None,
+    )
     return [] if revealer is None else _order(revealer)
 
 
@@ -182,6 +178,9 @@ def expander_rows(expander: Any) -> list[Any]:
 class EnsembleLayoutTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
+        from tests.private_gtk import require_private_gtk
+
+        require_private_gtk()
         import gi
 
         gi.require_version("Gtk", "4.0")
@@ -268,15 +267,7 @@ class EnsembleLayoutTests(unittest.TestCase):
         row = page.secondary_algo_row
 
         def find(widget: Any, kind: type) -> Any:
-            if isinstance(widget, kind):
-                return widget
-            child = widget.get_first_child()
-            while child is not None:
-                found = find(child, kind)
-                if found is not None:
-                    return found
-                child = child.get_next_sibling()
-            return None
+            return next((w for w in iter_descendants(widget) if isinstance(w, kind)), None)
 
         def settle() -> None:
             context = GLib.MainContext.default()
@@ -313,6 +304,9 @@ _AUDIO_TOOL_HOLDERS = {
 class AudioToolsLayoutTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
+        from tests.private_gtk import require_private_gtk
+
+        require_private_gtk()
         import gi
 
         gi.require_version("Gtk", "4.0")
@@ -442,15 +436,7 @@ class AudioToolsLayoutTests(unittest.TestCase):
             return point.y
 
         def find(widget: Any, kind: type) -> Any:
-            if isinstance(widget, kind):
-                return widget
-            child = widget.get_first_child()
-            while child is not None:
-                found = find(child, kind)
-                if found is not None:
-                    return found
-                child = child.get_next_sibling()
-            return None
+            return next((w for w in iter_descendants(widget) if isinstance(w, kind)), None)
 
         for tool in AUDIO_TOOL_ORDER:
             with self.subTest(tool=tool):
@@ -492,6 +478,9 @@ class AudioToolsLayoutTests(unittest.TestCase):
 class NarrowLayoutTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
+        from tests.private_gtk import require_private_gtk
+
+        require_private_gtk()
         import gi
 
         gi.require_version("Gtk", "4.0")
