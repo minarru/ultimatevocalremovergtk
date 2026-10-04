@@ -31,11 +31,6 @@ _dev_css_provider = None
 _dev_css_monitor = None
 
 
-def resource_bundle_path() -> str:
-    """Absolute path to the compiled ``uvr.gresource`` binary."""
-    return _RESOURCE_PATH
-
-
 def _packaging_app_icon_path() -> str:
     return os.path.join(paths.BASE_PATH, "packaging", f"{APP_ID}.png")
 

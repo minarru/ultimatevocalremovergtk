@@ -1355,12 +1355,6 @@ class DownloadCenterWindow:
         self._invalidate_all_sorts()
         return False
 
-    def _available_count(self) -> int:
-        return self.browser.available_count()
-
-    def _unsupported_count(self, *, visible_only: bool = False) -> int:
-        return self.browser.unsupported_count(hide=visible_only and self._hide_unsupported)
-
     def _update_status_from_catalogue(self) -> None:
         if not self._refreshing:
             shown = sum(self._matches(data) for data in self.browser.rows.values())
