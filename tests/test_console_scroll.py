@@ -167,6 +167,15 @@ class ConsoleScrollTests(unittest.TestCase):
         console.append(DONE)
         self.assertNotIn(DONE.strip(), console.get_text())
 
+    def test_leading_newlines_dropped_on_empty_log(self) -> None:
+        from ui.widgets.console import ConsoleView
+
+        console = ConsoleView()
+        console.append("\n")
+        console.append("\nFile 1/2 — a.wav\n")
+        console.append("\nFile 2/2 — b.wav\n")
+        self.assertEqual(console.get_text(), "File 1/2 — a.wav\n\nFile 2/2 — b.wav\n")
+
     def test_done_marker_appended_to_an_open_line(self) -> None:
         from bundled.constants import DONE
         from ui.widgets.console import ConsoleView
