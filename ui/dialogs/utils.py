@@ -125,6 +125,8 @@ def set_form_dialog_content(
     builder = load_builder("form-dialog-content")
     toolbar = object_from_builder(builder, "toolbar", Adw.ToolbarView)
     save = object_from_builder(builder, "save", Gtk.Button)
+    cancel = object_from_builder(builder, "cancel_button", Gtk.Button)
+    cancel.connect("clicked", lambda *_: dialog.close())
     save.set_label(save_label)
     save.connect("clicked", lambda *_: on_save())
     toolbar.set_content(content)

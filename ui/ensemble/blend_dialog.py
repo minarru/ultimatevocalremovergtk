@@ -74,5 +74,7 @@ def show_blend_dialog(
         dialog.close()
 
     object_from_builder(builder, "apply_button", Gtk.Button).connect("clicked", apply)
+    cancel = object_from_builder(builder, "cancel_button", Gtk.Button)
+    cancel.connect("clicked", lambda *_: dialog.close())
     present_modal_dialog(dialog, parent, dismiss_on_backdrop=False)
     return dialog

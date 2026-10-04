@@ -8,6 +8,14 @@ Adw.Dialog dialog {
   child: Adw.ToolbarView {
     [top]
     Adw.HeaderBar {
+      show-start-title-buttons: false;
+      show-end-title-buttons: false;
+
+      [start]
+      Gtk.Button cancel_button {
+        label: "Cancel";
+      }
+
       [end]
       Gtk.Button save_button {
         label: "Save";

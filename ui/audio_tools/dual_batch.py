@@ -209,6 +209,8 @@ class DualBatchDialog:
         columns.append(self._right)
         self._save_button = object_from_builder(builder, "save_button", Gtk.Button)
         self._save_button.connect("clicked", lambda *_: self._on_save())
+        cancel = object_from_builder(builder, "cancel_button", Gtk.Button)
+        cancel.connect("clicked", lambda *_: self.dialog.close())
         self._sync_pair_state()
 
     def _sync_pair_state(self) -> None:
