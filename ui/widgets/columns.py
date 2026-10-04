@@ -17,8 +17,17 @@ from gi.repository import Adw, Gtk
 from ..template import load_builder, object_from_builder
 from .log_panel import LogPanel
 
+# Preferences pages use a 640sp clamp inside a 700sp dialog, so the groups sit
+# 30sp in from each edge, and ease in across a 40sp band (tightening 600).
+# The main window's default width is 1040; the same edge gap and band keep
+# Separation, Ensemble, and Audio Tools off the window edges.
+_PREFERENCES_EDGE_GAP = 30
+_PREFERENCES_TIGHTENING_BAND = 40
+_DEFAULT_WINDOW_WIDTH = 1040
 #: Maximum width in sp, shared by every two-column options surface.
-DEFAULT_MAX_WIDTH = 1180
+DEFAULT_MAX_WIDTH = _DEFAULT_WINDOW_WIDTH - 2 * _PREFERENCES_EDGE_GAP
+#: Width in sp where the clamp starts easing toward ``DEFAULT_MAX_WIDTH``.
+DEFAULT_TIGHTENING = DEFAULT_MAX_WIDTH - _PREFERENCES_TIGHTENING_BAND
 #: Breathing room between the last preference row and the floating log panel.
 _OPTIONS_CLEARANCE_GAP = 8
 
@@ -51,6 +60,7 @@ def build_columns_box(left_groups: typing.Any = (), right_groups: typing.Any = (
 def wrap_options_scroller(
     columns_box: Gtk.Widget,
     maximum_size: int = DEFAULT_MAX_WIDTH,
+    tightening_threshold: int = DEFAULT_TIGHTENING,
     bottom_inset: Optional[int] = None,
 ) -> Gtk.Box:
     """Wrap a ``columns_box`` in the shared clamp + vertical scroller.
@@ -79,8 +89,9 @@ def wrap_options_scroller(
     clamp = object_from_builder(builder, "options_clamp", Adw.Clamp)
     clamp.set_child(columns_box)
     clamp.set_maximum_size(maximum_size)
-    # Use the shared Blueprint's gradual tightening band, keeping custom caps valid.
-    clamp.set_tightening_threshold(min(maximum_size, clamp.get_tightening_threshold()))
+    # Same 40sp easing band as the preferences page clamp. A custom cap shorter
+    # than the band stays valid by tightening at the cap itself.
+    clamp.set_tightening_threshold(min(maximum_size, tightening_threshold))
     return page
 
 

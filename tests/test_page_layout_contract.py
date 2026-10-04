@@ -512,6 +512,31 @@ class NarrowLayoutTests(unittest.TestCase):
                 self.assertEqual(order[0], "Input")
                 self.assertEqual(order[-2:], ["Output", "Processing"])
 
+    def test_option_clamps_match_preferences_edge_spacing(self) -> None:
+        from gi.repository import Adw, Gtk
+
+        from ui.widgets.columns import DEFAULT_MAX_WIDTH, DEFAULT_TIGHTENING, options_scroller
+        from ui.window import MainWindow
+
+        window = MainWindow()
+        self.addCleanup(window.set_application, None)
+        for page in window._options_pages:
+            scrolled = options_scroller(page)
+            viewport = scrolled.get_child()
+            if not isinstance(viewport, Gtk.Viewport):
+                self.fail(f"expected viewport, got {type(viewport)!r}")
+            clamp = viewport.get_child()
+            if not isinstance(clamp, Adw.Clamp):
+                self.fail(f"expected clamp, got {type(clamp)!r}")
+            self.assertEqual(clamp.get_unit(), Adw.LengthUnit.SP)
+            self.assertEqual(clamp.get_maximum_size(), DEFAULT_MAX_WIDTH)
+            self.assertEqual(clamp.get_tightening_threshold(), DEFAULT_TIGHTENING)
+            child = clamp.get_child()
+            assert child is not None
+            self.assertEqual(child.get_margin_top(), 18)
+            self.assertEqual(child.get_margin_start(), 12)
+            self.assertEqual(child.get_margin_end(), 12)
+
 
 if __name__ == "__main__":
     unittest.main()
