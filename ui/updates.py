@@ -33,6 +33,8 @@ class UpdateView:
         self.context = app_context
         self.manager = _get_manager(app_context)
         self._update_link = FORK_RELEASE_PAGE
+        # The button checks again after an offline result, else opens the notes.
+        self._offline = True
 
         builder = load_builder("update-view")
         self.dialog = object_from_builder(builder, "dialog", Adw.Dialog)
@@ -68,7 +70,8 @@ class UpdateView:
         self.update_button.set_sensitive(True)
         self._update_link = status.get("update_link") or FORK_RELEASE_PAGE
 
-        if not status.get("is_online"):
+        self._offline = not status.get("is_online")
+        if self._offline:
             self.status_row.set_subtitle("Could not check for updates (offline)")
             self.update_button.set_label("Check Again")
         elif status.get("is_current"):
@@ -89,8 +92,7 @@ class UpdateView:
         self.dialog.set_content_height(-1)
 
     def _on_check_or_update(self, _button: typing.Any) -> None:
-        label = self.update_button.get_label()
-        if label == "Check Again":
+        if self._offline:
             self._check()
         elif self._update_link:
             open_uri_in_browser(self.parent, self._update_link)

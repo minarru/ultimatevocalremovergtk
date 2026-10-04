@@ -64,6 +64,33 @@ class UpdateViewTests(unittest.TestCase):
         self.assertTrue(view.update_button.get_sensitive())
         self.assertFalse(view.upgrade_row.get_visible())
 
+    def _clicks(self, status: dict[str, object]) -> tuple[list[bool], list[str]]:
+        from unittest import mock
+
+        from ui.updates import UpdateView
+
+        manager = types.SimpleNamespace(update_status=lambda: {"version": None})
+        view = UpdateView(None, types.SimpleNamespace(download_manager=manager))
+        view._check_done(status)
+        checks: list[bool] = []
+        opened: list[str] = []
+        view._check = lambda: checks.append(True)
+        with mock.patch("ui.updates.open_uri_in_browser", lambda _p, uri: opened.append(uri)):
+            view.update_button.emit("clicked")
+            # The action follows the check's outcome, not the button's wording.
+            view.update_button.set_label("Relabelled")
+            view.update_button.emit("clicked")
+        return checks, opened
+
+    def test_offline_button_checks_again(self) -> None:
+        checks, opened = self._clicks({"is_online": False})
+        self.assertEqual((checks, opened), ([True, True], []))
+
+    def test_online_button_opens_release_notes(self) -> None:
+        link = "https://example.test/release"
+        checks, opened = self._clicks({"is_online": True, "is_current": True, "update_link": link})
+        self.assertEqual((checks, opened), ([], [link, link]))
+
     def test_dialog_grows_when_an_update_is_found(self) -> None:
         # The dialog opens in its loading state; an update reveals another row
         # and a longer status, which must stay on screen without scrolling.
