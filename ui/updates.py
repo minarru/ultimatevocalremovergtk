@@ -84,6 +84,9 @@ class UpdateView:
                 self.upgrade_row.set_subtitle(str(instructions))
                 self.upgrade_row.set_visible(True)
             self.update_button.set_label("View Release Notes")
+        # A -1 content height is measured once at present; remeasure so the
+        # revealed rows stay on screen instead of scrolling.
+        self.dialog.set_content_height(-1)
 
     def _on_check_or_update(self, _button: typing.Any) -> None:
         label = self.update_button.get_label()
