@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import typing
+from typing import Protocol, runtime_checkable
+
 from gi.repository import Adw, Gdk, GLib, Gsk, Gtk
 
 from core.debug_log import log_event
@@ -72,6 +75,9 @@ class ColorFade:
             return None
         widget = self._widget
         background = Gtk.Snapshot()
+        # GTK 4 deprecated StyleContext and the render_* helpers in 4.10 but
+        # offers no other way to paint a widget's CSS background; both remain
+        # until GTK 5.
         background.render_background(
             widget.get_style_context(), 0, 0, widget.get_width(), widget.get_height()
         )
@@ -82,15 +88,21 @@ class ColorFade:
 
     def draw(self, snapshot: Gtk.Snapshot, contents: Gsk.RenderNode | None) -> None:
         """Append ``contents`` and, during a fade, the previous frame over it."""
-        if contents is not None:
-            snapshot.append_node(contents)
-        if self._image is None or self._alpha <= 0.0:
-            self._last_frame = contents
-            return
-        self._draws += 1
-        snapshot.push_opacity(self._alpha)
-        snapshot.append_node(self._image)
-        snapshot.pop()
+        frame = contents
+        if self._image is not None and self._alpha > 0.0:
+            self._draws += 1
+            composite = Gtk.Snapshot()
+            if contents is not None:
+                composite.append_node(contents)
+            composite.push_opacity(self._alpha)
+            composite.append_node(self._image)
+            composite.pop()
+            frame = composite.to_node()
+        if frame is not None:
+            snapshot.append_node(frame)
+        # Keep what is on screen, mid-fade included, so a scheme change during
+        # a fade starts from the blend the user sees.
+        self._last_frame = frame
 
     def _on_tick(self, widget: Gtk.Widget, clock: Gdk.FrameClock) -> bool:
         now = clock.get_frame_time()
@@ -117,3 +129,39 @@ class ColorFade:
             self._image = None
             self._alpha = 0.0
             self._widget.queue_draw()
+
+
+@runtime_checkable
+class FadesColors(Protocol):
+    def begin_color_fade(self) -> None: ...
+
+
+def begin_color_fades() -> None:
+    """Start the color fade on every open window that supports one."""
+    toplevels = Gtk.Window.get_toplevels()
+    for index in range(toplevels.get_n_items()):
+        window = toplevels.get_item(index)
+        if isinstance(window, FadesColors):
+            window.begin_color_fade()
+
+
+class FadingWindow(Adw.Window):
+    """``Adw.Window`` that cross-fades on a color scheme change.
+
+    Blueprints use it as ``$UvrFadingWindow``; import this module before
+    loading them so the type is registered.
+    """
+
+    __gtype_name__ = "UvrFadingWindow"
+
+    def __init__(self, **kwargs: typing.Any):
+        super().__init__(**kwargs)
+        self._color_fade = ColorFade(self)
+
+    def begin_color_fade(self) -> None:
+        self._color_fade.begin()
+
+    def do_snapshot(self, snapshot: Gtk.Snapshot) -> None:
+        frame = Gtk.Snapshot()
+        Adw.Window.do_snapshot(self, frame)
+        self._color_fade.draw(snapshot, frame.to_node())

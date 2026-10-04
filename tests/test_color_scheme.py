@@ -3,11 +3,29 @@
 from __future__ import annotations
 
 import os
+import typing
 import unittest
+
+if typing.TYPE_CHECKING:
+    from gi.repository import Gdk, Graphene
 
 
 def _channel(color: object, name: str) -> float:
     return float(getattr(color, name))
+
+
+def _rgba(spec: str) -> Gdk.RGBA:
+    from gi.repository import Gdk
+
+    color = Gdk.RGBA()
+    color.parse(spec)
+    return color
+
+
+def _rect() -> Graphene.Rect:
+    from gi.repository import Graphene
+
+    return Graphene.Rect().init(0, 0, 10, 10)
 
 
 @unittest.skipUnless(
@@ -70,7 +88,7 @@ class ClassicPaletteTests(unittest.TestCase):
         from ui.application import apply_color_scheme
 
         apply_color_scheme("dark")
-        with patch("ui.application._fade_main_windows") as fade:
+        with patch("ui.application.begin_color_fades") as fade:
             apply_color_scheme("dark")
             fade.assert_not_called()
             apply_color_scheme("classic")
@@ -143,6 +161,49 @@ class ClassicPaletteTests(unittest.TestCase):
         settings.set_property("gtk-enable-animations", False)
         fade.begin()
         self.assertFalse(fade.active, "disabled animations skip straight to the new colors")
+
+    def test_palette_sits_below_the_users_gtk_css(self) -> None:
+        from gi.repository import Gtk
+
+        from ui import resources
+
+        self.assertGreater(resources._PALETTE_PRIORITY, resources._DEV_CSS_PRIORITY)
+        self.assertGreater(resources._DEV_CSS_PRIORITY, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        self.assertLess(resources._PALETTE_PRIORITY, Gtk.STYLE_PROVIDER_PRIORITY_USER)
+
+    def test_builder_windows_take_part_in_scheme_fades(self) -> None:
+        from unittest.mock import patch
+
+        from gi.repository import Adw
+
+        from ui.template import load_builder, object_from_builder
+        from ui.widgets.color_fade import FadingWindow, begin_color_fades
+
+        for name in ("download-center", "error-console"):
+            window = object_from_builder(load_builder(name), "window", Adw.Window)
+            self.assertIsInstance(window, FadingWindow, name)
+        window = FadingWindow()
+        window.present()
+        self.addCleanup(window.close)
+        with patch.object(FadingWindow, "begin_color_fade") as begin:
+            begin_color_fades()
+        begin.assert_called()
+
+    def test_a_fade_during_a_fade_starts_from_the_blend_on_screen(self) -> None:
+        from gi.repository import Gsk, Gtk
+
+        from ui.widgets.color_fade import ColorFade
+
+        fade = ColorFade(Gtk.Box())
+        old = Gsk.ColorNode.new(_rgba("red"), _rect())
+        new = Gsk.ColorNode.new(_rgba("blue"), _rect())
+        fade._image = old
+        fade._alpha = 0.5
+        fade.draw(Gtk.Snapshot(), new)
+        last = fade._last_frame
+        assert last is not None
+        self.assertIsNot(last, new, "mid-fade the recorded frame includes the old image")
+        self.assertIsNot(last, old)
 
     def _foreground(self, name: str) -> object:
         from gi.repository import GLib, Gtk

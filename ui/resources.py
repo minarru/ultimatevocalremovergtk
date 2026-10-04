@@ -21,6 +21,10 @@ _PALETTE_RESOURCES = {
     "classic-light": f"{RESOURCE_PREFIX}/palette-classic-light.css",
 }
 _palette_provider: Gtk.CssProvider | None = None
+# Above the bundled style.css, below the user's own gtk.css: the live dev
+# stylesheet replaces style.css, and a palette recolors both.
+_DEV_CSS_PRIORITY = Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 1
+_PALETTE_PRIORITY = Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 2
 
 _RESOURCE_PATH = os.path.join(os.path.dirname(__file__), "data", "uvr.gresource")
 #: Source (uncompiled) stylesheet, used by the dev-time live CSS loader.
@@ -164,8 +168,9 @@ def ensure_application_icon() -> bool:
 def set_palette_override(name: str | None) -> None:
     """Install or clear the Classic palette stylesheet for ``name``.
 
-    ``classic`` and ``classic-light`` load a display-wide provider at user
-    priority so the colors win over the Adwaita theme. Any other name removes
+    ``classic`` and ``classic-light`` load a display-wide provider that wins
+    over the Adwaita theme and the app's stylesheet, but not over the user's
+    own ``gtk.css``. Any other name removes
     that provider and leaves Follow system, Light, and Dark unchanged.
     """
     global _palette_provider
@@ -184,7 +189,7 @@ def set_palette_override(name: str | None) -> None:
     Gtk.StyleContext.add_provider_for_display(
         display,
         provider,
-        Gtk.STYLE_PROVIDER_PRIORITY_USER,
+        _PALETTE_PRIORITY,
     )
     _palette_provider = provider
 
@@ -218,7 +223,7 @@ def load_application_styles() -> bool:
 
 
 def _enable_dev_css(display: typing.Any) -> None:
-    """Load on-disk ``style.css`` at user priority with live reload."""
+    """Load on-disk ``style.css`` over the bundled copy with live reload."""
     global _dev_css_provider, _dev_css_monitor
     if _dev_css_provider is not None:
         return
@@ -230,7 +235,7 @@ def _enable_dev_css(display: typing.Any) -> None:
     Gtk.StyleContext.add_provider_for_display(
         display,
         provider,
-        Gtk.STYLE_PROVIDER_PRIORITY_USER,
+        _DEV_CSS_PRIORITY,
     )
 
     def reload_css(*_args: typing.Any) -> None:

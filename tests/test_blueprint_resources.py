@@ -51,6 +51,8 @@ class ResourceBuildTests(unittest.TestCase):
         (resources / "icons").mkdir(parents=True)
         (resources / "icons" / "index.theme").write_text("[Icon Theme]\n")
         (resources / "style.css").write_text("window { color: white; }\n")
+        for palette in ("palette-classic.css", "palette-classic-light.css"):
+            (resources / palette).write_text("window { color: white; }\n")
         script = resources / "compile_resources.sh"
         shutil.copy2(RESOURCE_SCRIPT, script)
         (root / 'scripts').mkdir()

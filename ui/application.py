@@ -3,12 +3,13 @@
 import sys
 from typing import Optional, Sequence
 
-from gi.repository import Adw, Gio, GLib, Gtk
+from gi.repository import Adw, Gio, GLib
 
 from core import Settings, ensure_data_dir
 
 from . import APP_ID
 from .resources import load_application_styles, register_gresources, set_palette_override
+from .widgets.color_fade import begin_color_fades
 from .window import MainWindow
 
 #: String ``color_scheme`` settings values mapped to libadwaita scheme enums.
@@ -34,18 +35,10 @@ def apply_color_scheme(name: str) -> None:
     global _applied_color_scheme
     name = name if name in _COLOR_SCHEMES else "auto"
     if name != _applied_color_scheme:
-        _fade_main_windows()
+        begin_color_fades()
     _applied_color_scheme = name
     Adw.StyleManager.get_default().set_color_scheme(_COLOR_SCHEMES[name])
     set_palette_override(name)
-
-
-def _fade_main_windows() -> None:
-    toplevels = Gtk.Window.get_toplevels()
-    for index in range(toplevels.get_n_items()):
-        window = toplevels.get_item(index)
-        if isinstance(window, MainWindow):
-            window.begin_color_fade()
 
 
 class UVRApplication(Adw.Application):

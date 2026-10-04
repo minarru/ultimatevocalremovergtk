@@ -10,7 +10,7 @@ expects (mirroring how Tk stores every option as a string).
 import typing
 from typing import Iterable, List, Optional, Sequence
 
-from gi.repository import Adw, Gdk, Gtk, Pango
+from gi.repository import Adw, Gdk, GObject, Gtk, Pango
 
 from ..template import load_builder, object_from_builder
 from ..widget_state import drop, fetch, has, stash
@@ -117,11 +117,17 @@ def keep_value_whole(row: Adw.ComboRow) -> None:
     row.set_list_factory(row.get_factory())
     factory = Gtk.SignalListItemFactory()
 
-    def on_setup(_factory: typing.Any, item: typing.Any):
-        item.set_child(Gtk.Label(xalign=0.0))
+    def on_setup(_factory: Gtk.SignalListItemFactory, item: GObject.Object) -> None:
+        if isinstance(item, Gtk.ListItem):
+            item.set_child(Gtk.Label(xalign=0.0))
 
-    def on_bind(_factory: typing.Any, item: typing.Any):
-        item.get_child().set_label(item.get_item().get_string())
+    def on_bind(_factory: Gtk.SignalListItemFactory, item: GObject.Object) -> None:
+        if not isinstance(item, Gtk.ListItem):
+            return
+        label = item.get_child()
+        value = item.get_item()
+        if isinstance(label, Gtk.Label) and isinstance(value, Gtk.StringObject):
+            label.set_label(value.get_string())
 
     factory.connect("setup", on_setup)
     factory.connect("bind", on_bind)
