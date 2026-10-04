@@ -11,11 +11,12 @@ from gi.repository import Adw, Gtk
 from core.ensemble_blend import restore_blend_options, saved_blend_options
 from core.settings import Settings
 from core.stem_roles import StemRoleId
+from ui.dialogs.utils import present_modal_dialog
 from ui.template import load_builder, object_from_builder
 
 
 def show_blend_dialog(
-    parent: Gtk.Widget,
+    parent: Gtk.Window | None,
     settings: Settings,
     members: Sequence[tuple[str, str, Sequence[Any]]],
     on_apply: Callable[[dict[str, Any]], None],
@@ -73,5 +74,5 @@ def show_blend_dialog(
         dialog.close()
 
     object_from_builder(builder, "apply_button", Gtk.Button).connect("clicked", apply)
-    dialog.present(parent)
+    present_modal_dialog(dialog, parent, dismiss_on_backdrop=False)
     return dialog

@@ -18,6 +18,7 @@ from core.model_scores import (
     load_model_scores,
 )
 
+from .dialogs.utils import present_modal_dialog
 from .download_presentation import ARCHITECTURE_LABELS, ARCHITECTURES
 from .model_picker_state import PickerFilters, PickerModel, project_installed, visible_models
 from .template import load_builder, object_from_builder
@@ -242,11 +243,11 @@ class ModelPicker:
         self._status = text
         self.get('count', Gtk.Label).set_label(text)
 
-    def present(self, parent: Gtk.Widget) -> None:
+    def present(self, parent: Gtk.Window) -> None:
         self.detail_id = None
         self.refresh_models()
         self.pages.set_visible_child_name('browser')
-        self.dialog.present(parent)
+        present_modal_dialog(self.dialog, parent)
         self.search.grab_focus()
         if self._reveal_tick:
             self.dialog.remove_tick_callback(self._reveal_tick)

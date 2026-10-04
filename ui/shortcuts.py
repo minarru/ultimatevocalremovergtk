@@ -16,6 +16,7 @@ from typing import List, Tuple
 
 from gi.repository import Adw, Gtk
 
+from .dialogs.utils import present_modal_dialog
 from .hints import KEYBOARD_ACCELERATORS
 
 # Logical groups: (section title, [(action name, display title), ...]). The
@@ -106,6 +107,6 @@ def _build_gtk_window(parent_window: typing.Any) -> "Gtk.ShortcutsWindow":
 def present_shortcuts(parent_window: typing.Any) -> None:
     """Build and present the Keyboard Shortcuts overview for ``parent_window``."""
     if hasattr(Adw, "ShortcutsDialog"):
-        _build_adw_dialog().present(parent_window)
+        present_modal_dialog(_build_adw_dialog(), parent_window)
     else:
         _build_gtk_window(parent_window).present()

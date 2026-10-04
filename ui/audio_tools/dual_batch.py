@@ -231,4 +231,4 @@ class DualBatchDialog:
         self.dialog.close()
 
     def present(self) -> None:
-        present_modal_dialog(self.dialog, self.parent)
+        present_modal_dialog(self.dialog, self.parent, dismiss_on_backdrop=False)

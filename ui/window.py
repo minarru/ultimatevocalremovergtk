@@ -52,6 +52,7 @@ from core.types import ProcessMethod
 from . import APP_TITLE
 from .audio_tools import AudioToolsPage
 from .context import AppContext
+from .dialogs.utils import present_modal_dialog
 from .dispatch import idle_on_main
 from .download import init_download_queue_ui
 from .ensemble import EnsemblePage
@@ -1226,7 +1227,7 @@ class MainWindow(Adw.ApplicationWindow):
             on_settings_reloaded=self._load_from_settings,
             on_settings_applied=self._sync_after_preferences,
         )
-        dialog.present(self)
+        present_modal_dialog(dialog, self)
 
     def _on_ensemble(self, _action: Gio.SimpleAction, _param: typing.Any) -> None:
         self.content_stack.set_visible_child_name("ensemble")

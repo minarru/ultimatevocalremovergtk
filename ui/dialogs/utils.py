@@ -1,6 +1,5 @@
 """Shared helpers for modal ``Adw.Dialog`` presentation."""
 
-import typing
 from collections.abc import Callable
 from typing import Any
 
@@ -55,24 +54,28 @@ def _find_dimming_widget(root: Gtk.Widget) -> Gtk.Widget | None:
     return None
 
 
-def _install_backdrop_dismiss(dimming: Gtk.Widget, on_dismiss: typing.Any) -> None:
-    if fetch(dimming, "_uvr_backdrop_dismiss", False):
+def _install_backdrop_dismiss(dimming: Gtk.Widget, dialog: Adw.Dialog) -> None:
+    first = not fetch(dimming, "_uvr_backdrop_dialog", None)
+    stash(dimming, "_uvr_backdrop_dialog", dialog)
+    if not first:
         return
     gesture = Gtk.GestureClick()
-    gesture.connect("released", lambda *_: on_dismiss())
+
+    def released(*_args: object) -> None:
+        target = fetch(dimming, "_uvr_backdrop_dialog", None)
+        if target is not None:
+            target.close()
+
+    gesture.connect("released", released)
     dimming.add_controller(gesture)
-    stash(dimming, "_uvr_backdrop_dismiss", True)
 
 
-def _try_install_backdrop_dismiss(dialog: Adw.Dialog, parent: Gtk.Window | None) -> None:
-    roots: list[Gtk.Widget] = [dialog]
-    if parent is not None:
-        roots.insert(0, parent)
-    for root in roots:
-        dimming = _find_dimming_widget(root)
-        if dimming is not None:
-            _install_backdrop_dismiss(dimming, lambda: dialog.close())
-            return
+def _try_install_backdrop_dismiss(dialog: Adw.Dialog) -> None:
+    # Each dialog owns its dimming widget. Searching the parent window instead
+    # would find the lower dialog's when one dialog is stacked over another.
+    dimming = _find_dimming_widget(dialog)
+    if dimming is not None:
+        _install_backdrop_dismiss(dimming, dialog)
 
 
 def parent_window_width(parent: WindowSizing | None, *, fallback: int = 440) -> int:
@@ -129,19 +132,26 @@ def set_form_dialog_content(
     return save
 
 
-def present_modal_dialog(dialog: Adw.Dialog, parent: Gtk.Window | None = None) -> None:
-    """Present a modal dialog; clicking the dimmed backdrop closes it.
+def present_modal_dialog(
+    dialog: Adw.Dialog,
+    parent: Gtk.Window | None = None,
+    *,
+    dismiss_on_backdrop: bool = True,
+) -> None:
+    """Present a modal dialog; by default clicking the dimmed backdrop closes it.
 
     ``Adw.FloatingSheet`` (the default desktop presentation) does not wire
     backdrop clicks to close, unlike ``Adw.BottomSheet``. This helper adds that
-    gesture so behavior matches GNOME HIG expectations.
+    gesture so behavior matches GNOME HIG expectations. Commit dialogs pass
+    ``dismiss_on_backdrop=False`` so a stray click cannot discard their edits.
     """
     dialog.set_can_close(True)
     if parent is not None:
         dialog.present(parent)
     else:
         dialog.present()
-    GLib.idle_add(_try_install_backdrop_dismiss, dialog, parent)
+    if dismiss_on_backdrop:
+        GLib.idle_add(_try_install_backdrop_dismiss, dialog)
 
 
 def run_blocking_dialog(
@@ -202,6 +212,6 @@ def run_blocking_dialog(
         on_save=on_save,
         save_label=save_label,
     )
-    present_modal_dialog(dialog, parent)
+    present_modal_dialog(dialog, parent, dismiss_on_backdrop=False)
     loop.run()
     return state["result"]

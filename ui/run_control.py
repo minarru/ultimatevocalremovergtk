@@ -35,6 +35,7 @@ from core.processing_phase import ProcessingPhase
 from core.separate_import import engines_imported, warm_status
 from core.waveform import set_peak_sink
 
+from .dialogs.utils import present_modal_dialog
 from .dispatch import gtk_job_callbacks, idle_on_main, reset_progress_log
 from .files import open_folder_in_file_manager
 from .notifications import (
@@ -401,7 +402,7 @@ class RunController:
         dialog.connect("closed", closed)
         self._plan_dialog = dialog
         self.refresh_start_readiness()
-        dialog.present(self._host.dialog_parent)
+        present_modal_dialog(dialog, self._host.dialog_parent, dismiss_on_backdrop=False)
 
     def _accept_plan(self, target: RunTarget, fingerprint: str, plan: typing.Any) -> None:
         from core.job_plan import settings_fingerprint

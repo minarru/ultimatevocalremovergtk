@@ -17,6 +17,7 @@ from bundled.constants import DONATE_LINK_BMAC, FORK_ISSUE_URL, LICENSE_TEXT
 from core import paths
 
 from . import APP_ID
+from .dialogs.utils import present_modal_dialog
 
 try:
     from __version__ import UPSTREAM_BASE, VERSION
@@ -130,7 +131,7 @@ def open_about(parent_window: typing.Any):
     if hasattr(Adw, "AboutDialog"):
         about = Adw.AboutDialog(**kwargs)
         _enrich_about(about)
-        about.present(parent_window)
+        present_modal_dialog(about, parent_window)
     else:
         about = Adw.AboutWindow(transient_for=parent_window, **kwargs)
         _enrich_about(about)
