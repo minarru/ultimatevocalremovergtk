@@ -70,12 +70,19 @@ def _install_backdrop_dismiss(dimming: Gtk.Widget, dialog: Adw.Dialog) -> None:
     dimming.add_controller(gesture)
 
 
-def _try_install_backdrop_dismiss(dialog: Adw.Dialog) -> None:
+def _try_install_backdrop_dismiss(dialog: Adw.Dialog) -> bool:
     # Each dialog owns its dimming widget. Searching the parent window instead
     # would find the lower dialog's when one dialog is stacked over another.
     dimming = _find_dimming_widget(dialog)
-    if dimming is not None:
-        _install_backdrop_dismiss(dimming, dialog)
+    if dimming is None:
+        return False
+    _install_backdrop_dismiss(dimming, dialog)
+    return True
+
+
+def _retry_backdrop_dismiss(dialog: Adw.Dialog) -> bool:
+    _try_install_backdrop_dismiss(dialog)
+    return GLib.SOURCE_REMOVE
 
 
 def parent_window_width(parent: WindowSizing | None, *, fallback: int = 440) -> int:
@@ -182,7 +189,9 @@ def present_modal_dialog(
     if dismiss_on_backdrop:
         # The dimming widget exists once present() returns; an idle callback
         # could run late on a busy main loop and leave the backdrop inert.
-        _try_install_backdrop_dismiss(dialog)
+        # Retry once on idle in case a libadwaita build creates it lazily.
+        if not _try_install_backdrop_dismiss(dialog):
+            GLib.idle_add(_retry_backdrop_dismiss, dialog)
 
 
 def run_blocking_dialog(

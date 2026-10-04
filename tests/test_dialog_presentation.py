@@ -132,6 +132,25 @@ class BackdropDismissTests(unittest.TestCase):
         present_modal_dialog(dialog, self.parent)
         self.assertIs(fetch(_backdrop(dialog), "_uvr_backdrop_dialog", None), dialog)
 
+    def test_backdrop_install_retries_when_dimming_is_late(self) -> None:
+        # Should a libadwaita build create the dimming widget lazily, the
+        # handler is installed on the next idle instead of being skipped.
+        import ui.dialogs.utils as utils
+        from ui.widget_state import fetch
+
+        real = utils._find_dimming_widget
+        calls: list[int] = []
+
+        def late(root: Any) -> Any:
+            calls.append(1)
+            return None if len(calls) == 1 else real(root)
+
+        dialog = self._dialog()
+        with mock.patch.object(utils, "_find_dimming_widget", side_effect=late):
+            utils.present_modal_dialog(dialog, self.parent)
+            self.wait_for(lambda: len(calls) > 1)
+        self.assertIs(fetch(_backdrop(dialog), "_uvr_backdrop_dialog", None), dialog)
+
     def test_commit_dialog_ignores_backdrop(self) -> None:
         from tests.gtk_layout_helpers import wait_for_dialog_open
         from ui.dialogs.utils import present_modal_dialog
