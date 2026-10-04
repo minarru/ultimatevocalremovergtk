@@ -92,12 +92,34 @@ def parent_window_width(parent: WindowSizing | None, *, fallback: int = 440) -> 
     return fallback
 
 
-def configure_dialog_width(
-    dialog: Adw.Dialog, parent: Gtk.Window | None, *, fallback: int = 440
-) -> None:
-    """Pin dialog content width to ``parent`` instead of shrinking to natural size."""
-    dialog.set_content_width(parent_window_width(parent, fallback=fallback))
-    dialog.set_follows_content_size(False)
+DIALOG_MIN_WIDTH = 360
+DIALOG_WINDOW_MARGIN = 64
+
+
+def capped_dialog_width(width: int, parent: WindowSizing | None) -> int:
+    """``width``, shrunk to leave a margin inside ``parent`` but never below the minimum."""
+    if parent is None:
+        return width
+    parent_width = parent_window_width(parent, fallback=width)
+    return max(DIALOG_MIN_WIDTH, min(width, parent_width - DIALOG_WINDOW_MARGIN))
+
+
+def _libadwaita_sized() -> tuple[type, ...]:
+    names = ("PreferencesDialog", "AboutDialog", "ShortcutsDialog")
+    return tuple(getattr(Adw, name) for name in names if hasattr(Adw, name))
+
+
+def _cap_to_window(dialog: Adw.Dialog, parent: Gtk.Window | None) -> None:
+    if isinstance(dialog, _libadwaita_sized()):
+        return
+    design = fetch(dialog, "_uvr_design_width", None)
+    if design is None:
+        width = dialog.get_content_width()
+        if width <= 0:
+            return
+        design = width
+        stash(dialog, "_uvr_design_width", design)
+    dialog.set_content_width(capped_dialog_width(design, parent))
 
 
 def fill_dialog_width(widget: Gtk.Widget) -> None:
@@ -146,14 +168,21 @@ def present_modal_dialog(
     backdrop clicks to close, unlike ``Adw.BottomSheet``. This helper adds that
     gesture so behavior matches GNOME HIG expectations. Commit dialogs pass
     ``dismiss_on_backdrop=False`` so a stray click cannot discard their edits.
+
+    The dialog's content width (its Blueprint tier) is capped to the parent so
+    a small window shrinks the dialog instead of overflowing it; libadwaita's
+    own dialogs keep their sizing.
     """
     dialog.set_can_close(True)
+    _cap_to_window(dialog, parent)
     if parent is not None:
         dialog.present(parent)
     else:
         dialog.present()
     if dismiss_on_backdrop:
-        GLib.idle_add(_try_install_backdrop_dismiss, dialog)
+        # The dimming widget exists once present() returns; an idle callback
+        # could run late on a busy main loop and leave the backdrop inert.
+        _try_install_backdrop_dismiss(dialog)
 
 
 def run_blocking_dialog(

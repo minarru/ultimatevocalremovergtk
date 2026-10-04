@@ -30,10 +30,7 @@ if typing.TYPE_CHECKING:
     from .context import AppContext
     from .window import MainWindow
 
-from .dialogs.utils import (
-    configure_dialog_width,
-    present_modal_dialog,
-)
+from .dialogs.utils import present_modal_dialog
 from .dispatch import idle_on_main, latest_main_thread
 from .download_center import DownloadCenterWindow
 from .files import open_folder_in_file_manager, open_uri_in_browser
@@ -443,7 +440,6 @@ def open_manual_downloads(parent: typing.Any, app_context: typing.Any):
 
     builder = load_builder("manual-downloads")
     dialog = object_from_builder(builder, "dialog", Adw.Dialog)
-    configure_dialog_width(dialog, parent, fallback=520)
     page = object_from_builder(builder, "page", Adw.PreferencesPage)
 
     catalogue = [

@@ -14,7 +14,7 @@ class SheetConstantsTests(unittest.TestCase):
     def test_width_is_capped_not_parent_tracked(self):
         from ui.model_options import sheet
 
-        self.assertEqual(sheet._SHEET_WIDTH, 760)
+        self.assertEqual(sheet._SHEET_WIDTH, 800)
 
     def test_height_fraction_leaves_room_for_the_parent_window(self):
         from ui.model_options import sheet

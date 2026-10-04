@@ -40,7 +40,7 @@ from core.error_log import (
 from core.support_urls import fork_issue_url
 
 from .dialogs.utils import (
-    parent_window_width,
+    capped_dialog_width,
     present_modal_dialog,
 )
 from .error_log_view import ErrorLogView
@@ -50,7 +50,6 @@ from .template import load_builder, object_from_builder
 # Floating sheet width: wide enough to read, capped so it cannot grow with a
 # long RuntimeError line. TextView (not Label) wraps to the allocated width.
 _ERROR_DIALOG_WIDTH = 600
-_ERROR_DIALOG_MARGIN = 64
 _ERROR_SUMMARY_MIN_HEIGHT = 48
 _ERROR_SUMMARY_MAX_HEIGHT = 280
 _ERROR_SUMMARY_PAD_Y = 20  # TextView top+bottom margins
@@ -133,8 +132,7 @@ _ERROR_LOG_VIEW: ErrorLogView | None = None
 
 
 def _error_dialog_width(parent_window: WindowSizing) -> int:
-    parent_width = parent_window_width(parent_window, fallback=_ERROR_DIALOG_WIDTH)
-    return max(360, min(_ERROR_DIALOG_WIDTH, parent_width - _ERROR_DIALOG_MARGIN))
+    return capped_dialog_width(_ERROR_DIALOG_WIDTH, parent_window)
 
 
 class ErrorLogViewSink:

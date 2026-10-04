@@ -122,6 +122,16 @@ class BackdropDismissTests(unittest.TestCase):
         self.assertEqual(self.closed, [upper])
         self.assertTrue(lower.get_mapped())
 
+    def test_backdrop_handler_is_ready_when_present_returns(self) -> None:
+        # The dimming widget exists once present() returns; installing from an
+        # idle callback left a window where a busy main loop delayed it.
+        from ui.dialogs.utils import present_modal_dialog
+        from ui.widget_state import fetch
+
+        dialog = self._dialog()
+        present_modal_dialog(dialog, self.parent)
+        self.assertIs(fetch(_backdrop(dialog), "_uvr_backdrop_dialog", None), dialog)
+
     def test_commit_dialog_ignores_backdrop(self) -> None:
         from tests.gtk_layout_helpers import wait_for_dialog_open
         from ui.dialogs.utils import present_modal_dialog
