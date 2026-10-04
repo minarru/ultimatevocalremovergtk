@@ -1,0 +1,81 @@
+/* Tkinter UVR: window #0e0e0f, accent #13849f, text #f4f4f4, console #0c0c0d. */
+@define-color accent_bg_color #13849f;
+@define-color accent_fg_color #ffffff;
+@define-color accent_color #13849f;
+@define-color window_bg_color #0e0e0f;
+@define-color window_fg_color #f6f6f7;
+@define-color view_bg_color #0c0c0d;
+@define-color view_fg_color #cdd3ce;
+@define-color headerbar_bg_color #0e0e0f;
+@define-color headerbar_fg_color #f6f6f7;
+@define-color headerbar_border_color RGB(19 132 159 / 28%);
+@define-color card_bg_color #141a1c;
+@define-color card_fg_color #f6f6f7;
+@define-color dialog_bg_color #101416;
+@define-color dialog_fg_color #f6f6f7;
+@define-color popover_bg_color #161c1e;
+@define-color popover_fg_color #f6f6f7;
+@define-color shade_color RGB(0 0 0 / 36%);
+@define-color borders RGB(134 134 135 / 36%);
+
+:root {
+  --accent-bg-color: #13849f;
+  --accent-fg-color: #ffffff;
+  --accent-color: #13849f;
+  --window-bg-color: #0e0e0f;
+  --window-fg-color: #f6f6f7;
+  --view-bg-color: #0c0c0d;
+  --view-fg-color: #cdd3ce;
+  --headerbar-bg-color: #0e0e0f;
+  --headerbar-fg-color: #f6f6f7;
+  --headerbar-border-color: RGB(19 132 159 / 28%);
+  --card-bg-color: #141a1c;
+  --card-fg-color: #f6f6f7;
+  --dialog-bg-color: #101416;
+  --dialog-fg-color: #f6f6f7;
+  --popover-bg-color: #161c1e;
+  --popover-fg-color: #f6f6f7;
+  --shade-color: RGB(0 0 0 / 36%);
+}
+
+.uvr-log-console,
+.uvr-log-console text {
+  color: #898b8e;
+}
+
+.uvr-log-console textview {
+  background-color: @card_bg_color;
+}
+
+/* Titles use a light cyan; control fills stay the original #13849f. */
+preferencesgroup .header .heading {
+  color: #84bfcd;
+}
+
+list.boxed-list {
+  box-shadow: inset 0 0 0 1px alpha(#13849f, 0.42);
+}
+
+/* Dividers stay fainter than the card frame; nested expander rows keep Adwaita's shade. */
+list.boxed-list > row,
+list.boxed-list > row.expander row.header,
+row.expander list.nested > row {
+  border-bottom-color: alpha(#13849f, 0.16);
+}
+
+.uvr-log-panel {
+  border-color: alpha(#13849f, 0.42);
+}
+
+/* The selected tab carries a stronger wash than the card frames it shares a hue with. */
+viewswitcher button.toggle:checked,
+.uvr-purpose-tabs button.toggle:checked {
+  background-color: alpha(#13849f, 0.38);
+  box-shadow: inset 0 0 0 1px #13849f;
+}
+
+button.stem-toggle:checked,
+toggle-group > toggle:checked {
+  background-color: alpha(#13849f, 0.32);
+  box-shadow: none;
+}

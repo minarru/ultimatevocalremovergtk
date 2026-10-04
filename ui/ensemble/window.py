@@ -123,6 +123,7 @@ from ..widgets.page_groups import PageGroupCallbacks, PageGroups, build_page_gro
 from ..widgets.rows import (
     configure_combo_row,
     get_combo_value,
+    keep_value_whole,
     log_model_picker_items,
     set_combo_tag_values,
     set_combo_value,
@@ -334,6 +335,7 @@ class EnsemblePage:
             self._layout_object("primary_algo_row", Adw.ComboRow),
             list(ENSEMBLE_ALGORITHMS),
         )
+        keep_value_whole(self.primary_algo_row)
         set_tooltip(self.primary_algo_row, ENSEMBLE_TYPE_HELP)
         self.primary_algo_row.connect("notify::selected", self._on_ensemble_type_changed)
 
@@ -341,6 +343,7 @@ class EnsemblePage:
             self._layout_object("secondary_algo_row", Adw.ComboRow),
             list(ENSEMBLE_ALGORITHMS),
         )
+        keep_value_whole(self.secondary_algo_row)
         set_tooltip(self.secondary_algo_row, ENSEMBLE_TYPE_HELP)
         self.secondary_algo_row.connect("notify::selected", self._on_ensemble_type_changed)
 

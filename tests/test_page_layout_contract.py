@@ -242,10 +242,11 @@ class EnsembleLayoutTests(unittest.TestCase):
         self.assertIn(group.get_description(), ("", None))
 
     def test_algorithm_values_fit_beside_their_descriptions(self) -> None:
-        """A one-line description must leave the combo room for its value.
+        """A description beside an algorithm value wraps instead of squeezing it.
 
-        The row's height is settled while the description fits on one line,
-        so a long description squeezes the selected value instead of wrapping.
+        The row gives its subtitle all the width the value's minimum leaves, so
+        an ellipsizing value collapses whenever a description just fits on one
+        line. The popover still uses libadwaita's own items.
         """
         import time
 
@@ -265,6 +266,8 @@ class EnsembleLayoutTests(unittest.TestCase):
         # values only while Custom leaves those rows open.
         set_combo_value(page.preset_row, CUSTOM_PRESET)
         row = page.secondary_algo_row
+        self.assertIsNotNone(row.get_list_factory())
+        self.assertIsNot(row.get_list_factory(), row.get_factory())
 
         def find(widget: Any, kind: type) -> Any:
             return next((w for w in iter_descendants(widget) if isinstance(w, kind)), None)

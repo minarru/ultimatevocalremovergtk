@@ -106,6 +106,28 @@ def configure_combo_row(row: Adw.ComboRow, values: Iterable) -> Adw.ComboRow:
     return row
 
 
+def keep_value_whole(row: Adw.ComboRow) -> None:
+    """Never ellipsize the selected value of a combo row with short values.
+
+    The row gives its subtitle all the width the value's minimum leaves, so an
+    ellipsizing value collapses whenever a description just fits on one line.
+    A value that cannot shrink makes the description wrap instead. The popover
+    keeps libadwaita's default items, including the selection checkmark.
+    """
+    row.set_list_factory(row.get_factory())
+    factory = Gtk.SignalListItemFactory()
+
+    def on_setup(_factory: typing.Any, item: typing.Any):
+        item.set_child(Gtk.Label(xalign=0.0))
+
+    def on_bind(_factory: typing.Any, item: typing.Any):
+        item.get_child().set_label(item.get_item().get_string())
+
+    factory.connect("setup", on_setup)
+    factory.connect("bind", on_bind)
+    row.set_factory(factory)
+
+
 def use_wrapping_list(row: Adw.ComboRow) -> None:
     """Make an ``Adw.ComboRow`` show full, non-truncated values.
 

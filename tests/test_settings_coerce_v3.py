@@ -70,6 +70,11 @@ class EnumCoerceTests(unittest.TestCase):
             MdxDenoiseOption.STANDARD,
         )
         self.assertEqual(coerce_field("ui", "color_scheme", "dark"), ColorScheme.DARK)
+        self.assertEqual(coerce_field("ui", "color_scheme", "classic"), ColorScheme.CLASSIC)
+        self.assertEqual(
+            coerce_field("ui", "color_scheme", "classic-light"),
+            ColorScheme.CLASSIC_LIGHT,
+        )
         self.assertEqual(coerce_field("process", "save_format", "OPUS"), SaveFormat.OPUS)
         self.assertEqual(coerce_field("process", "opus_bitrate", "128k"), OpusBitrate.K128)
 
@@ -86,6 +91,8 @@ class EnumValueTests(unittest.TestCase):
     def test_unwraps_settings_enums(self) -> None:
         self.assertEqual(enum_value(WavType.PCM_24), "PCM_24")
         self.assertEqual(enum_value(ColorScheme.DARK), "dark")
+        self.assertEqual(enum_value(ColorScheme.CLASSIC), "classic")
+        self.assertEqual(enum_value(ColorScheme.CLASSIC_LIGHT), "classic-light")
         self.assertEqual(enum_value(OpusBitrate.K192), "192k")
         self.assertEqual(enum_value("pair.karaoke"), "pair.karaoke")
 

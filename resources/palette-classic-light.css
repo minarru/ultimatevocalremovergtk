@@ -1,0 +1,81 @@
+/* Light counterpart: the same teal hairline and headings, on a cool paper field. */
+@define-color accent_bg_color #13849f;
+@define-color accent_fg_color #ffffff;
+@define-color accent_color #0f7590;
+@define-color window_bg_color #e7eef0;
+@define-color window_fg_color #0e0e0f;
+@define-color view_bg_color #f4f7f8;
+@define-color view_fg_color #0e0e0f;
+@define-color headerbar_bg_color #e7eef0;
+@define-color headerbar_fg_color #0e0e0f;
+@define-color headerbar_border_color RGB(19 132 159 / 22%);
+@define-color card_bg_color #ffffff;
+@define-color card_fg_color #0e0e0f;
+@define-color dialog_bg_color #ffffff;
+@define-color dialog_fg_color #0e0e0f;
+@define-color popover_bg_color #ffffff;
+@define-color popover_fg_color #0e0e0f;
+@define-color shade_color RGB(14 40 48 / 10%);
+@define-color borders RGB(19 132 159 / 28%);
+
+:root {
+  --accent-bg-color: #13849f;
+  --accent-fg-color: #ffffff;
+  --accent-color: #0f7590;
+  --window-bg-color: #e7eef0;
+  --window-fg-color: #0e0e0f;
+  --view-bg-color: #f4f7f8;
+  --view-fg-color: #0e0e0f;
+  --headerbar-bg-color: #e7eef0;
+  --headerbar-fg-color: #0e0e0f;
+  --headerbar-border-color: RGB(19 132 159 / 22%);
+  --card-bg-color: #ffffff;
+  --card-fg-color: #0e0e0f;
+  --dialog-bg-color: #ffffff;
+  --dialog-fg-color: #0e0e0f;
+  --popover-bg-color: #ffffff;
+  --popover-fg-color: #0e0e0f;
+  --shade-color: RGB(14 40 48 / 10%);
+}
+
+.uvr-log-console,
+.uvr-log-console text {
+  color: #5c5d5e;
+}
+
+.uvr-log-console textview {
+  background-color: #f4f7f8;
+}
+
+/* #4fa3b7 disappears on the paper field, so titles stay the deeper readable teal. */
+preferencesgroup .header .heading {
+  color: #0f7590;
+}
+
+list.boxed-list {
+  box-shadow: inset 0 0 0 1px alpha(#13849f, 0.35);
+}
+
+list.boxed-list > row,
+list.boxed-list > row.expander row.header,
+row.expander list.nested > row {
+  border-bottom-color: alpha(#13849f, 0.14);
+}
+
+.uvr-log-panel {
+  border-color: alpha(#13849f, 0.35);
+}
+
+viewswitcher button.toggle:checked,
+.uvr-purpose-tabs button.toggle:checked {
+  background-color: alpha(#13849f, 0.24);
+  color: #0e0e0f;
+  box-shadow: inset 0 0 0 1px #13849f;
+}
+
+button.stem-toggle:checked,
+toggle-group > toggle:checked {
+  background-color: alpha(#13849f, 0.2);
+  color: #0e0e0f;
+  box-shadow: none;
+}

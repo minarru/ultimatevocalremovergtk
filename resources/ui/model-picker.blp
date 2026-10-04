@@ -14,7 +14,7 @@ Adw.Dialog picker {
           Adw.HeaderBar {
             title-widget: Gtk.Box {
               halign: center;
-              Gtk.Box purpose_tabs { spacing: 2; halign: center; }
+              Gtk.Box purpose_tabs { spacing: 2; halign: center; styles ["uvr-purpose-tabs"] }
               Gtk.DropDown purpose_compact { visible: false; tooltip-text: "Purpose"; }
               Adw.WindowTitle header_title { visible: false; }
             };

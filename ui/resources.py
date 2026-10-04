@@ -15,6 +15,12 @@ RESOURCE_PREFIX = f"/{APP_ID.replace('.', '/')}"
 #: GResource prefix for the bundled icon theme (must match compile_resources.sh).
 ICON_RESOURCE_PREFIX = f"{RESOURCE_PREFIX}/icons"
 STYLE_CSS_RESOURCE = f"{RESOURCE_PREFIX}/style.css"
+#: Optional palettes, loaded only while that color scheme is selected.
+_PALETTE_RESOURCES = {
+    "classic": f"{RESOURCE_PREFIX}/palette-classic.css",
+    "classic-light": f"{RESOURCE_PREFIX}/palette-classic-light.css",
+}
+_palette_provider: Gtk.CssProvider | None = None
 
 _RESOURCE_PATH = os.path.join(os.path.dirname(__file__), "data", "uvr.gresource")
 #: Source (uncompiled) stylesheet, used by the dev-time live CSS loader.
@@ -153,6 +159,34 @@ def ensure_application_icon() -> bool:
     names ``APP_ID`` as an icon.
     """
     return _register_application_icon()
+
+
+def set_palette_override(name: str | None) -> None:
+    """Install or clear the Classic palette stylesheet for ``name``.
+
+    ``classic`` and ``classic-light`` load a display-wide provider at user
+    priority so the colors win over the Adwaita theme. Any other name removes
+    that provider and leaves Follow system, Light, and Dark unchanged.
+    """
+    global _palette_provider
+    display = Gdk.Display.get_default()
+    if display is not None and _palette_provider is not None:
+        Gtk.StyleContext.remove_provider_for_display(display, _palette_provider)
+        _palette_provider = None
+    resource = _PALETTE_RESOURCES.get(name or "")
+    if resource is None or display is None or not register_gresources():
+        return
+    provider = Gtk.CssProvider()
+    try:
+        provider.load_from_resource(resource)
+    except GLib.Error:
+        return
+    Gtk.StyleContext.add_provider_for_display(
+        display,
+        provider,
+        Gtk.STYLE_PROVIDER_PRIORITY_USER,
+    )
+    _palette_provider = provider
 
 
 def load_application_styles() -> bool:

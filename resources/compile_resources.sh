@@ -89,6 +89,8 @@ done
     echo '<gresources>'
     echo "  <gresource prefix=\"${PREFIX}\">"
     echo "    <file>style.css</file>"
+    echo "    <file>palette-classic.css</file>"
+    echo "    <file>palette-classic-light.css</file>"
     while IFS= read -r -d '' file; do
         rel="${file#${ICONS_DIR}/}"
         case "${rel}" in
