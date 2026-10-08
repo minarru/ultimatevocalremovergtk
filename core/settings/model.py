@@ -114,6 +114,8 @@ class ProcessSettings:
     last_dir: str | None = None
     sample_mode: bool = False
     sample_mode_duration: int = 30
+    # Seconds into each input (absolute path) where its sample starts; unset is 0.
+    sample_starts: dict[str, float] = field(default_factory=dict)
     long_file_chunk_seconds: float = 0.0
     long_file_chunk_overlap_seconds: float = 2.0
     semitone_shift: float = 0.0

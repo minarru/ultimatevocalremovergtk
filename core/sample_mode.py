@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import os
 import tempfile
-from typing import Callable, List, Optional, Sequence
+from typing import Callable, Iterable, List, Mapping, Optional, Sequence
 
 from . import paths
 from .debug_log import debug
@@ -14,9 +14,26 @@ from .settings import Settings
 FallbackCallback = Callable[[str, Exception], None]
 
 
-def _clip_cache_path(source: str, duration: int) -> str:
+def sample_start(starts: Mapping[str, float], path: str) -> float:
+    """Seconds into ``path`` where its sample starts; 0.0 when none was chosen."""
+    return max(0.0, float(starts.get(os.path.abspath(path), 0.0)))
+
+
+def has_custom_start(starts: Mapping[str, float], paths: Iterable[str]) -> bool:
+    return any(sample_start(starts, path) > 0 for path in paths)
+
+
+def prune_sample_starts(starts: Mapping[str, float], paths: Iterable[str]) -> dict[str, float]:
+    """Only the starts of ``paths``; files no longer in the input list are dropped."""
+    keep = {os.path.abspath(path) for path in paths}
+    return {path: start for path, start in starts.items() if path in keep}
+
+
+def _clip_cache_path(source: str, duration: int, start: float = 0.0) -> str:
     base = os.path.basename(source)
-    digest = hashlib.md5(f"{source}:{duration}".encode(), usedforsecurity=False).hexdigest()[:12]
+    # A start of 0 keeps the key every earlier clip was cached under.
+    key = f"{source}:{duration}" if start == 0 else f"{source}:{duration}:{start:.3f}"
+    digest = hashlib.md5(key.encode(), usedforsecurity=False).hexdigest()[:12]
     stem, _ext = os.path.splitext(base)
     return os.path.join(paths.SAMPLE_CLIP_PATH, f"{stem}_{duration}s_v2_{digest}.wav")
 
@@ -45,14 +62,28 @@ def prepare_input_paths(
             prepared.append(path)
             continue
 
-        clip_path = _clip_cache_path(path, duration)
+        start = sample_start(settings.process.sample_starts, path)
+        if start > 0:
+            from .audio_probe import audio_duration_seconds
+
+            # Pull the start back so the whole sample fits before the end of the file.
+            total = audio_duration_seconds(path)
+            if total is not None:
+                start = max(0.0, min(start, total - duration))
+
+        clip_path = _clip_cache_path(path, duration, start)
         if os.path.isfile(clip_path):
-            debug("model", f"sample clip cache hit file={os.path.basename(path)!r}")
+            debug(
+                "model",
+                f"sample clip cache hit file={os.path.basename(path)!r} start={start:.3f}s",
+            )
             prepared.append(clip_path)
             continue
 
         debug(
-            "model", f"sample clip generating file={os.path.basename(path)!r} duration={duration}s"
+            "model",
+            f"sample clip generating file={os.path.basename(path)!r} "
+            f"duration={duration}s start={start:.3f}s",
         )
         temporary_path: str | None = None
         try:
@@ -60,7 +91,7 @@ def prepare_input_paths(
 
             from .audio_decode import load_audio
 
-            audio, sr = load_audio(path, duration=duration)
+            audio, sr = load_audio(path, duration=duration, offset=start)
             with tempfile.NamedTemporaryFile(
                 dir=paths.SAMPLE_CLIP_PATH, prefix=".sample-", suffix=".wav", delete=False
             ) as temporary:

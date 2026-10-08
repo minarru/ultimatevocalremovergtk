@@ -41,6 +41,25 @@ class TypedSettingsTests(unittest.TestCase):
         self.assertFalse(settings.ui.listening_in_window)
         self.assertNotIn("compare_in_window", settings.to_json_dict()["ui"])
 
+    def test_sample_starts_default_empty_and_round_trip(self):
+        settings = Settings.from_json_dict({"process": {}})
+        self.assertEqual(settings.process.sample_starts, {})
+        settings.process.sample_starts = {"/in/a.wav": 75.0}
+        restored = Settings.from_json_dict(json.loads(json.dumps(settings.to_json_dict())))
+        self.assertEqual(restored.process.sample_starts, {"/in/a.wav": 75.0})
+
+    def test_sample_starts_coercion_drops_invalid_entries(self):
+        raw = {
+            "/a.wav": 75,
+            "/b.wav": -1,
+            "/c.wav": "x",
+            "/d.wav": float("nan"),
+            3: 1.0,
+            "/e.wav": 0,
+        }
+        self.assertEqual(coerce_field("process", "sample_starts", raw), {"/a.wav": 75.0})
+        self.assertEqual(coerce_field("process", "sample_starts", "oops"), {})
+
     def test_export_defaults_to_flac_16bit(self):
         settings = Settings.defaults()
         self.assertIs(settings.process.save_format, SaveFormat.FLAC)

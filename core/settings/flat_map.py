@@ -29,6 +29,7 @@ FLAT_TO_PATH: dict[str, tuple[str, str]] = {
     "lastDir": ("process", "last_dir"),
     "model_sample_mode": ("process", "sample_mode"),
     "model_sample_mode_duration": ("process", "sample_mode_duration"),
+    "model_sample_starts": ("process", "sample_starts"),
     "long_file_chunk_seconds": ("process", "long_file_chunk_seconds"),
     "long_file_chunk_overlap_seconds": ("process", "long_file_chunk_overlap_seconds"),
     "semitone_shift": ("process", "semitone_shift"),

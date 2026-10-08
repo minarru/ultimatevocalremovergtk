@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from enum import Enum
 from typing import Any, Optional, TypeVar, Union
 
@@ -361,6 +362,23 @@ _ENUM_FIELDS: dict[tuple[str, str], tuple[type[Enum], Enum]] = {
 }
 
 
+def as_sample_starts(value: Any) -> dict[str, float]:
+    """Per-input sample starts: positive finite seconds keyed by path; others dropped."""
+    if not isinstance(value, dict):
+        return {}
+    starts: dict[str, float] = {}
+    for path, start in value.items():
+        if not isinstance(path, str) or isinstance(start, bool):
+            continue
+        try:
+            seconds = float(start)
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(seconds) and seconds > 0:
+            starts[path] = seconds
+    return starts
+
+
 def coerce_field(section_name: str, field: str, value: Any) -> Any:
     """Coerce one nested setting value through the canonical field rules."""
     path = (section_name, field)
@@ -373,6 +391,8 @@ def coerce_field(section_name: str, field: str, value: Any) -> Any:
         from core.ensemble_blend import validate_blend_value
 
         return validate_blend_value(field, value)
+    if path == ("process", "sample_starts"):
+        return as_sample_starts(value)
     if path == ("ensemble", "alignment_correction"):
         return as_bool(value)
     if path in _BOOL_FIELDS:
