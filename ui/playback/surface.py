@@ -122,8 +122,10 @@ class PlaybackSurface:
         """Move the content into its own window, keeping playback running."""
         if self.window is not None:
             return
-        width = self.dialog.get_width() or _WINDOW_DEFAULT_WIDTH
-        height = self.dialog.get_height() or -1
+        # A presented dialog is allocated its whole parent window; the content
+        # is what the user sees as the dialog, so the new window takes its size.
+        width = self._toolbar.get_width() or _WINDOW_DEFAULT_WIDTH
+        height = self._toolbar.get_height() or -1
         # Closing the dialog now only hands its content over; it must not unload.
         self.dialog.disconnect(self._dialog_closed_id)
         self.dialog.remove_controller(self.keys)

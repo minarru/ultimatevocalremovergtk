@@ -93,6 +93,21 @@ class PlaybackSurfaceTests(unittest.TestCase):
         surface.dialog.emit("closed")
         self.assertEqual(engine.calls, [("peaks.cancel",), ("unload",)])
 
+    def test_pop_out_window_takes_the_dialog_content_size(self) -> None:
+        from unittest import mock
+
+        surface, _ = self._surface()
+        # A presented dialog spans its parent window; only its content is the sheet.
+        with (
+            mock.patch.object(surface.dialog, "get_width", return_value=1390),
+            mock.patch.object(surface.dialog, "get_height", return_value=890),
+            mock.patch.object(surface._toolbar, "get_width", return_value=600),
+            mock.patch.object(surface._toolbar, "get_height", return_value=325),
+        ):
+            surface.pop_out()
+        assert surface.window is not None
+        self.assertEqual(tuple(surface.window.get_default_size()), (600, 325))
+
     def test_pop_out_moves_content_into_a_window_without_unloading(self) -> None:
         surface, engine = self._surface()
         self.assertTrue(surface.popout_button.get_visible())
