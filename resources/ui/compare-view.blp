@@ -1,0 +1,103 @@
+using Gtk 4.0;
+
+template $UvrCompareView: Gtk.Box {
+  orientation: vertical;
+
+  // Rows with waveforms are tall: long sets scroll instead of outgrowing the screen.
+  Gtk.ScrolledWindow {
+    vexpand: true;
+    hscrollbar-policy: never;
+    propagate-natural-height: true;
+    max-content-height: 480;
+
+    child: Gtk.ListBox track_list {
+      selection-mode: none;
+      margin-top: 6;
+      margin-bottom: 6;
+      margin-start: 12;
+      margin-end: 12;
+
+      styles [
+        "boxed-list",
+      ]
+    };
+  }
+
+  // The transport stays put while a long set scrolls above it.
+  Gtk.Box {
+    orientation: horizontal;
+    spacing: 12;
+    halign: center;
+    margin-top: 6;
+    margin-bottom: 12;
+
+    Gtk.Label elapsed_label {
+      label: "0:00";
+      width-chars: 5;
+      xalign: 1;
+
+      styles [
+        "numeric",
+        "dim-label",
+      ]
+    }
+
+    Gtk.Button back_button {
+      icon-name: "uvr-skip-backward-5-symbolic";
+      tooltip-text: "Back 5 seconds";
+      valign: center;
+
+      accessibility {
+        label: "Back 5 seconds";
+      }
+
+      styles [
+        "circular",
+        "flat",
+      ]
+    }
+
+    Gtk.Button play_button {
+      icon-name: "media-playback-start-symbolic";
+      width-request: 48;
+      height-request: 48;
+      valign: center;
+
+      accessibility {
+        label: "Play";
+      }
+
+      styles [
+        "circular",
+        "suggested-action",
+        "uvr-transport-play",
+      ]
+    }
+
+    Gtk.Button forward_button {
+      icon-name: "uvr-skip-forward-5-symbolic";
+      tooltip-text: "Forward 5 seconds";
+      valign: center;
+
+      accessibility {
+        label: "Forward 5 seconds";
+      }
+
+      styles [
+        "circular",
+        "flat",
+      ]
+    }
+
+    Gtk.Label total_label {
+      label: "0:00";
+      width-chars: 5;
+      xalign: 0;
+
+      styles [
+        "numeric",
+        "dim-label",
+      ]
+    }
+  }
+}
