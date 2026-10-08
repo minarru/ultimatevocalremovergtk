@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import tempfile
 import unittest
 from typing import Any, Mapping
 from unittest import mock
@@ -37,7 +38,7 @@ class SampleRangeControllerTests(unittest.TestCase):
         self.applied = mock.Mock()
         self.TrimDialog = self._patch("ui.sample_range.TrimDialog")
         self._patch("ui.playback.engine.PlaybackEngine")
-        self._patch("ui.playback.waveforms.WaveformLoader")
+        self.WaveformLoader = self._patch("ui.playback.waveforms.WaveformLoader")
 
     def _patch(self, target: str) -> mock.MagicMock:
         patcher = mock.patch(target)
@@ -123,6 +124,44 @@ class SampleRangeControllerTests(unittest.TestCase):
         self._kwargs()["on_closed"]()
         controller.open(["/in/a.wav"])
         self.assertEqual(self.TrimDialog.call_count, 2)
+
+    def _real_input(self) -> str:
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        path = os.path.join(folder.name, "a.wav")
+        open(path, "wb").close()
+        return path
+
+    def test_warm_starts_the_first_inputs_peaks(self) -> None:
+        path = self._real_input()
+        controller = self._controller()
+        controller.warm([path, "/in/b.wav"])
+        self.WaveformLoader.return_value.load.assert_called_once()
+        paths, first = self.WaveformLoader.return_value.load.call_args.args[:2]
+        self.assertEqual((paths, first), ([os.path.abspath(path)], 0))
+
+    def test_dialog_reads_the_warmed_cache(self) -> None:
+        path = self._real_input()
+        controller = self._controller()
+        controller.warm([path])
+        controller.open([path])
+        warm_cache, dialog_cache = (call.args[0] for call in self.WaveformLoader.call_args_list)
+        self.assertIs(warm_cache, dialog_cache)
+        self.assertIs(self._kwargs()["waveforms"], self.WaveformLoader.return_value)
+
+    def test_warm_skips_a_repeat_a_missing_file_and_an_open_dialog(self) -> None:
+        path = self._real_input()
+        controller = self._controller()
+        controller.warm([])
+        controller.warm(["/in/missing.wav"])
+        self.WaveformLoader.return_value.load.assert_not_called()
+        controller.warm([path])
+        controller.warm([path])
+        self.assertEqual(self.WaveformLoader.return_value.load.call_count, 1)
+        controller.open([path])
+        other = self._real_input()
+        controller.warm([other])
+        self.assertEqual(self.WaveformLoader.return_value.load.call_count, 1)
 
     def test_close_closes_the_open_dialog(self) -> None:
         controller = self._controller()

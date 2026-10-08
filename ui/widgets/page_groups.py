@@ -65,6 +65,9 @@ class PageGroupCallbacks:
     on_autocast_changed: Callable[[], None] | None = None
     on_sample_changed: Callable[[], None] | None = None
     on_choose_sample_range: Callable[[], None] | None = None
+    #: Called with the inputs once the range button is usable, so the trim
+    #: dialog can have its waveform ready before it opens.
+    on_sample_range_ready: Callable[[list[str]], None] | None = None
     #: Live settings, read when the Sample mode row refreshes its range state.
     settings_getter: Callable[[], Settings] | None = None
 
@@ -97,6 +100,7 @@ class PageGroups:
         view_inputs_button: Gtk.Button,
         sample_range_button: Gtk.Button | None = None,
         settings_getter: Callable[[], Settings] | None = None,
+        on_sample_range_ready: Callable[[list[str]], None] | None = None,
     ) -> None:
         self.input_group = input_group
         self.output_group = output_group
@@ -110,6 +114,7 @@ class PageGroups:
         self.sample_range_button = sample_range_button
         self.view_inputs_button = view_inputs_button
         self._settings_getter = settings_getter
+        self._on_sample_range_ready = on_sample_range_ready
         self._output_slot = RowSlot(output_group, trailing=(format_row, output_row))
 
     def add_input_row(self, row: Gtk.Widget) -> None:
@@ -183,6 +188,8 @@ class PageGroups:
             if reason is not None:
                 button.set_sensitive(False)
                 button.set_tooltip_text(reason)
+            elif self._on_sample_range_ready is not None and button.get_sensitive():
+                self._on_sample_range_ready(list(self.input_row.paths))
         return False
 
 
@@ -287,6 +294,7 @@ def build_page_groups(
         view_inputs_button=view_inputs_button,
         sample_range_button=sample_range_button,
         settings_getter=callbacks.settings_getter,
+        on_sample_range_ready=callbacks.on_sample_range_ready,
     )
     groups.sync_sample_range()
     return groups

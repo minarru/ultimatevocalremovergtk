@@ -667,6 +667,7 @@ class MainWindow(Adw.ApplicationWindow):
                 on_autocast_changed=self._on_autocast_changed,
                 on_sample_changed=self._on_sample_changed,
                 on_choose_sample_range=lambda: self.sample_range.open(list(self.input_row.paths)),
+                on_sample_range_ready=self.sample_range.warm,
                 settings_getter=lambda: self.settings,
             ),
             processing=("gpu", "autocast", "sample"),

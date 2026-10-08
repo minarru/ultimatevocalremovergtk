@@ -156,13 +156,17 @@ class PageGroupsTests(unittest.TestCase):
         settings = Settings.defaults()
         settings.process.sample_mode_duration = 45
         choose = mock.Mock()
+        self.ready = mock.Mock()
         patcher = mock.patch(
             "ui.widgets.page_groups.playback_unavailable_reason", return_value=reason
         )
         patcher.start()
         self.addCleanup(patcher.stop)
         groups = self._build(
-            sample_duration=45, settings_getter=lambda: settings, on_choose_sample_range=choose
+            sample_duration=45,
+            settings_getter=lambda: settings,
+            on_choose_sample_range=choose,
+            on_sample_range_ready=self.ready,
         )
         # The input row drops paths that are not real files.
         folder = tempfile.TemporaryDirectory()
@@ -189,6 +193,24 @@ class PageGroupsTests(unittest.TestCase):
         self.assertTrue(button.get_sensitive())
         button.emit("clicked")
         choose.assert_called_once_with()
+
+    def test_usable_range_button_reports_its_inputs(self) -> None:
+        groups, _settings, _choose = self._ranged()
+        groups.sample_row.set_active(True)
+        _flush_idle()
+        self.ready.assert_not_called()
+        groups.input_row.set_paths([self.input_path])
+        groups.sync_sample_range()
+        _flush_idle()
+        self.ready.assert_called_with([self.input_path])
+
+    def test_unusable_range_button_reports_nothing(self) -> None:
+        groups, _settings, _choose = self._ranged("GStreamer is not installed")
+        groups.sample_row.set_active(True)
+        groups.input_row.set_paths([self.input_path])
+        groups.sync_sample_range()
+        _flush_idle()
+        self.ready.assert_not_called()
 
     def test_custom_start_changes_the_subtitle(self) -> None:
         groups, settings, _choose = self._ranged()

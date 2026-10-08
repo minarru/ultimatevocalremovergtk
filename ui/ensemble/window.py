@@ -261,6 +261,7 @@ class EnsemblePage:
                 on_choose_sample_range=lambda: self.window.sample_range.open(
                     list(self.input_row.paths)
                 ),
+                on_sample_range_ready=lambda paths: self.window.sample_range.warm(paths),
                 settings_getter=lambda: self.settings,
             ),
             processing=("gpu", "autocast", "sample"),

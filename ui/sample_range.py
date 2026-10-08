@@ -8,8 +8,10 @@ from typing import Callable, Sequence
 from gi.repository import Gtk
 
 from core.settings import Settings
+from core.waveform import Peaks
 
 from .playback.trim import RangeEdit, TrimDialog
+from .playback.waveforms import PeakCache, PeakLoading
 
 
 class SampleRangeController:
@@ -31,6 +33,11 @@ class SampleRangeController:
         self._on_applied = on_applied
         self._dialog: TrimDialog | None = None
         self._open_inputs: list[str] | None = None
+        # Peaks outlive each dialog: computing them takes about as long as the
+        # dialog's open animation, so a fresh cache drew the waveform after it.
+        self._peaks = PeakCache()
+        self._warmer: PeakLoading | None = None
+        self._warmed: str | None = None
 
     def open(self, inputs: Sequence[str]) -> None:
         wanted = [os.path.abspath(path) for path in inputs]
@@ -38,7 +45,7 @@ class SampleRangeController:
             self.close()
         if self._dialog is None:
             from .playback.engine import PlaybackEngine
-            from .playback.waveforms import PeakCache, WaveformLoader
+            from .playback.waveforms import WaveformLoader
 
             settings = self._settings()
             self._dialog = TrimDialog(
@@ -48,13 +55,27 @@ class SampleRangeController:
                 starts=settings.process.sample_starts,
                 lengths=settings.process.sample_lengths,
                 on_apply=self._apply,
-                waveforms=WaveformLoader(PeakCache()),
+                waveforms=WaveformLoader(self._peaks),
                 open_in_window=settings.ui.listening_in_window,
                 on_toast=self._toast,
                 on_closed=self._on_closed,
             )
             self._open_inputs = wanted
         self._dialog.present(self._parent())
+
+    def warm(self, inputs: Sequence[str]) -> None:
+        """Compute the first input's peaks ahead, so the dialog opens with its waveform."""
+        if self._dialog is not None or not inputs:
+            return
+        path = os.path.abspath(inputs[0])
+        if path == self._warmed or not os.path.isfile(path) or self._peaks.get(path) is not None:
+            return
+        self._warmed = path
+        if self._warmer is None:
+            from .playback.waveforms import WaveformLoader
+
+            self._warmer = WaveformLoader(self._peaks)
+        self._warmer.load([path], 0, _ignore_peaks)
 
     def sync_duration(self) -> None:
         """Apply the current sample length to the open dialog."""
@@ -87,6 +108,10 @@ class SampleRangeController:
         if error:
             self._toast(error)
         self._on_applied()
+
+
+def _ignore_peaks(_index: int, _peaks: Peaks | None) -> None:
+    """Warming only fills the cache; the dialog draws from it."""
 
 
 def _store(values: dict[str, float], path: str, seconds: float | None) -> None:
