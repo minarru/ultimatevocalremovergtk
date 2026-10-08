@@ -318,6 +318,25 @@ class WaveformViewTests(unittest.TestCase):
         view.set_position(2.0)
         self.assertGreater(int(self._render(view)[20, 0, 3]), 0)
 
+    def test_range_dims_bars_outside_and_handles_the_edges(self) -> None:
+        from ui.widgets.waveform import WaveformView
+
+        view = WaveformView()
+        view.set_peaks(_flat(0.5, buckets=90, duration=90.0))
+        view.set_timeline(90.0)
+        view.set_range(30.0, 30.0)
+        view.set_active(True)
+        view.set_position(0.0)
+        pixels = self._render(view, 90, 40)
+        outside = int(pixels[20, 4, 3])
+        inside = int(pixels[20, 31, 3])
+        self.assertGreater(inside, 0)
+        self.assertLess(outside, inside * 0.7)
+        # The selection is the bright region, so the top of it stays clear.
+        self.assertEqual(int(pixels[0, 45, 3]), 0)
+        self.assertGreater(int(pixels[0, 30, 3]), 0)
+        self.assertGreater(int(pixels[0, 59, 3]), 0)
+
     def test_played_bars_are_stronger_than_unplayed(self) -> None:
         from ui.widgets.waveform import WaveformView
 

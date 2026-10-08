@@ -1,7 +1,7 @@
 """Waveform strip for one track: shared time axis, playhead, click or drag to seek.
 
-With a range set, the strip shows a fixed-width highlighted span instead: a drag
-moves the span and a click seeks inside it.
+With a range set, bars outside that fixed window are dimmed and each edge has a
+handle. A drag still slides the whole window; a click seeks inside it.
 
 The envelope is drawn as mirrored, round-capped bars separated by gaps. Heights
 use one absolute scale (±1.0 fills the row), so rows compare honestly.
@@ -11,6 +11,7 @@ Colours come from the widget's CSS colour; the audible row carries libadwaita's
 
 from __future__ import annotations
 
+import math
 from typing import TYPE_CHECKING, Any, Callable
 
 from gi.repository import Gtk
@@ -29,7 +30,8 @@ PLAYHEAD_WIDTH = 2
 _INACTIVE_ALPHA = 0.55
 _UNPLAYED_ALPHA = 0.4
 _PLACEHOLDER_ALPHA = 0.25
-_RANGE_ALPHA = 0.12
+# Dimmer than an unplayed bar inside the window, so the trim reads without a wash.
+_OUTSIDE_RANGE_ALPHA = 0.22
 # Pointer travel below this many pixels is a click, not a range drag.
 _CLICK_SLOP = 4.0
 
@@ -86,6 +88,22 @@ def _noop(_seconds: float) -> None:
 
 def _clamp(value: float, low: float, high: float) -> float:
     return min(max(value, low), high)
+
+
+def _bars_centred_from(x: float, bars: int) -> int:
+    """First bar whose centre is at or after ``x``."""
+    if bars <= 0:
+        return 0
+    index = math.ceil((x - BAR_WIDTH / 2) / BAR_PITCH - 1e-9)
+    return min(max(index, 0), bars)
+
+
+def _bars_centred_after(x: float, bars: int) -> int:
+    """First bar whose centre is after ``x``."""
+    if bars <= 0:
+        return 0
+    index = math.floor((x - BAR_WIDTH / 2) / BAR_PITCH + 1e-9) + 1
+    return min(max(index, 0), bars)
 
 
 class WaveformView(Gtk.DrawingArea):
@@ -248,20 +266,15 @@ class WaveformView(Gtk.DrawingArea):
         middle = height / 2
         timeline = self.timeline
         peaks = self._peaks
-        if self._range_length and timeline > 0:
-            first = seconds_to_x(self._range_start, width, timeline)
-            last = seconds_to_x(self._range_start + self._range_length, width, timeline)
-            cr.set_source_rgba(red, green, blue, alpha * _RANGE_ALPHA)
-            cr.rectangle(first, 0, last - first, height)
-            cr.fill()
+        edges = self._range_edges(width, timeline)
         if peaks is None:
-            cr.set_source_rgba(red, green, blue, alpha * _PLACEHOLDER_ALPHA)
-            cr.rectangle(0, middle - 0.5, width, 1)
-            cr.fill()
+            self._draw_placeholder(cr, width, middle, edges, (red, green, blue, alpha))
         elif timeline > 0:
             cr.set_line_width(BAR_WIDTH)
             cr.set_line_cap(cairo.LINE_CAP_ROUND)
             self._draw_bars(cr, peaks, width, middle, timeline, (red, green, blue, alpha))
+        if edges is not None:
+            self._draw_handles(cr, width, height, edges, (red, green, blue, alpha))
         if timeline <= 0:
             return
         # One playhead across every row, loaded or not.
@@ -269,6 +282,58 @@ class WaveformView(Gtk.DrawingArea):
         playhead = min(max(seconds_to_x(self._position, width, timeline), half), width - half)
         cr.set_source_rgba(red, green, blue, alpha)
         cr.rectangle(round(playhead - half), 0, PLAYHEAD_WIDTH, height)
+        cr.fill()
+
+    def _range_edges(self, width: int, timeline: float) -> tuple[float, float] | None:
+        if not self._range_length or timeline <= 0 or width <= 0:
+            return None
+        return (
+            seconds_to_x(self._range_start, width, timeline),
+            seconds_to_x(self._range_start + self._range_length, width, timeline),
+        )
+
+    def _draw_placeholder(
+        self,
+        cr: Any,
+        width: int,
+        middle: float,
+        edges: tuple[float, float] | None,
+        rgba: tuple[float, float, float, float],
+    ) -> None:
+        red, green, blue, alpha = rgba
+        if edges is None:
+            cr.set_source_rgba(red, green, blue, alpha * _PLACEHOLDER_ALPHA)
+            cr.rectangle(0, middle - 0.5, width, 1)
+            cr.fill()
+            return
+        first, last = edges
+        dim = alpha * _PLACEHOLDER_ALPHA * _OUTSIDE_RANGE_ALPHA / _UNPLAYED_ALPHA
+        for start, end, share in (
+            (0.0, first, dim),
+            (first, last, alpha * _PLACEHOLDER_ALPHA),
+            (last, float(width), dim),
+        ):
+            if end <= start:
+                continue
+            cr.set_source_rgba(red, green, blue, share)
+            cr.rectangle(start, middle - 0.5, end - start, 1)
+            cr.fill()
+
+    def _draw_handles(
+        self,
+        cr: Any,
+        width: int,
+        height: int,
+        edges: tuple[float, float],
+        rgba: tuple[float, float, float, float],
+    ) -> None:
+        red, green, blue, alpha = rgba
+        cr.set_source_rgba(red, green, blue, alpha)
+        half = PLAYHEAD_WIDTH / 2
+        limit = max(half, width - half)
+        for edge in edges:
+            x = _clamp(edge, half, limit)
+            cr.rectangle(round(x - half), 0, PLAYHEAD_WIDTH, height)
         cr.fill()
 
     def _bar_levels(self, peaks: Peaks, width: int, timeline: float) -> NDArray[np.float32]:
@@ -297,10 +362,23 @@ class WaveformView(Gtk.DrawingArea):
         strength = alpha * (1.0 if self._active else _INACTIVE_ALPHA)
         # Round caps add half the line width at each end; silence stays a dot.
         cap = BAR_WIDTH / 2
-        for first, last, share in ((0, played, 1.0), (played, bars, _UNPLAYED_ALPHA)):
-            if first >= last:
+        edges = self._range_edges(width, timeline)
+        if edges is None:
+            spans = ((0, played, 1.0), (played, bars, _UNPLAYED_ALPHA))
+        else:
+            first, last = edges
+            inside = _bars_centred_from(first, bars)
+            after = _bars_centred_after(last, bars)
+            spans = (
+                (0, inside, _OUTSIDE_RANGE_ALPHA),
+                (inside, min(played, after), 1.0),
+                (max(inside, played), after, _UNPLAYED_ALPHA),
+                (after, bars, _OUTSIDE_RANGE_ALPHA),
+            )
+        for start, end, share in spans:
+            if start >= end:
                 continue
-            for bar in range(first, last):
+            for bar in range(start, end):
                 x = bar * BAR_PITCH + cap
                 reach = max(float(levels[bar]) * middle - cap, 0.0)
                 cr.move_to(x, middle - reach)
