@@ -178,6 +178,31 @@ class PlanReviewPresentationTests(unittest.TestCase):
         self.assertEqual(view.sample, "30 s, custom ranges")
         self.assertIn("Sample starts: A & B.wav 1:15, C.wav 0:00", view.additional)
 
+    def test_shared_custom_length_reads_in_the_summary_and_warning(self):
+        from ui.plan_review import review_presentation
+
+        plan = _sampled(resolved_plan(), {"/music/A & B.wav": 75.0})
+        plan.settings.process.sample_lengths = {"/music/A & B.wav": 45.0}
+        view = review_presentation(plan)
+        self.assertEqual(view.sample, "45 s from 1:15")
+        self.assertIn("Only a 45-second sample of each input will be processed.", view.warnings)
+        details = json.loads(view.technical.split("\n\n", 1)[1])
+        self.assertEqual(details["processing"]["sample_lengths"], {"/music/A & B.wav": 45.0})
+
+    def test_differing_lengths_list_each_range(self):
+        from ui.plan_review import review_presentation
+
+        plan = resolved_plan()
+        second = PlannedInput("/music/C.wav", plan.inputs[0].naming, plan.inputs[0].outputs)
+        plan = _sampled(replace(plan, inputs=plan.inputs + (second,)), {"/music/A & B.wav": 75.0})
+        plan.settings.process.sample_lengths = {"/music/C.wav": 12.5}
+        view = review_presentation(plan)
+        self.assertEqual(view.sample, "Custom ranges")
+        self.assertIn(
+            "Sample ranges: A & B.wav 30 s from 1:15, C.wav 12.5 s from 0:00", view.additional
+        )
+        self.assertIn("Only a sample of each input will be processed.", view.warnings)
+
     def test_sample_off_reads_full_tracks(self):
         from ui.plan_review import review_presentation
 

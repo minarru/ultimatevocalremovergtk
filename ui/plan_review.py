@@ -6,7 +6,7 @@ from dataclasses import asdict, dataclass
 from typing import Any, Mapping
 
 from core.job_plan_types import ResolvedJob
-from core.sample_mode import fitted_sample_start, sample_start
+from core.sample_mode import fitted_sample_start, sample_length, sample_start, seconds_text
 from core.settings import Settings
 
 
@@ -25,22 +25,38 @@ def _clock(seconds: float) -> str:
     return f"{whole // 60}:{whole % 60:02d}"
 
 
+def _sample_lengths(plan: ResolvedJob) -> list[float]:
+    process = plan.settings.process
+    default = process.sample_mode_duration
+    return [sample_length(process.sample_lengths, item.path, default) for item in plan.inputs]
+
+
 def _sample_summary(plan: ResolvedJob) -> tuple[str, str | None]:
-    """The Sample row and, when inputs start at different times, a per-input line."""
+    """The Sample row and, when inputs have different ranges, a per-input line."""
     process = plan.settings.process
     if not process.sample_mode:
         return "Full tracks", None
-    duration = process.sample_mode_duration
-    starts = [_shown_start(process.sample_starts, item.path, duration) for item in plan.inputs]
-    if not any(starts):
-        return f"First {duration} s", None
-    if len(set(starts)) == 1:
-        return f"{duration} s from {_clock(starts[0])}", None
+    lengths = _sample_lengths(plan)
+    starts = [
+        _shown_start(process.sample_starts, item.path, length)
+        for item, length in zip(plan.inputs, lengths, strict=True)
+    ]
+    if len(set(lengths)) <= 1:
+        duration = seconds_text(lengths[0] if lengths else process.sample_mode_duration)
+        if not any(starts):
+            return f"First {duration} s", None
+        if len(set(starts)) == 1:
+            return f"{duration} s from {_clock(starts[0])}", None
+        detail = ", ".join(
+            f"{os.path.basename(item.path)} {_clock(start)}"
+            for item, start in zip(plan.inputs, starts, strict=True)
+        )
+        return f"{duration} s, custom ranges", f"Sample starts: {detail}"
     detail = ", ".join(
-        f"{os.path.basename(item.path)} {_clock(start)}"
-        for item, start in zip(plan.inputs, starts, strict=True)
+        f"{os.path.basename(item.path)} {seconds_text(length)} s from {_clock(start)}"
+        for item, start, length in zip(plan.inputs, starts, lengths, strict=True)
     )
-    return f"{duration} s, custom ranges", f"Sample starts: {detail}"
+    return "Custom ranges", f"Sample ranges: {detail}"
 
 
 def _files(count: int) -> str:
@@ -92,6 +108,13 @@ def _technical_plan(plan: ResolvedJob) -> dict[str, Any]:
         processing["sample_mode_duration"] = process.sample_mode_duration
         starts = {item.path: sample_start(process.sample_starts, item.path) for item in plan.inputs}
         processing["sample_starts"] = {path: start for path, start in starts.items() if start > 0}
+        lengths = {
+            item.path: process.sample_lengths[os.path.abspath(item.path)]
+            for item in plan.inputs
+            if os.path.abspath(item.path) in process.sample_lengths
+        }
+        if lengths:
+            processing["sample_lengths"] = lengths
     if process.long_file_chunk_seconds:
         processing["long_file_chunk_overlap_seconds"] = process.long_file_chunk_overlap_seconds
     if process.vocal_splitter_enabled:
@@ -205,9 +228,12 @@ def review_presentation(plan: ResolvedJob) -> PlanReviewPresentation:
         additional.append(sample_detail)
     warnings = list(dict.fromkeys(d.message for d in plan.diagnostics if d.severity == "warning"))
     if process.sample_mode:
-        warnings.append(
-            f"Only a {process.sample_mode_duration}-second sample of each input will be processed."
-        )
+        lengths = set(_sample_lengths(plan))
+        if len(lengths) <= 1:
+            seconds = seconds_text(lengths.pop() if lengths else process.sample_mode_duration)
+            warnings.append(f"Only a {seconds}-second sample of each input will be processed.")
+        else:
+            warnings.append("Only a sample of each input will be processed.")
     return PlanReviewPresentation(
         heading=f"{'Ensemble' if plan.command == 'ensemble' else 'Separate'} {_files(len(plan.inputs))}",
         file_summary=file_summary,

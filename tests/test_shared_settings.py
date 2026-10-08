@@ -353,11 +353,13 @@ class SharedSessionTests(unittest.TestCase):
 
         bindings = self.shared.shared_settings_bindings(input_row=InputRow())
         self.settings.process.sample_starts = {"/in/a.wav": 12.0, "/in/b.wav": 4.0}
+        self.settings.process.sample_lengths = {"/in/a.wav": 20.0, "/in/b.wav": 40.0}
         session = self.shared.SharedSettingsSession(
             self.settings, bindings, can_commit=lambda: True
         )
         session.commit(edited=(bindings.input_paths,))
         self.assertEqual(self.settings.process.sample_starts, {"/in/a.wav": 12.0})
+        self.assertEqual(self.settings.process.sample_lengths, {"/in/a.wav": 20.0})
 
     def test_disjoint_edits_merge_and_flush_never_replays(self):
         a, ab, sa = self.session()

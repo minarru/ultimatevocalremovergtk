@@ -197,6 +197,13 @@ class PageGroupsTests(unittest.TestCase):
         groups.sync_sample_range()
         self.assertEqual(groups.sample_row.get_subtitle(), "45 s, custom range")
 
+    def test_custom_length_changes_the_subtitle(self) -> None:
+        groups, settings, _choose = self._ranged()
+        settings.process.sample_lengths = {os.path.abspath(self.input_path): 20.0}
+        groups.input_row.set_paths([self.input_path])
+        groups.sync_sample_range()
+        self.assertEqual(groups.sample_row.get_subtitle(), "Custom range")
+
     def test_range_button_explains_missing_playback(self) -> None:
         groups, _settings, _choose = self._ranged("GStreamer is not installed")
         groups.sample_row.set_active(True)

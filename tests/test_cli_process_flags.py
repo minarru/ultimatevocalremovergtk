@@ -39,6 +39,18 @@ class ProcessFlagTests(unittest.TestCase):
         args = self.parse(["--sample-seconds", "12"])
         self.assertIn(("process.sample_mode", True), collect_overrides(args))
 
+    def test_sample_seconds_replaces_inherited_per_input_lengths(self) -> None:
+        from core.settings.job_resolution import SettingsLayer, SettingsResolver
+
+        settings = Settings.defaults()
+        settings.process.sample_lengths = {"/music/a.wav": 45.0}
+        args = self.parse(["--sample-seconds", "12"])
+        resolved, _sources = SettingsResolver().resolve(
+            settings, layers=[SettingsLayer("cli", tuple(collect_overrides(args)))]
+        )
+        self.assertEqual(resolved.process.sample_mode_duration, 12)
+        self.assertEqual(resolved.process.sample_lengths, {})
+
     def test_device_is_not_compiled_as_a_plain_setting(self) -> None:
         args = self.parse(["--device", "cuda:1"])
         self.assertNotIn("process.device", dict(collect_overrides(args)))

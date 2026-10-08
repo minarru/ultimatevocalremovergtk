@@ -25,7 +25,7 @@ from core.input_discovery import (
 from core.input_discovery import (
     remove_unreadable_from_paths as remove_unreadable_from_paths,
 )
-from core.sample_mode import prune_sample_starts
+from core.sample_mode import prune_per_input
 from core.settings import Settings
 from core.types import SaveFormat
 from core.types.settings_enums import DeverbVocalOpt, FlacBitDepth, Mp3Bitrate, OpusBitrate, WavType
@@ -53,8 +53,12 @@ INPUT_FILES_MAX = 500
 SAMPLE_MODE_TITLE = "Sample mode"
 
 
-def sample_mode_subtitle(duration: int, *, custom: bool = False) -> str:
+def sample_mode_subtitle(
+    duration: int, *, custom: bool = False, custom_length: bool = False
+) -> str:
     """Subtitle describing how much audio sample mode processes, and from where."""
+    if custom_length:
+        return "Custom range"
     if custom:
         return f"{int(duration)} s, custom range"
     return f"First {int(duration)} s"
@@ -411,8 +415,9 @@ class SharedSettingsSession:
 
 def _write_input_paths(settings: Settings, value: tuple[str, ...]) -> None:
     settings.process.input_paths = list(value)
-    # Sample starts follow the input list; removed files take theirs with them.
-    settings.process.sample_starts = prune_sample_starts(settings.process.sample_starts, value)
+    # Sample ranges follow the input list; removed files take theirs with them.
+    settings.process.sample_starts = prune_per_input(settings.process.sample_starts, value)
+    settings.process.sample_lengths = prune_per_input(settings.process.sample_lengths, value)
 
 
 def _write_export_path(settings: Settings, value: str) -> None:

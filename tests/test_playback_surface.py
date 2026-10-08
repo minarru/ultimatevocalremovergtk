@@ -207,7 +207,7 @@ class PlaybackSurfaceTests(unittest.TestCase):
 
     def test_range_keys_are_hidden_by_default(self) -> None:
         surface, _ = self._surface()
-        self.assertEqual([w.get_visible() for w in surface.range_key_rows], [False, False])
+        self.assertEqual([w.get_visible() for w in surface.range_key_rows], [False] * 4)
 
     def test_tool_keys_run_before_the_view(self) -> None:
         from gi.repository import Gdk

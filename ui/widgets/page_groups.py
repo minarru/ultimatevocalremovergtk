@@ -10,12 +10,13 @@ through ``add_input_row``, ``set_output_lead`` / ``add_output_tail`` and
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from typing import Callable, Collection, Literal, Sequence
 
 from gi.repository import Adw, GLib, Gtk
 
-from core.sample_mode import has_custom_start
+from core.sample_mode import has_custom_range
 from core.settings import Settings
 
 from ..help_text import (
@@ -159,8 +160,14 @@ class PageGroups:
             return
         settings = self._settings_getter()
         paths = list(self.input_row.paths)
-        custom = has_custom_start(settings.process.sample_starts, paths)
-        row.set_subtitle(sample_mode_subtitle(settings.process.sample_mode_duration, custom=custom))
+        process = settings.process
+        custom = has_custom_range(process.sample_starts, process.sample_lengths, paths)
+        custom_length = any(os.path.abspath(path) in process.sample_lengths for path in paths)
+        row.set_subtitle(
+            sample_mode_subtitle(
+                process.sample_mode_duration, custom=custom, custom_length=custom_length
+            )
+        )
         eligible = row.get_active() and bool(paths)
         button.set_sensitive(eligible)
         button.set_tooltip_text(SAMPLE_RANGE_TOOLTIP)

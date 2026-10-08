@@ -114,9 +114,11 @@ class ViewInputsTests(unittest.TestCase):
     def test_commit_prunes_sample_starts(self):
         view, context, _changed = self.make_view()
         context.settings.process.sample_starts = {"/tmp/good.wav": 12.0, "/tmp/bad.wav": 4.0}
+        context.settings.process.sample_lengths = {"/tmp/good.wav": 20.0, "/tmp/bad.wav": 9.0}
         view.paths = ["/tmp/good.wav"]
         view._commit_paths()
         self.assertEqual(context.settings.process.sample_starts, {"/tmp/good.wav": 12.0})
+        self.assertEqual(context.settings.process.sample_lengths, {"/tmp/good.wav": 20.0})
 
     def test_search_filters_without_changing_the_batch(self):
         view, context, _changed = self.make_view()

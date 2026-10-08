@@ -363,7 +363,10 @@ _ENUM_FIELDS: dict[tuple[str, str], tuple[type[Enum], Enum]] = {
 
 
 def as_sample_starts(value: Any) -> dict[str, float]:
-    """Per-input sample starts: positive finite seconds keyed by path; others dropped."""
+    """Per-input sample starts or lengths: positive finite seconds keyed by path.
+
+    Other entries are dropped.
+    """
     if not isinstance(value, dict):
         return {}
     starts: dict[str, float] = {}
@@ -391,7 +394,7 @@ def coerce_field(section_name: str, field: str, value: Any) -> Any:
         from core.ensemble_blend import validate_blend_value
 
         return validate_blend_value(field, value)
-    if path == ("process", "sample_starts"):
+    if path in {("process", "sample_starts"), ("process", "sample_lengths")}:
         return as_sample_starts(value)
     if path == ("ensemble", "alignment_correction"):
         return as_bool(value)

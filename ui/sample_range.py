@@ -9,7 +9,7 @@ from gi.repository import Gtk
 
 from core.settings import Settings
 
-from .playback.trim import TrimDialog
+from .playback.trim import RangeEdit, TrimDialog
 
 
 class SampleRangeController:
@@ -46,6 +46,7 @@ class SampleRangeController:
                 PlaybackEngine(),
                 duration=settings.process.sample_mode_duration,
                 starts=settings.process.sample_starts,
+                lengths=settings.process.sample_lengths,
                 on_apply=self._apply,
                 waveforms=WaveformLoader(PeakCache()),
                 open_in_window=settings.ui.listening_in_window,
@@ -69,23 +70,30 @@ class SampleRangeController:
         self._dialog = None
         self._open_inputs = None
 
-    def _apply(self, edits: dict[str, float | None]) -> None:
+    def _apply(self, edits: dict[str, RangeEdit]) -> None:
         settings = self._settings()
         # The input list may have changed while the dialog was open.
         current = {os.path.abspath(path) for path in settings.process.input_paths}
         starts = dict(settings.process.sample_starts)
-        for path, start in edits.items():
+        lengths = dict(settings.process.sample_lengths)
+        for path, (start, length) in edits.items():
             if path not in current:
                 continue
-            if start is None:
-                starts.pop(path, None)
-            else:
-                starts[path] = round(start, 3)
+            _store(starts, path, start)
+            _store(lengths, path, length)
         settings.process.sample_starts = starts
+        settings.process.sample_lengths = lengths
         error = self._save()
         if error:
             self._toast(error)
         self._on_applied()
+
+
+def _store(values: dict[str, float], path: str, seconds: float | None) -> None:
+    if seconds is None:
+        values.pop(path, None)
+    else:
+        values[path] = round(seconds, 3)
 
 
 __all__ = ["SampleRangeController"]

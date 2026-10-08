@@ -194,6 +194,8 @@ def collect_overrides(
         # Duration without --sample would otherwise be stored and ignored.
         if getattr(args, "sample", None) is not True:
             overrides.append(("process.sample_mode", True))
+        # An explicit length applies to every input, over lengths inherited from the GUI.
+        overrides.append(("process.sample_lengths", {}))
 
     for item in getattr(args, "set_items", None) or []:
         overrides.append(parse_setting_assignment(item))

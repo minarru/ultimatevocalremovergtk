@@ -60,6 +60,17 @@ class TypedSettingsTests(unittest.TestCase):
         self.assertEqual(coerce_field("process", "sample_starts", raw), {"/a.wav": 75.0})
         self.assertEqual(coerce_field("process", "sample_starts", "oops"), {})
 
+    def test_sample_lengths_round_trip_and_coerce_like_starts(self):
+        settings = Settings.from_json_dict({"process": {}})
+        self.assertEqual(settings.process.sample_lengths, {})
+        settings.process.sample_lengths = {"/in/a.wav": 45.0}
+        restored = Settings.from_json_dict(json.loads(json.dumps(settings.to_json_dict())))
+        self.assertEqual(restored.process.sample_lengths, {"/in/a.wav": 45.0})
+        raw = {"/a.wav": 45, "/b.wav": 0, "/c.wav": "x"}
+        self.assertEqual(coerce_field("process", "sample_lengths", raw), {"/a.wav": 45.0})
+        flat = Settings.from_flat({"model_sample_lengths": {"/a.wav": 12}})
+        self.assertEqual(flat.process.sample_lengths, {"/a.wav": 12.0})
+
     def test_export_defaults_to_flac_16bit(self):
         settings = Settings.defaults()
         self.assertIs(settings.process.save_format, SaveFormat.FLAC)

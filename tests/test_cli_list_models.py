@@ -1625,6 +1625,28 @@ class CliDisplayParityTests(unittest.TestCase):
         self.assertIn("sample: True (30s)  starts: late.wav from 90s", text)
         self.assertNotIn("early.wav", text)
 
+    def test_human_plan_lists_sample_lengths(self) -> None:
+        from cli.job import format_effective_plan
+
+        text = format_effective_plan(
+            {
+                "models": [],
+                "output": "/tmp/out",
+                "settings": {
+                    "process": {
+                        "sample_mode": True,
+                        "sample_mode_duration": 30,
+                        "sample_lengths": {"/music/long.wav": 45.0},
+                    }
+                },
+                "metadata": {},
+                "device": "cpu",
+                "inputs": [],
+            }
+        )
+
+        self.assertIn("sample: True (30s)  lengths: long.wav 45s", text)
+
     def test_human_plan_uses_vocal_splitter_display(self) -> None:
         from cli.job import format_effective_plan
 

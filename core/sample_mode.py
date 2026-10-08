@@ -13,6 +13,10 @@ from .settings import Settings
 
 FallbackCallback = Callable[[str, Exception], None]
 
+#: Bounds for one input's sample length, matching the Preferences sample duration.
+SAMPLE_LENGTH_MIN = 5.0
+SAMPLE_LENGTH_MAX = 120.0
+
 
 def sample_start(starts: Mapping[str, float], path: str) -> float:
     """Seconds into ``path`` where its sample starts; 0.0 when none was chosen."""
@@ -31,23 +35,38 @@ def fitted_sample_start(start: float, duration: float, total: float | None) -> f
     return min(start, max(0.0, float(total) - duration))
 
 
-def has_custom_start(starts: Mapping[str, float], paths: Iterable[str]) -> bool:
-    return any(sample_start(starts, path) > 0 for path in paths)
+def sample_length(lengths: Mapping[str, float], path: str, default: float) -> float:
+    """Seconds ``path``'s sample lasts; ``default`` when none was chosen for it."""
+    length = lengths.get(os.path.abspath(path))
+    return float(length) if length is not None and length > 0 else float(default)
 
 
-def prune_sample_starts(starts: Mapping[str, float], paths: Iterable[str]) -> dict[str, float]:
-    """Only the starts of ``paths``; files no longer in the input list are dropped."""
+def has_custom_range(
+    starts: Mapping[str, float], lengths: Mapping[str, float], paths: Iterable[str]
+) -> bool:
+    """Whether any of ``paths`` has its own sample start or length."""
+    return any(sample_start(starts, path) > 0 or os.path.abspath(path) in lengths for path in paths)
+
+
+def prune_per_input(values: Mapping[str, float], paths: Iterable[str]) -> dict[str, float]:
+    """Only the entries of ``paths``; files no longer in the input list are dropped."""
     keep = {os.path.abspath(path) for path in paths}
-    return {path: start for path, start in starts.items() if path in keep}
+    return {path: value for path, value in values.items() if path in keep}
 
 
-def _clip_cache_path(source: str, duration: int, start: float = 0.0) -> str:
+def seconds_text(seconds: float) -> str:
+    """``30`` for whole seconds, ``12.5`` otherwise."""
+    return f"{seconds:.3f}".rstrip("0").rstrip(".")
+
+
+def _clip_cache_path(source: str, duration: float, start: float = 0.0) -> str:
     base = os.path.basename(source)
-    # A start of 0 keeps the key every earlier clip was cached under.
-    key = f"{source}:{duration}" if start == 0 else f"{source}:{duration}:{start:.3f}"
+    # Whole-second lengths and a start of 0 keep the key earlier clips were cached under.
+    length = seconds_text(duration)
+    key = f"{source}:{length}" if start == 0 else f"{source}:{length}:{start:.3f}"
     digest = hashlib.md5(key.encode(), usedforsecurity=False).hexdigest()[:12]
     stem, _ext = os.path.splitext(base)
-    return os.path.join(paths.SAMPLE_CLIP_PATH, f"{stem}_{duration}s_v2_{digest}.wav")
+    return os.path.join(paths.SAMPLE_CLIP_PATH, f"{stem}_{length}s_v2_{digest}.wav")
 
 
 def prepare_input_paths(
@@ -65,7 +84,7 @@ def prepare_input_paths(
     if not settings.process.sample_mode:
         return list(input_paths)
 
-    duration = max(1, int(settings.process.sample_mode_duration or 30))
+    default = max(1, int(settings.process.sample_mode_duration or 30))
     os.makedirs(paths.SAMPLE_CLIP_PATH, exist_ok=True)
 
     prepared: List[str] = []
@@ -74,6 +93,7 @@ def prepare_input_paths(
             prepared.append(path)
             continue
 
+        duration = max(1.0, sample_length(settings.process.sample_lengths, path, default))
         start = sample_start(settings.process.sample_starts, path)
         if start > 0:
             from .audio_probe import audio_duration_seconds
@@ -92,7 +112,7 @@ def prepare_input_paths(
         debug(
             "model",
             f"sample clip generating file={os.path.basename(path)!r} "
-            f"duration={duration}s start={start:.3f}s",
+            f"duration={seconds_text(duration)}s start={start:.3f}s",
         )
         temporary_path: str | None = None
         try:

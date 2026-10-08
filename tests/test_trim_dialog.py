@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Mapping
 from tests.playback_fakes import FakeEngine
 
 if TYPE_CHECKING:
-    from ui.playback.trim import TrimDialog
+    from ui.playback.trim import RangeEdit, TrimDialog
 
 
 def _drag(dialog: TrimDialog, dx: float, width: float = 200.0) -> None:
@@ -44,14 +44,20 @@ class TrimDialogTests(unittest.TestCase):
         *,
         inputs: tuple[str, ...] = ("/in/a.wav", "/in/b.wav"),
         starts: Mapping[str, float] | None = None,
+        lengths: Mapping[str, float] | None = None,
         duration: float = 30,
     ) -> tuple[TrimDialog, FakeEngine]:
         from ui.playback.trim import TrimDialog
 
         engine = FakeEngine()
-        self.applied: list[dict[str, float | None]] = []
+        self.applied: list[dict[str, RangeEdit]] = []
         dialog = TrimDialog(
-            inputs, engine, duration=duration, starts=starts or {}, on_apply=self.applied.append
+            inputs,
+            engine,
+            duration=duration,
+            starts=starts or {},
+            lengths=lengths,
+            on_apply=self.applied.append,
         )
         return dialog, engine
 
@@ -70,13 +76,13 @@ class TrimDialogTests(unittest.TestCase):
         _drag(dialog, 20)
         self.assertIn(("seek", 10.0), engine.calls)
         dialog.apply_button.emit("clicked")
-        self.assertEqual(self.applied, [{"/in/a.wav": 10.0}])
+        self.assertEqual(self.applied, [{"/in/a.wav": (10.0, None)}])
 
     def test_apply_writes_only_edited_inputs(self) -> None:
         dialog, _ = self._dialog(starts={"/in/b.wav": 5.0})
         _drag(dialog, 20)
         dialog.apply_button.emit("clicked")
-        self.assertEqual(self.applied, [{"/in/a.wav": 10.0}])
+        self.assertEqual(self.applied, [{"/in/a.wav": (10.0, None)}])
 
     def test_cancel_discards_edits(self) -> None:
         dialog, engine = self._dialog()
@@ -96,7 +102,7 @@ class TrimDialogTests(unittest.TestCase):
         dialog.reset_button.emit("clicked")
         self.assertEqual(dialog.view.waveforms[0].range_start, 0.0)
         dialog.apply_button.emit("clicked")
-        self.assertEqual(self.applied, [{"/in/a.wav": None}])
+        self.assertEqual(self.applied, [{"/in/a.wav": (None, None)}])
 
     def test_reset_is_insensitive_at_zero(self) -> None:
         dialog, _ = self._dialog()
@@ -115,7 +121,7 @@ class TrimDialogTests(unittest.TestCase):
         dialog.picker.dropdown.set_selected(1)
         _drag(dialog, 40)
         dialog.apply_button.emit("clicked")
-        self.assertEqual(self.applied, [{"/in/a.wav": 10.0, "/in/b.wav": 20.0}])
+        self.assertEqual(self.applied, [{"/in/a.wav": (10.0, None), "/in/b.wav": (20.0, None)}])
 
     def test_a_start_past_the_end_is_pulled_back_with_the_file(self) -> None:
         dialog, engine = self._dialog(inputs=("/in/a.wav",), starts={"/in/a.wav": 40.0})
@@ -123,7 +129,7 @@ class TrimDialogTests(unittest.TestCase):
         engine.on_duration(20.0)
         self.assertEqual(dialog.view.waveforms[0].range_start, 0.0)
         dialog.apply_button.emit("clicked")
-        self.assertEqual(self.applied, [{"/in/a.wav": None}])
+        self.assertEqual(self.applied, [{"/in/a.wav": (None, None)}])
 
     def test_set_duration_resizes_the_open_range(self) -> None:
         dialog, engine = self._dialog(starts={"/in/a.wav": 12.0})
@@ -165,18 +171,18 @@ class TrimDialogTests(unittest.TestCase):
     def test_range_label_reads_the_current_range(self) -> None:
         dialog, _ = self._dialog(starts={"/in/a.wav": 12.0})
         assert dialog.range_label is not None
-        self.assertEqual(dialog.range_label.get_label(), "0:12 – 0:42")
+        self.assertEqual(dialog.range_label.get_label(), "0:12 – 0:42 · 30 s")
         dialog.picker.dropdown.set_selected(1)
-        self.assertEqual(dialog.range_label.get_label(), "0:00 – 0:30")
+        self.assertEqual(dialog.range_label.get_label(), "0:00 – 0:30 · 30 s")
         _drag(dialog, 40)
-        self.assertEqual(dialog.range_label.get_label(), "0:20 – 0:50")
+        self.assertEqual(dialog.range_label.get_label(), "0:20 – 0:50 · 30 s")
 
     def test_range_label_of_a_short_input_ends_with_the_file(self) -> None:
         dialog, engine = self._dialog(inputs=("/in/a.wav",))
         engine._duration = 20.0
         engine.on_duration(20.0)
         assert dialog.range_label is not None
-        self.assertEqual(dialog.range_label.get_label(), "0:00 – 0:20")
+        self.assertEqual(dialog.range_label.get_label(), "0:00 – 0:20 · 20 s")
 
     def test_shift_arrows_move_the_range(self) -> None:
         from gi.repository import Gdk
@@ -188,7 +194,7 @@ class TrimDialogTests(unittest.TestCase):
         self.assertEqual(dialog.view.waveforms[0].range_start, 13.0)
         self.assertEqual(engine.calls[-1], ("seek", 13.0))
         dialog.apply_button.emit("clicked")
-        self.assertEqual(self.applied, [{"/in/a.wav": 13.0}])
+        self.assertEqual(self.applied, [{"/in/a.wav": (13.0, None)}])
 
     def test_shift_arrows_stop_at_the_ends_of_the_file(self) -> None:
         from gi.repository import Gdk
@@ -222,12 +228,112 @@ class TrimDialogTests(unittest.TestCase):
         waveform.end_range_drag(100.0, 200.0)
         self.assertEqual(engine.calls[-1], ("seek", 50.0))
         dialog.apply_button.emit("clicked")
-        self.assertEqual(self.applied, [{"/in/a.wav": 50.0}])
+        self.assertEqual(self.applied, [{"/in/a.wav": (50.0, None)}])
 
     def test_shortcuts_list_the_range_keys(self) -> None:
         dialog, _ = self._dialog()
-        self.assertEqual([w.get_visible() for w in dialog.surface.range_key_rows], [True, True])
+        self.assertEqual([w.get_visible() for w in dialog.surface.range_key_rows], [True] * 4)
         self.assertEqual([hint.get_visible() for hint in dialog.view.key_hints], [False])
+
+    def _drag_handle(self, dialog: TrimDialog, x: float, dx: float) -> None:
+        """Drag a trim handle starting at ``x`` by ``dx`` pixels on a 100 s, 200 px axis."""
+        waveform = dialog.view.waveforms[0]
+        waveform.set_timeline(100.0)
+        waveform.begin_range_drag(x, 200.0)
+        waveform.update_range_drag(dx, 200.0)
+        waveform.end_range_drag(x + dx, 200.0)
+
+    def test_dragging_the_end_handle_sets_this_inputs_length(self) -> None:
+        dialog, engine = self._dialog()
+        self._drag_handle(dialog, 64, 20)
+        waveform = dialog.view.waveforms[0]
+        self.assertEqual((waveform.range_start, waveform.range_length), (0.0, 40.0))
+        self.assertEqual((dialog.loop.range_start, dialog.loop.range_end), (0.0, 40.0))
+        self.assertEqual(engine.calls[-1], ("seek", 0.0))
+        assert dialog.range_label is not None
+        self.assertEqual(dialog.range_label.get_label(), "0:00 – 0:40 · 40 s")
+        self.assertTrue(dialog.reset_button.get_sensitive())
+        dialog.picker.dropdown.set_selected(1)
+        self.assertEqual(dialog.view.waveforms[0].range_length, 30.0)
+        dialog.apply_button.emit("clicked")
+        self.assertEqual(self.applied, [{"/in/a.wav": (None, 40.0)}])
+
+    def test_dragging_the_start_handle_keeps_the_end(self) -> None:
+        dialog, _ = self._dialog(starts={"/in/a.wav": 20.0})
+        self._drag_handle(dialog, 36, -20)
+        dialog.apply_button.emit("clicked")
+        self.assertEqual(self.applied, [{"/in/a.wav": (10.0, 40.0)}])
+
+    def test_handle_drag_previews_the_range_text(self) -> None:
+        dialog, _ = self._dialog()
+        waveform = dialog.view.waveforms[0]
+        waveform.set_timeline(100.0)
+        waveform.begin_range_drag(64, 200.0)
+        waveform.update_range_drag(30, 200.0)
+        assert dialog.range_label is not None
+        self.assertEqual(dialog.range_label.get_label(), "0:00 – 0:45 · 45 s")
+        self.assertEqual(self.applied, [])
+
+    def test_stored_length_is_shown_and_reset_restores_the_default(self) -> None:
+        dialog, _ = self._dialog(starts={"/in/a.wav": 12.0}, lengths={"/in/a.wav": 45.0})
+        waveform = dialog.view.waveforms[0]
+        self.assertEqual((waveform.range_start, waveform.range_length), (12.0, 45.0))
+        dialog.reset_button.emit("clicked")
+        self.assertEqual((waveform.range_start, waveform.range_length), (0.0, 30.0))
+        self.assertFalse(dialog.reset_button.get_sensitive())
+        dialog.apply_button.emit("clicked")
+        self.assertEqual(self.applied, [{"/in/a.wav": (None, None)}])
+
+    def test_resizing_back_to_the_default_follows_preferences_again(self) -> None:
+        dialog, _ = self._dialog(lengths={"/in/a.wav": 40.0})
+        self._drag_handle(dialog, 84, -20)
+        dialog.apply_button.emit("clicked")
+        self.assertEqual(self.applied, [{"/in/a.wav": (None, None)}])
+
+    def test_shift_up_and_down_change_the_length(self) -> None:
+        from gi.repository import Gdk
+
+        dialog, _ = self._dialog(starts={"/in/a.wav": 12.0})
+        self.assertTrue(self._press(dialog, Gdk.KEY_Up))
+        self.assertTrue(self._press(dialog, Gdk.KEY_Up))
+        self.assertTrue(self._press(dialog, Gdk.KEY_Down))
+        self.assertEqual(dialog.view.waveforms[0].range_length, 31.0)
+        dialog.apply_button.emit("clicked")
+        self.assertEqual(self.applied, [{"/in/a.wav": (12.0, 31.0)}])
+
+    def test_length_keys_stop_at_the_limits_and_the_file(self) -> None:
+        from gi.repository import Gdk
+
+        dialog, engine = self._dialog(inputs=("/in/a.wav",), lengths={"/in/a.wav": 6.0})
+        self._press(dialog, Gdk.KEY_Down)
+        self._press(dialog, Gdk.KEY_Down)
+        self.assertEqual(dialog.view.waveforms[0].range_length, 5.0)
+        engine._duration = 50.0
+        engine.on_duration(50.0)
+        dialog._set_range(30.0, 20.0)
+        for _ in range(40):
+            self._press(dialog, Gdk.KEY_Up)
+        waveform = dialog.view.waveforms[0]
+        # Lengthening at the file end pulls the start back; the file caps the length.
+        self.assertEqual((waveform.range_start, waveform.range_length), (0.0, 50.0))
+
+    def test_length_keys_on_a_short_input_work_from_the_file_length(self) -> None:
+        from gi.repository import Gdk
+
+        dialog, engine = self._dialog(inputs=("/in/a.wav",))
+        engine._duration = 20.0
+        engine.on_duration(20.0)
+        self._press(dialog, Gdk.KEY_Up)
+        self.assertEqual(dialog.view.waveforms[0].range_length, 30.0)
+        self._press(dialog, Gdk.KEY_Down)
+        self.assertEqual(dialog.view.waveforms[0].range_length, 19.0)
+
+    def test_preferences_length_leaves_a_custom_length_alone(self) -> None:
+        dialog, _ = self._dialog(inputs=("/in/a.wav",), lengths={"/in/a.wav": 45.0})
+        dialog.set_duration(15)
+        self.assertEqual(dialog.view.waveforms[0].range_length, 45.0)
+        dialog.apply_button.emit("clicked")
+        self.assertEqual(self.applied, [{}])
 
     def test_single_input_names_the_file(self) -> None:
         dialog, _ = self._dialog(inputs=("/in/a.wav",))

@@ -114,43 +114,57 @@ General: group "Listening tools", switch "Open in a separate window", subtitle
 
 ### Behaviour
 
-- Sample mode keeps its switch and its duration in Preferences.
-- An input with no chosen start uses 0:00, so its clip is exactly today's
-  "first N seconds", including the same cache file.
-- Reset in the trim dialog removes that input's start.
+- Sample mode keeps its switch and its duration in Preferences. That duration
+  is the default length; an input can have its own length, set in the trim
+  dialog.
+- An input with no chosen start and no length of its own uses 0:00 and the
+  Preferences duration, so its clip is exactly today's "first N seconds",
+  including the same cache file.
+- Reset in the trim dialog removes that input's start and length.
 
 ### Entry point
 
 The only entry point is a "Choose sample range…" button on the Sample mode row
 (`page-groups.blp` `sample_row`). It is sensitive only when sample mode is on and
 at least one input is set. The row subtitle reads "First 30 s" when no input has
-a start and "30 s, custom range" when any does.
+a start or length of its own, "30 s, custom range" when any has a start, and
+"Custom range" when any has its own length.
 
 ### `TrimDialog` — `ui/playback/trim.py`
 
 - Surface plus view with a single row: the current input as the reference track.
 - Several inputs: the same input picker as Compare Stems. Each input keeps its
-  own start.
-- The waveform shows a fixed-width highlighted range of the sample duration.
-  Dragging moves the range; a click without drag inside the range seeks, and a
-  click outside it moves the range to start there (pulled back to fit the
-  file). The pointer shows a grab cursor while the range can move.
-- Shift+Left / Shift+Right move the range by 1 s, listed in the keyboard
-  shortcuts popover; plain Left/Right still skip 5 s inside the range.
-- The row shows the range as text ("1:15 – 1:45"), ending with the file for a
-  short input.
+  own start and length.
+- The waveform frames the range, with a gripped trim handle just outside each
+  edge. Dragging a handle changes the length in whole seconds, 5–120 s (the
+  Preferences bounds) and never past the file; the other edge stays put.
+  Dragging anywhere else moves the range; a click without drag inside the range
+  seeks, and a click outside it moves the range to start there (pulled back to
+  fit the file). The pointer shows a resize cursor over a handle and a grab
+  cursor elsewhere while the range can move.
+- Shift+Left / Shift+Right move the range by 1 s; Shift+Up / Shift+Down
+  lengthen or shorten it by 1 s, pulling the start back at the file end. Both
+  are listed in the keyboard shortcuts popover; plain Left/Right still skip 5 s
+  inside the range.
+- The row shows the range and its length as text ("1:15 – 1:45 · 30 s"),
+  ending with the file for a short input, and follows a drag as it happens.
+- A length equal to the Preferences duration is not stored, so that input
+  keeps following Preferences. A Preferences change leaves inputs with their
+  own length alone.
 - Playback loops inside the range: when the position passes the range end, the
   dialog seeks to the range start. The engine is unchanged.
-- Header: Apply (commits every edited input's start to settings and closes),
-  Reset (current input back to 0:00). Closing without Apply discards edits.
-- Inputs too short for the duration show the whole file as the range, with the
-  drag disabled.
+- Header: Apply (commits every edited input's start and length to settings and
+  closes), Reset (current input back to 0:00 and the default length). Closing
+  without Apply discards edits.
+- Inputs too short for the duration show the whole file as the range. It cannot
+  move, but its handles can shorten it.
 
 ### `WaveformView` addition
 
-An optional fixed-width range (`set_range(start, length)` / `range_start`,
-`on_range_moved`, `range_movable`). Off by default; when off, drag seeks
-exactly as today.
+An optional range (`set_range(start, length)` / `range_start`,
+`on_range_changed(start, length)`, `on_range_preview`, `range_movable`), made
+resizable by `set_range_resizable(minimum, maximum, step)`. Off by default;
+when off, drag seeks exactly as today.
 
 ### Core
 
@@ -160,12 +174,19 @@ exactly as today.
 - Entries for paths that are no longer inputs are pruned whenever the input
   list is saved.
 - `core.audio_decode.load_audio` gains `offset: float = 0.0`.
-- `core.sample_mode.prepare_input_paths` reads each input's start, pulls it
-  back so start + duration does not pass the end of the file, and includes the
-  start in the clip cache key only when it is non-zero (0 keeps the current key).
+- Setting `process.sample_lengths: dict[str, float]`, the same shape and rules
+  as the starts (positive finite seconds; pruned with the input list).
+- `core.sample_mode.prepare_input_paths` reads each input's start and length,
+  pulls the start back so start + length does not pass the end of the file, and
+  includes the start in the clip cache key only when it is non-zero (0 keeps the
+  current key). A whole-second length keeps the existing key form, so an input
+  at the default length reuses its clip.
 - Plan review's Sample mode row: "First 30 s", or "30 s from 1:15" for one
-  input, or "30 s, custom ranges" with per-input detail when several differ.
-- `--profile gui` inherits the starts through settings. No new CLI flag.
+  input, or "30 s, custom ranges" with per-input detail when several differ;
+  with different lengths, "Custom ranges" and a "Sample ranges" detail line.
+  The sample warning names the length only when every input shares it.
+- `--profile gui` inherits the starts and lengths through settings. No new CLI
+  flag; an explicit `--sample-seconds` clears inherited per-input lengths.
 
 ### Tests
 

@@ -170,9 +170,20 @@ class WaveformViewTests(unittest.TestCase):
         view.set_timeline(timeline)
         view.set_range(start, length)
         self.seeks: list[float] = []
+        self.ranges: list[tuple[float, float]] = []
         self.moved: list[float] = []
         view.on_seek = self.seeks.append
-        view.on_range_moved = self.moved.append
+
+        def changed(start: float, length: float) -> None:
+            self.ranges.append((start, length))
+            self.moved.append(start)
+
+        view.on_range_changed = changed
+        return view
+
+    def _resizable(self, start: float = 10.0, length: float = 30.0) -> Any:
+        view = self._ranged(100.0, start, length)
+        view.set_range_resizable(5.0, 60.0, 1.0)
         return view
 
     def test_range_drag_moves_the_start(self) -> None:
@@ -210,6 +221,67 @@ class WaveformViewTests(unittest.TestCase):
         view.begin_range_drag()
         view.end_range_drag(190, 200)
         self.assertEqual((self.seeks, self.moved), ([], [70.0]))
+
+    def test_handle_spans_sit_outside_the_edges_and_inside_the_widget(self) -> None:
+        from ui.widgets.waveform import HANDLE_WIDTH, handle_spans
+
+        self.assertEqual(handle_spans((20.0, 80.0), 200), ((12.0, 20.0), (80.0, 88.0)))
+        self.assertEqual(handle_spans((0.0, 200.0), 200), ((0.0, HANDLE_WIDTH), (192.0, 200.0)))
+
+    def test_edge_at_finds_the_handles_only_when_resizable(self) -> None:
+        view = self._ranged(100.0, 10.0, 30.0)
+        self.assertIsNone(view.edge_at(16, 200))
+        view.set_range_resizable(5.0, 60.0, 1.0)
+        # Range 10-40 s is 20-80 px; the handles are 12-20 and 80-88 px.
+        self.assertEqual(view.edge_at(16, 200), "start")
+        self.assertEqual(view.edge_at(23, 200), "start")
+        self.assertEqual(view.edge_at(85, 200), "end")
+        self.assertIsNone(view.edge_at(50, 200))
+        self.assertIsNone(view.edge_at(2, 200))
+
+    def test_end_handle_drag_changes_the_length_on_whole_seconds(self) -> None:
+        view = self._resizable()
+        previews: list[tuple[float, float]] = []
+        view.on_range_preview = lambda start, length: previews.append((start, length))
+        view.begin_range_drag(84, 200)
+        view.update_range_drag(21, 200)  # 10.5 s longer
+        self.assertEqual((view.range_start, view.range_length), (10.0, 40.0))
+        self.assertEqual(previews[-1], (10.0, 40.0))
+        view.end_range_drag(105, 200)
+        self.assertEqual((self.ranges, self.seeks), ([(10.0, 40.0)], []))
+
+    def test_start_handle_drag_keeps_the_end(self) -> None:
+        view = self._resizable()
+        view.begin_range_drag(16, 200)
+        view.update_range_drag(-10, 200)
+        self.assertEqual((view.range_start, view.range_length), (5.0, 35.0))
+        view.update_range_drag(1000, 200)  # no shorter than the minimum
+        self.assertEqual((view.range_start, view.range_length), (35.0, 5.0))
+        view.update_range_drag(-1000, 200)  # no earlier than the track start
+        self.assertEqual((view.range_start, view.range_length), (0.0, 40.0))
+
+    def test_end_handle_stops_at_the_maximum_and_the_track_end(self) -> None:
+        view = self._resizable()
+        view.begin_range_drag(84, 200)
+        view.update_range_drag(1000, 200)
+        self.assertEqual(view.range_length, 60.0)
+        view = self._resizable(start=70.0)
+        view.begin_range_drag(204, 200)
+        view.update_range_drag(1000, 200)
+        self.assertEqual(view.range_length, 30.0)
+
+    def test_short_track_range_shrinks_from_the_file_end(self) -> None:
+        view = self._ranged(20.0, 0.0, 30.0)
+        view.set_range_resizable(5.0, 60.0, 1.0)
+        view.begin_range_drag(196, 200)
+        view.update_range_drag(-50, 200)  # 5 s shorter than the 20 s file
+        self.assertEqual(view.range_length, 15.0)
+
+    def test_cursor_resizes_over_a_handle(self) -> None:
+        view = self._resizable()
+        view.begin_range_drag(84, 200)
+        current = view.get_cursor()
+        self.assertEqual(current.get_name() if current is not None else None, "ew-resize")
 
     def test_cursor_offers_a_grab_only_when_the_range_can_move(self) -> None:
         def cursor(view: Any) -> str | None:
@@ -345,7 +417,7 @@ class WaveformViewTests(unittest.TestCase):
         view.set_position(2.0)
         self.assertGreater(int(self._render(view)[20, 0, 3]), 0)
 
-    def test_range_dims_bars_outside_and_handles_the_edges(self) -> None:
+    def test_range_dims_bars_outside_and_frames_it_with_trim_handles(self) -> None:
         from ui.widgets.waveform import WaveformView
 
         view = WaveformView()
@@ -359,10 +431,17 @@ class WaveformViewTests(unittest.TestCase):
         inside = int(pixels[20, 31, 3])
         self.assertGreater(inside, 0)
         self.assertLess(outside, inside * 0.7)
-        # The selection is the bright region, so the top of it stays clear.
-        self.assertEqual(int(pixels[0, 45, 3]), 0)
-        self.assertGreater(int(pixels[0, 30, 3]), 0)
-        self.assertGreater(int(pixels[0, 59, 3]), 0)
+        # A frame runs along the top and bottom of the range, and only there.
+        self.assertGreater(int(pixels[0, 45, 3]), 0)
+        self.assertGreater(int(pixels[39, 45, 3]), 0)
+        self.assertEqual(int(pixels[5, 45, 3]), 0)
+        self.assertEqual(int(pixels[0, 10, 3]), 0)
+        # Handles fill the height just outside each edge, with a grip cut out.
+        self.assertGreater(int(pixels[5, 23, 3]), 0)
+        self.assertGreater(int(pixels[5, 64, 3]), 0)
+        self.assertEqual(int(pixels[20, 26, 3]), 0)
+        self.assertEqual(int(pixels[20, 64, 3]), 0)
+        self.assertGreater(int(pixels[20, 61, 3]), 0)
 
     def test_played_bars_are_stronger_than_unplayed(self) -> None:
         from ui.widgets.waveform import WaveformView

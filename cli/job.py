@@ -601,6 +601,15 @@ def format_effective_plan(plan: dict[str, Any]) -> str:
         ]
         if chosen:
             sample += "  starts: " + ", ".join(chosen)
+    lengths = process.get("sample_lengths") or {}
+    if isinstance(lengths, dict):
+        chosen = [
+            f"{os.path.basename(str(path))} {float(length):g}s"
+            for path, length in lengths.items()
+            if float(length or 0) > 0
+        ]
+        if chosen:
+            sample += "  lengths: " + ", ".join(chosen)
     lines.append(
         sample
         + f"  long-file: {process.get('long_file_chunk_seconds')}s/"

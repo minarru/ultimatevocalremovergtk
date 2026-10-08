@@ -13,10 +13,12 @@ import soundfile as sf
 from core.sample_mode import (
     _clip_cache_path,
     fitted_sample_start,
-    has_custom_start,
+    has_custom_range,
     prepare_input_paths,
-    prune_sample_starts,
+    prune_per_input,
+    sample_length,
     sample_start,
+    seconds_text,
 )
 from core.settings import Settings
 
@@ -105,10 +107,39 @@ class SampleModeTests(unittest.TestCase):
         starts = {'/in/a.wav': 12.0}
         self.assertEqual(sample_start(starts, '/in/a.wav'), 12.0)
         self.assertEqual(sample_start(starts, '/in/b.wav'), 0.0)
-        self.assertTrue(has_custom_start(starts, ['/in/b.wav', '/in/a.wav']))
-        self.assertFalse(has_custom_start(starts, ['/in/b.wav']))
-        self.assertEqual(prune_sample_starts(starts, ['/in/b.wav']), {})
-        self.assertEqual(prune_sample_starts(starts, ['/in/a.wav']), starts)
+        self.assertTrue(has_custom_range(starts, {}, ['/in/b.wav', '/in/a.wav']))
+        self.assertFalse(has_custom_range(starts, {}, ['/in/b.wav']))
+        self.assertEqual(prune_per_input(starts, ['/in/b.wav']), {})
+        self.assertEqual(prune_per_input(starts, ['/in/a.wav']), starts)
+
+    def test_length_helpers(self):
+        lengths = {'/in/a.wav': 45.0}
+        self.assertEqual(sample_length(lengths, '/in/a.wav', 30), 45.0)
+        self.assertEqual(sample_length(lengths, '/in/b.wav', 30), 30.0)
+        self.assertTrue(has_custom_range({}, lengths, ['/in/a.wav']))
+        self.assertFalse(has_custom_range({}, lengths, ['/in/b.wav']))
+        self.assertEqual((seconds_text(30.0), seconds_text(12.5)), ('30', '12.5'))
+
+    def test_length_sets_the_clip_duration(self):
+        self.settings.process.sample_lengths = {str(self.source.resolve()): 1.5}
+        [clip] = prepare_input_paths(self.settings, [str(self.source)])
+        self.assertEqual(sf.info(clip).frames, 12000)
+        self.assertIn('_1.5s_', Path(clip).name)
+
+    def test_length_pulls_a_late_start_back(self):
+        self.settings.process.sample_starts = {str(self.source.resolve()): 1.0}
+        self.settings.process.sample_lengths = {str(self.source.resolve()): 1.5}
+        [clip] = prepare_input_paths(self.settings, [str(self.source)])
+        expected, _ = sf.read(self.source, start=4000, frames=12000, dtype='float32')
+        np.testing.assert_array_equal(sf.read(clip, dtype='float32')[0], expected)
+
+    def test_whole_second_length_keeps_the_default_cache_name(self):
+        self.assertEqual(
+            _clip_cache_path('/tmp/music.m4a', 5.0), _clip_cache_path('/tmp/music.m4a', 5)
+        )
+        self.assertNotEqual(
+            _clip_cache_path('/tmp/music.m4a', 5.5), _clip_cache_path('/tmp/music.m4a', 5)
+        )
 
     def test_partial_write_is_removed_and_fallback_reported(self):
         failures = []

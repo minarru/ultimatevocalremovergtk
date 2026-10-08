@@ -66,9 +66,14 @@ class PlaybackSurface:
         )
         for widget in self.track_key_rows:
             widget.set_visible(track_keys)
-        self.range_key_rows: tuple[Gtk.Widget, Gtk.Widget] = (
-            object_from_builder(builder, "range_keys_key", Gtk.Label),
-            object_from_builder(builder, "range_keys_label", Gtk.Label),
+        self.range_key_rows: tuple[Gtk.Widget, ...] = tuple(
+            object_from_builder(builder, name, Gtk.Label)
+            for name in (
+                "range_keys_key",
+                "range_keys_label",
+                "length_keys_key",
+                "length_keys_label",
+            )
         )
         for widget in self.range_key_rows:
             widget.set_visible(range_keys)

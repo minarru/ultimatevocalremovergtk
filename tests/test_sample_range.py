@@ -68,16 +68,19 @@ class SampleRangeControllerTests(unittest.TestCase):
         kwargs = self._kwargs()
         self.assertEqual(kwargs["duration"], 30)
         self.assertIs(kwargs["starts"], self.settings.process.sample_starts)
+        self.assertIs(kwargs["lengths"], self.settings.process.sample_lengths)
         self.assertIs(kwargs["open_in_window"], True)
         self.assertEqual(self.TrimDialog.call_args.args[0], ["/in/a.wav"])
 
     def test_apply_writes_saves_and_notifies(self) -> None:
         a, b = os.path.abspath("/in/a.wav"), os.path.abspath("/in/b.wav")
         self.settings.process.sample_starts = {b: 4.0}
+        self.settings.process.sample_lengths = {b: 45.0}
         controller = self._controller()
         controller.open(["/in/a.wav", "/in/b.wav"])
-        self._kwargs()["on_apply"]({a: 12.5, b: None})
+        self._kwargs()["on_apply"]({a: (12.5, 20.0), b: (None, None)})
         self.assertEqual(self.settings.process.sample_starts, {a: 12.5})
+        self.assertEqual(self.settings.process.sample_lengths, {a: 20.0})
         self.save.assert_called_once_with()
         self.applied.assert_called_once_with()
         self.toast.assert_not_called()
@@ -86,15 +89,16 @@ class SampleRangeControllerTests(unittest.TestCase):
         self.save.return_value = "Could not save settings"
         controller = self._controller()
         controller.open(["/in/a.wav"])
-        self._kwargs()["on_apply"]({os.path.abspath("/in/a.wav"): 3.0})
+        self._kwargs()["on_apply"]({os.path.abspath("/in/a.wav"): (3.0, None)})
         self.toast.assert_called_once_with("Could not save settings")
 
     def test_apply_drops_edits_for_removed_inputs(self) -> None:
         self.settings.process.input_paths = ["/in/a.wav"]
         controller = self._controller()
         controller.open(["/in/a.wav"])
-        self._kwargs()["on_apply"]({os.path.abspath("/in/gone.wav"): 9.0})
+        self._kwargs()["on_apply"]({os.path.abspath("/in/gone.wav"): (9.0, 40.0)})
         self.assertEqual(self.settings.process.sample_starts, {})
+        self.assertEqual(self.settings.process.sample_lengths, {})
 
     def test_sync_duration_updates_only_an_open_dialog(self) -> None:
         controller = self._controller()

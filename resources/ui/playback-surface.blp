@@ -128,6 +128,32 @@ Adw.Dialog dialog {
                   row: 3;
                 }
               }
+
+              Gtk.Label length_keys_key {
+                label: "Shift ↑ ↓";
+                halign: end;
+                visible: false;
+
+                layout {
+                  column: 0;
+                  row: 4;
+                }
+
+                styles [
+                  "uvr-keycap",
+                ]
+              }
+
+              Gtk.Label length_keys_label {
+                label: "Lengthen or shorten range 1 s";
+                xalign: 0;
+                visible: false;
+
+                layout {
+                  column: 1;
+                  row: 4;
+                }
+              }
             };
           };
         }
