@@ -163,6 +163,51 @@ class WaveformViewTests(unittest.TestCase):
         view.set_timeline(10.0)
         self.assertEqual(view.timeline, 10.0)
 
+    def _ranged(self, timeline: float, start: float, length: float) -> Any:
+        from ui.widgets.waveform import WaveformView
+
+        view = WaveformView("Song")
+        view.set_timeline(timeline)
+        view.set_range(start, length)
+        self.seeks: list[float] = []
+        self.moved: list[float] = []
+        view.on_seek = self.seeks.append
+        view.on_range_moved = self.moved.append
+        return view
+
+    def test_range_drag_moves_the_start(self) -> None:
+        view = self._ranged(100.0, 10.0, 30.0)
+        view.begin_range_drag()
+        view.update_range_drag(50, 200)
+        self.assertEqual(view.range_start, 35.0)
+        view.end_range_drag(150, 200)
+        self.assertEqual((self.moved, self.seeks), ([35.0], []))
+
+    def test_range_drag_is_clamped_to_the_track(self) -> None:
+        view = self._ranged(100.0, 10.0, 30.0)
+        view.begin_range_drag()
+        view.update_range_drag(1000, 200)
+        self.assertEqual(view.range_start, 70.0)
+        view.update_range_drag(-1000, 200)
+        self.assertEqual(view.range_start, 0.0)
+
+    def test_click_in_range_mode_seeks_within_the_range(self) -> None:
+        view = self._ranged(100.0, 10.0, 30.0)
+        view.begin_range_drag()
+        view.update_range_drag(1, 200)
+        view.end_range_drag(180, 200)
+        self.assertEqual((self.seeks, self.moved), ([40.0], []))
+
+    def test_short_track_range_cannot_move(self) -> None:
+        view = self._ranged(20.0, 0.0, 30.0)
+        view.begin_range_drag()
+        view.update_range_drag(50, 200)
+        self.assertEqual(view.range_start, 0.0)
+
+    def test_zero_length_turns_the_range_off(self) -> None:
+        view = self._ranged(100.0, 10.0, 0.0)
+        self.assertEqual(view.range_length, 0.0)
+
     def test_seek_without_timeline_is_ignored(self) -> None:
         from ui.widgets.waveform import WaveformView
 

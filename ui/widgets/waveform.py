@@ -1,5 +1,8 @@
 """Waveform strip for one track: shared time axis, playhead, click or drag to seek.
 
+With a range set, the strip shows a fixed-width highlighted span instead: a drag
+moves the span and a click seeks inside it.
+
 The envelope is drawn as mirrored, round-capped bars separated by gaps. Heights
 use one absolute scale (±1.0 fills the row), so rows compare honestly.
 Colours come from the widget's CSS colour; the audible row carries libadwaita's
@@ -26,6 +29,9 @@ PLAYHEAD_WIDTH = 2
 _INACTIVE_ALPHA = 0.55
 _UNPLAYED_ALPHA = 0.4
 _PLACEHOLDER_ALPHA = 0.25
+_RANGE_ALPHA = 0.12
+# Pointer travel below this many pixels is a click, not a range drag.
+_CLICK_SLOP = 4.0
 
 
 def x_to_seconds(x: float, width: float, duration: float) -> float:
@@ -78,6 +84,10 @@ def _noop(_seconds: float) -> None:
     return None
 
 
+def _clamp(value: float, low: float, high: float) -> float:
+    return min(max(value, low), high)
+
+
 class WaveformView(Gtk.DrawingArea):
     def __init__(self, track: str = "") -> None:
         # An image, not a slider: it is not focusable, and the dialog's Left/Right
@@ -87,6 +97,13 @@ class WaveformView(Gtk.DrawingArea):
         if track:
             self.update_property([Gtk.AccessibleProperty.LABEL], [f"{track} waveform"])
         self.on_seek: Callable[[float], None] = _noop
+        #: Fired once when a drag leaves the range at a new start.
+        self.on_range_moved: Callable[[float], None] = _noop
+        self._range_start = 0.0
+        self._range_length = 0.0
+        # Range start when the current drag began, and the furthest the pointer went.
+        self._drag_anchor = 0.0
+        self._drag_travel = 0.0
         self._peaks: Peaks | None = None
         self._timeline = 0.0
         self._position = 0.0
@@ -103,6 +120,7 @@ class WaveformView(Gtk.DrawingArea):
         drag = Gtk.GestureDrag()
         drag.connect("drag-begin", self._on_drag_begin)
         drag.connect("drag-update", self._on_drag_update)
+        drag.connect("drag-end", self._on_drag_end)
         self.add_controller(drag)
 
     # -- state -----------------------------------------------------------------
@@ -144,6 +162,20 @@ class WaveformView(Gtk.DrawingArea):
             self._playhead_column = column
         self.queue_draw()
 
+    @property
+    def range_start(self) -> float:
+        return self._range_start
+
+    @property
+    def range_length(self) -> float:
+        return self._range_length
+
+    def set_range(self, start: float, length: float) -> None:
+        """Show a fixed-width range; a ``length`` of 0 or less turns it off."""
+        self._range_length = max(0.0, length)
+        self._range_start = max(0.0, start) if self._range_length else 0.0
+        self.queue_draw()
+
     def set_active(self, active: bool) -> None:
         self._active = active
         if active:
@@ -159,15 +191,50 @@ class WaveformView(Gtk.DrawingArea):
         if timeline > 0 and width > 0:
             self.on_seek(x_to_seconds(x, width, timeline))
 
+    def begin_range_drag(self) -> None:
+        self._drag_anchor = self._range_start
+        self._drag_travel = 0.0
+
+    def update_range_drag(self, dx: float, width: float) -> None:
+        self._drag_travel = max(self._drag_travel, abs(dx))
+        timeline = self.timeline
+        if self._drag_travel < _CLICK_SLOP or width <= 0 or timeline <= 0:
+            return
+        latest = max(0.0, timeline - self._range_length)
+        self._range_start = _clamp(self._drag_anchor + dx / width * timeline, 0.0, latest)
+        self.queue_draw()
+
+    def end_range_drag(self, x: float, width: float) -> None:
+        if self._drag_travel >= _CLICK_SLOP:
+            self.on_range_moved(self._range_start)
+            return
+        timeline = self.timeline
+        if timeline > 0 and width > 0:
+            end = self._range_start + self._range_length
+            self.on_seek(_clamp(x_to_seconds(x, width, timeline), self._range_start, end))
+
     def _on_drag_begin(self, gesture: Gtk.GestureDrag, x: float, _y: float) -> None:
         # Claiming keeps the press from also activating the row (switching tracks).
         gesture.set_state(Gtk.EventSequenceState.CLAIMED)
-        self.seek_at(x, self.get_width())
+        if self._range_length:
+            self.begin_range_drag()
+        else:
+            self.seek_at(x, self.get_width())
 
     def _on_drag_update(self, gesture: Gtk.GestureDrag, dx: float, _dy: float) -> None:
+        if self._range_length:
+            self.update_range_drag(dx, self.get_width())
+            return
         ok, x, _y = gesture.get_start_point()
         if ok:
             self.seek_at(x + dx, self.get_width())
+
+    def _on_drag_end(self, gesture: Gtk.GestureDrag, dx: float, _dy: float) -> None:
+        if not self._range_length:
+            return
+        ok, x, _y = gesture.get_start_point()
+        if ok:
+            self.end_range_drag(x + dx, self.get_width())
 
     # -- drawing ---------------------------------------------------------------
 
@@ -181,6 +248,12 @@ class WaveformView(Gtk.DrawingArea):
         middle = height / 2
         timeline = self.timeline
         peaks = self._peaks
+        if self._range_length and timeline > 0:
+            first = seconds_to_x(self._range_start, width, timeline)
+            last = seconds_to_x(self._range_start + self._range_length, width, timeline)
+            cr.set_source_rgba(red, green, blue, alpha * _RANGE_ALPHA)
+            cr.rectangle(first, 0, last - first, height)
+            cr.fill()
         if peaks is None:
             cr.set_source_rgba(red, green, blue, alpha * _PLACEHOLDER_ALPHA)
             cr.rectangle(0, middle - 0.5, width, 1)
