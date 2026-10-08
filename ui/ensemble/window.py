@@ -258,6 +258,10 @@ class EnsemblePage:
                 on_gpu_changed=self._on_gpu_changed,
                 on_autocast_changed=self._on_autocast_changed,
                 on_sample_changed=self._on_sample_changed,
+                on_choose_sample_range=lambda: self.window.sample_range.open(
+                    list(self.input_row.paths)
+                ),
+                settings_getter=lambda: self.settings,
             ),
             processing=("gpu", "autocast", "sample"),
         )
@@ -488,6 +492,9 @@ class EnsemblePage:
     def _apply_shared_widgets(self) -> None:
         self._page_groups.apply(self.settings)
         self.vocal_split_row.apply_from_settings(self.settings)
+
+    def sync_sample_range(self) -> None:
+        self._page_groups.sync_sample_range()
 
     def _sync_shared_from_settings(self) -> None:
         """Refresh displayed baselines without creating shared edits."""

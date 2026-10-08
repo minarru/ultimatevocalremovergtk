@@ -28,3 +28,12 @@ Adw.SwitchRow sample_row {
   [prefix]
   Gtk.Image { icon-name: "uvr-stopwatch-symbolic"; }
 }
+// Added to sample_row in Python, before its switch.
+Gtk.Button sample_range_button {
+  icon-name: "edit-cut-symbolic";
+  tooltip-text: "Choose sample range…";
+  valign: center;
+  sensitive: false;
+  accessibility { label: "Choose sample range…"; }
+  styles ["flat"]
+}

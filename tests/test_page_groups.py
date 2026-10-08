@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import tempfile
 import unittest
 from typing import Any
 from unittest import mock
@@ -133,12 +134,68 @@ class PageGroupsTests(unittest.TestCase):
         callback.assert_called_once_with()
 
     def test_sample_row_label(self) -> None:
-        from ui.shared_settings import SAMPLE_MODE_TITLE, sample_mode_subtitle
+        from ui.shared_settings import SAMPLE_MODE_TITLE
 
         groups = self._build(sample_duration=45)
         assert groups.sample_row is not None
         self.assertEqual(groups.sample_row.get_title(), SAMPLE_MODE_TITLE)
-        self.assertEqual(groups.sample_row.get_subtitle(), sample_mode_subtitle(45))
+        self.assertEqual(groups.sample_row.get_subtitle(), "First 45 s")
+
+    def _ranged(self, reason: str | None = None) -> tuple[Any, Any, mock.Mock]:
+        from core.settings import Settings
+
+        settings = Settings.defaults()
+        settings.process.sample_mode_duration = 45
+        choose = mock.Mock()
+        patcher = mock.patch(
+            "ui.widgets.page_groups.playback_unavailable_reason", return_value=reason
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        groups = self._build(
+            sample_duration=45, settings_getter=lambda: settings, on_choose_sample_range=choose
+        )
+        # The input row drops paths that are not real files.
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        self.input_path = os.path.join(folder.name, "a.wav")
+        open(self.input_path, "wb").close()
+        return groups, settings, choose
+
+    def test_range_button_sits_before_the_switch(self) -> None:
+        from gi.repository import Gtk
+
+        groups, _settings, _choose = self._ranged()
+        self.assertIsInstance(groups.sample_range_button.get_next_sibling(), Gtk.Switch)
+
+    def test_range_button_needs_sample_mode_and_inputs(self) -> None:
+        groups, _settings, choose = self._ranged()
+        button = groups.sample_range_button
+        self.assertFalse(button.get_sensitive())
+        groups.sample_row.set_active(True)
+        self.assertFalse(button.get_sensitive())
+        groups.input_row.set_paths([self.input_path])
+        groups.sync_sample_range()
+        self.assertTrue(button.get_sensitive())
+        button.emit("clicked")
+        choose.assert_called_once_with()
+
+    def test_custom_start_changes_the_subtitle(self) -> None:
+        groups, settings, _choose = self._ranged()
+        settings.process.sample_starts = {os.path.abspath(self.input_path): 12.0}
+        groups.input_row.set_paths([self.input_path])
+        groups.sync_sample_range()
+        self.assertEqual(groups.sample_row.get_subtitle(), "45 s, custom range")
+
+    def test_range_button_explains_missing_playback(self) -> None:
+        groups, _settings, _choose = self._ranged("GStreamer is not installed")
+        groups.sample_row.set_active(True)
+        groups.input_row.set_paths([self.input_path])
+        groups.sync_sample_range()
+        self.assertFalse(groups.sample_range_button.get_sensitive())
+        self.assertEqual(
+            groups.sample_range_button.get_tooltip_text(), "GStreamer is not installed"
+        )
 
     def test_hints_attached(self) -> None:
         from ui.help_text import (

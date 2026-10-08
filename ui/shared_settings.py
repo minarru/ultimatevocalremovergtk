@@ -25,6 +25,7 @@ from core.input_discovery import (
 from core.input_discovery import (
     remove_unreadable_from_paths as remove_unreadable_from_paths,
 )
+from core.sample_mode import prune_sample_starts
 from core.settings import Settings
 from core.types import SaveFormat
 from core.types.settings_enums import DeverbVocalOpt, FlacBitDepth, Mp3Bitrate, OpusBitrate, WavType
@@ -52,9 +53,11 @@ INPUT_FILES_MAX = 500
 SAMPLE_MODE_TITLE = "Sample mode"
 
 
-def sample_mode_subtitle(duration: int) -> str:
-    """Subtitle describing how much audio sample mode processes."""
-    return f"Process only the first {int(duration)} s"
+def sample_mode_subtitle(duration: int, *, custom: bool = False) -> str:
+    """Subtitle describing how much audio sample mode processes, and from where."""
+    if custom:
+        return f"{int(duration)} s, custom range"
+    return f"First {int(duration)} s"
 
 
 def gpu_dependent_enabled(is_gpu_conversion: bool) -> bool:
@@ -74,11 +77,11 @@ def gpu_autocast_subtitle(is_gpu_conversion: bool) -> str:
     return "Faster VR/MDX/Roformer on modern NVIDIA GPUs"
 
 
-def apply_sample_mode_label(sample_row: typing.Any, duration: int) -> None:
+def apply_sample_mode_label(sample_row: typing.Any, duration: int, *, custom: bool = False) -> None:
     """Set the stable title + duration subtitle on a sample-mode switch row."""
     sample_row.set_title(SAMPLE_MODE_TITLE)
     if hasattr(sample_row, "set_subtitle"):
-        sample_row.set_subtitle(sample_mode_subtitle(duration))
+        sample_row.set_subtitle(sample_mode_subtitle(duration, custom=custom))
 
 
 _REASON_OUTPUT_MISSING = "Choose an output folder"
@@ -408,6 +411,8 @@ class SharedSettingsSession:
 
 def _write_input_paths(settings: Settings, value: tuple[str, ...]) -> None:
     settings.process.input_paths = list(value)
+    # Sample starts follow the input list; removed files take theirs with them.
+    settings.process.sample_starts = prune_sample_starts(settings.process.sample_starts, value)
 
 
 def _write_export_path(settings: Settings, value: str) -> None:

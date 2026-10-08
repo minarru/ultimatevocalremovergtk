@@ -15,6 +15,7 @@ from __future__ import annotations
 import os
 import unittest
 from typing import Any
+from unittest.mock import Mock
 
 from bundled.constants import WAV
 
@@ -83,6 +84,8 @@ class FlushSettingsTabGuardTests(unittest.TestCase):
         # defaults, as it would be if the user never revisited Separation
         # after switching to another tab.
         window._shared_session = None
+        window.sample_range = Mock()
+        window._page_groups = Mock()
         window.format_row = OutputFormatRow(window._on_format_changed)
         window.format_row.apply_from_settings(window.settings)
         window.gpu_row = make_switch_row("GPU conversion")

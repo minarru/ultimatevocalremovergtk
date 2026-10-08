@@ -77,6 +77,7 @@ from .model_options import (
 )
 from .protocols import FormatEdit, VocalSplitEdit
 from .run_control import RunController
+from .sample_range import SampleRangeController
 from .shared_settings import (
     SharedSettingsSession,
     format_input_sanitize_toasts,
@@ -387,6 +388,14 @@ class MainWindow(Adw.ApplicationWindow):
         # Static groups are kept as attributes so they can be reparented between
         # the columns alongside the per-method groups.
         self._groups_builder = load_builder("separation-groups")
+        # One sample trim dialog for both pages with a Sample mode row.
+        self.sample_range = SampleRangeController(
+            lambda: self.settings,
+            parent=lambda: self,
+            save=lambda: self.context.try_save_settings(trigger="sample-range"),
+            toast=self.toast,
+            on_applied=self._on_sample_range_applied,
+        )
         self._page_groups = self._build_page_groups()
         # The view whose stem rows currently lead the Output group.
         self._output_view: typing.Any = None
@@ -657,6 +666,8 @@ class MainWindow(Adw.ApplicationWindow):
                 on_gpu_changed=self._on_gpu_changed,
                 on_autocast_changed=self._on_autocast_changed,
                 on_sample_changed=self._on_sample_changed,
+                on_choose_sample_range=lambda: self.sample_range.open(list(self.input_row.paths)),
+                settings_getter=lambda: self.settings,
             ),
             processing=("gpu", "autocast", "sample"),
         )
@@ -1031,6 +1042,7 @@ class MainWindow(Adw.ApplicationWindow):
         assert self._shared_session is not None
         self._shared_session.adopt(self._shared_session.bindings.input_paths)
         self.context.prune_unreadable_input_paths(paths)
+        self._page_groups.sync_sample_range()
         self._refresh_start_readiness()
 
     def _on_output_changed(self) -> None:
@@ -1073,6 +1085,10 @@ class MainWindow(Adw.ApplicationWindow):
         session.commit(edited=(session.bindings.sample_mode,))
         self._refresh_active_stem_metadata()
 
+    def _on_sample_range_applied(self) -> None:
+        self._page_groups.sync_sample_range()
+        self._ensemble_page.sync_sample_range()
+
     def _refresh_active_stem_metadata(self) -> None:
         view = self._active_view()
         if hasattr(view, "_update_stem_group_metadata"):
@@ -1089,6 +1105,7 @@ class MainWindow(Adw.ApplicationWindow):
 
     def _finalize_close(self, deferred: bool) -> None:
         self.cancel_startup_work()
+        self.sample_range.close()
         # The repository outlives this window (it hangs off AppContext), so a
         # live subscription would keep calling into a dead widget tree.
         self._unsubscribe_model_events()

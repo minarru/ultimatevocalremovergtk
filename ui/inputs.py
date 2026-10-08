@@ -22,6 +22,7 @@ from gi.repository import Adw, Gdk, GLib, Gtk
 
 from bundled.constants import VERIFY_INPUTS_TEXT
 from core.audio_probe import probe_audio
+from core.sample_mode import prune_sample_starts
 
 from .dialogs.utils import present_modal_dialog
 from .dispatch import idle_on_main
@@ -348,6 +349,9 @@ class ViewInputs:
 
     def _commit_paths(self) -> None:
         self.settings.process.input_paths = list(self.paths)
+        self.settings.process.sample_starts = prune_sample_starts(
+            self.settings.process.sample_starts, self.paths
+        )
         error = self.context.try_save_settings(trigger="verify-inputs")
         if error:
             self._toast(error)

@@ -315,6 +315,7 @@ class MainWindowWarmupLifecycleTests(_GtkRequiredTestCase):
         window._handle_settings_error = Mock()
         window.context = SimpleNamespace(try_save_settings=Mock(return_value=None))
         window._download_ui = None
+        window.sample_range = Mock()
 
         MainWindow._finalize_close(window, False)
 
