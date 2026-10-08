@@ -30,6 +30,8 @@ class RangeLoop:
         # A pause the user asked for, as opposed to the engine stopping at the end.
         self._pausing = False
         self._ended = False
+        # Set while the loop's own seek reports its position back synchronously.
+        self._looping = False
         self.on_position: Callable[[float], None] = _noop
         self.on_duration: Callable[[float], None] = _noop
         self.on_state: Callable[[bool], None] = _noop
@@ -50,18 +52,22 @@ class RangeLoop:
 
     @property
     def range_start(self) -> float:
+        """The start, pulled back so the range fits a track whose length is known."""
+        duration = self._engine.duration
+        if duration > 0 and self._length:
+            return min(self._start, max(0.0, duration - self._length))
         return self._start
 
     @property
     def range_end(self) -> float:
-        end = self._start + self._length
+        end = self.range_start + self._length
         duration = self._engine.duration
         return min(end, duration) if duration > 0 else end
 
     def _clamp(self, seconds: float) -> float:
         if not self._length:
             return seconds
-        return min(max(seconds, self._start), self.range_end)
+        return min(max(seconds, self.range_start), self.range_end)
 
     # -- PlaybackControls ------------------------------------------------------
 
@@ -87,7 +93,10 @@ class RangeLoop:
 
     def load(self, tracks: Sequence[Track], *, selected: int = 0, position: float = 0.0) -> None:
         self._ended = False
-        self._engine.load(tracks, selected=selected, position=self._clamp(position))
+        if self._length:
+            # The engine still knows only the previous track's length here.
+            position = min(max(position, self._start), self._start + self._length)
+        self._engine.load(tracks, selected=selected, position=position)
 
     def play(self) -> None:
         self._ended = False
@@ -123,19 +132,31 @@ class RangeLoop:
         self.on_state(playing)
 
     def _on_position(self, seconds: float) -> None:
-        if not self._length:
+        if not self._length or self._looping:
             self.on_position(seconds)
             return
-        if seconds >= self.range_end - _LOOP_EPSILON:
+        start = self.range_start
+        # A failed duration query reports 0 and parks the playhead at 0, so the
+        # end-of-stream flag is the only signal that the track finished.
+        unknown_end = self._ended and self._engine.duration <= 0
+        if unknown_end or seconds >= self.range_end - _LOOP_EPSILON:
             resume = self._ended
-            self._engine.seek(self._start)
+            self._seek_to_start(start)
             if resume and not self._engine.playing:
                 self.play()
             return
-        if seconds < self._start - _LOOP_EPSILON and self._engine.playing:
-            self._engine.seek(self._start)
+        if seconds < start - _LOOP_EPSILON and self._engine.playing:
+            self._seek_to_start(start)
             return
         self.on_position(seconds)
+
+    def _seek_to_start(self, start: float) -> None:
+        # The engine reports the new position at once; that report is not a loop.
+        self._looping = True
+        try:
+            self._engine.seek(start)
+        finally:
+            self._looping = False
 
 
 __all__ = ["RangeLoop"]

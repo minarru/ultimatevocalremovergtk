@@ -36,6 +36,16 @@ class OffsetDecodeTests(unittest.TestCase):
         self.assertEqual(len(data), 8000)
         np.testing.assert_allclose(data, self.ramp[4000:12000], atol=1e-6)
 
+    def test_tiny_offset_is_written_without_an_exponent(self):
+        from types import SimpleNamespace
+        from typing import cast
+
+        from core.audio_decode import AudioMetadata, _pcm_command
+
+        info = cast(AudioMetadata, SimpleNamespace(sample_rate=8000, channels=1))
+        command = _pcm_command("ffmpeg", "/x.wav", info, None, strict=True, offset=1e-05)
+        self.assertEqual(command[command.index("-ss") + 1], "0.000010")
+
     def test_negative_offset_is_rejected(self):
         with self.assertRaises(AudioDecodeError):
             load_audio(self.path, offset=-1.0)

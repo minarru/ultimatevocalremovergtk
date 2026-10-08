@@ -12,6 +12,7 @@ import soundfile as sf
 
 from core.sample_mode import (
     _clip_cache_path,
+    fitted_sample_start,
     has_custom_start,
     prepare_input_paths,
     prune_sample_starts,
@@ -70,6 +71,10 @@ class SampleModeTests(unittest.TestCase):
         self.settings.process.sample_starts = {str(self.source.resolve()): 0.5}
         [clip] = prepare_input_paths(self.settings, [str(self.source)])
         np.testing.assert_array_equal(sf.read(clip, dtype='float32')[0], self._expected(4000))
+
+    def test_fitted_start_matches_an_unknown_length_and_a_short_file(self):
+        self.assertEqual(fitted_sample_start(12.0, 30, None), 12.0)
+        self.assertEqual(fitted_sample_start(15.0, 30, 40), 10.0)
 
     def test_start_is_pulled_back_to_fit_the_file(self):
         self.settings.process.sample_starts = {str(self.source.resolve()): 1.5}

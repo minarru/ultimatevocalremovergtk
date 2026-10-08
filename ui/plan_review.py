@@ -3,11 +3,21 @@
 import json
 import os
 from dataclasses import asdict, dataclass
-from typing import Any
+from typing import Any, Mapping
 
 from core.job_plan_types import ResolvedJob
-from core.sample_mode import sample_start
+from core.sample_mode import fitted_sample_start, sample_start
 from core.settings import Settings
+
+
+def _shown_start(starts: Mapping[str, float], path: str, duration: float) -> float:
+    """The start the run will use, once a known file length pulls a late start back."""
+    start = sample_start(starts, path)
+    if start <= 0:
+        return start
+    from core.audio_probe import audio_duration_seconds
+
+    return fitted_sample_start(start, duration, audio_duration_seconds(path))
 
 
 def _clock(seconds: float) -> str:
@@ -21,7 +31,7 @@ def _sample_summary(plan: ResolvedJob) -> tuple[str, str | None]:
     if not process.sample_mode:
         return "Full tracks", None
     duration = process.sample_mode_duration
-    starts = [sample_start(process.sample_starts, item.path) for item in plan.inputs]
+    starts = [_shown_start(process.sample_starts, item.path, duration) for item in plan.inputs]
     if not any(starts):
         return f"First {duration} s", None
     if len(set(starts)) == 1:

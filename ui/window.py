@@ -872,6 +872,7 @@ class MainWindow(Adw.ApplicationWindow):
         if getattr(self, "_hint_manager", None) is not None:
             self._hint_manager.refresh()
         self._refresh_start_readiness()
+        self.sample_range.sync_duration()
 
     def _maybe_notify_stale_export_path(self) -> None:
         if getattr(self, "_stale_export_toast_shown", False):
@@ -1254,6 +1255,7 @@ class MainWindow(Adw.ApplicationWindow):
             self.context,
             on_settings_reloaded=self._load_from_settings,
             on_settings_applied=self._sync_after_preferences,
+            on_sample_duration_changed=self.sample_range.sync_duration,
         )
         present_modal_dialog(dialog, self)
 

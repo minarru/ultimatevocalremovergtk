@@ -11,6 +11,15 @@ from unittest import mock
 from tests.test_row_slot import _order
 
 
+def _flush_idle() -> None:
+    """Run the deferred GStreamer probe scheduled by ``sync_sample_range``."""
+    from gi.repository import GLib
+
+    context = GLib.MainContext.default()
+    while context.pending():
+        context.iteration(False)
+
+
 @unittest.skipUnless(
     os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"),
     "GTK widget construction needs a display",
@@ -176,6 +185,7 @@ class PageGroupsTests(unittest.TestCase):
         self.assertFalse(button.get_sensitive())
         groups.input_row.set_paths([self.input_path])
         groups.sync_sample_range()
+        _flush_idle()
         self.assertTrue(button.get_sensitive())
         button.emit("clicked")
         choose.assert_called_once_with()
@@ -192,6 +202,7 @@ class PageGroupsTests(unittest.TestCase):
         groups.sample_row.set_active(True)
         groups.input_row.set_paths([self.input_path])
         groups.sync_sample_range()
+        _flush_idle()
         self.assertFalse(groups.sample_range_button.get_sensitive())
         self.assertEqual(
             groups.sample_range_button.get_tooltip_text(), "GStreamer is not installed"

@@ -19,6 +19,18 @@ def sample_start(starts: Mapping[str, float], path: str) -> float:
     return max(0.0, float(starts.get(os.path.abspath(path), 0.0)))
 
 
+def fitted_sample_start(start: float, duration: float, total: float | None) -> float:
+    """Pull ``start`` back so ``duration`` seconds still fit when the length is known.
+
+    An unknown length leaves ``start`` unchanged. The trim dialog and sample-clip
+    generation both use this, so the range on screen is the range that is processed.
+    """
+    start = max(0.0, float(start))
+    if total is None or duration <= 0:
+        return start
+    return min(start, max(0.0, float(total) - duration))
+
+
 def has_custom_start(starts: Mapping[str, float], paths: Iterable[str]) -> bool:
     return any(sample_start(starts, path) > 0 for path in paths)
 
@@ -66,10 +78,7 @@ def prepare_input_paths(
         if start > 0:
             from .audio_probe import audio_duration_seconds
 
-            # Pull the start back so the whole sample fits before the end of the file.
-            total = audio_duration_seconds(path)
-            if total is not None:
-                start = max(0.0, min(start, total - duration))
+            start = fitted_sample_start(start, duration, audio_duration_seconds(path))
 
         clip_path = _clip_cache_path(path, duration, start)
         if os.path.isfile(clip_path):

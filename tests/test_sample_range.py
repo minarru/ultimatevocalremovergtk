@@ -96,6 +96,23 @@ class SampleRangeControllerTests(unittest.TestCase):
         self._kwargs()["on_apply"]({os.path.abspath("/in/gone.wav"): 9.0})
         self.assertEqual(self.settings.process.sample_starts, {})
 
+    def test_sync_duration_updates_only_an_open_dialog(self) -> None:
+        controller = self._controller()
+        controller.sync_duration()
+        self.TrimDialog.return_value.set_duration.assert_not_called()
+        controller.open(["/in/a.wav"])
+        self.settings.process.sample_mode_duration = 45
+        controller.sync_duration()
+        self.TrimDialog.return_value.set_duration.assert_called_once_with(45)
+
+    def test_changed_inputs_rebuild_the_dialog(self) -> None:
+        controller = self._controller()
+        controller.open(["/in/a.wav"])
+        controller.open(["/in/b.wav"])
+        self.assertEqual(self.TrimDialog.call_count, 2)
+        self.TrimDialog.return_value.close.assert_called_once_with()
+        self.assertEqual(self.TrimDialog.call_args.args[0], ["/in/b.wav"])
+
     def test_closed_dialog_is_rebuilt_on_next_open(self) -> None:
         controller = self._controller()
         controller.open(["/in/a.wav"])

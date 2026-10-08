@@ -203,6 +203,8 @@ class PreferencesDialog(Adw.PreferencesDialog):
     * ``on_settings_reloaded`` — fired only when the settings model is replaced
       wholesale (profile load, reset to defaults), where a full rebuild of the
       window's widgets is the point.
+    * ``on_sample_duration_changed`` — fired as the sample-length spin changes,
+      before the debounced save, so an open trim dialog can follow it.
     """
 
     def __init__(
@@ -210,12 +212,14 @@ class PreferencesDialog(Adw.PreferencesDialog):
         context: typing.Any,
         on_settings_reloaded: typing.Any = None,
         on_settings_applied: typing.Any = None,
+        on_sample_duration_changed: typing.Callable[[], None] | None = None,
     ):
         super().__init__()
         self.context = context
         self.settings = context.settings
         self._on_settings_reloaded = on_settings_reloaded
         self._on_settings_applied = on_settings_applied
+        self._on_sample_duration_changed = on_sample_duration_changed
         self._profiles = ProfileStore()
         # Guards programmatic widget updates from being treated as user edits.
         self._loading = False
@@ -769,8 +773,12 @@ class PreferencesDialog(Adw.PreferencesDialog):
         if self._loading:
             return
         value = int(row.get_value())
+        if value == self.settings.process.sample_mode_duration:
+            return
         self.settings.process.sample_mode_duration = value
         self._persist()
+        if self._on_sample_duration_changed is not None:
+            self._on_sample_duration_changed()
 
     def _persist(self) -> None:
         """Debounce disk writes so spin-row ticks do not rewrite settings JSON."""

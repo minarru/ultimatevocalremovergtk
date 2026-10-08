@@ -1602,6 +1602,29 @@ class CliDisplayParityTests(unittest.TestCase):
         self.assertIn("Friendly First [mdx:first]", text)
         self.assertIn("Friendly Second [vr:second]", text)
 
+    def test_human_plan_lists_sample_starts(self) -> None:
+        from cli.job import format_effective_plan
+
+        text = format_effective_plan(
+            {
+                "models": [],
+                "output": "/tmp/out",
+                "settings": {
+                    "process": {
+                        "sample_mode": True,
+                        "sample_mode_duration": 30,
+                        "sample_starts": {"/music/late.wav": 90.0, "/music/early.wav": 0},
+                    }
+                },
+                "metadata": {},
+                "device": "cpu",
+                "inputs": [],
+            }
+        )
+
+        self.assertIn("sample: True (30s)  starts: late.wav from 90s", text)
+        self.assertNotIn("early.wav", text)
+
     def test_human_plan_uses_vocal_splitter_display(self) -> None:
         from cli.job import format_effective_plan
 

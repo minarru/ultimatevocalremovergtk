@@ -44,13 +44,14 @@ class TrimDialogTests(unittest.TestCase):
         *,
         inputs: tuple[str, ...] = ("/in/a.wav", "/in/b.wav"),
         starts: Mapping[str, float] | None = None,
+        duration: float = 30,
     ) -> tuple[TrimDialog, FakeEngine]:
         from ui.playback.trim import TrimDialog
 
         engine = FakeEngine()
         self.applied: list[dict[str, float | None]] = []
         dialog = TrimDialog(
-            inputs, engine, duration=30, starts=starts or {}, on_apply=self.applied.append
+            inputs, engine, duration=duration, starts=starts or {}, on_apply=self.applied.append
         )
         return dialog, engine
 
@@ -115,6 +116,32 @@ class TrimDialogTests(unittest.TestCase):
         _drag(dialog, 40)
         dialog.apply_button.emit("clicked")
         self.assertEqual(self.applied, [{"/in/a.wav": 10.0, "/in/b.wav": 20.0}])
+
+    def test_a_start_past_the_end_is_pulled_back_with_the_file(self) -> None:
+        dialog, engine = self._dialog(inputs=("/in/a.wav",), starts={"/in/a.wav": 40.0})
+        engine._duration = 20.0
+        engine.on_duration(20.0)
+        self.assertEqual(dialog.view.waveforms[0].range_start, 0.0)
+        dialog.apply_button.emit("clicked")
+        self.assertEqual(self.applied, [{"/in/a.wav": None}])
+
+    def test_set_duration_resizes_the_open_range(self) -> None:
+        dialog, engine = self._dialog(starts={"/in/a.wav": 12.0})
+        engine._position = 14.0
+        dialog.set_duration(15)
+        waveform = dialog.view.waveforms[0]
+        self.assertEqual((waveform.range_start, waveform.range_length), (12.0, 15.0))
+        self.assertNotIn("seek", [call[0] for call in engine.calls])
+        dialog.apply_button.emit("clicked")
+        self.assertEqual(self.applied, [{}])
+
+    def test_a_longer_duration_pulls_the_start_back(self) -> None:
+        dialog, engine = self._dialog(inputs=("/in/a.wav",), starts={"/in/a.wav": 15.0}, duration=5)
+        engine._duration = 20.0
+        engine._position = 18.0
+        dialog.set_duration(30)
+        self.assertEqual(dialog.view.waveforms[0].range_start, 0.0)
+        self.assertEqual(engine.calls[-1], ("seek", 0.0))
 
     def test_short_input_range_covers_the_whole_file(self) -> None:
         dialog, engine = self._dialog(inputs=("/in/a.wav",))

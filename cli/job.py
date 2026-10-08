@@ -591,10 +591,20 @@ def format_effective_plan(plan: dict[str, Any]) -> str:
     )
     lines.append(f"  device: {plan.get('device')}")
     lines.append(f"  autocast: {process.get('autocast')}")
+    sample = f"  sample: {process.get('sample_mode')} ({process.get('sample_mode_duration')}s)"
+    starts = process.get("sample_starts") or {}
+    if isinstance(starts, dict):
+        chosen = [
+            f"{os.path.basename(str(path))} from {float(start):g}s"
+            for path, start in starts.items()
+            if float(start or 0) > 0
+        ]
+        if chosen:
+            sample += "  starts: " + ", ".join(chosen)
     lines.append(
-        f"  sample: {process.get('sample_mode')} ({process.get('sample_mode_duration')}s)  "
-        f"long-file: {process.get('long_file_chunk_seconds')}s/"
-        f"{process.get('long_file_chunk_overlap_seconds')}s"
+        sample
+        + f"  long-file: {process.get('long_file_chunk_seconds')}s/"
+        + f"{process.get('long_file_chunk_overlap_seconds')}s"
     )
     if process.get("vocal_splitter_enabled"):
         splitter = metadata.get("vocal_splitter") or {}

@@ -155,6 +155,16 @@ class PlanReviewPresentationTests(unittest.TestCase):
 
         view = review_presentation(_sampled(resolved_plan(), {"/music/A & B.wav": 75.0}))
         self.assertEqual(view.sample, "30 s from 1:15")
+
+    def test_a_start_past_the_file_is_shown_pulled_back(self):
+        from unittest import mock
+
+        from ui.plan_review import review_presentation
+
+        plan = _sampled(resolved_plan(), {"/music/A & B.wav": 75.0})
+        with mock.patch("core.audio_probe.audio_duration_seconds", return_value=40.0):
+            view = review_presentation(plan)
+        self.assertEqual(view.sample, "30 s from 0:10")
         details = json.loads(view.technical.split("\n\n", 1)[1])
         self.assertEqual(details["processing"]["sample_starts"], {"/music/A & B.wav": 75.0})
 

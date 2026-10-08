@@ -267,7 +267,8 @@ def _pcm_command(
     command.extend(['-v', 'error'])
     if offset > 0:
         # Before -i: an input seek, which is sample-accurate for audio.
-        command.extend(['-ss', str(offset)])
+        # Fixed-point: FFmpeg's time parser rejects exponents such as 1e-05.
+        command.extend(['-ss', f'{offset:.6f}'])
     command.extend(['-i', path, '-map', '0:a:0'])
     if duration is not None:
         command.extend(['-t', str(duration)])

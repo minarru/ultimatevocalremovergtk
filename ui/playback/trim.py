@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Callable, Mapping, Sequence
 from gi.repository import Gtk
 
 from core.listening import Track
-from core.sample_mode import sample_start
+from core.sample_mode import fitted_sample_start, sample_start
 
 from ..template import load_builder, object_from_builder
 from .engine import PlaybackControls
@@ -50,6 +50,8 @@ class TrimDialog:
 
         self.loop = RangeLoop(engine)
         self.view = CompareView(self.loop, peaks=waveforms)
+        self._forward_duration = self.loop.on_duration
+        self.loop.on_duration = self._relay_duration
         self.surface = PlaybackSurface(
             self.view,
             title=_TITLE,
@@ -79,10 +81,41 @@ class TrimDialog:
     def present(self, parent: Gtk.Window | None) -> None:
         self.surface.present(parent)
 
+    def set_duration(self, duration: float) -> None:
+        """Resize the open range when Preferences changes the sample length."""
+        duration = float(duration)
+        if duration <= 0 or duration == self._duration:
+            return
+        self._duration = duration
+        if not self._inputs:
+            return
+        shown = self._start_of(self._inputs[self._current])
+        total = self.loop.duration
+        fitted = fitted_sample_start(shown, duration, total if total > 0 else None)
+        if fitted != shown:
+            self._move_to(fitted)
+            return
+        self.loop.set_range(shown, duration)
+        if self.view.waveforms:
+            self.view.waveforms[0].set_range(shown, duration)
+        position = self.loop.position
+        if position < self.loop.range_start or position > self.loop.range_end:
+            self.loop.seek(position)
+
     def close(self) -> None:
         self.surface.close()
 
     # -- inputs ----------------------------------------------------------------
+
+    def _relay_duration(self, seconds: float) -> None:
+        self._forward_duration(seconds)
+        if seconds <= 0 or not self._inputs:
+            return
+        path = self._inputs[self._current]
+        shown = self._start_of(path)
+        fitted = fitted_sample_start(shown, self._duration, seconds)
+        if fitted != shown:
+            self._move_to(fitted)
 
     def _start_of(self, path: str) -> float:
         if path in self._pending:

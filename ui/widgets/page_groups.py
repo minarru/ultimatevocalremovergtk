@@ -13,7 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable, Collection, Literal, Sequence
 
-from gi.repository import Adw, Gtk
+from gi.repository import Adw, GLib, Gtk
 
 from core.sample_mode import has_custom_start
 from core.settings import Settings
@@ -161,9 +161,22 @@ class PageGroups:
         paths = list(self.input_row.paths)
         custom = has_custom_start(settings.process.sample_starts, paths)
         row.set_subtitle(sample_mode_subtitle(settings.process.sample_mode_duration, custom=custom))
-        reason = playback_unavailable_reason() if row.get_active() and paths else None
-        button.set_sensitive(row.get_active() and bool(paths) and reason is None)
-        button.set_tooltip_text(reason or SAMPLE_RANGE_TOOLTIP)
+        eligible = row.get_active() and bool(paths)
+        button.set_sensitive(eligible)
+        button.set_tooltip_text(SAMPLE_RANGE_TOOLTIP)
+        # Probing GStreamer initialises it. Keep that off window construction;
+        # the button stays usable until the probe reports playback is missing.
+        if eligible:
+            GLib.idle_add(self._apply_playback_availability)
+
+    def _apply_playback_availability(self) -> bool:
+        row, button = self.sample_row, self.sample_range_button
+        if row is not None and button is not None and row.get_active():
+            reason = playback_unavailable_reason()
+            if reason is not None:
+                button.set_sensitive(False)
+                button.set_tooltip_text(reason)
+        return False
 
 
 def _suffix_before_switch(row: Adw.SwitchRow, widget: Gtk.Widget) -> None:

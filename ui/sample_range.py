@@ -30,8 +30,12 @@ class SampleRangeController:
         self._toast = toast
         self._on_applied = on_applied
         self._dialog: TrimDialog | None = None
+        self._open_inputs: list[str] | None = None
 
     def open(self, inputs: Sequence[str]) -> None:
+        wanted = [os.path.abspath(path) for path in inputs]
+        if self._dialog is not None and self._open_inputs != wanted:
+            self.close()
         if self._dialog is None:
             from .playback.engine import PlaybackEngine
             from .playback.waveforms import PeakCache, WaveformLoader
@@ -48,7 +52,13 @@ class SampleRangeController:
                 on_toast=self._toast,
                 on_closed=self._on_closed,
             )
+            self._open_inputs = wanted
         self._dialog.present(self._parent())
+
+    def sync_duration(self) -> None:
+        """Apply the current sample length to the open dialog."""
+        if self._dialog is not None:
+            self._dialog.set_duration(self._settings().process.sample_mode_duration)
 
     def close(self) -> None:
         dialog, self._dialog = self._dialog, None
@@ -57,6 +67,7 @@ class SampleRangeController:
 
     def _on_closed(self) -> None:
         self._dialog = None
+        self._open_inputs = None
 
     def _apply(self, edits: dict[str, float | None]) -> None:
         settings = self._settings()

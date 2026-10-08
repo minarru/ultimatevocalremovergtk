@@ -2,7 +2,8 @@
 
 A surface opens as an ``Adw.Dialog`` over the main window, or as its own window
 when ``ui.listening_in_window`` is set; the dialog can pop out into a window
-without interrupting playback.
+without interrupting playback. Construction wires ``view.on_error`` to the
+surface toast, so callers load tracks only after the surface exists.
 """
 
 from __future__ import annotations
