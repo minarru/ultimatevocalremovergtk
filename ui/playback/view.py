@@ -106,9 +106,12 @@ class CompareView(Gtk.Box):
         self._engine_duration = 0.0
         self._peak_duration = 0.0
         self._apply_timeline()
+        self.elapsed_label.set_label(_mmss(position))
         if not tracks:
             self._building = False
-            self.play_button.set_sensitive(False)
+            self._set_transport_sensitive(False)
+            # Nothing to show must also mean nothing still audible from before.
+            self._engine.unload()
             return
         group: Gtk.CheckButton | None = None
         for row_index, track in enumerate(tracks):
@@ -120,7 +123,7 @@ class CompareView(Gtk.Box):
         if selected is None or not 0 <= selected < len(tracks):
             selected = 1 if len(tracks) > 1 else 0
         self.checks[selected].set_active(True)
-        self.play_button.set_sensitive(True)
+        self._set_transport_sensitive(True)
         self._engine.load(tracks, selected=selected, position=position)
         # The engine falls back to another track when the default one fails to load.
         actual = self._engine.selected
@@ -134,6 +137,8 @@ class CompareView(Gtk.Box):
             )
 
     def handle_key(self, keyval: int) -> bool:
+        if not self.rows:
+            return False
         if keyval == Gdk.KEY_space:
             self._engine.toggle()
             return True
@@ -203,6 +208,10 @@ class CompareView(Gtk.Box):
         self.waveforms.append(waveform)
         self.checks.append(check)
         return check
+
+    def _set_transport_sensitive(self, sensitive: bool) -> None:
+        for button in (self.play_button, self.back_button, self.forward_button):
+            button.set_sensitive(sensitive)
 
     def _select(self, index: int) -> None:
         if not self.checks[index].get_active():

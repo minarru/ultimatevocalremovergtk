@@ -119,6 +119,34 @@ class CompareViewTests(unittest.TestCase):
         self.assertFalse(view.play_button.get_sensitive())
         self.assertNotIn("load", [c[0] for c in engine.calls])
 
+    def test_emptying_a_loaded_view_stops_playback_and_the_transport(self) -> None:
+        from gi.repository import Gdk
+
+        view, engine = self._shown("Vocals")
+        engine.play()
+        view.show_tracks(())
+        self.assertEqual(engine.calls[-1], ("unload",))
+        for button in (view.play_button, view.back_button, view.forward_button):
+            self.assertFalse(button.get_sensitive())
+        for key in (Gdk.KEY_space, Gdk.KEY_Left, Gdk.KEY_Right):
+            self.assertFalse(view.handle_key(key))
+        self.assertEqual(view.elapsed_label.get_label(), "0:00")
+        view.show_tracks(comparison_set("song", "Vocals").tracks)
+        for button in (view.play_button, view.back_button, view.forward_button):
+            self.assertTrue(button.get_sensitive())
+
+    def test_transport_is_a_bottom_bar_below_the_scrolling_list(self) -> None:
+        from gi.repository import Adw
+
+        # A ToolbarView bottom bar keeps the scroll shadow above the transport.
+        view, _ = self._shown("Vocals")
+        bars = view.play_button.get_ancestor(Adw.ToolbarView)
+        assert isinstance(bars, Adw.ToolbarView)
+        content = bars.get_content()
+        assert content is not None
+        self.assertTrue(view.track_list.is_ancestor(content))
+        self.assertFalse(view.play_button.is_ancestor(content))
+
     def test_skip_buttons_seek_five_seconds(self) -> None:
         view, engine = self._shown("Vocals")
         engine._position = 10.0
