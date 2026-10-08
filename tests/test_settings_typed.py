@@ -4,7 +4,7 @@ import tempfile
 import unittest
 
 from core.settings import SETTINGS_SCHEMA_VERSION, Settings
-from core.settings.coerce import coerce_field
+from core.settings.coerce import coerce_field, coerce_json_dict
 from core.types import SaveFormat, Stem
 from core.types.settings_enums import FlacBitDepth, OpusBitrate
 
@@ -27,6 +27,19 @@ class TypedSettingsTests(unittest.TestCase):
         restored = Settings.from_json_dict(json.loads(json.dumps(settings.to_json_dict())))
         self.assertTrue(restored.ui.auto_expand_log)
         self.assertFalse(coerce_field("ui", "auto_expand_log", "false"))
+
+    def test_listening_window_defaults_off_and_round_trips(self):
+        settings = Settings.from_json_dict({"ui": {}})
+        self.assertFalse(settings.ui.listening_in_window)
+        settings.ui.listening_in_window = True
+        restored = Settings.from_json_dict(json.loads(json.dumps(settings.to_json_dict())))
+        self.assertTrue(restored.ui.listening_in_window)
+        self.assertFalse(coerce_field("ui", "listening_in_window", "false"))
+
+    def test_stale_compare_window_key_is_dropped(self):
+        settings = Settings.from_json_dict(coerce_json_dict({"ui": {"compare_in_window": True}}))
+        self.assertFalse(settings.ui.listening_in_window)
+        self.assertNotIn("compare_in_window", settings.to_json_dict()["ui"])
 
     def test_export_defaults_to_flac_16bit(self):
         settings = Settings.defaults()

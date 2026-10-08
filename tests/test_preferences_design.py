@@ -77,6 +77,22 @@ class PreferencesDesignTests(unittest.TestCase):
         self.assertFalse(dialog.auto_expand_log_row.get_active())
         self.persist.assert_not_called()
 
+    def test_listening_window_switch_writes_and_reloads(self):
+        dialog = self.dialog()
+        self.assertEqual(dialog.listening_in_window_row.get_title(), "Open in a separate window")
+        self.assertEqual(
+            dialog.listening_in_window_row.get_subtitle(),
+            "Applies to Compare Stems, sample trim and algorithm audition",
+        )
+        self.assertFalse(dialog.listening_in_window_row.get_active())
+        dialog.listening_in_window_row.set_active(True)
+        self.assertTrue(dialog.settings.ui.listening_in_window)
+        dialog.settings.ui.listening_in_window = False
+        self.persist.reset_mock()
+        dialog._reload_widgets()
+        self.assertFalse(dialog.listening_in_window_row.get_active())
+        self.persist.assert_not_called()
+
     def test_chunking_off_preserves_overlap_and_shows_off(self):
         dialog = self.dialog()
         self.assertEqual(dialog.long_chunk_row.get_text(), "Off")

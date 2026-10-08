@@ -416,6 +416,60 @@ class CompareDialogTests(unittest.TestCase):
         self.assertEqual(engine.calls[-1], ("unload",))
         self.assertEqual(self.closed, [True])
 
+    def test_pop_out_moves_content_into_a_window_without_unloading(self) -> None:
+        dialog, engine = self._dialog(_set("song", "Vocals"))
+        self.assertTrue(dialog.popout_button.get_visible())
+        engine.calls.clear()
+        dialog.popout_button.emit("clicked")
+        window = dialog.window
+        self.assertIsNotNone(window)
+        self.assertIsNone(dialog.dialog.get_child())
+        self.assertIs(window.get_root(), window)
+        self.assertIs(dialog.play_button.get_root(), window)
+        self.assertFalse(dialog.popout_button.get_visible())
+        self.assertNotIn(("unload",), engine.calls)
+        self.assertEqual(self.closed, [])
+        # The handed-over dialog no longer owns playback.
+        dialog.dialog.emit("closed")
+        self.assertEqual(self.closed, [])
+        window.close()
+        self.assertEqual(engine.calls[-1], ("unload",))
+        self.assertEqual(self.closed, [True])
+
+    def test_shortcuts_follow_the_popped_out_window(self) -> None:
+        dialog, _ = self._dialog(_set("song", "Vocals"))
+        dialog.pop_out()
+        self.assertIs(dialog._keys.get_widget(), dialog.window)
+        assert dialog.window is not None
+        dialog.window.close()
+
+    def test_open_in_window_presents_a_window_directly(self) -> None:
+        from ui.playback.dialog import CompareDialog
+
+        engine = FakeEngine()
+        dialog = CompareDialog([_set("song", "Vocals")], engine, open_in_window=True)
+        self.assertIsNone(dialog.window)
+        dialog.present(None)
+        window = dialog.window
+        assert window is not None
+        self.assertTrue(window.get_visible())
+        # Presenting again raises the same window rather than building another.
+        dialog.present(None)
+        self.assertIs(dialog.window, window)
+        dialog.close()
+        self.assertEqual(engine.calls[-1], ("unload",))
+
+    def test_toasts_stay_in_the_popped_out_window(self) -> None:
+        from ui.playback.dialog import CompareDialog
+
+        toasts: list[str] = []
+        dialog = CompareDialog([_set("song", "Vocals")], FakeEngine(), on_toast=toasts.append)
+        dialog.pop_out()
+        dialog._toast("hello")
+        self.assertEqual(toasts, [])
+        assert dialog.window is not None
+        dialog.window.close()
+
 
 if __name__ == "__main__":
     unittest.main()

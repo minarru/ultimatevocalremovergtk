@@ -7,7 +7,7 @@ Adw.Dialog dialog {
   width-request: 360;
   height-request: 294;
 
-  child: Adw.ToolbarView {
+  child: Adw.ToolbarView toolbar {
     [top]
     Adw.HeaderBar {
       [start]
@@ -35,6 +35,16 @@ Adw.Dialog dialog {
           ]
         }
       };
+
+      [end]
+      Gtk.Button popout_button {
+        icon-name: "uvr-pop-out-symbolic";
+        tooltip-text: "Open in new window";
+
+        accessibility {
+          label: "Open in new window";
+        }
+      }
 
       [end]
       Gtk.MenuButton {

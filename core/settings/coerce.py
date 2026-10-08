@@ -250,6 +250,7 @@ _BOOL_FIELDS: frozenset[tuple[str, str]] = frozenset(
         ("audio_tools", "is_time_correction"),
         ("ui", "window_maximized"),
         ("ui", "auto_expand_log"),
+        ("ui", "listening_in_window"),
         ("ui", "notify_process_complete"),
         ("ui", "notify_process_failed"),
         ("ui", "notify_download_complete"),

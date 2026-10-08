@@ -158,6 +158,7 @@ class RunControllerCompareTests(unittest.TestCase):
     def test_open_compare_presents_one_dialog(self) -> None:
         controller, _ = _controller()
         controller.listening.add(_cset("/a", "/a1"))
+        controller._host.settings.ui.listening_in_window = True
         with (
             mock.patch("ui.run_control.playback_unavailable_reason", return_value=None),
             mock.patch("ui.playback.engine.PlaybackEngine") as engine_cls,
@@ -170,6 +171,7 @@ class RunControllerCompareTests(unittest.TestCase):
         dialog_cls.return_value.present.assert_called()
         loader = dialog_cls.call_args.kwargs["waveforms"]
         self.assertIs(loader.cache, controller.listening.peak_cache)
+        self.assertIs(dialog_cls.call_args.kwargs["open_in_window"], True)
 
 
 if __name__ == "__main__":

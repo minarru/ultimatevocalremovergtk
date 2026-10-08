@@ -262,6 +262,7 @@ class UiSettings:
     notify_download_failed: bool = True
     confirm_processing_plan: bool = True
     auto_expand_log: bool = False
+    listening_in_window: bool = False
 
 
 @dataclass

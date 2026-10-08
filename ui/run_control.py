@@ -1049,6 +1049,7 @@ class RunController:
             output_dir=self._run_output_dir,
             on_toast=self._host.toast,
             on_closed=self._on_compare_closed,
+            open_in_window=self._host.settings.ui.listening_in_window,
         )
         self._compare_dialog.present(self._host.dialog_parent)
 

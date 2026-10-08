@@ -8,10 +8,11 @@ from gi.repository import Adw, Gdk, GObject, Gtk, Pango
 
 from core.listening import ComparisonSet, Track
 
-from ..dialogs.utils import present_modal_dialog
+from ..dialogs.utils import close_on_escape, present_modal_dialog
 from ..files import open_folder_in_file_manager
 from ..gtk_narrow import root_window
 from ..template import load_builder, object_from_builder
+from ..widgets.color_fade import FadingWindow
 from ..widgets.waveform import WaveformView
 from .engine import PlaybackControls
 
@@ -21,6 +22,10 @@ if TYPE_CHECKING:
     from .waveforms import PeakLoading
 
 _SEEK_STEP = 5.0
+_TITLE = "Compare Stems"
+_WINDOW_MIN_WIDTH = 360
+_WINDOW_MIN_HEIGHT = 294
+_WINDOW_DEFAULT_WIDTH = 600
 _PLAY_ICON = "media-playback-start-symbolic"
 _PAUSE_ICON = "media-playback-pause-symbolic"
 _NUMBER_KEYS = {getattr(Gdk, f"KEY_{n}"): n - 1 for n in range(1, 10)}
@@ -67,6 +72,7 @@ class CompareDialog:
         output_dir: str = "",
         on_toast: Callable[[str], None] | None = None,
         on_closed: Callable[[], None] | None = None,
+        open_in_window: bool = False,
     ) -> None:
         self._sets = list(sets)
         self._engine = engine
@@ -75,6 +81,10 @@ class CompareDialog:
         self._on_toast = on_toast
         self._on_closed = on_closed
         self._parent: Gtk.Window | None = None
+        self._open_in_window = open_in_window
+        # Set once the content moves out of the dialog into its own window.
+        self.window: FadingWindow | None = None
+        self._window_toasts: Adw.ToastOverlay | None = None
         self._building = False
         # The shared time axis: the engine's duration once known, else the longest
         # track whose peaks have arrived, so rows stay aligned if the query fails.
@@ -83,6 +93,7 @@ class CompareDialog:
 
         builder = load_builder("compare-stems-dialog")
         self.dialog = object_from_builder(builder, "dialog", Adw.Dialog)
+        self._toolbar = object_from_builder(builder, "toolbar", Adw.ToolbarView)
         self.window_title = object_from_builder(builder, "window_title", Adw.WindowTitle)
         self.input_dropdown = object_from_builder(builder, "input_dropdown", Gtk.DropDown)
         self._track_list = object_from_builder(builder, "track_list", Gtk.ListBox)
@@ -92,6 +103,7 @@ class CompareDialog:
         self._elapsed = object_from_builder(builder, "elapsed_label", Gtk.Label)
         self._total = object_from_builder(builder, "total_label", Gtk.Label)
         self.folder_button = object_from_builder(builder, "folder_button", Gtk.Button)
+        self.popout_button = object_from_builder(builder, "popout_button", Gtk.Button)
         self.rows: list[Gtk.ListBoxRow] = []
         self.titles: list[Gtk.Label] = []
         self.waveforms: list[WaveformView] = []
@@ -104,7 +116,8 @@ class CompareDialog:
         self._track_list.connect("row-activated", self._on_row_activated)
         self.folder_button.set_visible(bool(output_dir))
         self.folder_button.connect("clicked", self._on_open_folder)
-        self.dialog.connect("closed", self._on_dialog_closed)
+        self.popout_button.connect("clicked", lambda _b: self.pop_out())
+        self._dialog_closed_id = self.dialog.connect("closed", self._on_dialog_closed)
 
         # Capture phase: a focused radio or button would otherwise consume Space first.
         self._keys = Gtk.EventControllerKey()
@@ -135,11 +148,47 @@ class CompareDialog:
 
     def present(self, parent: Gtk.Window | None) -> None:
         self._parent = parent
-        present_modal_dialog(self.dialog, parent)
+        if self.window is not None:
+            self.window.present()
+        elif self._open_in_window:
+            self.pop_out()
+        else:
+            present_modal_dialog(self.dialog, parent)
+
+    def pop_out(self) -> None:
+        """Move the content into its own window, keeping playback running."""
+        if self.window is not None:
+            return
+        width = self.dialog.get_width() or _WINDOW_DEFAULT_WIDTH
+        height = self.dialog.get_height() or -1
+        # Closing the dialog now only hands its content over; it must not unload.
+        self.dialog.disconnect(self._dialog_closed_id)
+        self.dialog.remove_controller(self._keys)
+        self.dialog.set_child(None)
+        if self.dialog.get_parent() is not None:
+            self.dialog.force_close()
+
+        window = FadingWindow(title=_TITLE)
+        window.set_default_size(max(width, _WINDOW_MIN_WIDTH), height)
+        window.set_size_request(_WINDOW_MIN_WIDTH, _WINDOW_MIN_HEIGHT)
+        if self._parent is not None:
+            window.set_transient_for(self._parent)
+        toasts = Adw.ToastOverlay(child=self._toolbar)
+        window.set_content(toasts)
+        window.add_controller(self._keys)
+        close_on_escape(window)
+        window.connect("close-request", self._on_window_close_request)
+        self.popout_button.set_visible(False)
+        self.window = window
+        self._window_toasts = toasts
+        window.present()
 
     def close(self) -> None:
         self._cancel_peaks()
-        self.dialog.force_close()
+        if self.window is not None:
+            self.window.close()
+        else:
+            self.dialog.force_close()
         self._engine.unload()
 
     def handle_key(self, keyval: int) -> bool:
@@ -279,12 +328,19 @@ class CompareDialog:
         self._show_set(dropdown.get_selected(), position=position)
 
     def _on_open_folder(self, _button: Gtk.Button) -> None:
-        window = self._parent or root_window(self.dialog)
+        window = self.window or self._parent or root_window(self.dialog)
         if window is None:
             return
         open_folder_in_file_manager(window, self._output_dir, on_error=self._toast)
 
     def _on_dialog_closed(self, _dialog: Adw.Dialog) -> None:
+        self._finish()
+
+    def _on_window_close_request(self, _window: Gtk.Window) -> bool:
+        self._finish()
+        return False
+
+    def _finish(self) -> None:
         self._cancel_peaks()
         self._engine.unload()
         if self._on_closed is not None:
@@ -331,7 +387,10 @@ class CompareDialog:
         self._toast(f"Couldn't start playback. {message}")
 
     def _toast(self, message: str) -> None:
-        if self._on_toast is not None:
+        # The main window may be hidden behind a popped-out window.
+        if self._window_toasts is not None:
+            self._window_toasts.add_toast(Adw.Toast.new(message))
+        elif self._on_toast is not None:
             self._on_toast(message)
 
 

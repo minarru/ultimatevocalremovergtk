@@ -280,6 +280,12 @@ class PreferencesDialog(Adw.PreferencesDialog):
             object_from_builder(builder, "auto_expand_log_row", Adw.SwitchRow)
         )
         self.auto_expand_log_row.connect("notify::active", self._on_bool_changed, "auto_expand_log")
+        self.listening_in_window_row = configure_switch_row(
+            object_from_builder(builder, "listening_in_window_row", Adw.SwitchRow)
+        )
+        self.listening_in_window_row.connect(
+            "notify::active", self._on_bool_changed, "listening_in_window"
+        )
 
         self.profile_combo = configure_combo_row(
             object_from_builder(builder, "profile_combo", Adw.ComboRow),
@@ -567,6 +573,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
             )
             self.color_scheme_row.set_selected(scheme_index)
             self.auto_expand_log_row.set_active(self.settings.ui.auto_expand_log)
+            self.listening_in_window_row.set_active(self.settings.ui.listening_in_window)
 
             for key, row in self._process_switches.items():
                 row.set_active(bool(get_flat(self.settings, key)))
