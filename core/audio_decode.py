@@ -259,11 +259,16 @@ def _pcm_command(
     *,
     strict: bool,
     fill_gaps: bool = False,
+    offset: float = 0.0,
 ) -> list[str]:
     command = [executable, '-nostdin']
     if strict:
         command.append('-xerror')
-    command.extend(['-v', 'error', '-i', path, '-map', '0:a:0'])
+    command.extend(['-v', 'error'])
+    if offset > 0:
+        # Before -i: an input seek, which is sample-accurate for audio.
+        command.extend(['-ss', str(offset)])
+    command.extend(['-i', path, '-map', '0:a:0'])
     if duration is not None:
         command.extend(['-t', str(duration)])
     if fill_gaps:
@@ -300,6 +305,7 @@ def _decode_damaged(
     info: AudioMetadata,
     duration: float | None,
     on_warning: Callable[[str], None] | None,
+    offset: float = 0.0,
 ) -> bytearray:
     """Decode past corrupt packets, padding what FFmpeg drops with silence.
 
@@ -310,13 +316,15 @@ def _decode_damaged(
     failed, pay for either pass.
     """
     _unused, decoded_bytes, _errors = _run_tool(
-        _pcm_command(executable, path, info, duration, strict=False),
+        _pcm_command(executable, path, info, duration, strict=False, offset=offset),
         timeout=_STDOUT_TIMEOUT,
         keep_output=False,
     )
     try:
         pcm, _count, errors = _run_tool(
-            _pcm_command(executable, path, info, duration, strict=False, fill_gaps=True),
+            _pcm_command(
+                executable, path, info, duration, strict=False, fill_gaps=True, offset=offset
+            ),
             timeout=_STDOUT_TIMEOUT,
             max_output_bytes=_repair_output_limit(decoded_bytes, info.channels),
         )
@@ -364,6 +372,7 @@ def _decode_ffmpeg(
     source: AudioSource,
     duration: float | None,
     on_warning: Callable[[str], None] | None = None,
+    offset: float = 0.0,
 ) -> tuple[NDArray[np.float32], int]:
     import numpy as np
 
@@ -377,13 +386,13 @@ def _decode_ffmpeg(
             # status zero even under -xerror. With -v error, stderr is an error
             # channel, not ordinary progress or warnings; reject it explicitly.
             pcm = _capture(
-                _pcm_command(executable, path, info, duration, strict=True),
+                _pcm_command(executable, path, info, duration, strict=True, offset=offset),
                 timeout=_STDOUT_TIMEOUT,
                 reject_stderr=True,
             )
         except RuntimeError:
             # Decoder errors only (timeouts are OSError): retry tolerantly.
-            pcm = _decode_damaged(executable, path, info, duration, on_warning)
+            pcm = _decode_damaged(executable, path, info, duration, on_warning, offset)
     if not pcm or len(pcm) % (4 * info.channels):
         raise ValueError('Empty or incomplete audio PCM data')
     # A view over the mutable capture buffer is already writable, so the samples
@@ -407,6 +416,7 @@ def load_audio(
     *,
     sr: int | None = None,
     duration: float | None = None,
+    offset: float = 0.0,
     res_type: str = 'soxr_hq',
     force_ffmpeg: bool = False,
     on_warning: Callable[[str], None] | None = None,
@@ -416,31 +426,36 @@ def load_audio(
     Mono is ``(samples,)`` and multichannel is ``(channels, samples)``. Caller
     streams remain open and their initial position is restored, including errors.
     ``on_warning`` receives a console-ready notice when a slightly damaged file
-    was decoded with its unreadable parts replaced by silence.
+    was decoded with its unreadable parts replaced by silence. ``offset`` skips
+    that many seconds from the start before reading.
     """
     try:
         if sr is not None and (type(sr) is not int or sr <= 0):
             raise ValueError('Sample rate must be a positive integer')
         if duration is not None and (not math.isfinite(duration) or duration <= 0):
             raise ValueError('Duration must be finite and positive')
+        if not math.isfinite(offset) or offset < 0:
+            raise ValueError('Offset must be finite and non-negative')
         with _source(source) as handle:
             if force_ffmpeg:
-                data, rate = _decode_ffmpeg(handle, duration, on_warning)
+                data, rate = _decode_ffmpeg(handle, duration, on_warning, offset)
             else:
                 try:
                     import soundfile as sf
 
                     with sf.SoundFile(handle) as audio:
                         rate = int(audio.samplerate)
+                        if offset > 0:
+                            audio.seek(int(offset * rate))
                         frames = -1 if duration is None else int(duration * rate)
                         data = audio.read(frames=frames, dtype='float32', always_2d=False).T
                     if data.size == 0:
                         raise ValueError('Empty audio data')
                 except Exception:
-                    data, rate = _decode_ffmpeg(handle, duration, on_warning)
+                    data, rate = _decode_ffmpeg(handle, duration, on_warning, offset)
             if data.size == 0:
                 raise ValueError('Empty audio data')
-            if duration is None and isinstance(handle, str):
+            if duration is None and offset == 0 and isinstance(handle, str):
                 # dtype='float32' is honoured, as for the return below.
                 _seed_peaks(handle, cast("NDArray[np.float32]", data), rate)
             if sr is not None and sr != rate:

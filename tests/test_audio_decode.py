@@ -17,6 +17,35 @@ import soundfile as sf
 from core.audio_decode import AudioDecodeError, load_audio, read_audio_metadata
 
 
+class OffsetDecodeTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.path = Path(self.tmp.name) / "ramp.wav"
+        self.ramp = np.linspace(-1.0, 1.0, 16000).astype(np.float32)
+        sf.write(self.path, self.ramp, 8000, subtype="FLOAT")
+
+    def test_offset_reads_from_the_offset(self):
+        data, rate = load_audio(self.path, offset=0.5, duration=1.0)
+        self.assertEqual(rate, 8000)
+        np.testing.assert_array_equal(data, self.ramp[4000:12000])
+
+    @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "FFmpeg required")
+    def test_offset_through_ffmpeg(self):
+        data, _rate = load_audio(self.path, offset=0.5, duration=1.0, force_ffmpeg=True)
+        self.assertEqual(len(data), 8000)
+        np.testing.assert_allclose(data, self.ramp[4000:12000], atol=1e-6)
+
+    def test_negative_offset_is_rejected(self):
+        with self.assertRaises(AudioDecodeError):
+            load_audio(self.path, offset=-1.0)
+
+    def test_offset_does_not_seed_whole_file_peaks(self):
+        with mock.patch("core.audio_decode._seed_peaks") as seed:
+            load_audio(self.path, offset=0.5)
+        seed.assert_not_called()
+
+
 class AudioDecodeTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
