@@ -29,12 +29,17 @@ class PlaybackSurface:
         *,
         title: str,
         open_in_window: bool = False,
+        commit: bool = False,
+        track_keys: bool = True,
         on_toast: Callable[[str], None] | None = None,
         on_closed: Callable[[], None] | None = None,
     ) -> None:
         self.view = view
         self._title = title
         self._open_in_window = open_in_window
+        # A commit surface holds edits until its own Apply: no close button and
+        # no closing on a backdrop click, so a stray click cannot discard them.
+        self._commit = commit
         self._on_toast = on_toast
         self._on_closed = on_closed
         self._parent: Gtk.Window | None = None
@@ -48,6 +53,16 @@ class PlaybackSurface:
         self._toolbar = object_from_builder(builder, "toolbar", Adw.ToolbarView)
         self._header = object_from_builder(builder, "header", Adw.HeaderBar)
         self.popout_button = object_from_builder(builder, "popout_button", Gtk.Button)
+        self.end_box = object_from_builder(builder, "end_box", Gtk.Box)
+        self.track_key_rows: tuple[Gtk.Widget, Gtk.Widget] = (
+            object_from_builder(builder, "track_keys_key", Gtk.Label),
+            object_from_builder(builder, "track_keys_label", Gtk.Label),
+        )
+        for widget in self.track_key_rows:
+            widget.set_visible(track_keys)
+        if commit:
+            self._header.set_show_start_title_buttons(False)
+            self._header.set_show_end_title_buttons(False)
         self.dialog.set_title(title)
         self._toolbar.set_content(view)
         view.on_error = self.toast
@@ -65,6 +80,12 @@ class PlaybackSurface:
     def pack_start(self, widget: Gtk.Widget) -> None:
         self._header.pack_start(widget)
 
+    def pack_end(self, widget: Gtk.Widget) -> None:
+        """Add ``widget`` at the far end, after the surface's own buttons."""
+        self._header.remove(self.end_box)
+        self._header.pack_end(widget)
+        self._header.pack_end(self.end_box)
+
     def set_title_widget(self, widget: Gtk.Widget) -> None:
         self._header.set_title_widget(widget)
 
@@ -77,7 +98,7 @@ class PlaybackSurface:
         elif self._open_in_window:
             self.pop_out()
         else:
-            present_modal_dialog(self.dialog, parent)
+            present_modal_dialog(self.dialog, parent, dismiss_on_backdrop=not self._commit)
 
     def pop_out(self) -> None:
         """Move the content into its own window, keeping playback running."""

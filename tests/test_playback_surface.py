@@ -31,7 +31,12 @@ class PlaybackSurfaceTests(unittest.TestCase):
         Adw.init()
 
     def _surface(
-        self, *, open_in_window: bool = False, loader: bool = False
+        self,
+        *,
+        open_in_window: bool = False,
+        loader: bool = False,
+        commit: bool = False,
+        track_keys: bool = True,
     ) -> tuple[PlaybackSurface, FakeEngine]:
         from ui.playback.surface import PlaybackSurface
         from ui.playback.view import CompareView
@@ -45,6 +50,8 @@ class PlaybackSurfaceTests(unittest.TestCase):
             view,
             title="Compare Stems",
             open_in_window=open_in_window,
+            commit=commit,
+            track_keys=track_keys,
             on_toast=self.toasts.append,
             on_closed=lambda: self.closed.append(True),
         )
@@ -173,6 +180,36 @@ class PlaybackSurfaceTests(unittest.TestCase):
         surface.pop_out()
         self.assertIs(surface.toplevel(), surface.window)
         surface.close()
+
+    def test_commit_surface_hides_title_buttons(self) -> None:
+        surface, _ = self._surface(commit=True)
+        header = surface._header
+        self.assertFalse(header.get_show_start_title_buttons())
+        self.assertFalse(header.get_show_end_title_buttons())
+
+    def test_live_surface_keeps_title_buttons(self) -> None:
+        surface, _ = self._surface()
+        self.assertTrue(surface._header.get_show_end_title_buttons())
+
+    def test_commit_surface_ignores_backdrop_clicks(self) -> None:
+        from unittest import mock
+
+        surface, _ = self._surface(commit=True)
+        with mock.patch("ui.playback.surface.present_modal_dialog") as present:
+            surface.present(None)
+        self.assertIs(present.call_args.kwargs["dismiss_on_backdrop"], False)
+
+    def test_track_keys_can_be_hidden(self) -> None:
+        surface, _ = self._surface(track_keys=False)
+        self.assertEqual([w.get_visible() for w in surface.track_key_rows], [False, False])
+
+    def test_pack_end_puts_tool_widgets_last(self) -> None:
+        from gi.repository import Gtk
+
+        surface, _ = self._surface()
+        button = Gtk.Button(label="Apply")
+        surface.pack_end(button)
+        self.assertIs(button.get_prev_sibling(), surface.end_box)
 
 
 if __name__ == "__main__":

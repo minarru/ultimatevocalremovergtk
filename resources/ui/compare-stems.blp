@@ -1,5 +1,4 @@
 using Gtk 4.0;
-using Adw 1;
 
 // Compare Stems' own header widgets; the shared surface hosts them.
 Gtk.Button folder_button {
@@ -8,21 +7,5 @@ Gtk.Button folder_button {
 
   accessibility {
     label: "Open output folder";
-  }
-}
-
-// One input names the song under the title; several swap in a picker.
-Gtk.Box title_box {
-  Adw.WindowTitle window_title {
-    title: "Compare Stems";
-  }
-
-  Gtk.DropDown input_dropdown {
-    visible: false;
-    tooltip-text: "Input file";
-
-    styles [
-      "flat",
-    ]
   }
 }

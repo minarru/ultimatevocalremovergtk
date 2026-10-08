@@ -1,0 +1,16 @@
+using Gtk 4.0;
+using Adw 1;
+
+// One input names the song under the title; several swap in a picker.
+Gtk.Box title_box {
+  Adw.WindowTitle window_title {}
+
+  Gtk.DropDown input_dropdown {
+    visible: false;
+    tooltip-text: "Input file";
+
+    styles [
+      "flat",
+    ]
+  }
+}

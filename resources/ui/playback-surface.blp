@@ -9,107 +9,111 @@ Adw.Dialog dialog {
   child: Adw.ToolbarView toolbar {
     [top]
     Adw.HeaderBar header {
+      // The surface's own buttons; a tool's pack_end widgets go after this box.
       [end]
-      Gtk.Button popout_button {
-        icon-name: "uvr-pop-out-symbolic";
-        tooltip-text: "Open in new window";
+      Gtk.Box end_box {
+        spacing: 6;
 
-        accessibility {
-          label: "Open in new window";
-        }
-      }
+        Gtk.MenuButton {
+          icon-name: "input-keyboard-symbolic";
+          tooltip-text: "Keyboard shortcuts";
 
-      [end]
-      Gtk.MenuButton {
-        icon-name: "input-keyboard-symbolic";
-        tooltip-text: "Keyboard shortcuts";
+          accessibility {
+            label: "Keyboard shortcuts";
+          }
 
-        accessibility {
-          label: "Keyboard shortcuts";
-        }
+          popover: Gtk.Popover {
+            child: Gtk.Grid {
+              row-spacing: 8;
+              column-spacing: 12;
+              margin-top: 6;
+              margin-bottom: 6;
+              margin-start: 6;
+              margin-end: 6;
 
-        popover: Gtk.Popover {
-          child: Gtk.Grid {
-            row-spacing: 8;
-            column-spacing: 12;
-            margin-top: 6;
-            margin-bottom: 6;
-            margin-start: 6;
-            margin-end: 6;
+              Gtk.Label {
+                label: "Space";
+                halign: end;
 
-            Gtk.Label {
-              label: "Space";
-              halign: end;
+                layout {
+                  column: 0;
+                  row: 0;
+                }
 
-              layout {
-                column: 0;
-                row: 0;
+                styles [
+                  "uvr-keycap",
+                ]
               }
 
-              styles [
-                "uvr-keycap",
-              ]
-            }
+              Gtk.Label {
+                label: "Play or pause";
+                xalign: 0;
 
-            Gtk.Label {
-              label: "Play or pause";
-              xalign: 0;
-
-              layout {
-                column: 1;
-                row: 0;
-              }
-            }
-
-            Gtk.Label {
-              label: "1 – 9";
-              halign: end;
-
-              layout {
-                column: 0;
-                row: 1;
+                layout {
+                  column: 1;
+                  row: 0;
+                }
               }
 
-              styles [
-                "uvr-keycap",
-              ]
-            }
+              Gtk.Label track_keys_key {
+                label: "1 – 9";
+                halign: end;
 
-            Gtk.Label {
-              label: "Switch track";
-              xalign: 0;
+                layout {
+                  column: 0;
+                  row: 1;
+                }
 
-              layout {
-                column: 1;
-                row: 1;
-              }
-            }
-
-            Gtk.Label {
-              label: "← →";
-              halign: end;
-
-              layout {
-                column: 0;
-                row: 2;
+                styles [
+                  "uvr-keycap",
+                ]
               }
 
-              styles [
-                "uvr-keycap",
-              ]
-            }
+              Gtk.Label track_keys_label {
+                label: "Switch track";
+                xalign: 0;
 
-            Gtk.Label {
-              label: "Back or forward 5 s";
-              xalign: 0;
-
-              layout {
-                column: 1;
-                row: 2;
+                layout {
+                  column: 1;
+                  row: 1;
+                }
               }
-            }
+
+              Gtk.Label {
+                label: "← →";
+                halign: end;
+
+                layout {
+                  column: 0;
+                  row: 2;
+                }
+
+                styles [
+                  "uvr-keycap",
+                ]
+              }
+
+              Gtk.Label {
+                label: "Back or forward 5 s";
+                xalign: 0;
+
+                layout {
+                  column: 1;
+                  row: 2;
+                }
+              }
+            };
           };
-        };
+        }
+
+        Gtk.Button popout_button {
+          icon-name: "uvr-pop-out-symbolic";
+          tooltip-text: "Open in new window";
+
+          accessibility {
+            label: "Open in new window";
+          }
+        }
       }
     }
   };
