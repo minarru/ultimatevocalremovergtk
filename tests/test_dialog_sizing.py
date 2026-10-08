@@ -32,14 +32,14 @@ TIERS = {
     "dual-batch-dialog": 600,
     "ensemble-blend": 600,
     "plan-review": 600,
-    "compare-stems-dialog": 600,
+    "playback-surface": 600,
     "error-dialog": 600,
     "manual-downloads": 600,
     "model-picker": 800,
     "model_options_sheet": 800,
 }
 # Lists and browsers that would otherwise open short. Save Stems, Verify
-# Inputs and Compare Stems grow with their content inside scroller bounds.
+# Inputs and the listening tools' surface grow with their content inside scroller bounds.
 OPENING = {
     "model-picker": 640,
     "dual-batch-dialog": 560,

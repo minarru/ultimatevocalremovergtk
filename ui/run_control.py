@@ -1038,11 +1038,11 @@ class RunController:
         if self._compare_dialog is not None:
             self._compare_dialog.present(self._host.dialog_parent)
             return
-        from .playback.dialog import CompareDialog
+        from .playback.compare_stems import CompareStemsDialog
         from .playback.engine import PlaybackEngine
         from .playback.waveforms import WaveformLoader
 
-        self._compare_dialog = CompareDialog(
+        self._compare_dialog = CompareStemsDialog(
             self.listening.sets(),
             PlaybackEngine(),
             waveforms=WaveformLoader(self.listening.peak_cache),

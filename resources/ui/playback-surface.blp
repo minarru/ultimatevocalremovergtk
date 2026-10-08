@@ -2,40 +2,13 @@ using Gtk 4.0;
 using Adw 1;
 
 Adw.Dialog dialog {
-  title: "Compare Stems";
   content-width: 600;
   width-request: 360;
   height-request: 294;
 
   child: Adw.ToolbarView toolbar {
     [top]
-    Adw.HeaderBar {
-      [start]
-      Gtk.Button folder_button {
-        icon-name: "folder-open-symbolic";
-        tooltip-text: "Open output folder";
-
-        accessibility {
-          label: "Open output folder";
-        }
-      }
-
-      // One input names the song under the title; several swap in a picker.
-      title-widget: Gtk.Box {
-        Adw.WindowTitle window_title {
-          title: "Compare Stems";
-        }
-
-        Gtk.DropDown input_dropdown {
-          visible: false;
-          tooltip-text: "Input file";
-
-          styles [
-            "flat",
-          ]
-        }
-      };
-
+    Adw.HeaderBar header {
       [end]
       Gtk.Button popout_button {
         icon-name: "uvr-pop-out-symbolic";

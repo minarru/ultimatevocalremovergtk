@@ -1,0 +1,115 @@
+"""Compare Stems: one input's tracks at a time, one audible at a time."""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Callable, Sequence
+
+from gi.repository import Adw, GObject, Gtk, Pango
+
+from core.listening import ComparisonSet
+
+from ..files import open_folder_in_file_manager
+from ..template import load_builder, object_from_builder
+from .engine import PlaybackControls
+from .surface import PlaybackSurface
+from .view import CompareView
+
+if TYPE_CHECKING:
+    from .waveforms import PeakLoading
+
+_TITLE = "Compare Stems"
+
+
+def _input_factory(*, ellipsize: bool) -> Gtk.SignalListItemFactory:
+    """Input names for the header picker; the button ellipsizes, the list does not."""
+    factory = Gtk.SignalListItemFactory()
+
+    def setup(_factory: Gtk.SignalListItemFactory, item: GObject.Object) -> None:
+        if not isinstance(item, Gtk.ListItem):
+            return
+        label = Gtk.Label(xalign=0)
+        if ellipsize:
+            label.set_ellipsize(Pango.EllipsizeMode.MIDDLE)
+            label.set_max_width_chars(28)
+        item.set_child(label)
+
+    def bind(_factory: Gtk.SignalListItemFactory, item: GObject.Object) -> None:
+        if not isinstance(item, Gtk.ListItem):
+            return
+        label, name = item.get_child(), item.get_item()
+        if isinstance(label, Gtk.Label) and isinstance(name, Gtk.StringObject):
+            label.set_label(name.get_string())
+
+    factory.connect("setup", setup)
+    factory.connect("bind", bind)
+    return factory
+
+
+class CompareStemsDialog:
+    def __init__(
+        self,
+        sets: Sequence[ComparisonSet],
+        engine: PlaybackControls,
+        *,
+        waveforms: PeakLoading | None = None,
+        output_dir: str = "",
+        on_toast: Callable[[str], None] | None = None,
+        on_closed: Callable[[], None] | None = None,
+        open_in_window: bool = False,
+    ) -> None:
+        self._sets = list(sets)
+        self._engine = engine
+        self._output_dir = output_dir
+        self.view = CompareView(engine, peaks=waveforms)
+        self.surface = PlaybackSurface(
+            self.view,
+            title=_TITLE,
+            open_in_window=open_in_window,
+            on_toast=on_toast,
+            on_closed=on_closed,
+        )
+
+        builder = load_builder("compare-stems")
+        self.folder_button = object_from_builder(builder, "folder_button", Gtk.Button)
+        title_box = object_from_builder(builder, "title_box", Gtk.Box)
+        self.window_title = object_from_builder(builder, "window_title", Adw.WindowTitle)
+        self.input_dropdown = object_from_builder(builder, "input_dropdown", Gtk.DropDown)
+        self.surface.pack_start(self.folder_button)
+        self.surface.set_title_widget(title_box)
+        self.folder_button.set_visible(bool(output_dir))
+        self.folder_button.connect("clicked", self._on_open_folder)
+
+        if len(self._sets) > 1:
+            total = len(self._sets)
+            names = [f"{s.name}  {i} of {total}" for i, s in enumerate(self._sets, start=1)]
+            self.input_dropdown.set_factory(_input_factory(ellipsize=True))
+            self.input_dropdown.set_list_factory(_input_factory(ellipsize=False))
+            self.input_dropdown.set_model(Gtk.StringList.new(names))
+            self.window_title.set_visible(False)
+            self.input_dropdown.set_visible(True)
+            self.input_dropdown.connect("notify::selected", self._on_input_changed)
+        elif self._sets:
+            self.window_title.set_subtitle(self._sets[0].name)
+        if self._sets:
+            self.view.show_tracks(self._sets[0].tracks)
+
+    def present(self, parent: Gtk.Window | None) -> None:
+        self.surface.present(parent)
+
+    def close(self) -> None:
+        self.surface.close()
+
+    def _on_input_changed(self, dropdown: Gtk.DropDown, _pspec: object) -> None:
+        position = self._engine.position
+        if self._engine.playing:
+            self._engine.pause()
+        self.view.show_tracks(self._sets[dropdown.get_selected()].tracks, position=position)
+
+    def _on_open_folder(self, _button: Gtk.Button) -> None:
+        window = self.surface.toplevel()
+        if window is None:
+            return
+        open_folder_in_file_manager(window, self._output_dir, on_error=self.surface.toast)
+
+
+__all__ = ["CompareStemsDialog"]

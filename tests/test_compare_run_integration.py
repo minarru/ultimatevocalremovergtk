@@ -162,7 +162,7 @@ class RunControllerCompareTests(unittest.TestCase):
         with (
             mock.patch("ui.run_control.playback_unavailable_reason", return_value=None),
             mock.patch("ui.playback.engine.PlaybackEngine") as engine_cls,
-            mock.patch("ui.playback.dialog.CompareDialog") as dialog_cls,
+            mock.patch("ui.playback.compare_stems.CompareStemsDialog") as dialog_cls,
         ):
             controller.open_compare()
             controller.open_compare()
