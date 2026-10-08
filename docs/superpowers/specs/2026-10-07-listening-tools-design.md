@@ -1,7 +1,7 @@
 # Listening tools: shared compare component, sample trim, ensemble audition
 
 Date: 2026-10-07
-Status: approved in conversation; awaiting written-spec review
+Status: approved
 
 ## Intent
 
