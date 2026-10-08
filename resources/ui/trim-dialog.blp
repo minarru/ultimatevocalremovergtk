@@ -1,0 +1,19 @@
+using Gtk 4.0;
+
+// Header buttons for the sample trim dialog; the shared surface hosts them.
+Gtk.Button cancel_button {
+  label: "Cancel";
+}
+
+Gtk.Button reset_button {
+  label: "Reset";
+  tooltip-text: "Start from 0:00";
+}
+
+Gtk.Button apply_button {
+  label: "Apply";
+
+  styles [
+    "suggested-action",
+  ]
+}
