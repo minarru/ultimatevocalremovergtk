@@ -106,9 +106,9 @@ class DownloadCenterDesignTests(unittest.TestCase):
             center.sort_row.set_selected(1)
             center.select_catalogue(purpose=PURPOSE_INSTRUMENTAL)
             self.assertEqual(center._sort_mode, SORT_SDR)
-            self.assertIn('Instrumental SDR 8.00 dB', action.get_subtitle() or "")
+            self.assertEqual(self._sdr_column(action), ('8.00 dB', 'Instrumental SDR'))
             center.select_catalogue(purpose=PURPOSE_VOCALS)
-            self.assertIn('Vocal SDR 12.00 dB', action.get_subtitle() or "")
+            self.assertEqual(self._sdr_column(action), ('12.00 dB', 'Vocal SDR'))
             center.select_catalogue(purpose=PURPOSE_STEMS)
             self.assertEqual(center._sort_mode, SORT_NAME)
             self.assertFalse(center.sort_row.get_visible())
@@ -117,6 +117,65 @@ class DownloadCenterDesignTests(unittest.TestCase):
             self.assertTrue(center.sort_row.get_visible())
         self.assertIs(center._row_actions[self.key], action)
         self.assertTrue(center._row_checks[self.key].get_active())
+
+    def _sdr_column(self, action: object) -> tuple[str, str] | None:
+        from ui.widget_state import fetch
+
+        box = fetch(action, '_uvr_sdr_box')
+        if not box.get_visible():
+            return None
+        return fetch(action, '_uvr_sdr_value').get_label(), fetch(
+            action, '_uvr_sdr_caption'
+        ).get_label()
+
+    def test_sdr_is_a_column_on_ranked_pages_and_folds_into_the_subtitle_when_compact(
+        self,
+    ) -> None:
+        from core.model_scores import PURPOSE_KARAOKE
+        from ui.widget_state import fetch
+
+        center = self.center
+        action = center._row_actions[self.key]
+        with patch(
+            'ui.download_center.sdr_for_files', return_value={'vocals': 12, 'instrumental': 8}
+        ):
+            center._render_row(self.key)
+            self.assertEqual(self._sdr_column(action), ('12.00 dB', 'Vocal SDR'))
+            self.assertNotIn('SDR', action.get_subtitle() or '')
+            center._adapt_rows(True)
+            self.assertIsNone(self._sdr_column(action))
+            self.assertIn('Vocal SDR 12.00 dB', action.get_subtitle() or '')
+            center._adapt_rows(False)
+            center.select_catalogue(purpose=PURPOSE_KARAOKE)
+        self.assertIsNone(self._sdr_column(action))
+        tag = fetch(action, '_uvr_arch_tag')
+        self.assertEqual(tag.get_label(), 'Classic MDX')
+        self.assertTrue(tag.get_visible())
+
+    def test_unscored_rows_keep_the_sdr_column_aligned(self) -> None:
+        from ui.widget_state import fetch
+
+        center = self.center
+        action = center._row_actions[self.key]
+        with patch('ui.download_center.sdr_for_files', return_value={}):
+            center._render_row(self.key)
+        self.assertTrue(fetch(action, '_uvr_sdr_box').get_visible())
+        self.assertEqual(fetch(action, '_uvr_sdr_value').get_label(), '—')
+        self.assertFalse(fetch(action, '_uvr_sdr_caption').get_visible())
+
+    def test_offline_notice_is_a_banner_that_retries(self) -> None:
+        center = self.center
+        center._catalogue_notice = 'Offline — showing saved catalogue · '
+        center._update_download_button()
+        self.assertTrue(center.notice_banner.get_revealed())
+        self.assertEqual(center.notice_banner.get_title(), 'Offline — showing saved catalogue')
+        self.assertNotIn('Offline', center.status_label.get_label())
+        with patch.object(center, 'start_refresh') as refresh:
+            center.notice_banner.emit('button-clicked')
+        refresh.assert_called_once_with()
+        center._catalogue_notice = ''
+        center._update_download_button()
+        self.assertFalse(center.notice_banner.get_revealed())
 
     def test_architecture_filter_and_search_do_not_change_download_identity(self) -> None:
         from ui.download_presentation import ARCHITECTURES

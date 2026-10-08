@@ -262,6 +262,8 @@ class DownloadCenterWindow:
         get("empty_reset", Gtk.Button).connect("clicked", self._reset_or_retry)
         self.refresh_button = get("refresh_button", Gtk.Button)
         self.refresh_button.connect("clicked", lambda *_: self.start_refresh())
+        self.notice_banner = get("notice_banner", Adw.Banner)
+        self.notice_banner.connect("button-clicked", lambda *_: self.start_refresh())
         set_icon_button_a11y(self.refresh_button, "Refresh catalogue")
         self.download_button = get("download_button", Gtk.Button)
         self.download_button.connect("clicked", lambda *_: self._enqueue_selected())
@@ -285,13 +287,24 @@ class DownloadCenterWindow:
             self._list_boxes[arch] = self._list_box
             self._empty_pages[arch] = self._empty_page
         self.window.set_size_request(360, 440)
-        for width, narrow_filters in ((780, False), (512, True)):
+        toolbar, filter_bar = get("toolbar", Gtk.Box), get("filter_bar", Gtk.Box)
+        sort_controls = get("sort_controls", Gtk.Box)
+        # The last matching breakpoint wins, so each narrower one repeats the wider setters.
+        for width, stacked_toolbar, stacked_filters in (
+            (780, False, False),
+            (640, True, False),
+            (512, True, True),
+        ):
             bp = Adw.Breakpoint.new(Adw.BreakpointCondition.parse(f"max-width: {width}sp"))
             bp.add_setter(self.switcher, "visible", False)
             bp.add_setter(self.compact_purpose, "visible", True)
-            if narrow_filters:
-                bp.add_setter(get("filter_bar", Gtk.Box), "orientation", Gtk.Orientation.VERTICAL)
-                bp.add_setter(get("sort_controls", Gtk.Box), "halign", Gtk.Align.START)
+            if stacked_toolbar:
+                # Search gets its own line; the filters keep sort at the far end.
+                bp.add_setter(toolbar, "orientation", Gtk.Orientation.VERTICAL)
+                bp.add_setter(sort_controls, "hexpand", True)
+            if stacked_filters:
+                bp.add_setter(filter_bar, "orientation", Gtk.Orientation.VERTICAL)
+                bp.add_setter(sort_controls, "halign", Gtk.Align.START)
             self.window.add_breakpoint(bp)
         self.window.connect("notify::current-breakpoint", self._on_breakpoint_changed)
         self._update_tab_counts()
@@ -367,9 +380,9 @@ class DownloadCenterWindow:
         if self._compact_rows == compact:
             return
         self._compact_rows = compact
-        for key, action in self._row_actions.items():
-            if fetch(action, "_uvr_size", ""):
-                self._render_row_status(key)
+        # Cached presentation only: columns move into the subtitle or back out.
+        for key in self._row_actions:
+            self._render_row_status(key)
 
     def _catalogue_row_action(self, row: Gtk.ListBoxRow) -> Adw.ActionRow | None:
         return resolve_catalogue_action_row(row)
@@ -679,10 +692,33 @@ class DownloadCenterWindow:
         stash(action, "_uvr_sdr", score)
         stash(action, "_uvr_sdr_stem", stem)
         stash(action, "_uvr_stems_text", outputs)
-        parts = ["Unsupported in this build" if data.reason is not None else outputs]
-        if score is not None and data.reason is None:
-            parts.append(f"{stem} SDR {score:.2f} dB")
-        stash(action, "_uvr_base_subtitle", " · ".join(parts))
+        stash(action, "_uvr_base_subtitle", "Unsupported in this build" if data.reason else outputs)
+        sdr = f"{stem} SDR {score:.2f} dB" if score is not None and data.reason is None else ""
+        stash(action, "_uvr_sdr_text", sdr)
+        # Pages that rank by SDR keep the column on every row so the scores line up.
+        column = self._purpose in (PURPOSE_VOCALS, PURPOSE_INSTRUMENTAL)
+        stash(action, "_uvr_sdr_column", column)
+        value, caption = (
+            fetch(action, "_uvr_sdr_value", None),
+            fetch(action, "_uvr_sdr_caption", None),
+        )
+        if isinstance(value, Gtk.Label) and isinstance(caption, Gtk.Label):
+            page_stem = "Vocal" if self._purpose == PURPOSE_VOCALS else "Instrumental"
+            value.set_label(f"{score:.2f} dB" if sdr else "—")
+            caption.set_label(f"{page_stem} SDR")
+            caption.set_visible(bool(sdr))
+            if sdr:
+                value.remove_css_class("dim-label")
+            else:
+                value.add_css_class("dim-label")
+            value.update_property(
+                [Gtk.AccessibleProperty.LABEL], [sdr or f"No {page_stem.lower()} SDR reported"]
+            )
+        tag = fetch(action, "_uvr_arch_tag", None)
+        if isinstance(tag, Gtk.Label):
+            tag.set_label(
+                ARCHITECTURE_LABELS.get(data.network, "") if data.network != "unknown" else ""
+            )
         self._render_row_status(key)
         set_tooltip(action, catalogue_evidence_detail(self._catalogue_row_metadata(*key)))
 
@@ -693,11 +729,21 @@ class DownloadCenterWindow:
             return
         subtitle = str(fetch(action, "_uvr_base_subtitle", "") or "")
         status = str(fetch(action, "_uvr_size", "") or "")
+        sdr = str(fetch(action, "_uvr_sdr_text", "") or "")
         suffix = fetch(action, "_uvr_status_label", None)
         compact = getattr(self, "_compact_rows", False)
         if isinstance(suffix, Gtk.Label):
             suffix.set_label(status)
             suffix.set_visible(bool(status) and not compact)
+        # Narrow rows have no room for the score column or the architecture tag.
+        stat = fetch(action, "_uvr_sdr_box", None)
+        if isinstance(stat, Gtk.Widget):
+            stat.set_visible(bool(fetch(action, "_uvr_sdr_column", False)) and not compact)
+        tag = fetch(action, "_uvr_arch_tag", None)
+        if isinstance(tag, Gtk.Label):
+            tag.set_visible(bool(tag.get_label()) and not compact)
+        if sdr and (compact or not isinstance(stat, Gtk.Widget)):
+            subtitle += f" · {sdr}"
         if status and (compact or not isinstance(suffix, Gtk.Label)):
             subtitle += f" · {status}"
         if action.get_subtitle() != subtitle:
@@ -706,8 +752,28 @@ class DownloadCenterWindow:
     def _add_details(self, action: Adw.ActionRow, key: tuple[str, str]) -> None:
         status = Gtk.Label(valign=Gtk.Align.CENTER)
         status.add_css_class("dim-label")
+        status.add_css_class("numeric")
         action.add_suffix(status)
         stash(action, "_uvr_status_label", status)
+        tag = Gtk.Label(valign=Gtk.Align.CENTER, visible=False)
+        tag.add_css_class("uvr-pill")
+        tag.add_css_class("dim-label")
+        action.add_suffix(tag)
+        stash(action, "_uvr_arch_tag", tag)
+        # The score the list sorts by, as a right-aligned column.
+        stat = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, valign=Gtk.Align.CENTER, visible=False)
+        value = Gtk.Label(xalign=1, width_chars=8)
+        value.add_css_class("heading")
+        value.add_css_class("numeric")
+        caption = Gtk.Label(xalign=1)
+        caption.add_css_class("caption")
+        caption.add_css_class("dim-label")
+        stat.append(value)
+        stat.append(caption)
+        action.add_suffix(stat)
+        stash(action, "_uvr_sdr_box", stat)
+        stash(action, "_uvr_sdr_value", value)
+        stash(action, "_uvr_sdr_caption", caption)
         button = Gtk.MenuButton(icon_name="uvr-info-outline-symbolic", valign=Gtk.Align.CENTER)
         button.add_css_class("flat")
         button.set_tooltip_text("Model details")
@@ -1363,8 +1429,13 @@ class DownloadCenterWindow:
 
     def _set_catalogue_status(self, message: str) -> None:
         notice = getattr(self, "_catalogue_notice", "")
-        self.status_label.set_label(f"{notice}{message}")
-        self.status_label.set_tooltip_text(f"{notice}{message}")
+        self.status_label.set_label(message)
+        self.status_label.set_tooltip_text(message)
+        # Offline and failed-refresh notices stay in view above the list.
+        banner = getattr(self, "notice_banner", None)
+        if banner is not None:
+            banner.set_title(notice.removesuffix(" · "))
+            banner.set_revealed(bool(notice))
 
     def _update_tab_counts(self) -> None:
         search = getattr(self, "_search_entry", None)
