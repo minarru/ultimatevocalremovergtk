@@ -156,6 +156,79 @@ class TrimDialogTests(unittest.TestCase):
         self.assertEqual([w.get_visible() for w in dialog.surface.track_key_rows], [False, False])
         self.assertEqual(dialog.surface.dialog.get_title(), "Choose Sample Range")
 
+    def _press(self, dialog: TrimDialog, keyval: int, *, shift: bool = True) -> bool:
+        from gi.repository import Gdk
+
+        state = Gdk.ModifierType.SHIFT_MASK if shift else Gdk.ModifierType(0)
+        return dialog.surface._on_key_pressed(dialog.surface.keys, keyval, 0, state)
+
+    def test_range_label_reads_the_current_range(self) -> None:
+        dialog, _ = self._dialog(starts={"/in/a.wav": 12.0})
+        assert dialog.range_label is not None
+        self.assertEqual(dialog.range_label.get_label(), "0:12 – 0:42")
+        dialog.picker.dropdown.set_selected(1)
+        self.assertEqual(dialog.range_label.get_label(), "0:00 – 0:30")
+        _drag(dialog, 40)
+        self.assertEqual(dialog.range_label.get_label(), "0:20 – 0:50")
+
+    def test_range_label_of_a_short_input_ends_with_the_file(self) -> None:
+        dialog, engine = self._dialog(inputs=("/in/a.wav",))
+        engine._duration = 20.0
+        engine.on_duration(20.0)
+        assert dialog.range_label is not None
+        self.assertEqual(dialog.range_label.get_label(), "0:00 – 0:20")
+
+    def test_shift_arrows_move_the_range(self) -> None:
+        from gi.repository import Gdk
+
+        dialog, engine = self._dialog(starts={"/in/a.wav": 12.0})
+        self.assertTrue(self._press(dialog, Gdk.KEY_Right))
+        self.assertTrue(self._press(dialog, Gdk.KEY_Right))
+        self.assertTrue(self._press(dialog, Gdk.KEY_Left))
+        self.assertEqual(dialog.view.waveforms[0].range_start, 13.0)
+        self.assertEqual(engine.calls[-1], ("seek", 13.0))
+        dialog.apply_button.emit("clicked")
+        self.assertEqual(self.applied, [{"/in/a.wav": 13.0}])
+
+    def test_shift_arrows_stop_at_the_ends_of_the_file(self) -> None:
+        from gi.repository import Gdk
+
+        dialog, engine = self._dialog(inputs=("/in/a.wav",), starts={"/in/a.wav": 69.5})
+        engine._duration = 100.0
+        engine.on_duration(100.0)
+        self._press(dialog, Gdk.KEY_Right)
+        self.assertEqual(dialog.view.waveforms[0].range_start, 70.0)
+        seeks = len([c for c in engine.calls if c[0] == "seek"])
+        self.assertTrue(self._press(dialog, Gdk.KEY_Right))
+        self.assertEqual(len([c for c in engine.calls if c[0] == "seek"]), seeks)
+        dialog.reset_button.emit("clicked")
+        self.assertTrue(self._press(dialog, Gdk.KEY_Left))
+        self.assertEqual(dialog.view.waveforms[0].range_start, 0.0)
+
+    def test_plain_arrows_still_skip_within_the_range(self) -> None:
+        from gi.repository import Gdk
+
+        dialog, engine = self._dialog()
+        engine._position = 10.0
+        self.assertTrue(self._press(dialog, Gdk.KEY_Right, shift=False))
+        self.assertEqual(engine.calls[-1], ("seek", 15.0))
+        self.assertEqual(dialog.view.waveforms[0].range_start, 0.0)
+
+    def test_click_outside_the_range_moves_it(self) -> None:
+        dialog, engine = self._dialog()
+        waveform = dialog.view.waveforms[0]
+        waveform.set_timeline(100.0)
+        waveform.begin_range_drag()
+        waveform.end_range_drag(100.0, 200.0)
+        self.assertEqual(engine.calls[-1], ("seek", 50.0))
+        dialog.apply_button.emit("clicked")
+        self.assertEqual(self.applied, [{"/in/a.wav": 50.0}])
+
+    def test_shortcuts_list_the_range_keys(self) -> None:
+        dialog, _ = self._dialog()
+        self.assertEqual([w.get_visible() for w in dialog.surface.range_key_rows], [True, True])
+        self.assertEqual([hint.get_visible() for hint in dialog.view.key_hints], [False])
+
     def test_single_input_names_the_file(self) -> None:
         dialog, _ = self._dialog(inputs=("/in/a.wav",))
         self.assertEqual(dialog.picker.window_title.get_subtitle(), "a.wav")

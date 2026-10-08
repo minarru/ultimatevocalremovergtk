@@ -1,6 +1,8 @@
 """Sample trim: choose which N seconds of each input sample mode processes.
 
-Edits stay in the dialog until Apply; closing any other way discards them.
+Edits stay in the dialog until Apply; closing any other way discards them. The
+range moves by dragging the waveform, clicking outside the range, or Shift+Left
+and Shift+Right.
 """
 
 from __future__ import annotations
@@ -8,7 +10,7 @@ from __future__ import annotations
 import os
 from typing import TYPE_CHECKING, Callable, Mapping, Sequence
 
-from gi.repository import Gtk
+from gi.repository import Gdk, Gtk
 
 from core.listening import Track
 from core.sample_mode import fitted_sample_start, sample_start
@@ -18,12 +20,16 @@ from .engine import PlaybackControls
 from .input_picker import InputPicker
 from .range_loop import RangeLoop
 from .surface import PlaybackSurface
-from .view import CompareView
+from .view import CompareView, mmss
 
 if TYPE_CHECKING:
     from .waveforms import PeakLoading
 
 _TITLE = "Choose Sample Range"
+# Seconds one Shift+Left or Shift+Right moves the range.
+_NUDGE_STEP = 1.0
+_NUDGE_KEYS = {Gdk.KEY_Left: -_NUDGE_STEP, Gdk.KEY_Right: _NUDGE_STEP}
+_MODIFIERS = Gdk.ModifierType.SHIFT_MASK | Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.ALT_MASK
 
 
 class TrimDialog:
@@ -47,9 +53,11 @@ class TrimDialog:
         # Edited inputs only; ``None`` means the start goes back to 0:00.
         self._pending: dict[str, float | None] = {}
         self._current = 0
+        #: The current input's range as text, at the end of its row.
+        self.range_label: Gtk.Label | None = None
 
         self.loop = RangeLoop(engine)
-        self.view = CompareView(self.loop, peaks=waveforms)
+        self.view = CompareView(self.loop, peaks=waveforms, row_suffix=self._range_suffix)
         self._forward_duration = self.loop.on_duration
         self.loop.on_duration = self._relay_duration
         self.surface = PlaybackSurface(
@@ -58,6 +66,8 @@ class TrimDialog:
             open_in_window=open_in_window,
             commit=True,
             track_keys=False,
+            range_keys=True,
+            on_key=self._on_key,
             on_toast=on_toast,
             on_closed=on_closed,
         )
@@ -101,6 +111,7 @@ class TrimDialog:
         position = self.loop.position
         if position < self.loop.range_start or position > self.loop.range_end:
             self.loop.seek(position)
+        self._sync_range_label()
 
     def close(self) -> None:
         self.surface.close()
@@ -116,6 +127,9 @@ class TrimDialog:
         fitted = fitted_sample_start(shown, self._duration, seconds)
         if fitted != shown:
             self._move_to(fitted)
+        else:
+            # A short input's range now ends with the file.
+            self._sync_range_label()
 
     def _start_of(self, path: str) -> float:
         if path in self._pending:
@@ -130,10 +144,14 @@ class TrimDialog:
         start = self._start_of(path)
         self.loop.set_range(start, self._duration)
         self.view.show_tracks((Track(os.path.basename(path), path),), selected=0, position=start)
+        # One row and no track switching, so its number key would point nowhere.
+        for hint in self.view.key_hints:
+            hint.set_visible(False)
         waveform = self.view.waveforms[0]
         waveform.set_range(start, self._duration)
         waveform.on_range_moved = self._move_to
         self._sync_reset()
+        self._sync_range_label()
 
     def _move_to(self, start: float) -> None:
         path = self._inputs[self._current]
@@ -143,10 +161,45 @@ class TrimDialog:
             self.view.waveforms[0].set_range(start, self._duration)
         self.loop.seek(start)
         self._sync_reset()
+        self._sync_range_label()
+
+    def _nudge(self, seconds: float) -> None:
+        total = self.loop.duration
+        if total <= 0 and self.view.waveforms:
+            total = self.view.waveforms[0].timeline
+        current = self.loop.range_start
+        start = fitted_sample_start(current + seconds, self._duration, total if total > 0 else None)
+        if start != current:
+            self._move_to(start)
 
     def _sync_reset(self) -> None:
         current = self._inputs[self._current] if self._inputs else ""
         self.reset_button.set_sensitive(bool(current) and self._start_of(current) > 0)
+
+    def _range_suffix(self, _index: int, _track: Track) -> Gtk.Widget:
+        label = Gtk.Label(valign=Gtk.Align.CENTER)
+        label.add_css_class("dim-label")
+        label.add_css_class("numeric")
+        self.range_label = label
+        return label
+
+    def _sync_range_label(self) -> None:
+        if self.range_label is None:
+            return
+        first, last = mmss(self.loop.range_start), mmss(self.loop.range_end)
+        self.range_label.set_label(f"{first} – {last}")
+        self.range_label.update_property(
+            [Gtk.AccessibleProperty.LABEL], [f"Sample range {first} to {last}"]
+        )
+
+    # -- keys ------------------------------------------------------------------
+
+    def _on_key(self, keyval: int, state: Gdk.ModifierType) -> bool:
+        step = _NUDGE_KEYS.get(keyval)
+        if step is None or not self._inputs or (state & _MODIFIERS) != Gdk.ModifierType.SHIFT_MASK:
+            return False
+        self._nudge(step)
+        return True
 
     def _on_apply_clicked(self, _button: Gtk.Button) -> None:
         self._on_apply(dict(self._pending))

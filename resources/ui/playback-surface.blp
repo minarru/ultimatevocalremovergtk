@@ -102,6 +102,32 @@ Adw.Dialog dialog {
                   row: 2;
                 }
               }
+
+              Gtk.Label range_keys_key {
+                label: "Shift ← →";
+                halign: end;
+                visible: false;
+
+                layout {
+                  column: 0;
+                  row: 3;
+                }
+
+                styles [
+                  "uvr-keycap",
+                ]
+              }
+
+              Gtk.Label range_keys_label {
+                label: "Move range 1 s";
+                xalign: 0;
+                visible: false;
+
+                layout {
+                  column: 1;
+                  row: 3;
+                }
+              }
             };
           };
         }

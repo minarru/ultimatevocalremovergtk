@@ -28,7 +28,7 @@ _TEMPLATE_RESOURCE = f"{RESOURCE_PREFIX}/ui/compare-view.ui"
 require_resource_bundle(_TEMPLATE_RESOURCE)
 
 
-def _mmss(seconds: float) -> str:
+def mmss(seconds: float) -> str:
     whole = max(0, int(seconds))
     return f"{whole // 60}:{whole % 60:02d}"
 
@@ -106,7 +106,7 @@ class CompareView(Gtk.Box):
         self._engine_duration = 0.0
         self._peak_duration = 0.0
         self._apply_timeline()
-        self.elapsed_label.set_label(_mmss(position))
+        self.elapsed_label.set_label(mmss(position))
         if not tracks:
             self._building = False
             self._set_transport_sensitive(False)
@@ -256,14 +256,14 @@ class CompareView(Gtk.Box):
 
     def _apply_timeline(self) -> None:
         timeline = self._engine_duration if self._engine_duration > 0 else self._peak_duration
-        self.total_label.set_label(_mmss(timeline))
+        self.total_label.set_label(mmss(timeline))
         for waveform in self.waveforms:
             waveform.set_timeline(timeline)
 
     # -- engine callbacks ------------------------------------------------------
 
     def _on_position(self, seconds: float) -> None:
-        self.elapsed_label.set_label(_mmss(seconds))
+        self.elapsed_label.set_label(mmss(seconds))
         for waveform in self.waveforms:
             waveform.set_position(seconds)
 
@@ -287,4 +287,4 @@ class CompareView(Gtk.Box):
         self.on_error(f"Couldn't start playback. {message}")
 
 
-__all__ = ["CompareView", "RowSuffix"]
+__all__ = ["CompareView", "RowSuffix", "mmss"]

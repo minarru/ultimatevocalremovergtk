@@ -195,8 +195,35 @@ class WaveformViewTests(unittest.TestCase):
         view = self._ranged(100.0, 10.0, 30.0)
         view.begin_range_drag()
         view.update_range_drag(1, 200)
-        view.end_range_drag(180, 200)
-        self.assertEqual((self.seeks, self.moved), ([40.0], []))
+        view.end_range_drag(50, 200)
+        self.assertEqual((self.seeks, self.moved), ([25.0], []))
+
+    def test_click_outside_the_range_starts_it_there(self) -> None:
+        view = self._ranged(100.0, 10.0, 30.0)
+        view.begin_range_drag()
+        view.end_range_drag(100, 200)
+        self.assertEqual((self.seeks, self.moved), ([], [50.0]))
+        self.assertEqual(view.range_start, 50.0)
+
+    def test_click_near_the_end_keeps_the_range_on_the_track(self) -> None:
+        view = self._ranged(100.0, 10.0, 30.0)
+        view.begin_range_drag()
+        view.end_range_drag(190, 200)
+        self.assertEqual((self.seeks, self.moved), ([], [70.0]))
+
+    def test_cursor_offers_a_grab_only_when_the_range_can_move(self) -> None:
+        def cursor(view: Any) -> str | None:
+            current = view.get_cursor()
+            return current.get_name() if current is not None else None
+
+        view = self._ranged(100.0, 10.0, 30.0)
+        self.assertEqual(cursor(view), "grab")
+        view.begin_range_drag()
+        self.assertEqual(cursor(view), "grabbing")
+        view.end_range_drag(50, 200)
+        self.assertEqual(cursor(view), "grab")
+        self.assertIsNone(cursor(self._ranged(20.0, 0.0, 30.0)))
+        self.assertIsNone(cursor(self._ranged(100.0, 0.0, 0.0)))
 
     def test_short_track_range_cannot_move(self) -> None:
         view = self._ranged(20.0, 0.0, 30.0)

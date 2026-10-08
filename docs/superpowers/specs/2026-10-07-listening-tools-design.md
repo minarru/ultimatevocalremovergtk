@@ -132,7 +132,13 @@ a start and "30 s, custom range" when any does.
 - Several inputs: the same input picker as Compare Stems. Each input keeps its
   own start.
 - The waveform shows a fixed-width highlighted range of the sample duration.
-  Dragging moves the range; a click without drag seeks, clamped to the range.
+  Dragging moves the range; a click without drag inside the range seeks, and a
+  click outside it moves the range to start there (pulled back to fit the
+  file). The pointer shows a grab cursor while the range can move.
+- Shift+Left / Shift+Right move the range by 1 s, listed in the keyboard
+  shortcuts popover; plain Left/Right still skip 5 s inside the range.
+- The row shows the range as text ("1:15 – 1:45"), ending with the file for a
+  short input.
 - Playback loops inside the range: when the position passes the range end, the
   dialog seeks to the range start. The engine is unchanged.
 - Header: Apply (commits every edited input's start to settings and closes),
@@ -143,7 +149,8 @@ a start and "30 s, custom range" when any does.
 ### `WaveformView` addition
 
 An optional fixed-width range (`set_range(start, length)` / `range_start`,
-`on_range_moved`). Off by default; when off, drag seeks exactly as today.
+`on_range_moved`, `range_movable`). Off by default; when off, drag seeks
+exactly as today.
 
 ### Core
 

@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 from tests.playback_fakes import FakeEngine, FakeLoader, comparison_set
 
 if TYPE_CHECKING:
-    from ui.playback.surface import PlaybackSurface
+    from ui.playback.surface import KeyHandler, PlaybackSurface
 
 
 @unittest.skipUnless(
@@ -37,6 +37,7 @@ class PlaybackSurfaceTests(unittest.TestCase):
         loader: bool = False,
         commit: bool = False,
         track_keys: bool = True,
+        on_key: KeyHandler | None = None,
     ) -> tuple[PlaybackSurface, FakeEngine]:
         from ui.playback.surface import PlaybackSurface
         from ui.playback.view import CompareView
@@ -52,6 +53,7 @@ class PlaybackSurfaceTests(unittest.TestCase):
             open_in_window=open_in_window,
             commit=commit,
             track_keys=track_keys,
+            on_key=on_key,
             on_toast=self.toasts.append,
             on_closed=lambda: self.closed.append(True),
         )
@@ -202,6 +204,27 @@ class PlaybackSurfaceTests(unittest.TestCase):
     def test_track_keys_can_be_hidden(self) -> None:
         surface, _ = self._surface(track_keys=False)
         self.assertEqual([w.get_visible() for w in surface.track_key_rows], [False, False])
+
+    def test_range_keys_are_hidden_by_default(self) -> None:
+        surface, _ = self._surface()
+        self.assertEqual([w.get_visible() for w in surface.range_key_rows], [False, False])
+
+    def test_tool_keys_run_before_the_view(self) -> None:
+        from gi.repository import Gdk
+
+        seen: list[tuple[int, Gdk.ModifierType]] = []
+
+        def on_key(keyval: int, state: Gdk.ModifierType) -> bool:
+            seen.append((keyval, state))
+            return keyval == Gdk.KEY_Left
+
+        surface, engine = self._surface(on_key=on_key)
+        shift = Gdk.ModifierType.SHIFT_MASK
+        self.assertTrue(surface._on_key_pressed(surface.keys, Gdk.KEY_Left, 0, shift))
+        self.assertNotIn("seek", [call[0] for call in engine.calls])
+        self.assertTrue(surface._on_key_pressed(surface.keys, Gdk.KEY_Right, 0, shift))
+        self.assertEqual(engine.calls[-1][0], "seek")
+        self.assertEqual(seen, [(Gdk.KEY_Left, shift), (Gdk.KEY_Right, shift)])
 
     def test_pack_end_puts_tool_widgets_last(self) -> None:
         from gi.repository import Gtk

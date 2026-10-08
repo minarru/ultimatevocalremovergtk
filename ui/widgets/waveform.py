@@ -1,7 +1,8 @@
 """Waveform strip for one track: shared time axis, playhead, click or drag to seek.
 
 With a range set, bars outside that fixed window are dimmed and each edge has a
-handle. A drag still slides the whole window; a click seeks inside it.
+handle. A drag slides the whole window; a click inside it seeks, and a click
+outside moves the window to start there.
 
 The envelope is drawn as mirrored, round-capped bars separated by gaps. Heights
 use one absolute scale (±1.0 fills the row), so rows compare honestly.
@@ -163,10 +164,12 @@ class WaveformView(Gtk.DrawingArea):
 
     def set_peaks(self, peaks: Peaks | None) -> None:
         self._peaks = peaks
+        self._sync_cursor()
         self.queue_draw()
 
     def set_timeline(self, duration: float) -> None:
         self._timeline = max(0.0, duration)
+        self._sync_cursor()
         self.queue_draw()
 
     def set_position(self, seconds: float) -> None:
@@ -192,7 +195,19 @@ class WaveformView(Gtk.DrawingArea):
         """Show a fixed-width range; a ``length`` of 0 or less turns it off."""
         self._range_length = max(0.0, length)
         self._range_start = max(0.0, start) if self._range_length else 0.0
+        self._sync_cursor()
         self.queue_draw()
+
+    @property
+    def range_movable(self) -> bool:
+        """Whether the range has room to move; a range as long as the track does not."""
+        return bool(self._range_length) and self.timeline > self._range_length
+
+    def _sync_cursor(self, *, dragging: bool = False) -> None:
+        if not self.range_movable:
+            self.set_cursor_from_name(None)
+        else:
+            self.set_cursor_from_name("grabbing" if dragging else "grab")
 
     def set_active(self, active: bool) -> None:
         self._active = active
@@ -212,6 +227,7 @@ class WaveformView(Gtk.DrawingArea):
     def begin_range_drag(self) -> None:
         self._drag_anchor = self._range_start
         self._drag_travel = 0.0
+        self._sync_cursor(dragging=True)
 
     def update_range_drag(self, dx: float, width: float) -> None:
         self._drag_travel = max(self._drag_travel, abs(dx))
@@ -223,13 +239,22 @@ class WaveformView(Gtk.DrawingArea):
         self.queue_draw()
 
     def end_range_drag(self, x: float, width: float) -> None:
+        self._sync_cursor()
         if self._drag_travel >= _CLICK_SLOP:
             self.on_range_moved(self._range_start)
             return
         timeline = self.timeline
-        if timeline > 0 and width > 0:
-            end = self._range_start + self._range_length
-            self.on_seek(_clamp(x_to_seconds(x, width, timeline), self._range_start, end))
+        if timeline <= 0 or width <= 0:
+            return
+        seconds = x_to_seconds(x, width, timeline)
+        end = self._range_start + self._range_length
+        if self._range_start <= seconds <= end or not self.range_movable:
+            self.on_seek(_clamp(seconds, self._range_start, end))
+            return
+        # Outside the window: start it at the click, as far as the track allows.
+        self._range_start = _clamp(seconds, 0.0, timeline - self._range_length)
+        self.queue_draw()
+        self.on_range_moved(self._range_start)
 
     def _on_drag_begin(self, gesture: Gtk.GestureDrag, x: float, _y: float) -> None:
         # Claiming keeps the press from also activating the row (switching tracks).

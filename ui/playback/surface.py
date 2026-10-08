@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Callable
 
-from gi.repository import Adw, Gtk
+from gi.repository import Adw, Gdk, Gtk
 
 from ..dialogs.utils import close_on_escape, present_modal_dialog
 from ..gtk_narrow import root_window
@@ -22,6 +22,9 @@ _WINDOW_MIN_WIDTH = 360
 _WINDOW_MIN_HEIGHT = 294
 _WINDOW_DEFAULT_WIDTH = 600
 
+#: A tool's own keys, tried before the view's; True when the key was handled.
+KeyHandler = Callable[[int, Gdk.ModifierType], bool]
+
 
 class PlaybackSurface:
     def __init__(
@@ -32,6 +35,8 @@ class PlaybackSurface:
         open_in_window: bool = False,
         commit: bool = False,
         track_keys: bool = True,
+        range_keys: bool = False,
+        on_key: KeyHandler | None = None,
         on_toast: Callable[[str], None] | None = None,
         on_closed: Callable[[], None] | None = None,
     ) -> None:
@@ -61,6 +66,12 @@ class PlaybackSurface:
         )
         for widget in self.track_key_rows:
             widget.set_visible(track_keys)
+        self.range_key_rows: tuple[Gtk.Widget, Gtk.Widget] = (
+            object_from_builder(builder, "range_keys_key", Gtk.Label),
+            object_from_builder(builder, "range_keys_label", Gtk.Label),
+        )
+        for widget in self.range_key_rows:
+            widget.set_visible(range_keys)
         if commit:
             self._header.set_show_start_title_buttons(False)
             self._header.set_show_end_title_buttons(False)
@@ -73,7 +84,8 @@ class PlaybackSurface:
         # Capture phase: a focused radio or button would otherwise consume Space first.
         self.keys = Gtk.EventControllerKey()
         self.keys.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
-        self.keys.connect("key-pressed", lambda _c, keyval, _code, _state: view.handle_key(keyval))
+        self._on_key = on_key
+        self.keys.connect("key-pressed", self._on_key_pressed)
         self.dialog.add_controller(self.keys)
 
     # -- tool content ----------------------------------------------------------
@@ -149,6 +161,17 @@ class PlaybackSurface:
 
     # -- signal handlers -------------------------------------------------------
 
+    def _on_key_pressed(
+        self,
+        _controller: Gtk.EventControllerKey,
+        keyval: int,
+        _keycode: int,
+        state: Gdk.ModifierType,
+    ) -> bool:
+        if self._on_key is not None and self._on_key(keyval, state):
+            return True
+        return self.view.handle_key(keyval)
+
     def _on_dialog_closed(self, _dialog: Adw.Dialog) -> None:
         self._finish()
 
@@ -166,4 +189,4 @@ class PlaybackSurface:
             self._on_closed()
 
 
-__all__ = ["PlaybackSurface"]
+__all__ = ["KeyHandler", "PlaybackSurface"]
