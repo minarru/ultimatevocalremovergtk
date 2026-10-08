@@ -149,6 +149,15 @@ class SampleRangeControllerTests(unittest.TestCase):
         self.assertIs(warm_cache, dialog_cache)
         self.assertIs(self._kwargs()["waveforms"], self.WaveformLoader.return_value)
 
+    def test_dialog_warms_its_other_inputs_on_the_same_cache(self) -> None:
+        path = self._real_input()
+        controller = self._controller()
+        controller.warm([path])
+        controller.open([path, "/in/b.wav"])
+        self.assertIs(self._kwargs()["warmer"], self.WaveformLoader.return_value)
+        caches = {id(call.args[0]) for call in self.WaveformLoader.call_args_list}
+        self.assertEqual(len(caches), 1)
+
     def test_warm_skips_a_repeat_a_missing_file_and_an_open_dialog(self) -> None:
         path = self._real_input()
         controller = self._controller()

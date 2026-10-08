@@ -31,7 +31,9 @@ from .surface import PlaybackSurface
 from .view import CompareView, mmss
 
 if TYPE_CHECKING:
-    from .waveforms import PeakLoading
+    from core.waveform import Peaks
+
+    from .waveforms import PeakCallback, PeakLoading
 
 _TITLE = "Choose Sample Range"
 # Seconds one Shift+arrow moves the range or changes its length; also the grid
@@ -40,6 +42,10 @@ _STEP = 1.0
 _MOVE_KEYS = {Gdk.KEY_Left: -_STEP, Gdk.KEY_Right: _STEP}
 _LENGTH_KEYS = {Gdk.KEY_Down: -_STEP, Gdk.KEY_Up: _STEP}
 _MODIFIERS = Gdk.ModifierType.SHIFT_MASK | Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.ALT_MASK
+# Inputs whose peaks are computed ahead around the shown one, nearest first: the
+# picker is usually stepped through, and each warm decodes a whole file.
+_WARM_AHEAD = 2
+_WARM_BEHIND = 1
 
 #: An applied edit: the start (``None`` for 0:00) and the length (``None`` to
 #: follow the Preferences sample duration).
@@ -57,6 +63,7 @@ class TrimDialog:
         on_apply: Callable[[dict[str, RangeEdit]], None],
         lengths: Mapping[str, float] | None = None,
         waveforms: PeakLoading | None = None,
+        warmer: PeakLoading | None = None,
         open_in_window: bool = False,
         on_toast: Callable[[str], None] | None = None,
         on_closed: Callable[[], None] | None = None,
@@ -73,7 +80,12 @@ class TrimDialog:
         self.range_label: Gtk.Label | None = None
 
         self.loop = RangeLoop(engine)
-        self.view = CompareView(self.loop, peaks=waveforms, row_suffix=self._range_suffix)
+        self._warmer = warmer
+        self._on_closed = on_closed
+        peaks = waveforms
+        if waveforms is not None and warmer is not None and len(self._inputs) > 1:
+            peaks = _ThenWarm(waveforms, self._warm_neighbours)
+        self.view = CompareView(self.loop, peaks=peaks, row_suffix=self._range_suffix)
         self._forward_duration = self.loop.on_duration
         self.loop.on_duration = self._relay_duration
         self.surface = PlaybackSurface(
@@ -85,7 +97,7 @@ class TrimDialog:
             range_keys=True,
             on_key=self._on_key,
             on_toast=on_toast,
-            on_closed=on_closed,
+            on_closed=self._on_surface_closed,
         )
         builder = load_builder("trim-dialog")
         self.cancel_button = object_from_builder(builder, "cancel_button", Gtk.Button)
@@ -166,6 +178,8 @@ class TrimDialog:
     def _show(self, index: int) -> None:
         if self.loop.playing:
             self.loop.pause()
+        if self._warmer is not None:
+            self._warmer.cancel()
         self._current = index
         path = self._inputs[index]
         start, length = self._start_of(path), self._length_of(path)
@@ -181,6 +195,26 @@ class TrimDialog:
         waveform.on_range_preview = self._preview_range
         self._sync_reset()
         self._sync_range_label()
+
+    def _warm_neighbours(self) -> None:
+        """Compute the peaks of the inputs around the shown one, nearest first."""
+        if self._warmer is None:
+            return
+        current, last = self._current, len(self._inputs) - 1
+        order: list[int] = []
+        for step in range(1, max(_WARM_AHEAD, _WARM_BEHIND) + 1):
+            if step <= _WARM_AHEAD and current + step <= last:
+                order.append(current + step)
+            if step <= _WARM_BEHIND and current - step >= 0:
+                order.append(current - step)
+        if order:
+            self._warmer.load([self._inputs[index] for index in order], 0, _ignore_peaks)
+
+    def _on_surface_closed(self) -> None:
+        if self._warmer is not None:
+            self._warmer.cancel()
+        if self._on_closed is not None:
+            self._on_closed()
 
     def _set_range(self, start: float, length: float) -> None:
         """Record ``start`` and ``length`` for the current input and play from the start."""
@@ -276,6 +310,28 @@ class TrimDialog:
         }
         self._on_apply(edits)
         self.close()
+
+
+class _ThenWarm:
+    """The shown input's peak loading; once they land, ``after`` warms the others."""
+
+    def __init__(self, loader: PeakLoading, after: Callable[[], None]) -> None:
+        self._loader = loader
+        self._after = after
+
+    def load(self, paths: Sequence[str], first: int, on_peaks: PeakCallback) -> None:
+        def delivered(index: int, peaks: Peaks | None) -> None:
+            on_peaks(index, peaks)
+            self._after()
+
+        self._loader.load(paths, first, delivered)
+
+    def cancel(self) -> None:
+        self._loader.cancel()
+
+
+def _ignore_peaks(_index: int, _peaks: Peaks | None) -> None:
+    """Warming only fills the cache; the waveform draws from it on a switch."""
 
 
 __all__ = ["RangeEdit", "TrimDialog"]

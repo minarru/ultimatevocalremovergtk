@@ -56,6 +56,7 @@ class SampleRangeController:
                 lengths=settings.process.sample_lengths,
                 on_apply=self._apply,
                 waveforms=WaveformLoader(self._peaks),
+                warmer=self._warm_loader(),
                 open_in_window=settings.ui.listening_in_window,
                 on_toast=self._toast,
                 on_closed=self._on_closed,
@@ -71,11 +72,15 @@ class SampleRangeController:
         if path == self._warmed or not os.path.isfile(path) or self._peaks.get(path) is not None:
             return
         self._warmed = path
+        self._warm_loader().load([path], 0, _ignore_peaks)
+
+    def _warm_loader(self) -> PeakLoading:
+        """Warms ahead into the dialog's cache: the first input, then its other inputs."""
         if self._warmer is None:
             from .playback.waveforms import WaveformLoader
 
             self._warmer = WaveformLoader(self._peaks)
-        self._warmer.load([path], 0, _ignore_peaks)
+        return self._warmer
 
     def sync_duration(self) -> None:
         """Apply the current sample length to the open dialog."""

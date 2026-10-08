@@ -6,7 +6,7 @@ import os
 import unittest
 from typing import TYPE_CHECKING, Mapping
 
-from tests.playback_fakes import FakeEngine
+from tests.playback_fakes import FakeEngine, FakeLoader
 
 if TYPE_CHECKING:
     from ui.playback.trim import RangeEdit, TrimDialog
@@ -46,11 +46,16 @@ class TrimDialogTests(unittest.TestCase):
         starts: Mapping[str, float] | None = None,
         lengths: Mapping[str, float] | None = None,
         duration: float = 30,
+        warm: bool = False,
     ) -> tuple[TrimDialog, FakeEngine]:
         from ui.playback.trim import TrimDialog
 
         engine = FakeEngine()
         self.applied: list[dict[str, RangeEdit]] = []
+        self.peak_calls: list[tuple[object, ...]] = []
+        self.warm_calls: list[tuple[object, ...]] = []
+        self.peaks = FakeLoader(self.peak_calls) if warm else None
+        self.warmer = FakeLoader(self.warm_calls) if warm else None
         dialog = TrimDialog(
             inputs,
             engine,
@@ -58,8 +63,17 @@ class TrimDialogTests(unittest.TestCase):
             starts=starts or {},
             lengths=lengths,
             on_apply=self.applied.append,
+            waveforms=self.peaks,
+            warmer=self.warmer,
         )
         return dialog, engine
+
+    def _deliver_shown(self) -> None:
+        assert self.peaks is not None and self.peaks.on_peaks is not None
+        self.peaks.on_peaks(0, None)
+
+    def _warmed(self) -> list[tuple[object, ...]]:
+        return [call for call in self.warm_calls if call[0] == "peaks.load"]
 
     def _loads(self, engine: FakeEngine) -> list[tuple[object, ...]]:
         return [c for c in engine.calls if c[0] == "load"]
@@ -122,6 +136,37 @@ class TrimDialogTests(unittest.TestCase):
         _drag(dialog, 40)
         dialog.apply_button.emit("clicked")
         self.assertEqual(self.applied, [{"/in/a.wav": (10.0, None), "/in/b.wav": (20.0, None)}])
+
+    def test_neighbours_warm_once_the_shown_inputs_peaks_land(self) -> None:
+        inputs = tuple(f"/in/{name}.wav" for name in "abcde")
+        dialog, _ = self._dialog(inputs=inputs, warm=True)
+        self.assertEqual(self._warmed(), [])
+        self._deliver_shown()
+        self.assertEqual(self._warmed(), [("peaks.load", ("/in/b.wav", "/in/c.wav"), 0)])
+        dialog.picker.dropdown.set_selected(2)
+        # The shown input loads first; a warm still running would slow it down.
+        self.assertEqual(self.warm_calls[-1], ("peaks.cancel",))
+        self._deliver_shown()
+        self.assertEqual(
+            self._warmed()[-1], ("peaks.load", ("/in/d.wav", "/in/b.wav", "/in/e.wav"), 0)
+        )
+
+    def test_last_input_warms_only_behind_it(self) -> None:
+        dialog, _ = self._dialog(warm=True)
+        dialog.picker.dropdown.set_selected(1)
+        self._deliver_shown()
+        self.assertEqual(self._warmed()[-1], ("peaks.load", ("/in/a.wav",), 0))
+
+    def test_single_input_warms_nothing(self) -> None:
+        self._dialog(inputs=("/in/a.wav",), warm=True)
+        self._deliver_shown()
+        self.assertEqual(self._warmed(), [])
+
+    def test_closing_stops_warming(self) -> None:
+        dialog, _ = self._dialog(warm=True)
+        self._deliver_shown()
+        dialog.close()
+        self.assertEqual(self.warm_calls[-1], ("peaks.cancel",))
 
     def test_a_start_past_the_end_is_pulled_back_with_the_file(self) -> None:
         dialog, engine = self._dialog(inputs=("/in/a.wav",), starts={"/in/a.wav": 40.0})
