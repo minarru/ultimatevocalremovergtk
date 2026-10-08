@@ -42,6 +42,13 @@ def resolved_plan(*, ensemble: bool = False, conditional: bool = False):
     )
 
 
+def _sampled(plan: ResolvedJob, starts: dict[str, float]) -> ResolvedJob:
+    plan.settings.process.sample_mode = True
+    plan.settings.process.sample_mode_duration = 30
+    plan.settings.process.sample_starts = starts
+    return plan
+
+
 class PlanReviewPresentationTests(unittest.TestCase):
     def test_counts_distinguish_conditional_outputs(self):
         from ui.plan_review import review_presentation
@@ -135,6 +142,36 @@ class PlanReviewPresentationTests(unittest.TestCase):
         self.assertIn("/music/A & B.wav", view.technical)
         self.assertIn("mdx:a", view.technical)
         self.assertEqual(view.destination, "/out")
+
+    def test_sample_without_starts_reads_first_seconds(self):
+        from ui.plan_review import review_presentation
+
+        view = review_presentation(_sampled(resolved_plan(), {}))
+        self.assertEqual(view.sample, "First 30 s")
+        self.assertEqual(view.processing, "CPU · First 30 s")
+
+    def test_shared_start_reads_from_its_clock(self):
+        from ui.plan_review import review_presentation
+
+        view = review_presentation(_sampled(resolved_plan(), {"/music/A & B.wav": 75.0}))
+        self.assertEqual(view.sample, "30 s from 1:15")
+        details = json.loads(view.technical.split("\n\n", 1)[1])
+        self.assertEqual(details["processing"]["sample_starts"], {"/music/A & B.wav": 75.0})
+
+    def test_differing_starts_list_each_input(self):
+        from ui.plan_review import review_presentation
+
+        plan = resolved_plan()
+        second = PlannedInput("/music/C.wav", plan.inputs[0].naming, plan.inputs[0].outputs)
+        plan = _sampled(replace(plan, inputs=plan.inputs + (second,)), {"/music/A & B.wav": 75.0})
+        view = review_presentation(plan)
+        self.assertEqual(view.sample, "30 s, custom ranges")
+        self.assertIn("Sample starts: A & B.wav 1:15, C.wav 0:00", view.additional)
+
+    def test_sample_off_reads_full_tracks(self):
+        from ui.plan_review import review_presentation
+
+        self.assertEqual(review_presentation(resolved_plan()).sample, "Full tracks")
 
 
 @unittest.skipUnless(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"), "Needs GTK")

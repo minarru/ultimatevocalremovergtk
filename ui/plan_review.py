@@ -1,11 +1,36 @@
 """Pure presentation of an already-resolved processing plan."""
 
 import json
+import os
 from dataclasses import asdict, dataclass
 from typing import Any
 
 from core.job_plan_types import ResolvedJob
+from core.sample_mode import sample_start
 from core.settings import Settings
+
+
+def _clock(seconds: float) -> str:
+    whole = max(0, int(seconds))
+    return f"{whole // 60}:{whole % 60:02d}"
+
+
+def _sample_summary(plan: ResolvedJob) -> tuple[str, str | None]:
+    """The Sample row and, when inputs start at different times, a per-input line."""
+    process = plan.settings.process
+    if not process.sample_mode:
+        return "Full tracks", None
+    duration = process.sample_mode_duration
+    starts = [sample_start(process.sample_starts, item.path) for item in plan.inputs]
+    if not any(starts):
+        return f"First {duration} s", None
+    if len(set(starts)) == 1:
+        return f"{duration} s from {_clock(starts[0])}", None
+    detail = ", ".join(
+        f"{os.path.basename(item.path)} {_clock(start)}"
+        for item, start in zip(plan.inputs, starts, strict=True)
+    )
+    return f"{duration} s, custom ranges", f"Sample starts: {detail}"
 
 
 def _files(count: int) -> str:
@@ -55,6 +80,8 @@ def _technical_plan(plan: ResolvedJob) -> dict[str, Any]:
     )
     if process.sample_mode:
         processing["sample_mode_duration"] = process.sample_mode_duration
+        starts = {item.path: sample_start(process.sample_starts, item.path) for item in plan.inputs}
+        processing["sample_starts"] = {path: start for path, start in starts.items() if start > 0}
     if process.long_file_chunk_seconds:
         processing["long_file_chunk_overlap_seconds"] = process.long_file_chunk_overlap_seconds
     if process.vocal_splitter_enabled:
@@ -163,9 +190,9 @@ def review_presentation(plan: ResolvedJob) -> PlanReviewPresentation:
         device = "NVIDIA GPU · " + plan.device
     elif plan.device.startswith("directml:"):
         device = "GPU · " + plan.device
-    sample = (
-        f"{process.sample_mode_duration}-second sample" if process.sample_mode else "Full tracks"
-    )
+    sample, sample_detail = _sample_summary(plan)
+    if sample_detail is not None:
+        additional.append(sample_detail)
     warnings = list(dict.fromkeys(d.message for d in plan.diagnostics if d.severity == "warning"))
     if process.sample_mode:
         warnings.append(
