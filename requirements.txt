@@ -51,7 +51,7 @@ msgpack==1.2.2
 multidict==6.9.0
 narwhals==2.26.0
 natsort==8.4.0
-networkx==3.6.1
+networkx==3.7
 numba==0.67.0
 numpy==2.5.3
 omegaconf==2.3.1
@@ -92,7 +92,7 @@ statsmodels==0.15.0
 sympy==1.14.0
 threadpoolctl==3.7.0
 torch==2.14.0
-torch-einops-utils==0.1.28
+torch-einops-utils==0.1.31
 torchmetrics==1.9.0
 torchvision==0.29.0
 tqdm==4.70.1
