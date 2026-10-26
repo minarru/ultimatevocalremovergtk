@@ -8,4 +8,4 @@
 # wrong for this project regardless: the venv is built with
 # --system-site-packages so GTK/PyGObject come from the distro, never PyPI.
 # Nothing here is imported at runtime; basedpyright only reads the .pyi files.
-PyGObject-stubs==2.17.0
+PyGObject-stubs==2.19.0
