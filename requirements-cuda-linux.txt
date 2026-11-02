@@ -7,7 +7,7 @@
 # onnxruntime/ directory) before installing this file, or pip will treat
 # onnxruntime-gpu as already satisfied and leave InferenceSession missing.
 
-onnxruntime-gpu==1.30.0
+onnxruntime-gpu==1.31.0
 
 # Torch 2.14 pins CUDA toolkit 13.0.3 and its component versions.
 # Do not independently bump those pins to the newest CUDA release.
